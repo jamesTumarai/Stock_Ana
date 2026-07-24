@@ -1,0 +1,12 @@
+id: document-analyzer
+base_agent: antigravity-preview-05-2026
+description: "An agent that searches for and analyzes publicly available SEC filings and stock documents."
+tools:
+  - type: google_search
+environment:
+  type: "remote"
+  sources: []
+examples:
+  - title: "Apple (AAPL) Document Analysis"
+    prompt: "Find and analyze recent SEC filings for Apple (AAPL)."
+

@@ -1,0 +1,9 @@
+const fs = require('fs');
+fetch('http://localhost:3000/api/tts', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ text: "Hello" })
+}).then(res => res.arrayBuffer()).then(ab => {
+  const buf = Buffer.from(ab);
+  console.log('first 4 bytes:', buf.slice(0, 4).toString('ascii'));
+});

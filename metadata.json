@@ -1,0 +1,8 @@
+{
+  "name": "Remix: TICKR",
+  "description": "Autonomous financial research Antigravity agent showing strong multimodality skills that gathers SEC filings, processes reasoning timelines, and generates interactive stock analysis reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
