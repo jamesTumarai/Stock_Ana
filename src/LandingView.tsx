@@ -1,101 +1,102 @@
 import React from 'react';
-import { Activity, ShieldAlert, FileText, CheckCircle2 } from 'lucide-react';
+import { motion } from 'motion/react';
+import { FadingVideo } from './components/FadingVideo';
+import { BlurText } from './components/BlurText';
+import { ArrowUpRight, Play, FileText, Activity, ShieldAlert } from 'lucide-react';
 
 export function LandingView({ language = 'English' }: { language?: string }) {
   const isThai = language === 'Thai';
   
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-8 overflow-y-auto no-scrollbar ">
-      <div className="relative z-10 w-full max-w-4xl mx-auto flex flex-col items-center py-12">
-        {/* Header */}
-        <div className="text-center mb-16 max-w-3xl">
-          <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-4 font-serif">
-            {isThai ? (
-              <>Tickr ผู้ช่วยวิเคราะห์ <span className="italic font-serif">เอกสารการเงิน</span> อัจฉริยะของคุณ</>
-            ) : (
-              <>Tickr, your intelligent <span className="italic font-serif">financial document</span> analyzer</>
-            )}
-          </h1>
-          <p className="text-lg text-[#b3b3b3] font-medium">
-            {isThai 
-              ? "ค้นหาและสรุปเอกสาร ก.ล.ต. (SEC filings) และข้อมูลที่เปิดเผยต่อสาธารณะล่าสุดโดยอัตโนมัติ" 
-              : "Automatically finds and synthesizes recent SEC filings and public disclosures."}
-          </p>
-        </div>
-
-        {/* Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+    <div className="absolute inset-0 overflow-y-auto no-scrollbar bg-transparent">
+      
+      {/* Section 1 — Hero */}
+      <div className="relative w-full min-h-screen flex flex-col justify-center items-center overflow-hidden z-0">
+        
+        <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center pt-32 md:pt-40 px-4 text-center">
           
-          {/* Card 1: Documents */}
-          <div className="bg-black/20 backdrop-blur-md border border-white/10 rounded-none p-6 shadow-2xl flex flex-col hover:bg-black/30 transition-colors">
-            <h3 className="text-xl font-medium text-white mb-6 text-left">
-              {isThai ? "ครอบคลุมเอกสารสำคัญครบถ้วน" : "Comprehensive SEC document coverage."}
-            </h3>
-            
-            <div className="flex-1 flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><FileText className="w-4 h-4" /></div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-white">Form 10-K & 10-Q</div>
-                  <div className="text-xs text-white/60">
-                    {isThai ? "รายงานประจำปีและรายไตรมาส" : "Annual and Quarterly Reports"}
-                  </div>
-                </div>
-              </div>
-              <div className="w-full h-px bg-white/10 my-1"></div>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><Activity className="w-4 h-4" /></div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-white">Form 8-K</div>
-                  <div className="text-xs text-white/60">
-                    {isThai ? "เหตุการณ์สำคัญในปัจจุบัน" : "Current / Material Events"}
-                  </div>
-                </div>
-              </div>
-              <div className="w-full h-px bg-white/10 my-1"></div>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><ShieldAlert className="w-4 h-4" /></div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-white">Forms 3, 4, 5 & 13F</div>
-                  <div className="text-xs text-white/60">
-                    {isThai ? "การถือครองของคนในและสถาบัน" : "Insider & Institutional Holdings"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Analysis */}
-          <div className="bg-black/20 backdrop-blur-md border border-white/10 rounded-none p-6 shadow-2xl flex flex-col hover:bg-black/30 transition-colors">
-            <h3 className="text-xl font-medium text-white mb-6 text-left">
-              {isThai ? "ข้อมูลเชิงลึกจากแหล่งข้อมูลโดยตรง" : "Deep insights pulled directly from the source."}
-            </h3>
-            
-            <div className="flex-1 flex flex-col gap-4 justify-center">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-[#b3b3b3] shrink-0" />
-                <div className="text-sm text-white/90 font-medium">
-                  {isThai ? "ระบุประเด็นสำคัญและความเสี่ยง" : "Identify key takeaways and risks"}
-                </div>
-              </div>
-              <div className="w-full h-px bg-white/10"></div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-[#b3b3b3] shrink-0" />
-                <div className="text-sm text-white/90 font-medium">
-                  {isThai ? "ดึงข้อมูลคำชี้แจงจากฝ่ายบริหาร" : "Extract management commentary"}
-                </div>
-              </div>
-              <div className="w-full h-px bg-white/10"></div>
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-[#b3b3b3] shrink-0" />
-                <div className="text-sm text-white/90 font-medium">
-                  {isThai ? "สังเคราะห์เอกสารหลายฉบับเป็นรายงานเดียว" : "Synthesize multiple filings into one report"}
-                </div>
+          <motion.div 
+            initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
+            animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, ease: "easeOut" }}
+            className="liquid-glass rounded-full flex items-center pr-3 mb-6 max-w-full"
+          >
+            <span className="bg-white text-black px-3 py-1 text-xs font-semibold rounded-full mr-3">New</span>
+            <span className="text-sm text-white/90 truncate">
+              {isThai ? "ระบบวิเคราะห์หุ้นด้วย AI" : "AI-Powered Stock Analysis"}
+            </span>
+          </motion.div>
+          
+          <BlurText 
+            text={isThai ? "Coin King แพลตฟอร์มวิเคราะห์หุ้นด้วย AI" : "Coin King, AI-powered stock analysis platform"}
+            className="text-5xl md:text-6xl lg:text-[5.5rem] font-heading italic text-white leading-[0.8] max-w-4xl justify-center tracking-[-2px] md:tracking-[-4px]"
+          />
+          
+          <motion.p 
+            initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
+            animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, ease: "easeOut" }}
+            className="mt-6 text-sm md:text-base text-white max-w-2xl font-body font-light leading-tight px-4"
+          >
+            {isThai 
+              ? "วิเคราะห์หุ้น เจาะลึกงบการเงิน และประเมินมูลค่าบริษัทได้อย่างแม่นยำ ด้วยพลังของ AI ที่ดึงข้อมูลเชิงลึกจากแหล่งข้อมูลโดยตรง" 
+              : "Analyze stocks, dive deep into financial statements, and value companies accurately with AI-driven insights pulled directly from the source."}
+          </motion.p>
+          
+          <motion.div 
+            initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
+            animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+            transition={{ delay: 1.1, ease: "easeOut" }}
+            className="flex items-center gap-6 mt-8"
+          >
+            <button 
+              className="liquid-glass-strong rounded-full px-5 py-2.5 text-sm font-medium text-white flex items-center gap-1 hover:bg-white/10 transition-colors"
+              onClick={() => {
+                const input = document.querySelector('input[placeholder="US TICKER"]') as HTMLInputElement;
+                if (input) input.focus();
+              }}
+            >
+              {isThai ? "ค้นหาหุ้นสหรัฐฯ" : "Search US Ticker"} <ArrowUpRight className="h-5 w-5" />
+            </button>
+          </motion.div>
+          
+          <motion.div 
+            initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
+            animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
+            transition={{ delay: 1.3, ease: "easeOut" }}
+            className="flex flex-wrap justify-center items-stretch gap-4 mt-12"
+          >
+            <div className="liquid-glass p-5 w-[220px] rounded-[1.25rem] flex flex-col items-start text-left">
+              <Activity className="w-7 h-7 text-white mb-auto" />
+              <div className="mt-8">
+                <div className="font-heading italic text-white text-4xl tracking-[-1px] leading-none">Real-time</div>
+                <div className="text-xs text-white font-body font-light mt-2">Market Data & Trends</div>
               </div>
             </div>
-          </div>
-
+            <div className="liquid-glass p-5 w-[220px] rounded-[1.25rem] flex flex-col items-start text-left">
+              <FileText className="w-7 h-7 text-white mb-auto" />
+              <div className="mt-8">
+                <div className="font-heading italic text-white text-4xl tracking-[-1px] leading-none">In-depth</div>
+                <div className="text-xs text-white font-body font-light mt-2">Financial Reports</div>
+              </div>
+            </div>
+          </motion.div>
+          
         </div>
+        
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.4, duration: 1 }}
+          className="relative z-10 flex flex-col items-center gap-4 pb-32 md:pb-40 mt-12 w-full"
+        >
+          <div className="liquid-glass rounded-full px-3.5 py-1 text-xs font-medium text-white">
+            {isThai ? "วิเคราะห์ข้อมูลจากตลาดหลักทรัพย์สหรัฐอเมริกา" : "Analyzing data from US stock exchanges"}
+          </div>
+          <div className="flex flex-wrap justify-center font-heading italic text-white text-2xl md:text-3xl tracking-tight gap-8 md:gap-16 opacity-80">
+            <span>NYSE</span> <span>·</span> <span>NASDAQ</span> <span>·</span> <span>AMEX</span>
+          </div>
+        </motion.div>
       </div>
     </div>
   );

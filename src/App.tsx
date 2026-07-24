@@ -1,6 +1,6 @@
 import { LandingView } from './LandingView';
 import React, { useState, useRef, useEffect } from 'react';
-import { PulsatingDotsBackground } from './components/PulsatingDots';
+import { FadingVideo } from './components/FadingVideo';
 import { Search, Loader2 } from 'lucide-react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
@@ -353,21 +353,27 @@ export default function App() {
     );
   }
 
+  const isLanding = !running && !reportData && events.length === 0;
+
   return (
-    <div className="relative h-screen bg-stone-900 overflow-hidden font-sans text-stone-100 flex flex-col">
-      <PulsatingDotsBackground />
+    <div className="relative h-screen bg-black overflow-hidden font-sans text-stone-100 flex flex-col">
+      <FadingVideo 
+        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4" 
+        className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top z-0" 
+        style={{ width: "120%", height: "120%" }} 
+      />
       
       {/* Header */}
-      <header className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md print:hidden">
+      <header className={`flex items-center justify-between px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
         <div className="flex items-center gap-2">
-          <span className="font-display font-bold text-xl tracking-wider uppercase text-white">Tickr</span>
+          <span className="font-display font-bold text-xl tracking-wider uppercase text-white">Coin King</span>
         </div>
         <div className="flex items-center gap-3">
           <select 
             value={selectedLanguage}
             onChange={(e) => setSelectedLanguage(e.target.value)}
             disabled={running}
-            className="bg-stone-800/80 border border-stone-700 text-stone-200 text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50"
+            className={`text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white`}
           >
             <option value="English">English</option>
             <option value="Thai">ภาษาไทย</option>
@@ -376,29 +382,28 @@ export default function App() {
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             disabled={running}
-            className="bg-stone-800/80 border border-stone-700 text-stone-200 text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50"
+            className={`text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white`}
           >
             <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
             <option value="perseus">Gemini 3.6 Flash</option>
-            <option value="gemini-2.5-pro">Gemini Pro</option>
           </select>
         </div>
       </header>
 
-      <main className="relative z-10 flex-1 flex flex-col pt-8 min-h-0 print:hidden">
-        {!running && !reportData && events.length === 0 ? (
+      <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-20'}`}>
+        {isLanding ? (
            <LandingView language={selectedLanguage} />
         ) : (
-           <div className="flex-1 flex flex-row overflow-hidden pb-32 gap-4 px-4 min-h-0 max-w-4xl mx-auto w-full">
-              <div className="flex-1 flex flex-col bg-stone-900/50 rounded-xl border border-stone-800 overflow-hidden min-h-0">
-                <div className="p-3 bg-stone-800/80 border-b border-stone-700 font-bold text-stone-200 text-sm flex justify-between items-center">
+           <div className="flex-1 flex flex-row overflow-hidden pb-32 gap-4 px-4 min-h-0 max-w-4xl mx-auto w-full mt-4">
+              <div className="flex-1 flex flex-col liquid-glass rounded-[1.25rem] overflow-hidden min-h-0">
+                <div className="p-4 bg-white/5 border-b border-white/10 font-bold text-white text-sm flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <img src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" alt="Gemini Sparkle" className="w-5 h-5" />
-                    <span>{selectedModel === 'gemini-3.5-flash' ? 'Gemini 3.5 Flash' : selectedModel === 'perseus' ? 'Gemini 3.6 Flash' : 'Gemini Pro'}</span>
+                    <span>{selectedModel === 'gemini-3.5-flash' ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'}</span>
                   </div>
-                  {running && <Loader2 className="w-4 h-4 animate-spin text-stone-400" />}
+                  {running && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}
                 </div>
-                <div className="flex-1 overflow-y-auto no-scrollbar">
+                <div className="flex-1 overflow-y-auto no-scrollbar relative z-10">
                   <AgentTimeline 
                     events={events} 
                     running={running} 
@@ -412,7 +417,7 @@ export default function App() {
         )}
 
         {/* Input area fixed at bottom */}
-        <div className="mt-auto px-6 pb-8 pt-4 bg-gradient-to-t from-stone-900 via-stone-900 to-transparent w-full fixed bottom-0 z-20 print:hidden">
+        <div className={`mt-auto px-6 pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent`}>
           <div className="max-w-4xl mx-auto w-full">
             {error && (
               <div className="mb-4 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded text-sm">
@@ -420,16 +425,16 @@ export default function App() {
               </div>
             )}
             
-            <div className="bg-stone-800 border border-stone-700 rounded-xl shadow-2xl p-2 w-full flex items-center gap-2 relative z-30 transition-all focus-within:border-stone-500 focus-within:ring-1 focus-within:ring-stone-500">
-              <div className="pl-3 py-2 flex items-center gap-2 text-stone-400 border-r border-stone-700 pr-3">
+            <div className={`liquid-glass border-white/20 border rounded-xl shadow-2xl p-2 w-full flex items-center gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
+              <div className={`pl-3 py-2 flex items-center gap-2 text-white/60 border-white/20 border-r pr-3`}>
                  <Search className="w-5 h-5" />
                  <input 
                    type="text" 
                    value={ticker}
                    onChange={(e) => setTicker(e.target.value)}
-                   placeholder="TICKER" 
+                   placeholder="US TICKER" 
                    disabled={running}
-                   className="bg-transparent border-none outline-none w-20 text-white font-mono uppercase placeholder-stone-600"
+                   className={`bg-transparent border-none outline-none w-24 font-mono uppercase text-white placeholder-white/40`}
                    onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                  />
               </div>
@@ -439,20 +444,20 @@ export default function App() {
                 onChange={(e) => setInstruction(e.target.value)}
                 disabled={running}
                 placeholder="Optional custom instructions..."
-                className="bg-transparent border-none outline-none flex-1 px-3 py-2 text-stone-200 placeholder-stone-500"
+                className={`bg-transparent border-none outline-none flex-1 px-3 py-2 text-white placeholder-white/50`}
                 onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
               />
               <button 
                 onClick={runAnalysis}
                 disabled={!ticker.trim() || running}
-                className="bg-white text-black hover:bg-stone-200 disabled:bg-stone-700 disabled:text-stone-500 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-medium transition-colors ml-2 tracking-wide text-sm flex items-center justify-center min-w-[100px]"
+                className={`bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/40 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-medium transition-colors ml-2 tracking-wide text-sm flex items-center justify-center min-w-[100px]`}
               >
                 {running ? <Loader2 className="w-4 h-4 animate-spin" /> : "Analyze"}
               </button>
             </div>
             
             <div className="text-center mt-4">
-              <span className="text-xs text-stone-500 font-mono tracking-wider">Gemini can make mistakes, don’t rely on it for financial advice.</span>
+              <span className="text-xs text-white/40 font-mono tracking-wider">Gemini can make mistakes, don’t rely on it for financial advice.</span>
             </div>
           </div>
         </div>
