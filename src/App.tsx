@@ -64,6 +64,7 @@ export interface TechnicalAnalysis {
     confluence_score: string;
   };
   key_levels: {
+    current_price?: number;
     support: string[];
     resistance: string[];
   };
@@ -417,7 +418,7 @@ export default function App() {
         
         if (accumulatedText) {
             const foundData = parseFinalText(accumulatedText);
-            if (foundData) setRep(foundData);
+            if (foundData) setRep({ ...foundData, analysis_type: aType });
         }
       }
       
@@ -439,7 +440,7 @@ export default function App() {
       
       if (accumulatedText) {
           const finalData = parseFinalText(accumulatedText);
-          if (finalData) setRep(finalData);
+          if (finalData) setRep({ ...finalData, analysis_type: aType });
       }
       
       setDur(Math.round((Date.now() - startTimestamp) / 1000));
@@ -466,6 +467,7 @@ export default function App() {
     setPastReports([]);
     setCurrentReport(undefined);
     setIsReportOpen(false);
+    window.scrollTo(0, 0);
   };
 
   const runAnalysis = () => {
@@ -476,22 +478,37 @@ export default function App() {
     }
     
     setIsReportOpen(false);
+    window.scrollTo(0, 0);
     
     startStream(selectedModel, analysisType, setRunning, setError, setCurrentReport, setEvents, pushEvent, setTokenCount, setToolRuns, setDurationSecs, setStartTime, abortRef, eventIdRef);
+  };
+
+  const handleCloseReport = () => {
+    const reportContainer = document.getElementById('report-scroll-container');
+    if (reportContainer && reportContainer.scrollTop > 0) {
+      reportContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        setIsReportOpen(false);
+        setTimeout(() => window.scrollTo(0, 0), 10);
+      }, 500);
+    } else {
+      setIsReportOpen(false);
+      setTimeout(() => window.scrollTo(0, 0), 10);
+    }
   };
 
   const allReports = [...pastReports, ...(currentReport ? [currentReport] : [])];
 
   if (isReportOpen && allReports.length > 0) {
     return (
-      <div className="w-full h-screen overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
+      <div id="report-scroll-container" className="w-full h-screen overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
         <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white shadow-sm gap-4 sm:gap-0">
           <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
             {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
           </div>
           <div className="flex items-center gap-4 print:hidden">
             <button 
-              onClick={() => setIsReportOpen(false)}
+              onClick={handleCloseReport}
               className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
             >
               <X className="w-6 h-6" />
@@ -505,7 +522,7 @@ export default function App() {
                key={idx}
                data={report} 
                ticker={ticker} 
-               onClose={() => setIsReportOpen(false)}
+               onClose={handleCloseReport}
                durationSecs={idx === allReports.length - 1 ? durationSecs : undefined}
                toolRuns={idx === allReports.length - 1 ? toolRuns : undefined}
                tokenCount={idx === allReports.length - 1 ? tokenCount : undefined}

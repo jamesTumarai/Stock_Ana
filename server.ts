@@ -191,20 +191,20 @@ async function startServer() {
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats.
+          finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats.
           Please follow this specific Technical Analysis guideline for the JSON fields in "technical_analysis":
-          1) signal_summary: สรุปสถานะ (Buy/Wait/Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมดจากหัวข้อข้างต้น ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, RSI = บวก" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน จากนั้นสรุปทิศทางรวม และระบุ Invalidation level ระดับราคาที่ถ้าหลุด/break จะทำให้มุมมองเปลี่ยนไป)
-          2) key_levels: แนวรับ (support) 3 ระดับ, แนวต้าน (resistance) 3 ระดับ เป็นตัวเลข (ต้องเรียงลำดับให้ S1 และ R1 อยู่ใกล้ราคาปัจจุบันที่สุดเสมอ และตัวเลขเหล่านี้ต้องตรงกับที่วิเคราะห์ไว้ใน price_structure และ chart_patterns อย่างเคร่งครัด ห้ามใช้สูตรคำนวณแยก)
-          3) trade_plan: แผนการเทรด จุดเข้า, stop loss, target 1, target 2, และ Risk/Reward ratio
+          1) signal_summary: สรุปสถานะ (Buy/Wait/Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมดจากหัวข้อข้างต้น ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, MACD = ลบ, RSI = กลาง" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน เพื่อให้ตรวจสอบย้อนกลับได้ จากนั้นสรุปทิศทางรวม และระบุ Invalidation level)
+          2) key_levels: current_price (ราคาปัจจุบันเป็นตัวเลข), support 3 ระดับ, resistance 3 ระดับ เป็นตัวเลข (ต้องเรียงลำดับให้ S1 และ R1 อยู่ใกล้ราคาปัจจุบันที่สุดเสมอ ห้ามให้ระดับใกล้กันเกินไป ต้องห่างกันอย่างมีนัยสำคัญเทียบกับ ATR และต้องตรงกับที่วิเคราะห์ไว้ ห้ามใช้สูตรคำนวณแยก)
+          3) trade_plan: แผนการเทรด โซนเข้า (ระบุราคา ถ้าต่ำกว่าราคาปัจจุบันต้องเป็นการย่อเพื่อซื้อ ไม่ใช่มั่ว), stop loss, target 1, target 2, และ Risk/Reward ratio
           4) overall_trend: อธิบายภาพรวม
           5) price_structure: โครงสร้างราคา
           6) volume_analysis: วิเคราะห์ Volume
           7) trend_indicators: MA, MACD, ADX
           8) momentum_indicators: RSI, Stochastic
-          9) volatility_indicators: Bollinger Bands, ATR (ระวังอย่าให้ค่า ATR และ MACD สลับกันหรือซ้ำกัน)
+          9) volatility_indicators: Bollinger Bands, ATR (ระบุ ATR เป็นค่าตัวเลขเดียว ห้ามเป็นช่วงกว้าง)
           10) chart_patterns: รูปแบบราคา
           11) relative_strength: เทียบกับตลาด
-          12) technical_risks: ความเสี่ยง
+          12) technical_risks: ความเสี่ยง (เช่น false breakout, gap risk, volume ต่ำ)
           13) beginner_summary: สรุปให้มือใหม่ตัดสินใจแบบตรงไปตรงมา:
            - technical_overview: ภาพรวมเทคนิคอลตอนนี้เป็นแบบไหนในภาษาคนทั่วไป
            - top_3_points: จุดที่น่าสนใจ 3 ข้อ
@@ -213,7 +213,27 @@ async function startServer() {
           14) scoring: คะแนน 1-10 พร้อมเหตุผล
           15) final_verdict_summary: สรุปสุดท้าย`;
         } else {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English. Please follow the Technical Analysis structure covering trend, price structure, support/resistance, volume, indicators, relative strength, trading signals, entry/stop targets, and technical risks.`;
+          finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in English.
+          Please follow this specific Technical Analysis guideline for the JSON fields in "technical_analysis":
+          1) signal_summary: status (Buy/Wait/Avoid), trend_weekly/daily/4H, and confluence_score (List signals one by one whether they are positive, negative, or neutral, e.g. "MA Cross = Positive, MACD = Negative, RSI = Neutral", do not just sum them up. Then summarize the direction and invalidation level).
+          2) key_levels: current_price (numeric), support 3 levels, resistance 3 levels (Numeric. S1 and R1 must be closest to current price. Must not be too close to each other, use ATR for significance).
+          3) trade_plan: entry_zone (Numeric. If lower than current price, it's a buy on dip), stop_loss, target_1, target_2, risk_reward_ratio.
+          4) overall_trend: Explain overall picture.
+          5) price_structure: Price structure.
+          6) volume_analysis: Volume analysis.
+          7) trend_indicators: MA, MACD, ADX.
+          8) momentum_indicators: RSI, Stochastic.
+          9) volatility_indicators: Bollinger Bands, ATR (Single value, not a range).
+          10) chart_patterns: Chart patterns.
+          11) relative_strength: Relative to market.
+          12) technical_risks: Risks (false breakout, gap risk, low volume).
+          13) beginner_summary: Straightforward summary for beginners:
+           - technical_overview: Overall technical picture in simple terms.
+           - top_3_points: 3 interesting points.
+           - top_3_cautions: 3 cautions.
+           - suitable_trade_style: Suitable style (day/swing/position, must match trade plan).
+          14) scoring: Score 1-10 with reasons.
+          15) final_verdict_summary: Final short summary.`;
         }
         
         dynamicSchema = `{
@@ -231,6 +251,7 @@ async function startServer() {
        "confluence_score": "..."
     },
     "key_levels": {
+       "current_price": 150.5,
        "support": ["...", "...", "..."],
        "resistance": ["...", "...", "..."]
     },

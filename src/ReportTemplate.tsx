@@ -46,6 +46,52 @@ const parsePrice = (str: string) => {
   return match ? parseFloat(match[0].replace(/,/g, '')) : 0;
 };
 
+const KeyLevelsVisualizer = ({ currentPrice, support, resistance, isThai }: { currentPrice?: number, support: string[], resistance: string[], isThai: boolean }) => {
+  const supports = support.map(parsePrice).filter(v => v > 0).sort((a, b) => a - b);
+  const resistances = resistance.map(parsePrice).filter(v => v > 0).sort((a, b) => a - b);
+  
+  const allValues = [...supports, ...resistances];
+  if (currentPrice) allValues.push(currentPrice);
+  
+  if (allValues.length < 2) return null;
+  
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
+  const range = max - min || 1;
+  const padding = range * 0.1;
+  
+  const renderMin = min - padding;
+  const renderMax = max + padding;
+  const renderRange = renderMax - renderMin;
+  
+  const getPos = (val: number) => `${((val - renderMin) / renderRange) * 100}%`;
+
+  return (
+    <div className="w-full mt-6 mb-2">
+      <div className="relative h-2 bg-stone-200 rounded-full w-full">
+        {supports.map((s, i) => (
+          <div key={`s-${i}`} className="absolute w-3 h-3 bg-green-500 rounded-full top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 border-2 border-white shadow-sm" style={{ left: getPos(s) }}>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[10px] font-bold text-green-700">S{supports.length - i}</div>
+          </div>
+        ))}
+        {resistances.map((r, i) => (
+          <div key={`r-${i}`} className="absolute w-3 h-3 bg-red-500 rounded-full top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 border-2 border-white shadow-sm" style={{ left: getPos(r) }}>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[10px] font-bold text-red-700">R{i + 1}</div>
+          </div>
+        ))}
+        {currentPrice && (
+          <div className="absolute w-4 h-4 bg-blue-600 rounded-full top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 border-2 border-white shadow-md" style={{ left: getPos(currentPrice) }}>
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm whitespace-nowrap">
+              {isThai ? 'ราคาปัจจุบัน ' : 'Current '}{currentPrice}
+              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-600 rotate-45"></div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0, toolRuns = 0, tokenCount = 0, documentCount = 0, language = 'English', hideHeader = false }: Props) {
   const isThai = language === 'Thai';
 
@@ -366,9 +412,26 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                    </div>
                  </div>
               </AnalysisCard>
-              <AnalysisCard title={isThai ? "ความสอดคล้องสัญญาณ" : "Confluence Meter"} className="bg-stone-50">
-                 <div className="flex items-center justify-center h-full">
-                    <span className="text-xl font-bold text-stone-900">{data.technical_analysis.signal_summary?.confluence_score || '-'}</span>
+              <AnalysisCard title={isThai ? "ความสอดคล้องสัญญาณ" : "Confluence Meter"} className="bg-stone-50 overflow-y-auto max-h-64">
+                 <div className="flex flex-col h-full space-y-1.5 text-[13px] md:text-sm text-stone-700 leading-relaxed">
+                    {(data.technical_analysis.signal_summary?.confluence_score || '-')
+                      .replace(/, (?=\d+\))/g, '\n')
+                      .replace(/(?=สรุปทิศทางรวม)/g, '\n\n')
+                      .split('\n')
+                      .filter(Boolean)
+                      .map((part, i) => {
+                        const isNumber = part.trim().match(/^\d+\)/);
+                        const isSummary = part.trim().startsWith('สรุปทิศทางรวม');
+                        return (
+                          <span key={i} className={
+                            isSummary ? "font-bold text-stone-900 mt-3 block border-t border-stone-200 pt-2" : 
+                            (i === 0 && !isNumber) ? "font-bold text-stone-900 mb-1 block" : 
+                            "block pl-2"
+                          }>
+                            {part.trim()}
+                          </span>
+                        )
+                    })}
                  </div>
               </AnalysisCard>
             </div>
@@ -400,7 +463,8 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
               </AnalysisCard>
               
               <AnalysisCard title={isThai ? "แนวรับ-แนวต้าน (Key Levels)" : "Key Levels"}>
-                 <div className="grid grid-cols-2 gap-4">
+                 <KeyLevelsVisualizer currentPrice={data.technical_analysis.key_levels?.current_price} support={data.technical_analysis.key_levels?.support || []} resistance={data.technical_analysis.key_levels?.resistance || []} isThai={isThai} />
+                 <div className="grid grid-cols-2 gap-4 mt-8">
                     <div>
                       <h4 className="text-xs font-bold text-red-600 uppercase mb-2">{isThai ? "แนวต้าน (Resistance)" : "Resistance"}</h4>
                       <ul className="space-y-2">
@@ -552,7 +616,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         )}
 
         {/* Deep Insights */}
-        {data.deep_insights && data.deep_insights.length > 0 && (
+        {data.analysis_type !== 'technical' && data.deep_insights && data.deep_insights.length > 0 && (
           <div className="mt-8">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6">{isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6">
