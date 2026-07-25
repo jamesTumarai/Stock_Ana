@@ -269,10 +269,10 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         {/* Financial Charts */}
         {data.financial_charts && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-            <AnalysisCard title={isThai ? "ราคาหุ้น" : "Stock Price"} subtext={isThai ? "แผนภูมินี้แสดงราคาปิดย้อนหลังสี่เดือนในวันซื้อขายสุดท้าย" : "This chart shows the closing price for the past four months on the last trading date."}>
+            <AnalysisCard title={isThai ? "ราคาหุ้น" : "Stock Price"} subtext={isThai ? "แผนภูมินี้แสดงราคาปิดย้อนหลังรายสัปดาห์ในวันซื้อขายสุดท้าย" : "This chart shows the weekly closing price for the past few weeks."}>
               <div className="h-64 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data.financial_charts.stock_price_4m ? [...data.financial_charts.stock_price_4m] : []}>
+                  <LineChart data={(data.financial_charts.stock_price_history || data.financial_charts.stock_price_history) ? [...(data.financial_charts.stock_price_history || data.financial_charts.stock_price_history)] : []}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e4" />
                     <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dy={10} />
                     <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dx={-10} />

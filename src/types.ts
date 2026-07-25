@@ -7,7 +7,7 @@ export interface AnalysisReport {
   insider_data?: any;
   downside_thesis?: any;
   financial_charts?: {
-    stock_price_4m: { date: string; price: number }[];
+    stock_price_history: { date: string; price: number }[];
     financial_performance_4q: { quarter: string; revenue?: number; net_income?: number; shares_outstanding?: number }[];
   };
   final_report?: string;
@@ -23,7 +23,7 @@ export interface RawAnalysisReport {
   insider_data?: any;
   downside_thesis?: any;
   financial_charts?: {
-    stock_price_4m: { date: string; price: number }[];
+    stock_price_history: { date: string; price: number }[];
     financial_performance_4q: { quarter: string; revenue?: number; net_income?: number; shares_outstanding?: number }[];
   };
   final_report?: string;

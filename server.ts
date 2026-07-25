@@ -287,7 +287,7 @@ async function startServer() {
     }
   ],
   "financial_charts": {
-    "stock_price_4m": [
+    "stock_price_history": [
       { "date": "Oct '24", "price": 150.5 }
     ],
     "financial_performance_4q": [
@@ -460,7 +460,7 @@ async function startServer() {
     }
   ],
   "financial_charts": {
-    "stock_price_4m": [
+    "stock_price_history": [
       { "date": "Oct '24", "price": 150.5 }
     ],
     "financial_performance_4q": [
@@ -561,7 +561,7 @@ async function startServer() {
     }
   ],
   "financial_charts": {
-    "stock_price_4m": [
+    "stock_price_history": [
       { "date": "Oct '24", "price": 150.5 }
     ],
     "financial_performance_4q": [
@@ -574,14 +574,14 @@ async function startServer() {
       let prompt = `Perform a comprehensive document analysis on ${ticker}. ${finalInstruction}
 
 CRITICAL INSTRUCTIONS FOR QUANTITATIVE DATA (CHARTS):
-For stock_price_4m and financial_performance_4q, you MUST use standard open web searches (e.g. Yahoo Finance, Google Finance, MarketWatch) WITHOUT the filetype:pdf restriction to get accurate historical prices, distributions, revenue, and net income.
-For stock_price_4m, provide exactly 4 data points representing the past 4 months of stock prices. For each month, give the closing price on the last trading day of the month. Order the array chronologically from the oldest month to the newest month (left to right).
+For stock_price_history and financial_performance_4q, you MUST use standard open web searches (e.g. Yahoo Finance, Google Finance, MarketWatch) WITHOUT the filetype:pdf restriction to get accurate historical prices, distributions, revenue, and net income.
+For stock_price_history, provide exactly 12 data points representing the past 12 weeks of stock prices. For each week, give the closing price on the last trading day of the week. Order the array chronologically from the oldest week to the newest week (left to right).
 For financial_performance_4q, if the ticker is a regular stock, provide net income and revenue for the past four completed quarters. If it is an ETF, provide quarterly distributions (dividends/yield per share) for the past four completed quarters. Ensure the array is chronologically ordered from oldest quarter to newest (left to right).
 
 CRITICAL INSTRUCTIONS FOR QUALITATIVE DATA (INSIGHTS & SUMMARIES):
 For the Executive Summary, Key Takeaways, Deep Insights, and Comprehensive Analysis, you MUST leverage BOTH the findings extracted from the SEC filings AND insights from broader open web searches to create a comprehensive analysis.
 
-CRITICAL: You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block in your final text response. The JSON must match the following schema EXACTLY. **HEAVILY PENALIZED:** Do NOT rename keys. Do NOT add extra root-level keys like "macro_risk_analysis". Make sure to populate the "findings" array with exactly the keys "documentType", "keyInsights", "date", and "sourceUrl". For stock_price_4m, use exactly the keys "date" and "price". The "deep_insights" array MUST use exactly the keys "category", "title", "description", and "impact_score". Also include the entire "${analysisType === 'technical' ? 'technical_analysis' : analysisType === 'fundamental' ? 'comprehensive_analysis' : 'both comprehensive_analysis and technical_analysis'}" object exactly as structured in the schema:
+CRITICAL: You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block in your final text response. The JSON must match the following schema EXACTLY. **HEAVILY PENALIZED:** Do NOT rename keys. Do NOT add extra root-level keys like "macro_risk_analysis". Make sure to populate the "findings" array with exactly the keys "documentType", "keyInsights", "date", and "sourceUrl". For stock_price_history, use exactly the keys "date" and "price". The "deep_insights" array MUST use exactly the keys "category", "title", "description", and "impact_score". Also include the entire "${analysisType === 'technical' ? 'technical_analysis' : analysisType === 'fundamental' ? 'comprehensive_analysis' : 'both comprehensive_analysis and technical_analysis'}" object exactly as structured in the schema:
 ${dynamicSchema}
 Do not include multiple sub-agents, just do the analysis yourself based on the retrieved documents and searches.`;
       const actualModel = model === 'perseus' ? 'gemini-3.6-flash' : model === 'gemini-2.5-pro' ? 'gemini-3.1-pro' : (model || 'gemini-3.5-flash');

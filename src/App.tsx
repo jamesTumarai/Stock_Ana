@@ -116,7 +116,7 @@ export interface ReportData {
   deep_insights?: DeepInsight[];
   findings?: DocumentFinding[];
   financial_charts?: {
-    stock_price_4m: { date: string; price: number }[];
+    stock_price_history: { date: string; price: number }[];
     financial_performance_4q: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[];
   };
 }
@@ -459,7 +459,7 @@ export default function App() {
   if (isReportOpen && allReports.length > 0) {
     return (
       <div className="w-full h-screen overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
-        <div className="w-full border-b border-stone-200 px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white shadow-sm">
+        <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white shadow-sm gap-4 sm:gap-0">
           <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
             {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
           </div>
@@ -510,11 +510,11 @@ export default function App() {
       />
       
       {/* Header */}
-      <header className={`flex items-center justify-between px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
+      <header className={`flex flex-col md:flex-row md:items-center justify-between px-4 md:px-6 py-4 gap-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-xl tracking-wider uppercase text-white">Coin King</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <CustomSelect
             value={analysisType}
             onChange={(v) => setAnalysisType(v as any)}
@@ -573,16 +573,16 @@ export default function App() {
         )}
 
         {/* Input area fixed at bottom */}
-        <div className={`mt-auto px-6 pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent`}>
-          <div className="max-w-4xl mx-auto w-full">
+        <div className={`mt-auto px-4 md:px-6 pb-6 md:pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none`}>
+          <div className="max-w-4xl mx-auto w-full pointer-events-auto">
             {error && (
               <div className="mb-4 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded text-sm">
                 {error}
               </div>
             )}
             
-            <div className={`liquid-glass border-white/20 border rounded-xl shadow-2xl p-2 w-full flex items-center gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
-              <div className={`pl-3 py-2 flex items-center gap-2 text-white/60 border-white/20 border-r pr-3`}>
+            <div className={`liquid-glass border-white/20 border rounded-xl shadow-2xl p-2 w-full flex flex-col md:flex-row md:items-center gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
+              <div className={`pl-3 py-2 flex items-center gap-2 text-white/60 border-white/20 border-b md:border-b-0 md:border-r pr-3`}>
                  <Search className="w-5 h-5" />
                  <input 
                    type="text" 
@@ -590,7 +590,7 @@ export default function App() {
                    onChange={(e) => setTicker(e.target.value)}
                    placeholder="US TICKER" 
                    disabled={running}
-                   className={`bg-transparent border-none outline-none w-24 font-mono uppercase text-white placeholder-white/40`}
+                   className={`bg-transparent border-none outline-none w-full md:w-24 font-mono uppercase text-white placeholder-white/40`}
                    onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                  />
               </div>
@@ -606,7 +606,7 @@ export default function App() {
               <button 
                 onClick={runAnalysis}
                 disabled={!ticker.trim() || running}
-                className={`bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/40 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-medium transition-colors ml-2 tracking-wide text-sm flex items-center justify-center min-w-[100px]`}
+                className={`bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/40 disabled:cursor-not-allowed px-6 py-3 md:py-2 rounded-lg font-medium transition-colors md:ml-2 tracking-wide text-sm flex items-center justify-center min-w-[100px] w-full md:w-auto mt-2 md:mt-0`}
               >
                 {running ? <Loader2 className="w-4 h-4 animate-spin" /> : "Analyze"}
               </button>
