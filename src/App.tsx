@@ -125,7 +125,21 @@ export interface ReportData {
 const ENABLE_JSON_DOWNLOAD = false;
 
 
-function CustomSelect({ value, onChange, options, disabled, className }: { value: string, onChange: (v: string) => void, options: {value: string, label: string}[], disabled: boolean, className?: string }) {
+function CustomSelect({ 
+  value, 
+  onChange, 
+  options, 
+  disabled, 
+  className,
+  direction = 'down'
+}: { 
+  value: string, 
+  onChange: (v: string) => void, 
+  options: {value: string, label: string}[], 
+  disabled: boolean, 
+  className?: string,
+  direction?: 'up' | 'down'
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -155,11 +169,11 @@ function CustomSelect({ value, onChange, options, disabled, className }: { value
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -5, scale: 0.95 }}
+            initial={{ opacity: 0, y: direction === 'up' ? 5 : -5, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -5, scale: 0.95 }}
+            exit={{ opacity: 0, y: direction === 'up' ? 5 : -5, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute top-full mt-1.5 left-0 min-w-[160px] bg-[#1a1a1a] border border-white/10 rounded-lg shadow-2xl z-50 origin-top-left p-1 flex flex-col"
+            className={`absolute ${direction === 'up' ? 'bottom-full mb-1.5 right-0' : 'top-full mt-1.5 left-0'} min-w-[140px] bg-[#1a1a1a] border border-white/10 rounded-lg shadow-2xl z-50 p-1 flex flex-col`}
           >
             {options.map((opt) => (
               <button
@@ -510,11 +524,11 @@ export default function App() {
       />
       
       {/* Header */}
-      <header className={`flex flex-col md:flex-row md:items-center justify-between px-4 md:px-6 py-4 gap-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
+      <header className={`flex items-center justify-between px-4 md:px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-xl tracking-wider uppercase text-white">Coin King</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           <CustomSelect
             value={analysisType}
             onChange={(v) => setAnalysisType(v as any)}
@@ -534,15 +548,17 @@ export default function App() {
               { value: 'Thai', label: 'ภาษาไทย' },
             ]}
           />
-          <CustomSelect
-            value={selectedModel}
-            onChange={setSelectedModel}
-            disabled={running}
-            options={[
-              { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-              { value: 'perseus', label: 'Gemini 3.6 Flash' },
-            ]}
-          />
+          <div className="hidden md:block">
+            <CustomSelect
+              value={selectedModel}
+              onChange={setSelectedModel}
+              disabled={running}
+              options={[
+                { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+                { value: 'perseus', label: 'Gemini 3.6 Flash' },
+              ]}
+            />
+          </div>
         </div>
       </header>
 
@@ -581,18 +597,33 @@ export default function App() {
               </div>
             )}
             
-            <div className={`liquid-glass border-white/20 border rounded-xl shadow-2xl p-2 w-full flex flex-col md:flex-row md:items-center gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
-              <div className={`pl-3 py-2 flex items-center gap-2 text-white/60 border-white/20 border-b md:border-b-0 md:border-r pr-3`}>
-                 <Search className="w-5 h-5" />
-                 <input 
-                   type="text" 
-                   value={ticker}
-                   onChange={(e) => setTicker(e.target.value)}
-                   placeholder="US TICKER" 
-                   disabled={running}
-                   className={`bg-transparent border-none outline-none w-full md:w-24 font-mono uppercase text-white placeholder-white/40`}
-                   onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
-                 />
+            <div className={`liquid-glass !overflow-visible border-white/20 border rounded-xl shadow-2xl p-2 w-full flex flex-col md:flex-row md:items-center gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
+              <div className={`pl-3 py-2 flex items-center justify-between gap-2 text-white/60 border-white/20 border-b md:border-b-0 md:border-r pr-3`}>
+                 <div className="flex items-center gap-2 flex-1">
+                   <Search className="w-5 h-5 shrink-0" />
+                   <input 
+                     type="text" 
+                     value={ticker}
+                     onChange={(e) => setTicker(e.target.value)}
+                     placeholder="US TICKER" 
+                     disabled={running}
+                     className={`bg-transparent border-none outline-none w-28 font-mono uppercase text-white placeholder-white/40`}
+                     onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
+                   />
+                 </div>
+                 <div className="md:hidden shrink-0">
+                   <CustomSelect
+                     direction="up"
+                     value={selectedModel}
+                     onChange={setSelectedModel}
+                     disabled={running}
+                     className="text-xs px-2 py-1 bg-white/10 border-white/20 text-white"
+                     options={[
+                       { value: 'gemini-3.5-flash', label: '3.5 Flash' },
+                       { value: 'perseus', label: '3.6 Flash' },
+                     ]}
+                   />
+                 </div>
               </div>
               <input 
                 type="text" 
