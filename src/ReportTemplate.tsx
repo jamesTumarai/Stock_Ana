@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { 
   X, FileText, CheckCircle2, ChevronRight, Link as LinkIcon, Calendar
 , TrendingUp, TrendingDown, Minus, Lightbulb, AlertTriangle} from 'lucide-react';
+import { Info } from 'lucide-react';
 import { ReportData } from './App';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 interface Props {
   data: ReportData;
@@ -14,10 +16,17 @@ interface Props {
   tokenCount?: number;
   documentCount?: number;
   language?: string;
+  hideHeader?: boolean;
 }
 
-const AnalysisCard = ({ title, subtext, children, className = "", titleClassName = "text-stone-900" }: any) => (
-  <div className={`bg-white rounded p-6 border border-stone-200 flex flex-col ${className}`}>
+const AnalysisCard = ({ title, subtext, children, className = "", titleClassName = "text-stone-900", delay = 0 }: any) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 10 }} 
+    whileInView={{ opacity: 1, y: 0 }} 
+    viewport={{ once: true }} 
+    transition={{ duration: 0.4, delay }} 
+    className={`bg-white rounded p-6 border border-stone-200 flex flex-col ${className}`}
+  >
     <div className="flex justify-between items-start mb-2">
       <h3 className={`text-lg font-semibold ${titleClassName}`}>{title}</h3>
     </div>
@@ -29,10 +38,15 @@ const AnalysisCard = ({ title, subtext, children, className = "", titleClassName
     <div className="flex-1 w-full flex flex-col">
       {children}
     </div>
-  </div>
+  </motion.div>
 );
 
-export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0, toolRuns = 0, tokenCount = 0, documentCount = 0, language = 'English' }: Props) {
+const parsePrice = (str: string) => {
+  const match = str.match(/[\d,]+(\.\d+)?/);
+  return match ? parseFloat(match[0].replace(/,/g, '')) : 0;
+};
+
+export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0, toolRuns = 0, tokenCount = 0, documentCount = 0, language = 'English', hideHeader = false }: Props) {
   const isThai = language === 'Thai';
 
   const generatePDF = () => {
@@ -49,27 +63,32 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
   const findings = data.findings || [];
   
   return (
-    <div className="min-h-full bg-[#F6F4F0] text-stone-900 font-sans w-full flex flex-col h-full overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:block">
-      <div className="w-full border-b border-stone-200 px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white">
-        <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
-          {isThai ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut' }}
+      className={`min-h-full bg-[#F6F4F0] text-stone-900 font-sans w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
+      {!hideHeader && (
+        <div className="w-full border-b border-stone-200 px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white">
+          <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
+            {isThai ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
+          </div>
+          <div className="flex items-center gap-4 print:hidden">
+            <button
+              onClick={generatePDF}
+              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2 text-sm font-medium border border-stone-300 rounded px-4 gap-2 cursor-pointer"
+            >
+              {isThai ? "พิมพ์ / บันทึก PDF" : "Print / Save PDF"}
+            </button>
+            <button 
+              onClick={onClose}
+              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-4 print:hidden">
-          <button
-            onClick={generatePDF}
-            className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2 text-sm font-medium border border-stone-300 rounded px-4 gap-2 cursor-pointer"
-          >
-            {isThai ? "พิมพ์ / บันทึก PDF" : "Print / Save PDF"}
-          </button>
-          <button 
-            onClick={onClose}
-            className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-      </div>
-
+      )}
       <div id="report-content" className="flex-1 py-8 px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-6 bg-[#F6F4F0]">
         
         {/* Executive Summary */}
@@ -297,6 +316,247 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
           </div>
         )}
 
+        {/* Technical Analysis */}
+        {data.technical_analysis && (
+          <div className="flex flex-col gap-6 mt-2">
+            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
+              {isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}
+            </h2>
+            
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                <span>
+                  <strong>{isThai ? "คำเตือน:" : "Disclaimer:"}</strong> {isThai ? "ข้อมูลนี้ไม่ใช่คำแนะนำการลงทุน (Not Investment Advice). การวิเคราะห์ทางเทคนิคมีความผันผวนสูงและล้าสมัยเร็ว" : "This is not investment advice. Technical analysis is highly volatile and becomes outdated quickly."}
+                </span>
+              </div>
+              <div className="text-yellow-700 font-medium whitespace-nowrap ml-4">
+                {isThai ? "ข้อมูล ณ" : "Data as of"} {new Date().toLocaleString(isThai ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+
+            <div className="w-full h-[500px] bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden relative">
+              <iframe 
+                src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol=${ticker}&interval=D&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=%5B%22MASimple%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%2C%22RSI%40tv-basicstudies%22%2C%22BollingerBands%40tv-basicstudies%22%5D&theme=light&style=1&timezone=Asia%2FBangkok&withdateranges=1&showpopupbutton=1&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en&utm_source=&utm_medium=widget&utm_campaign=chart&utm_term=${ticker}`}
+                width="100%" 
+                height="100%" 
+                frameBorder="0" 
+                 
+                scrolling="no" 
+                allowFullScreen={true}
+              ></iframe>
+            </div>
+            
+            {/* 3. Signal Summary Card */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <AnalysisCard title={isThai ? "สถานะปัจจุบัน" : "Signal Status"} className="bg-stone-50">
+                 <div className="flex items-center justify-center py-4">
+                   <div className={`px-6 py-2 rounded-full font-bold text-lg text-white ${data.technical_analysis.signal_summary?.status?.toLowerCase().includes('buy') ? 'bg-[#0b5a4b]' : data.technical_analysis.signal_summary?.status?.toLowerCase().includes('avoid') || data.technical_analysis.signal_summary?.status?.toLowerCase().includes('sell') ? 'bg-red-600' : 'bg-yellow-600'}`}>
+                     {data.technical_analysis.signal_summary?.status || 'Wait'}
+                   </div>
+                 </div>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "แนวโน้ม (Trend)" : "Trend Badges"} className="bg-stone-50">
+                 <div className="flex flex-col gap-2 mt-2">
+                   <div className="flex justify-between items-center text-sm font-medium">
+                     <span className="text-stone-500">Weekly</span>
+                     <span className="text-stone-900">{data.technical_analysis.signal_summary?.trend_weekly || '-'}</span>
+                   </div>
+                   <div className="flex justify-between items-center text-sm font-medium">
+                     <span className="text-stone-500">Daily</span>
+                     <span className="text-stone-900">{data.technical_analysis.signal_summary?.trend_daily || '-'}</span>
+                   </div>
+                   <div className="flex justify-between items-center text-sm font-medium">
+                     <span className="text-stone-500">4H</span>
+                     <span className="text-stone-900">{data.technical_analysis.signal_summary?.trend_4h || '-'}</span>
+                   </div>
+                 </div>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "ความสอดคล้องสัญญาณ" : "Confluence Meter"} className="bg-stone-50">
+                 <div className="flex items-center justify-center h-full">
+                    <span className="text-xl font-bold text-stone-900">{data.technical_analysis.signal_summary?.confluence_score || '-'}</span>
+                 </div>
+              </AnalysisCard>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <AnalysisCard title={isThai ? "แผนการเทรด (Trade Plan)" : "Trade Plan"}>
+                 <div className="flex flex-col gap-3">
+                   <div className="flex justify-between border-b border-stone-100 pb-2">
+                     <span className="text-stone-500 text-sm font-medium">{isThai ? "จุดเข้า (Entry)" : "Entry"}</span>
+                     <span className="text-stone-900 font-bold">{data.technical_analysis.trade_plan?.entry_zone || '-'}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-stone-100 pb-2">
+                     <span className="text-stone-500 text-sm font-medium">{isThai ? "จุดตัดขาดทุน (Stop-Loss)" : "Stop-Loss"}</span>
+                     <span className="text-red-600 font-bold">{data.technical_analysis.trade_plan?.stop_loss || '-'}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-stone-100 pb-2">
+                     <span className="text-stone-500 text-sm font-medium">{isThai ? "เป้าหมาย 1 (Target 1)" : "Target 1"}</span>
+                     <span className="text-[#0b5a4b] font-bold">{data.technical_analysis.trade_plan?.target_1 || '-'}</span>
+                   </div>
+                   <div className="flex justify-between border-b border-stone-100 pb-2">
+                     <span className="text-stone-500 text-sm font-medium">{isThai ? "เป้าหมาย 2 (Target 2)" : "Target 2"}</span>
+                     <span className="text-[#0b5a4b] font-bold">{data.technical_analysis.trade_plan?.target_2 || '-'}</span>
+                   </div>
+                   <div className="flex justify-between pt-1">
+                     <span className="text-stone-500 text-sm font-medium">{isThai ? "ความคุ้มค่า (Risk/Reward)" : "Risk/Reward"}</span>
+                     <span className="text-stone-900 font-bold">{data.technical_analysis.trade_plan?.risk_reward_ratio || '-'}</span>
+                   </div>
+                 </div>
+              </AnalysisCard>
+              
+              <AnalysisCard title={isThai ? "แนวรับ-แนวต้าน (Key Levels)" : "Key Levels"}>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-xs font-bold text-red-600 uppercase mb-2">{isThai ? "แนวต้าน (Resistance)" : "Resistance"}</h4>
+                      <ul className="space-y-2">
+                        {[...(data.technical_analysis.key_levels?.resistance || [])].sort((a, b) => parsePrice(a) - parsePrice(b)).map((r, i) => (
+                          <li key={i} className="text-sm font-medium text-stone-700 bg-red-50 px-2 py-1 rounded">R{i+1}: {r}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#0b5a4b] uppercase mb-2">{isThai ? "แนวรับ (Support)" : "Support"}</h4>
+                      <ul className="space-y-2">
+                        {[...(data.technical_analysis.key_levels?.support || [])].sort((a, b) => parsePrice(b) - parsePrice(a)).map((s, i) => (
+                          <li key={i} className="text-sm font-medium text-stone-700 bg-green-50 px-2 py-1 rounded">S{i+1}: {s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                 </div>
+              </AnalysisCard>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <AnalysisCard title={isThai ? "ภาพรวมแนวโน้มหลัก (Overall Trend)" : "Overall Trend"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.overall_trend || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "โครงสร้างราคา (Price Structure)" : "Price Structure"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.price_structure || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "ปริมาณการซื้อขาย (Volume Analysis)" : "Volume Analysis"} tooltip={isThai ? "ปริมาณหุ้นที่ถูกซื้อขายในแต่ละช่วงเวลา ใช้ยืนยันความแข็งแกร่งของเทรนด์" : "Amount of shares traded, used to confirm trend strength"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.volume_analysis || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "กลุ่มเทรนด์ (Trend Indicators)" : "Trend Indicators"} tooltip={isThai ? "บ่งบอกทิศทางของราคา เช่น MA, MACD" : "Indicates price direction e.g. MA, MACD"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.trend_indicators || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "กลุ่มโมเมนตัม (Momentum Indicators)" : "Momentum Indicators"} tooltip={isThai ? "วัดความแรงและอ่อนของราคา เช่น RSI, Stochastic" : "Measures strength of price movement e.g. RSI, Stochastic"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.momentum_indicators || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "กลุ่มความผันผวน (Volatility Indicators)" : "Volatility Indicators"} tooltip={isThai ? "วัดความแกว่งตัวของราคา เช่น Bollinger Bands, ATR" : "Measures price variance e.g. Bollinger Bands, ATR"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.volatility_indicators || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "รูปแบบราคาและแท่งเทียน (Chart Patterns)" : "Chart Patterns"} tooltip={isThai ? "รูปแบบที่มักจะเกิดซ้ำเพื่อคาดเดาทิศทาง เช่น Head and Shoulders, Doji" : "Recurring formations to predict direction e.g. Head and Shoulders, Doji"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.chart_patterns || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "เปรียบเทียบกับตลาด (Relative Strength)" : "Relative Strength"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.relative_strength || ''}</p>
+              </AnalysisCard>
+              <AnalysisCard title={isThai ? "ความเสี่ยงเชิงเทคนิค (Technical Risks)" : "Technical Risks"}>
+                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.technical_risks || ''}</p>
+              </AnalysisCard>
+            </div>
+
+            {data.technical_analysis.beginner_summary && (
+              <AnalysisCard title={isThai ? "สรุปสำหรับมือใหม่ (Beginner Summary)" : "Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
+                <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 whitespace-pre-wrap">
+                  {data.technical_analysis.beginner_summary.technical_overview || ''}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#0b5a4b] uppercase tracking-wider mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4"/> {isThai ? "จุดที่น่าสนใจ 3 ข้อ" : "Top 3 Points"}</h4>
+                    <ul className="space-y-2">
+                      {(data.technical_analysis.beginner_summary.top_3_points || []).map((s, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-stone-700">
+                          <CheckCircle2 className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" /> <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-red-600 uppercase tracking-wider mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> {isThai ? "จุดที่ต้องระวัง 3 ข้อ" : "Top 3 Cautions"}</h4>
+                    <ul className="space-y-2">
+                      {(data.technical_analysis.beginner_summary.top_3_cautions || []).map((r, i) => (
+                        <li key={i} className="flex gap-2 text-sm text-stone-700">
+                          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" /> <span>{r}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-stone-200 text-sm text-stone-700">
+                   <div><strong className="text-stone-900">{isThai ? "เหมาะกับสไตล์การเทรดแบบไหน:" : "Suitable Trade Style:"}</strong> {data.technical_analysis.beginner_summary.suitable_trade_style || ''}</div>
+                </div>
+              </AnalysisCard>
+            )}
+
+            {data.technical_analysis.scoring && (
+              <AnalysisCard title={isThai ? "คะแนนประเมิน (1-10)" : "Scoring (1-10)"} className="col-span-1 md:col-span-2">
+                <div className="flex flex-col md:flex-row items-center gap-8">
+                  <div className="w-full md:w-1/2 h-[350px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={
+                        Object.entries(data.technical_analysis.scoring).map(([key, item]) => {
+                          const labels: Record<string, string> = {
+                            trend_clarity: isThai ? 'เทรนด์' : 'Trend Clarity',
+                            momentum_strength: isThai ? 'โมเมนตัม' : 'Momentum Strength',
+                            risk_reward: isThai ? 'Risk/Reward' : 'Risk/Reward',
+                            signal_confluence: isThai ? 'ความสอดคล้อง' : 'Signal Confluence',
+                            false_signal_risk: isThai ? 'ความเสี่ยงหลอก' : 'False Signal Risk',
+                            overall_attractiveness: isThai ? 'ภาพรวม' : 'Overall'
+                          };
+                          return {
+                            subject: labels[key] || key,
+                            A: Number(item.score),
+                            fullMark: 10,
+                          };
+                        })
+                      }>
+                        <PolarGrid />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#444', fontSize: 12 }} />
+                        <PolarRadiusAxis angle={30} domain={[0, 10]} tick={{ fill: '#888' }} />
+                        <Radar name="Score" dataKey="A" stroke="#0b5a4b" fill="#0b5a4b" fillOpacity={0.5} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="w-full md:w-1/2 grid grid-cols-1 gap-4">
+                    {Object.entries(data.technical_analysis.scoring).map(([key, item]) => {
+                       if (!item) return null;
+                       const labels: Record<string, string> = {
+                          trend_clarity: isThai ? 'ความชัดเจนของเทรนด์' : 'Trend Clarity',
+                          momentum_strength: isThai ? 'ความแข็งแรงของโมเมนตัม' : 'Momentum Strength',
+                          risk_reward: isThai ? 'คุณภาพ Risk/Reward' : 'Risk/Reward Quality',
+                          signal_confluence: isThai ? 'ความสอดคล้องของสัญญาณ' : 'Signal Confluence',
+                          false_signal_risk: isThai ? 'ความเสี่ยงสัญญาณหลอก (ยิ่งเสี่ยงมาก คะแนนยิ่งต่ำ)' : 'False Signal Risk',
+                          overall_attractiveness: isThai ? 'ความน่าสนใจโดยรวม' : 'Overall Attractiveness'
+                       };
+                       return (
+                         <div key={key} className="flex flex-col p-3 rounded-lg border border-stone-100 bg-stone-50">
+                           <div className="flex items-center justify-between mb-1">
+                             <span className="text-xs font-bold text-stone-500 uppercase">{labels[key] || key}</span>
+                             <span className={`text-sm font-bold ${scoreColor(Number(item.score) * 10)}`}>{item.score}/10</span>
+                           </div>
+                           <div className="text-sm text-stone-700 leading-snug">{item.reason}</div>
+                         </div>
+                       );
+                    })}
+                  </div>
+                </div>
+              </AnalysisCard>
+            )}
+
+            {data.technical_analysis.final_verdict_summary && (
+              <AnalysisCard title={isThai ? "บทสรุปสุดท้าย (Final Verdict)" : "Final Verdict Summary"}>
+                 <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
+                   <div><strong className="text-stone-900">{isThai ? "จังหวะน่าเข้าไหม:" : "Good Timing?"}</strong> {data.technical_analysis.final_verdict_summary.is_good_timing || ''}</div>
+                   <div><strong className="text-stone-900">{isThai ? "ถ้ารอ ต้องรออะไร:" : "What to wait for:"}</strong> {data.technical_analysis.final_verdict_summary.what_to_wait_for || ''}</div>
+                   <div><strong className="text-stone-900">{isThai ? "แผนการเข้าสั้นๆ:" : "Trade Plan:"}</strong> {data.technical_analysis.final_verdict_summary.trade_plan || ''}</div>
+                 </div>
+              </AnalysisCard>
+            )}
+          </div>
+        )}
+
         {/* Deep Insights */}
         {data.deep_insights && data.deep_insights.length > 0 && (
           <div className="mt-8">
@@ -375,6 +635,6 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
            )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

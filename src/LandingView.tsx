@@ -28,8 +28,8 @@ export function LandingView({ language = 'English' }: { language?: string }) {
           </motion.div>
           
           <BlurText 
-            text={isThai ? "Coin King แพลตฟอร์มวิเคราะห์หุ้นด้วย AI" : "Coin King, AI-powered stock analysis platform"}
-            className="text-5xl md:text-6xl lg:text-[5.5rem] font-heading italic text-white leading-[0.8] max-w-4xl justify-center tracking-[-2px] md:tracking-[-4px]"
+            text={isThai ? "Coin King\nแพลตฟอร์มวิเคราะห์หุ้น\nด้วย AI" : "Coin King\nAI-Powered Stock\nAnalysis Platform"}
+            className="text-5xl md:text-6xl lg:text-[5.5rem] font-heading italic text-white leading-[0.9] max-w-4xl justify-center tracking-[-2px] md:tracking-[-4px]"
           />
           
           <motion.p 

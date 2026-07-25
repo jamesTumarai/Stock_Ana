@@ -1,7 +1,8 @@
 import { LandingView } from './LandingView';
 import React, { useState, useRef, useEffect } from 'react';
 import { FadingVideo } from './components/FadingVideo';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 
@@ -54,13 +55,64 @@ export interface ComprehensiveAnalysis {
   };
 }
 
+export interface TechnicalAnalysis {
+  signal_summary: {
+    status: string;
+    trend_weekly: string;
+    trend_daily: string;
+    trend_4h: string;
+    confluence_score: string;
+  };
+  key_levels: {
+    support: string[];
+    resistance: string[];
+  };
+  trade_plan: {
+    entry_zone: string;
+    stop_loss: string;
+    target_1: string;
+    target_2: string;
+    risk_reward_ratio: string;
+  };
+  overall_trend: string;
+  price_structure: string;
+  volume_analysis: string;
+  trend_indicators: string;
+  momentum_indicators: string;
+  volatility_indicators: string;
+  chart_patterns: string;
+  relative_strength: string;
+  technical_risks: string;
+  beginner_summary: {
+    technical_overview: string;
+    top_3_points: string[];
+    top_3_cautions: string[];
+    suitable_trade_style: string;
+  };
+  scoring: {
+    trend_clarity: { score: number; reason: string };
+    momentum_strength: { score: number; reason: string };
+    risk_reward: { score: number; reason: string };
+    signal_confluence: { score: number; reason: string };
+    false_signal_risk: { score: number; reason: string };
+    overall_attractiveness: { score: number; reason: string };
+  };
+  final_verdict_summary: {
+    is_good_timing: string;
+    what_to_wait_for: string;
+    trade_plan: string;
+  };
+}
+
 export interface ReportData {
   verdict?: {
     summary: string;
     conviction_score: number;
     key_takeaways: string[];
   };
+  analysis_type?: 'fundamental' | 'technical';
   comprehensive_analysis?: ComprehensiveAnalysis;
+  technical_analysis?: TechnicalAnalysis;
   deep_insights?: DeepInsight[];
   findings?: DocumentFinding[];
   financial_charts?: {
@@ -72,16 +124,75 @@ export interface ReportData {
 // Toggle this to true if you want the JSON logs to be downloaded automatically after a run.
 const ENABLE_JSON_DOWNLOAD = false;
 
+
+function CustomSelect({ value, onChange, options, disabled, className }: { value: string, onChange: (v: string) => void, options: {value: string, label: string}[], disabled: boolean, className?: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button 
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-2 text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white transition-colors hover:bg-black/40 ${className || ''}`}
+      >
+        {selectedOption.label}
+        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -5, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -5, scale: 0.95 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute top-full mt-1.5 left-0 min-w-[160px] bg-[#1a1a1a] border border-white/10 rounded-lg shadow-2xl z-50 origin-top-left p-1 flex flex-col"
+          >
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors ${value === opt.value ? 'bg-white/10 text-white font-medium' : 'text-stone-300 hover:bg-white/5 hover:text-white'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function App() {
   const [ticker, setTicker] = useState('');
   const [instruction, setInstruction] = useState('');
+  const [analysisType, setAnalysisType] = useState<'fundamental' | 'technical' | 'combined'>('combined');
   
   const [selectedModel, setSelectedModel] = useState<string>('perseus');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('Thai');
 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [currentReport, setCurrentReport] = useState<ReportData | null>(null);
+  const [pastReports, setPastReports] = useState<ReportData[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const eventIdRef = useRef(0);
@@ -171,6 +282,7 @@ export default function App() {
 
   const startStream = async (
     model: string,
+    aType: string,
     setRun: any,
     setErr: any,
     setRep: any,
@@ -207,7 +319,8 @@ export default function App() {
           instruction: instruction.trim() || undefined,
           origin: window.location.origin,
           model: model,
-          language: selectedLanguage
+          language: selectedLanguage,
+          analysisType: aType
         }),
         signal: controller.signal,
       });
@@ -331,29 +444,62 @@ export default function App() {
 
   const runAnalysis = () => {
     if (!ticker.trim() || running) return;
+    
+    if (currentReport) {
+      setPastReports(prev => [...prev, currentReport]);
+    }
+    
     setIsReportOpen(false);
     
-    startStream(selectedModel, setRunning, setError, setReportData, setEvents, pushEvent, setTokenCount, setToolRuns, setDurationSecs, setStartTime, abortRef, eventIdRef);
+    startStream(selectedModel, analysisType, setRunning, setError, setCurrentReport, setEvents, pushEvent, setTokenCount, setToolRuns, setDurationSecs, setStartTime, abortRef, eventIdRef);
   };
 
-  if (isReportOpen && reportData) {
+  const allReports = [...pastReports, ...(currentReport ? [currentReport] : [])];
+
+  if (isReportOpen && allReports.length > 0) {
     return (
-      <div className="w-full h-screen print:h-auto">
-         <ReportTemplate 
-           data={reportData} 
-           ticker={ticker} 
-           onClose={() => setIsReportOpen(false)}
-           durationSecs={durationSecs}
-           toolRuns={toolRuns}
-           tokenCount={tokenCount}
-           documentCount={reportData.findings?.length || 0}
-           language={selectedLanguage}
-         />
+      <div className="w-full h-screen overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
+        <div className="w-full border-b border-stone-200 px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white shadow-sm">
+          <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
+            {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
+          </div>
+          <div className="flex items-center gap-4 print:hidden">
+            <button
+              onClick={() => window.print()}
+              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2 text-sm font-medium border border-stone-300 rounded px-4 gap-2 cursor-pointer bg-white"
+            >
+              {selectedLanguage === 'Thai' ? "พิมพ์ / บันทึก PDF" : "Print / Save PDF"}
+            </button>
+            <button 
+              onClick={() => setIsReportOpen(false)}
+              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex flex-col">
+          {allReports.map((report, idx) => (
+             <ReportTemplate 
+               key={idx}
+               data={report} 
+               ticker={ticker} 
+               onClose={() => setIsReportOpen(false)}
+               durationSecs={idx === allReports.length - 1 ? durationSecs : undefined}
+               toolRuns={idx === allReports.length - 1 ? toolRuns : undefined}
+               tokenCount={idx === allReports.length - 1 ? tokenCount : undefined}
+               documentCount={report.findings?.length || 0}
+               language={selectedLanguage}
+               hideHeader={true}
+             />
+          ))}
+        </div>
       </div>
     );
   }
 
-  const isLanding = !running && !reportData && events.length === 0;
+  const isLanding = !running && allReports.length === 0 && events.length === 0;
 
   return (
     <div className="relative h-screen bg-black overflow-hidden font-sans text-stone-100 flex flex-col">
@@ -369,24 +515,34 @@ export default function App() {
           <span className="font-display font-bold text-xl tracking-wider uppercase text-white">Coin King</span>
         </div>
         <div className="flex items-center gap-3">
-          <select 
+          <CustomSelect
+            value={analysisType}
+            onChange={(v) => setAnalysisType(v as any)}
+            disabled={running}
+            options={[
+              { value: 'fundamental', label: 'Fundamental Analysis' },
+              { value: 'technical', label: 'Technical Analysis' },
+              { value: 'combined', label: 'Fundamental + Technical' },
+            ]}
+          />
+          <CustomSelect
             value={selectedLanguage}
-            onChange={(e) => setSelectedLanguage(e.target.value)}
+            onChange={setSelectedLanguage}
             disabled={running}
-            className={`text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white`}
-          >
-            <option value="English">English</option>
-            <option value="Thai">ภาษาไทย</option>
-          </select>
-          <select 
+            options={[
+              { value: 'English', label: 'English' },
+              { value: 'Thai', label: 'ภาษาไทย' },
+            ]}
+          />
+          <CustomSelect
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
+            onChange={setSelectedModel}
             disabled={running}
-            className={`text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white`}
-          >
-            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-            <option value="perseus">Gemini 3.6 Flash</option>
-          </select>
+            options={[
+              { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+              { value: 'perseus', label: 'Gemini 3.6 Flash' },
+            ]}
+          />
         </div>
       </header>
 
@@ -407,9 +563,9 @@ export default function App() {
                   <AgentTimeline 
                     events={events} 
                     running={running} 
-                    hasReport={!!reportData && !isReportOpen}
+                    hasReport={allReports.length > 0 && !isReportOpen}
                     onViewReport={() => setIsReportOpen(true)}
-                    metrics={reportData ? { durationSecs, tokenCount, documentCount: reportData.findings?.length || 0 } : undefined}
+                    metrics={currentReport ? { durationSecs, tokenCount, documentCount: currentReport.findings?.length || 0 } : undefined}
                   />
                 </div>
               </div>
