@@ -25,7 +25,7 @@ const AnalysisCard = ({ title, subtext, children, className = "", titleClassName
     whileInView={{ opacity: 1, y: 0 }} 
     viewport={{ once: true }} 
     transition={{ duration: 0.4, delay }} 
-    className={`bg-white rounded p-6 border border-stone-200 flex flex-col ${className}`}
+    className={`bg-white rounded-2xl p-3 sm:p-5 md:p-8 border border-stone-200 flex flex-col ${className}`}
   >
     <div className="flex justify-between items-start mb-2">
       <h3 className={`text-lg font-semibold ${titleClassName}`}>{title}</h3>
@@ -69,17 +69,11 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
       transition={{ duration: 0.5, ease: 'easeOut' }}
       className={`min-h-full bg-[#F6F4F0] text-stone-900 font-sans w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
       {!hideHeader && (
-        <div className="w-full border-b border-stone-200 px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white">
+        <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white">
           <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
             {isThai ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
           </div>
           <div className="flex items-center gap-4 print:hidden">
-            <button
-              onClick={generatePDF}
-              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2 text-sm font-medium border border-stone-300 rounded px-4 gap-2 cursor-pointer"
-            >
-              {isThai ? "พิมพ์ / บันทึก PDF" : "Print / Save PDF"}
-            </button>
             <button 
               onClick={onClose}
               className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
@@ -89,12 +83,12 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
           </div>
         </div>
       )}
-      <div id="report-content" className="flex-1 py-8 px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-6 bg-[#F6F4F0]">
+      <div id="report-content" className="flex-1 py-8 px-2 sm:px-4 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-4 md:gap-6 bg-[#F6F4F0]">
         
         {/* Executive Summary */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 md:gap-6">
           <AnalysisCard title={isThai ? "บทสรุปผู้บริหาร" : "Executive Summary"} className="w-full">
-            <div className="bg-stone-50 p-5 rounded-xl border border-stone-100 mb-6 text-stone-800 leading-relaxed font-medium text-lg w-full">
+            <div className="bg-stone-50 p-3 md:p-5 rounded-xl border border-stone-100 mb-6 text-stone-800 leading-relaxed font-medium text-lg w-full">
               "{data.verdict?.summary || (isThai ? 'ไม่มีบทสรุป' : 'No summary available.')}"
             </div>
             
@@ -155,7 +149,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Comprehensive Analysis */}
         {data.comprehensive_analysis && (
-          <div className="flex flex-col gap-6 mt-2">
+          <div className="flex flex-col gap-4 md:p-6 mt-2">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
               {isThai ? "การวิเคราะห์ปัจจัยพื้นฐานเชิงลึก" : "Comprehensive Fundamental Analysis"}
             </h2>
@@ -164,7 +158,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.business_overview || ''}</p>
             </AnalysisCard>
              
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
               <AnalysisCard title={isThai ? "กลุ่มลูกค้า (Target Customers)" : "Target Customers"}>
                  <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.target_customers || ''}</p>
               </AnalysisCard>
@@ -268,7 +262,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Financial Charts */}
         {data.financial_charts && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6 mt-8">
             <AnalysisCard title={isThai ? "ราคาหุ้น" : "Stock Price"} subtext={isThai ? "แผนภูมินี้แสดงราคาปิดย้อนหลังรายสัปดาห์ในวันซื้อขายสุดท้าย" : "This chart shows the weekly closing price for the past few weeks."}>
               <div className="h-64 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
@@ -318,7 +312,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Technical Analysis */}
         {data.technical_analysis && (
-          <div className="flex flex-col gap-6 mt-2">
+          <div className="flex flex-col gap-4 md:p-6 mt-2">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
               {isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}
             </h2>
@@ -379,7 +373,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
               </AnalysisCard>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
               <AnalysisCard title={isThai ? "แผนการเทรด (Trade Plan)" : "Trade Plan"}>
                  <div className="flex flex-col gap-3">
                    <div className="flex justify-between border-b border-stone-100 pb-2">
@@ -427,7 +421,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
               </AnalysisCard>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
               <AnalysisCard title={isThai ? "ภาพรวมแนวโน้มหลัก (Overall Trend)" : "Overall Trend"}>
                  <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.overall_trend || ''}</p>
               </AnalysisCard>
@@ -561,9 +555,9 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         {data.deep_insights && data.deep_insights.length > 0 && (
           <div className="mt-8">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6">{isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6">
               {data.deep_insights.slice(0, 3).map((insight, index) => (
-                <div key={index} className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm flex flex-col">
+                <div key={index} className="bg-white p-4 md:p-6 rounded-xl border border-stone-200 shadow-sm flex flex-col">
                    <div className="flex items-start justify-between mb-4 border-b border-stone-100 pb-4">
                      <div className="flex items-center gap-3">
                        <div>
@@ -592,9 +586,9 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                {isThai ? "ไม่พบข้อมูลจากเอกสารเฉพาะเจาะจง" : "No specific document findings returned."}
              </div>
            ) : (
-             <div className="flex flex-col gap-6">
+             <div className="flex flex-col gap-4 md:p-6">
                {findings.map((finding, index) => (
-                 <div key={index} className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm flex flex-col">
+                 <div key={index} className="bg-white p-4 md:p-6 rounded-xl border border-stone-200 shadow-sm flex flex-col">
                    <div className="flex items-start justify-between mb-4 border-b border-stone-100 pb-4">
                      <div className="flex items-center gap-3">
                        <div className="w-10 h-10 rounded bg-stone-100 text-stone-600 flex items-center justify-center">

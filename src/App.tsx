@@ -456,6 +456,18 @@ export default function App() {
     }
   };
 
+  const resetAnalysis = () => {
+    if (running && abortRef.current) {
+      abortRef.current.abort();
+    }
+    setRunning(false);
+    setTicker('');
+    setEvents([]);
+    setPastReports([]);
+    setCurrentReport(undefined);
+    setIsReportOpen(false);
+  };
+
   const runAnalysis = () => {
     if (!ticker.trim() || running) return;
     
@@ -478,12 +490,6 @@ export default function App() {
             {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
           </div>
           <div className="flex items-center gap-4 print:hidden">
-            <button
-              onClick={() => window.print()}
-              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2 text-sm font-medium border border-stone-300 rounded px-4 gap-2 cursor-pointer bg-white"
-            >
-              {selectedLanguage === 'Thai' ? "พิมพ์ / บันทึก PDF" : "Print / Save PDF"}
-            </button>
             <button 
               onClick={() => setIsReportOpen(false)}
               className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
@@ -573,7 +579,18 @@ export default function App() {
                     <img src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" alt="Gemini Sparkle" className="w-5 h-5" />
                     <span>{selectedModel === 'gemini-3.5-flash' ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'}</span>
                   </div>
-                  {running && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}
+                  <div className="flex items-center gap-2">
+                    {running && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}
+                    {!running && (
+                      <button 
+                        onClick={resetAnalysis}
+                        className="text-white/60 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+                        title={selectedLanguage === 'Thai' ? 'ปิดและเริ่มใหม่' : 'Close and Reset'}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto no-scrollbar relative z-10">
                   <AgentTimeline 
