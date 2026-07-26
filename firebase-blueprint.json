@@ -1,0 +1,21 @@
+{
+  "collections": [
+    {
+      "name": "users",
+      "fields": [
+        { "name": "email", "type": "string" },
+        { "name": "createdAt", "type": "timestamp" }
+      ]
+    },
+    {
+      "name": "reports",
+      "fields": [
+        { "name": "userId", "type": "string" },
+        { "name": "ticker", "type": "string" },
+        { "name": "createdAt", "type": "timestamp" },
+        { "name": "data", "type": "map" },
+        { "name": "language", "type": "string" }
+      ]
+    }
+  ]
+}

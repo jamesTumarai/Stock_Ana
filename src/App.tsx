@@ -1,7 +1,11 @@
 import { LandingView } from './LandingView';
+import { HistoryModal } from './components/HistoryModal';
+import { auth, db, googleProvider } from './lib/firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { FadingVideo } from './components/FadingVideo';
-import { Search, Loader2, X, ChevronDown } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
@@ -106,6 +110,7 @@ export interface TechnicalAnalysis {
 }
 
 export interface ReportData {
+  ticker?: string;
   verdict?: {
     summary: string;
     conviction_score: number;
@@ -157,15 +162,15 @@ function CustomSelect({
   }, []);
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className={`relative ${className?.includes('flex-1') ? 'flex-1 min-w-0' : ''}`} ref={containerRef}>
       <button 
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-2 text-sm rounded px-3 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white transition-colors hover:bg-black/40 ${className || ''}`}
+        className={`flex items-center justify-between gap-1 text-sm rounded px-2 py-1.5 outline-none cursor-pointer focus:ring-1 focus:ring-stone-500 disabled:opacity-50 bg-black/20 backdrop-blur-md border border-white/10 text-white transition-colors hover:bg-black/40 w-full ${className || ''}`}
       >
-        {selectedOption.label}
-        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="truncate min-w-0">{selectedOption.label}</span>
+        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       <AnimatePresence>
         {isOpen && (
@@ -217,6 +222,96 @@ export default function App() {
   const [startTime, setStartTime] = useState<number | null>(null);
 
   const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
+  
+  const [user, setUser] = useState<User | null>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyReports, setHistoryReports] = useState<any[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        fetchHistory(currentUser.uid);
+      } else {
+        setHistoryReports([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
+
+  const fetchHistory = async (userId: string) => {
+    try {
+      console.log("Fetching history for user: ", userId);
+      const q = query(
+        collection(db, "reports"), 
+        where("userId", "==", userId)
+      );
+      const querySnapshot = await getDocs(q);
+      let reports = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      // Sort client-side to avoid requiring composite index
+      reports.sort((a, b) => {
+        const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?.toMillis?.() || new Date(a.createdAt).getTime() || 0);
+        const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt?.toMillis?.() || new Date(b.createdAt).getTime() || 0);
+        return timeB - timeA;
+      });
+      console.log("Fetched history count: ", reports.length);
+      setHistoryReports(reports);
+    } catch (error: any) {
+      console.error("Error fetching history: ", error);
+      alert("Failed to fetch history: " + error.message);
+    }
+  };
+
+  const deleteReports = async (reportIds: string | string[]) => {
+    if (!user) return;
+    const ids = Array.isArray(reportIds) ? reportIds : [reportIds];
+    try {
+      for (const id of ids) {
+        await deleteDoc(doc(db, "reports", id));
+      }
+      console.log("Reports deleted successfully!");
+      setHistoryReports(prev => prev.filter(r => !ids.includes(r.id)));
+    } catch (error: any) {
+      console.error("Error deleting reports: ", error);
+      alert("Failed to delete reports: " + error.message);
+    }
+  };
+
+  const saveReportToFirebase = async (reportData: ReportData) => {
+    if (!user) return;
+    try {
+      console.log("Saving report to Firebase...", { ticker, userId: user.uid });
+      await addDoc(collection(db, "reports"), {
+        userId: user.uid,
+        ticker: ticker.toUpperCase(),
+        language: selectedLanguage,
+        createdAt: serverTimestamp(),
+        data: reportData
+      });
+      console.log("Report saved successfully!");
+      fetchHistory(user.uid);
+    } catch (error) {
+      console.error("Error saving report: ", error);
+      alert("Failed to save report: " + error.message);
+    }
+  };
+
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -418,7 +513,7 @@ export default function App() {
         
         if (accumulatedText) {
             const foundData = parseFinalText(accumulatedText);
-            if (foundData) setRep({ ...foundData, analysis_type: aType });
+            if (foundData) setRep({ ...foundData, analysis_type: aType, ticker: ticker.trim() });
         }
       }
       
@@ -440,7 +535,13 @@ export default function App() {
       
       if (accumulatedText) {
           const finalData = parseFinalText(accumulatedText);
-          if (finalData) setRep({ ...finalData, analysis_type: aType });
+          if (finalData) {
+            const finalRep = { ...finalData, analysis_type: aType, ticker: ticker.trim() };
+            setRep(finalRep);
+            if (finalRep) {
+               saveReportToFirebase(finalRep);
+            }
+          }
       }
       
       setDur(Math.round((Date.now() - startTimestamp) / 1000));
@@ -473,9 +574,9 @@ export default function App() {
   const runAnalysis = () => {
     if (!ticker.trim() || running) return;
     
-    if (currentReport) {
-      setPastReports(prev => [...prev, currentReport]);
-    }
+    // Reset old data when running a new analysis
+    setPastReports([]);
+    setCurrentReport(null);
     
     setIsReportOpen(false);
     window.scrollTo(0, 0);
@@ -513,7 +614,7 @@ export default function App() {
 
   if (isReportOpen && allReports.length > 0) {
     return (
-      <div id="report-scroll-container" className="w-full h-screen overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
+      <div id="report-scroll-container" className="w-full h-[100dvh] overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
         <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white shadow-sm gap-4 sm:gap-0">
           <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
             {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
@@ -551,7 +652,27 @@ export default function App() {
   const isLanding = !running && allReports.length === 0 && events.length === 0;
 
   return (
-    <div className="relative h-screen bg-black overflow-hidden font-sans text-stone-100 flex flex-col">
+    <div className="relative h-[100dvh] bg-black overflow-hidden font-sans text-stone-100 flex flex-col">
+      <AnimatePresence>
+        {isHistoryModalOpen && (
+          <HistoryModal 
+            onClose={() => setIsHistoryModalOpen(false)} 
+            reports={historyReports}
+            onDelete={deleteReports}
+            onSelect={(report) => {
+              setTicker(report.ticker);
+              setSelectedLanguage(report.language || 'English');
+              setCurrentReport({ ...report.data, ticker: report.ticker });
+              setPastReports([]);
+              setIsHistoryModalOpen(false);
+              setIsReportOpen(true);
+            }} 
+          />
+        )}
+      </AnimatePresence>
+
+
+
       <FadingVideo 
         src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4" 
         className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top z-0" 
@@ -561,29 +682,57 @@ export default function App() {
       {/* Header */}
       <header className={`flex items-center justify-between px-4 md:px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
         <div className="flex items-center gap-2">
-          <span className="font-display font-bold text-xl tracking-wider uppercase text-white">Coin King</span>
+          <span className="font-display font-bold text-xl tracking-wider uppercase text-white">COIN KING</span>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          <CustomSelect
-            value={analysisType}
-            onChange={(v) => setAnalysisType(v as any)}
-            disabled={running}
-            options={[
-              { value: 'fundamental', label: 'Fundamental Analysis' },
-              { value: 'technical', label: 'Technical Analysis' },
-              { value: 'combined', label: 'Fundamental + Technical' },
-            ]}
-          />
-          <CustomSelect
-            value={selectedLanguage}
-            onChange={setSelectedLanguage}
-            disabled={running}
-            options={[
-              { value: 'English', label: 'English' },
-              { value: 'Thai', label: 'ภาษาไทย' },
-            ]}
-          />
-          <div className="hidden md:block">
+          {user ? (
+            <div className="flex items-center gap-1 md:gap-4">
+              <button 
+                onClick={() => setIsHistoryModalOpen(true)}
+                className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
+                title="History"
+              >
+                <History className="w-5 h-5 md:hidden" />
+                <span className="hidden md:inline">History</span>
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5 md:hidden" />
+                <span className="hidden md:inline">Logout</span>
+              </button>
+              <img src={user.photoURL || ''} alt="avatar" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white/20 ml-1" />
+            </div>
+          ) : (
+            <button 
+              onClick={handleLogin}
+              className="text-xs md:text-sm font-medium text-white/80 hover:text-white px-3 py-1.5 border border-white/20 rounded-full hover:bg-white/10 transition-colors"
+            >
+              Sign In
+            </button>
+          )}
+          <div className="hidden md:flex items-center gap-2 md:gap-3">
+            <CustomSelect
+              value={analysisType}
+              onChange={(v) => setAnalysisType(v as any)}
+              disabled={running}
+              options={[
+                { value: 'fundamental', label: 'Fundamental Analysis' },
+                { value: 'technical', label: 'Technical Analysis' },
+                { value: 'combined', label: 'Fundamental + Technical' },
+              ]}
+            />
+            <CustomSelect
+              value={selectedLanguage}
+              onChange={setSelectedLanguage}
+              disabled={running}
+              options={[
+                { value: 'English', label: 'English' },
+                { value: 'Thai', label: 'ภาษาไทย' },
+              ]}
+            />
             <CustomSelect
               value={selectedModel}
               onChange={setSelectedModel}
@@ -601,7 +750,7 @@ export default function App() {
         {isLanding ? (
            <LandingView language={selectedLanguage} />
         ) : (
-           <div className="flex-1 flex flex-row overflow-hidden pb-32 gap-4 px-4 min-h-0 max-w-4xl mx-auto w-full mt-4">
+           <div className="flex-1 flex flex-row overflow-hidden pb-64 md:pb-40 gap-4 px-4 min-h-0 max-w-4xl mx-auto w-full mt-4">
               <div className="flex-1 flex flex-col liquid-glass rounded-[1.25rem] overflow-hidden min-h-0">
                 <div className="p-4 bg-white/5 border-b border-white/10 font-bold text-white text-sm flex justify-between items-center">
                   <div className="flex items-center gap-2">
@@ -644,29 +793,52 @@ export default function App() {
             )}
             
             <div className={`liquid-glass !overflow-visible border-white/20 border rounded-xl shadow-2xl p-2 w-full flex flex-col md:flex-row md:items-center gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
-              <div className={`pl-3 py-2 flex items-center justify-between gap-2 text-white/60 border-white/20 border-b md:border-b-0 md:border-r pr-3`}>
+              <div className={`pl-3 py-1.5 md:py-2 flex items-center justify-between gap-2 text-white/60 border-white/20 border-b md:border-b-0 md:border-r pr-2 md:pr-3`}>
                  <div className="flex items-center gap-2 flex-1">
-                   <Search className="w-5 h-5 shrink-0" />
+                   <Search className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                    <input 
                      type="text" 
                      value={ticker}
                      onChange={(e) => setTicker(e.target.value)}
                      placeholder="US TICKER" 
                      disabled={running}
-                     className={`bg-transparent border-none outline-none w-28 font-mono uppercase text-white placeholder-white/40`}
+                     className={`bg-transparent border-none outline-none w-24 md:w-28 font-mono uppercase text-sm md:text-base text-white placeholder-white/40`}
                      onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                    />
                  </div>
-                 <div className="md:hidden shrink-0">
+                 <div className="md:hidden flex items-center gap-1.5 shrink-0">
+                   <CustomSelect
+                     direction="up"
+                     value={analysisType}
+                     onChange={(v) => setAnalysisType(v as any)}
+                     disabled={running}
+                     className="text-[10px] md:text-[11px] px-1.5 py-1 bg-white/10 border-white/20 text-white w-[55px]"
+                     options={[
+                       { value: 'fundamental', label: 'Fund' },
+                       { value: 'technical', label: 'Tech' },
+                       { value: 'combined', label: 'Both' },
+                     ]}
+                   />
+                   <CustomSelect
+                     direction="up"
+                     value={selectedLanguage}
+                     onChange={setSelectedLanguage}
+                     disabled={running}
+                     className="text-[10px] md:text-[11px] px-1.5 py-1 bg-white/10 border-white/20 text-white w-[40px]"
+                     options={[
+                       { value: 'English', label: 'EN' },
+                       { value: 'Thai', label: 'TH' },
+                     ]}
+                   />
                    <CustomSelect
                      direction="up"
                      value={selectedModel}
                      onChange={setSelectedModel}
                      disabled={running}
-                     className="text-xs px-2 py-1 bg-white/10 border-white/20 text-white"
+                     className="text-[10px] md:text-[11px] px-1.5 py-1 bg-white/10 border-white/20 text-white w-[45px]"
                      options={[
-                       { value: 'gemini-3.5-flash', label: '3.5 Flash' },
-                       { value: 'perseus', label: '3.6 Flash' },
+                       { value: 'gemini-3.5-flash', label: '3.5' },
+                       { value: 'perseus', label: '3.6' },
                      ]}
                    />
                  </div>

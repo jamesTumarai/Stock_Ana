@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Markdown from 'react-markdown';
 import { motion } from 'motion/react';
 import { 
   X, FileText, CheckCircle2, ChevronRight, Link as LinkIcon, Calendar
@@ -25,10 +26,10 @@ const AnalysisCard = ({ title, subtext, children, className = "", titleClassName
     whileInView={{ opacity: 1, y: 0 }} 
     viewport={{ once: true }} 
     transition={{ duration: 0.4, delay }} 
-    className={`bg-white rounded-2xl p-3 sm:p-5 md:p-8 border border-stone-200 flex flex-col ${className}`}
+    className={`bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm border border-stone-200 flex flex-col ${className}`}
   >
     <div className="flex justify-between items-start mb-2">
-      <h3 className={`text-lg font-semibold ${titleClassName}`}>{title}</h3>
+      <h3 className={`text-xl font-display uppercase tracking-wider font-bold ${titleClassName}`}>{title}</h3>
     </div>
     {subtext && (
       <div className="text-stone-700 text-[15px] mb-6">
@@ -147,12 +148,12 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                        {Array.isArray(data.verdict.key_takeaways) ? data.verdict.key_takeaways.map((takeaway, i) => (
                           <div key={i} className="flex gap-3 text-base">
                              <CheckCircle2 className="w-5 h-5 text-[#0b5a4b] shrink-0 mt-0.5" />
-                             <div className="text-stone-700 leading-relaxed">{takeaway}</div>
+                             <div className="text-stone-700 leading-relaxed prose prose-base prose-stone max-w-none"><Markdown>{takeaway}</Markdown></div>
                           </div>
                        )) : (
                           <div className="flex gap-3 text-base">
                              <CheckCircle2 className="w-5 h-5 text-[#0b5a4b] shrink-0 mt-0.5" />
-                             <div className="text-stone-700 leading-relaxed">{String(data.verdict.key_takeaways)}</div>
+                             <div className="text-stone-700 leading-relaxed prose prose-base prose-stone max-w-none"><Markdown>{String(data.verdict.key_takeaways)}</Markdown></div>
                           </div>
                        )}
                      </div>
@@ -201,49 +202,47 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             </h2>
             
             <AnalysisCard title={isThai ? "ภาพรวมธุรกิจ (Business Overview)" : "Business Overview"}>
-               <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.business_overview || ''}</p>
+               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.business_overview || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
             </AnalysisCard>
              
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
               <AnalysisCard title={isThai ? "กลุ่มลูกค้า (Target Customers)" : "Target Customers"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.target_customers || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.target_customers || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "โมเดลรายได้ (Revenue Model)" : "Revenue Model & Quality"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.revenue_model || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.revenue_model || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ภาพรวมงบการเงิน (Financials)" : "Financial Overview"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.financial_overview || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.financial_overview || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ความแข็งแกร่ง (Strengths/Moat)" : "Business Strengths"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.business_strengths || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.business_strengths || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "โอกาสเติบโต (Future Growth)" : "Future Growth"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.future_growth || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.future_growth || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ความเสี่ยง (Key Risks)" : "Key Risks"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.key_risks || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.key_risks || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
             </div>
             
             <AnalysisCard title={isThai ? "ผู้บริหาร (Management)" : "Management"}>
-               <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.management || ''}</p>
+               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.management || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
             </AnalysisCard>
             <AnalysisCard title={isThai ? "คุณภาพพื้นฐาน (Fundamentals Check)" : "Fundamentals Check"} className="bg-stone-50 border-stone-200">
-               <p className="text-stone-700 leading-relaxed text-[15px]">{data.comprehensive_analysis.fundamentals_check || ''}</p>
+               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.comprehensive_analysis.fundamentals_check || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
             </AnalysisCard>
 
             {data.comprehensive_analysis.beginner_summary && (
               <AnalysisCard title={isThai ? "สรุปสำหรับมือใหม่ (Beginner Summary)" : "Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
-                <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4">
-                  {data.comprehensive_analysis.beginner_summary.business_type_simple || ''}
-                </div>
+                <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 prose prose-base prose-stone max-w-none"><Markdown>{data.comprehensive_analysis.beginner_summary.business_type_simple || ''}</Markdown></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                   <div>
                     <h4 className="text-sm font-bold text-[#0b5a4b] uppercase tracking-wider mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4"/> {isThai ? "จุดเด่นหลัก" : "Top 3 Strengths"}</h4>
                     <ul className="space-y-2">
                       {(data.comprehensive_analysis.beginner_summary.top_3_strengths || []).map((s, i) => (
                         <li key={i} className="flex gap-2 text-sm text-stone-700">
-                          <CheckCircle2 className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" /> <span>{s}</span>
+                          <CheckCircle2 className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" /> <span className="prose prose-base prose-stone max-w-none"><Markdown>{s}</Markdown></span>
                         </li>
                       ))}
                     </ul>
@@ -253,7 +252,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                     <ul className="space-y-2">
                       {(data.comprehensive_analysis.beginner_summary.top_3_risks || []).map((r, i) => (
                         <li key={i} className="flex gap-2 text-sm text-stone-700">
-                          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" /> <span>{r}</span>
+                          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" /> <span className="prose prose-base prose-stone max-w-none"><Markdown>{r}</Markdown></span>
                         </li>
                       ))}
                     </ul>
@@ -286,7 +285,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                             <span className="font-bold text-sm text-stone-700">{labels[key] || key}</span>
                             <span className={`font-mono font-bold ${scoreColor((scoreData.score || 0) * 10)}`}>{scoreData.score || '-'}/10</span>
                          </div>
-                         <div className="text-xs text-stone-700">{scoreData.reason || ''}</div>
+                         <div className="text-xs text-stone-700 prose prose-base prose-stone max-w-none"><Markdown>{scoreData.reason || ''}</Markdown></div>
                       </div>
                      );
                   })}
@@ -297,9 +296,9 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             {data.comprehensive_analysis.final_verdict_summary && (
               <AnalysisCard title={isThai ? "บทสรุปสุดท้าย (Final Verdict)" : "Final Verdict Summary"}>
                  <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
-                   <div><strong className="text-stone-900">{isThai ? "น่าศึกษาต่อไหม:" : "Worth Studying Further?"}</strong> {data.comprehensive_analysis.final_verdict_summary.worth_further_study || ''}</div>
-                   <div><strong className="text-stone-900">{isThai ? "พื้นฐานดีจริงไหม:" : "Strong Fundamentals?"}</strong> {data.comprehensive_analysis.final_verdict_summary.strong_fundamentals || ''}</div>
-                   <div><strong className="text-stone-900">{isThai ? "สิ่งที่ต้องดูเพิ่ม:" : "What to Look For:"}</strong> {data.comprehensive_analysis.final_verdict_summary.what_to_look_for || ''}</div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "น่าศึกษาต่อไหม:" : "Worth Studying Further?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown>{(data.comprehensive_analysis.final_verdict_summary.worth_further_study || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div></div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "พื้นฐานดีจริงไหม:" : "Strong Fundamentals?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown>{(data.comprehensive_analysis.final_verdict_summary.strong_fundamentals || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div></div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "สิ่งที่ต้องดูเพิ่ม:" : "What to Look For?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown>{(data.comprehensive_analysis.final_verdict_summary.what_to_look_for || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div></div>
                  </div>
               </AnalysisCard>
             )}
@@ -413,26 +412,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                  </div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ความสอดคล้องสัญญาณ" : "Confluence Meter"} className="bg-stone-50 overflow-y-auto max-h-64">
-                 <div className="flex flex-col h-full space-y-1.5 text-[13px] md:text-sm text-stone-700 leading-relaxed">
-                    {(data.technical_analysis.signal_summary?.confluence_score || '-')
-                      .replace(/, (?=\d+\))/g, '\n')
-                      .replace(/(?=สรุปทิศทางรวม)/g, '\n\n')
-                      .split('\n')
-                      .filter(Boolean)
-                      .map((part, i) => {
-                        const isNumber = part.trim().match(/^\d+\)/);
-                        const isSummary = part.trim().startsWith('สรุปทิศทางรวม');
-                        return (
-                          <span key={i} className={
-                            isSummary ? "font-bold text-stone-900 mt-3 block border-t border-stone-200 pt-2" : 
-                            (i === 0 && !isNumber) ? "font-bold text-stone-900 mb-1 block" : 
-                            "block pl-2"
-                          }>
-                            {part.trim()}
-                          </span>
-                        )
-                    })}
-                 </div>
+<div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.signal_summary?.confluence_score || '-').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
             </div>
 
@@ -487,46 +467,44 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
               <AnalysisCard title={isThai ? "ภาพรวมแนวโน้มหลัก (Overall Trend)" : "Overall Trend"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.overall_trend || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.overall_trend || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "โครงสร้างราคา (Price Structure)" : "Price Structure"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.price_structure || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.price_structure || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ปริมาณการซื้อขาย (Volume Analysis)" : "Volume Analysis"} tooltip={isThai ? "ปริมาณหุ้นที่ถูกซื้อขายในแต่ละช่วงเวลา ใช้ยืนยันความแข็งแกร่งของเทรนด์" : "Amount of shares traded, used to confirm trend strength"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.volume_analysis || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.volume_analysis || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "กลุ่มเทรนด์ (Trend Indicators)" : "Trend Indicators"} tooltip={isThai ? "บ่งบอกทิศทางของราคา เช่น MA, MACD" : "Indicates price direction e.g. MA, MACD"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.trend_indicators || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.trend_indicators || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "กลุ่มโมเมนตัม (Momentum Indicators)" : "Momentum Indicators"} tooltip={isThai ? "วัดความแรงและอ่อนของราคา เช่น RSI, Stochastic" : "Measures strength of price movement e.g. RSI, Stochastic"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.momentum_indicators || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.momentum_indicators || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "กลุ่มความผันผวน (Volatility Indicators)" : "Volatility Indicators"} tooltip={isThai ? "วัดความแกว่งตัวของราคา เช่น Bollinger Bands, ATR" : "Measures price variance e.g. Bollinger Bands, ATR"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.volatility_indicators || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.volatility_indicators || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "รูปแบบราคาและแท่งเทียน (Chart Patterns)" : "Chart Patterns"} tooltip={isThai ? "รูปแบบที่มักจะเกิดซ้ำเพื่อคาดเดาทิศทาง เช่น Head and Shoulders, Doji" : "Recurring formations to predict direction e.g. Head and Shoulders, Doji"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.chart_patterns || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.chart_patterns || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "เปรียบเทียบกับตลาด (Relative Strength)" : "Relative Strength"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.relative_strength || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.relative_strength || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ความเสี่ยงเชิงเทคนิค (Technical Risks)" : "Technical Risks"}>
-                 <p className="text-stone-700 leading-relaxed text-[15px] whitespace-pre-wrap">{data.technical_analysis.technical_risks || ''}</p>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{(data.technical_analysis.technical_risks || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div>
               </AnalysisCard>
             </div>
 
             {data.technical_analysis.beginner_summary && (
               <AnalysisCard title={isThai ? "สรุปสำหรับมือใหม่ (Beginner Summary)" : "Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
-                <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 whitespace-pre-wrap">
-                  {data.technical_analysis.beginner_summary.technical_overview || ''}
-                </div>
+                <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 prose prose-base prose-stone max-w-none"><Markdown>{data.technical_analysis.beginner_summary.technical_overview || ''}</Markdown></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                   <div>
                     <h4 className="text-sm font-bold text-[#0b5a4b] uppercase tracking-wider mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4"/> {isThai ? "จุดที่น่าสนใจ 3 ข้อ" : "Top 3 Points"}</h4>
                     <ul className="space-y-2">
                       {(data.technical_analysis.beginner_summary.top_3_points || []).map((s, i) => (
                         <li key={i} className="flex gap-2 text-sm text-stone-700">
-                          <CheckCircle2 className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" /> <span>{s}</span>
+                          <CheckCircle2 className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" /> <span className="prose prose-base prose-stone max-w-none"><Markdown>{s}</Markdown></span>
                         </li>
                       ))}
                     </ul>
@@ -536,7 +514,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                     <ul className="space-y-2">
                       {(data.technical_analysis.beginner_summary.top_3_cautions || []).map((r, i) => (
                         <li key={i} className="flex gap-2 text-sm text-stone-700">
-                          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" /> <span>{r}</span>
+                          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" /> <span className="prose prose-base prose-stone max-w-none"><Markdown>{r}</Markdown></span>
                         </li>
                       ))}
                     </ul>
@@ -594,7 +572,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                              <span className="text-xs font-bold text-stone-500 uppercase">{labels[key] || key}</span>
                              <span className={`text-sm font-bold ${scoreColor(Number(item.score) * 10)}`}>{item.score}/10</span>
                            </div>
-                           <div className="text-sm text-stone-700 leading-snug">{item.reason}</div>
+                           <div className="text-sm text-stone-700 leading-snug prose prose-base prose-stone max-w-none"><Markdown>{item.reason}</Markdown></div>
                          </div>
                        );
                     })}
@@ -606,9 +584,9 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             {data.technical_analysis.final_verdict_summary && (
               <AnalysisCard title={isThai ? "บทสรุปสุดท้าย (Final Verdict)" : "Final Verdict Summary"}>
                  <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
-                   <div><strong className="text-stone-900">{isThai ? "จังหวะน่าเข้าไหม:" : "Good Timing?"}</strong> {data.technical_analysis.final_verdict_summary.is_good_timing || ''}</div>
-                   <div><strong className="text-stone-900">{isThai ? "ถ้ารอ ต้องรออะไร:" : "What to wait for:"}</strong> {data.technical_analysis.final_verdict_summary.what_to_wait_for || ''}</div>
-                   <div><strong className="text-stone-900">{isThai ? "แผนการเข้าสั้นๆ:" : "Trade Plan:"}</strong> {data.technical_analysis.final_verdict_summary.trade_plan || ''}</div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "จังหวะน่าเข้าไหม:" : "Good Timing?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown>{(data.technical_analysis.final_verdict_summary.is_good_timing || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div></div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "ถ้ารอ ต้องรออะไร:" : "What to wait for?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown>{(data.technical_analysis.final_verdict_summary.what_to_wait_for || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div></div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "แผนการเข้าสั้นๆ:" : "Trade Plan:"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown>{(data.technical_analysis.final_verdict_summary.trade_plan || '').replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. ')}</Markdown></div></div>
                  </div>
               </AnalysisCard>
             )}
@@ -630,7 +608,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                        </div>
                      </div>
                    </div>
-                   <div className="text-stone-700 leading-relaxed text-[15px] flex-1">{insight.description}</div>
+                   <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed flex-1"><Markdown>{insight.description}</Markdown></div>
                    <div className="mt-6 pt-4 border-t border-stone-100 flex items-center justify-between">
                      <span className="text-xs text-stone-700 font-bold uppercase tracking-wider">{isThai ? "คะแนนผลกระทบ" : "Impact Score"}</span>
                      <span className={`text-sm font-mono font-bold px-2 py-0.5 rounded ${insight.impact_score >= 8 ? 'bg-red-50 text-red-700' : insight.impact_score >= 5 ? 'bg-yellow-50 text-yellow-700' : 'bg-green-50 text-green-700'}`}>{insight.impact_score}/10</span>
@@ -678,12 +656,12 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                      {Array.isArray(finding.keyInsights || finding.key_insights) ? (finding.keyInsights || finding.key_insights)?.map((insight, i) => (
                        <li key={i} className="flex gap-2 text-sm text-stone-700 leading-relaxed">
                          <ChevronRight className="w-4 h-4 text-stone-600 mt-0.5 shrink-0" />
-                         <span>{insight}</span>
+                         <span className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{insight}</Markdown></span>
                        </li>
                      )) : (finding.keyInsights || finding.key_insights) ? (
                        <li className="flex gap-2 text-sm text-stone-700 leading-relaxed">
                          <ChevronRight className="w-4 h-4 text-stone-600 mt-0.5 shrink-0" />
-                         <span>{String(finding.keyInsights || finding.key_insights)}</span>
+                         <span className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown>{String(finding.keyInsights || finding.key_insights)}</Markdown></span>
                        </li>
                      ) : null}
                    </ul>

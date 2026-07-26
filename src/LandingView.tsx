@@ -11,7 +11,7 @@ export function LandingView({ language = 'English' }: { language?: string }) {
     <div className="absolute inset-0 overflow-y-auto no-scrollbar bg-transparent">
       
       {/* Section 1 — Hero */}
-      <div className="relative w-full min-h-screen flex flex-col justify-center items-center overflow-hidden z-0">
+      <div className="relative w-full min-h-[100dvh] flex flex-col justify-center items-center overflow-hidden z-0">
         
         <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center pt-32 md:pt-40 px-4 text-center">
           
@@ -28,8 +28,8 @@ export function LandingView({ language = 'English' }: { language?: string }) {
           </motion.div>
           
           <BlurText 
-            text={isThai ? "Coin King\nแพลตฟอร์มวิเคราะห์หุ้น\nด้วย AI" : "Coin King\nAI-Powered Stock\nAnalysis Platform"}
-            className="text-5xl md:text-6xl lg:text-[5.5rem] font-heading italic text-white leading-[0.9] max-w-4xl justify-center tracking-[-2px] md:tracking-[-4px]"
+            text={isThai ? "Lumina\nวิเคราะห์หุ้นด้วย AI" : "Lumina\nAI Stock Analysis"}
+            className="text-5xl md:text-6xl lg:text-7xl font-heading italic text-white leading-[0.95] max-w-4xl justify-center tracking-[-1px] md:tracking-[-2px]"
           />
           
           <motion.p 
@@ -88,7 +88,7 @@ export function LandingView({ language = 'English' }: { language?: string }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.4, duration: 1 }}
-          className="relative z-10 flex flex-col items-center gap-4 pb-32 md:pb-40 mt-12 w-full"
+          className="relative z-10 flex flex-col items-center gap-4 pb-64 md:pb-40 mt-12 w-full"
         >
           <div className="liquid-glass rounded-full px-3.5 py-1 text-xs font-medium text-white">
             {isThai ? "วิเคราะห์ข้อมูลจากตลาดหลักทรัพย์สหรัฐอเมริกา" : "Analyzing data from US stock exchanges"}
