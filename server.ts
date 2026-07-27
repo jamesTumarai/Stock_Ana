@@ -191,49 +191,53 @@ async function startServer() {
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats.
+          finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats. STRICTLY FORBIDDEN to use Japanese (e.g., Katakana like ゾーン), Chinese, or any other languages. Translate terms like 'zone' to Thai (โซน).
           Please follow this specific Technical Analysis guideline for the JSON fields in "technical_analysis":
           1) signal_summary: สรุปสถานะ (Buy/Wait/Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมดจากหัวข้อข้างต้น ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, MACD = ลบ, RSI = กลาง" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน โดยต้องใช้ Markdown bullet points (ขึ้นบรรทัดใหม่แต่ละข้อ) เพื่อให้อ่านง่าย จากนั้นสรุปทิศทางรวม และระบุ Invalidation level)
-          2) key_levels: current_price (ราคาปัจจุบันเป็นตัวเลข), support 3 ระดับ, resistance 3 ระดับ เป็นตัวเลข (ต้องเรียงลำดับให้ S1 และ R1 อยู่ใกล้ราคาปัจจุบันที่สุดเสมอ ห้ามให้ระดับใกล้กันเกินไป ต้องห่างกันอย่างมีนัยสำคัญเทียบกับ ATR และต้องตรงกับที่วิเคราะห์ไว้ ห้ามใช้สูตรคำนวณแยก)
-          3) trade_plan: แผนการเทรด โซนเข้า (ระบุราคา ถ้าต่ำกว่าราคาปัจจุบันต้องเป็นการย่อเพื่อซื้อ ไม่ใช่มั่ว), stop loss, target 1, target 2, และ Risk/Reward ratio
+          2) key_levels: current_price (ราคาปัจจุบันเป็นตัวเลข), support 3 ระดับ, resistance 3 ระดับ เป็นตัวเลข (สำคัญมาก: แต่ละระดับ S/R ต้องห่างจากราคาปัจจุบันอย่างน้อย 1 เท่าของค่า ATR (1x ATR) และห่างจากระดับถัดไปอย่างน้อย 1x ATR เช่นกัน ห้ามระบุระดับที่ใกล้กว่าเกณฑ์นี้เด็ดขาด หากพบว่าใกล้เกินไปให้ข้ามไปหาระดับถัดไปที่ห่างพอแทน ห้ามใช้สูตรคำนวณแยก)
+          3) trade_plan: แผนการเทรด โซนเข้า (ระบุราคา ถ้าต่ำกว่าราคาปัจจุบันต้องเป็นการย่อเพื่อซื้อ ไม่ใช่มั่ว), stop loss, target 1, target 2, และ Risk/Reward ratio (คำนวณ risk/reward ratio จากจุดเข้า-stop-target โดยใช้ตัวเลขเดียวกันเป๊ะกับ Target 1/Target 2 ห้ามใช้ตัวเลขคนละตัวในการคำนวณ ให้ใช้สูตร (Target - Entry) / (Entry - Stop-Loss) และแสดงตัวเลขที่ใช้คำนวณกำกับไว้ด้วย)
           4) overall_trend: อธิบายภาพรวม
           5) price_structure: โครงสร้างราคา
           6) volume_analysis: วิเคราะห์ Volume
-          7) trend_indicators: MA, MACD, ADX
-          8) momentum_indicators: RSI, Stochastic
-          9) volatility_indicators: Bollinger Bands, ATR (ระบุ ATR เป็นค่าตัวเลขเดียว ห้ามเป็นช่วงกว้าง)
+          7) trend_indicators: MA, MACD, ADX (สำคัญ: MACD, ADX ต้องระบุเป็นค่าตัวเลขเดียว ณ ปัจจุบัน ห้ามรายงานเป็นช่วงกว้างเด็ดขาด)
+          8) momentum_indicators: RSI, Stochastic (สำคัญ: RSI, Stochastic ต้องระบุเป็นค่าตัวเลขเดียว ณ ปัจจุบัน ห้ามรายงานเป็นช่วงกว้างเด็ดขาด)
+          9) volatility_indicators: Bollinger Bands, ATR
           10) chart_patterns: รูปแบบราคา
           11) relative_strength: เทียบกับตลาด
-          12) technical_risks: ความเสี่ยง (เช่น false breakout, gap risk, volume ต่ำ)
+          12) technical_risks: ความเสี่ยงเชิงเทคนิคที่ต้องรู้ (ต้องตอบให้ครบ 4 ประเด็นนี้: 1. ความเสี่ยงจากสัญญาณหลอก (false breakout/whipsaw), 2. gap risk (เช่น ข่าว/earnings ถัดไป), 3. ความเสี่ยงจาก volume/liquidity ต่ำ, 4. regime ปัจจุบัน (trending หรือ choppy/sideways) ห้ามตอบแค่ข้อเดียวแล้วข้ามข้ออื่น)
           13) beginner_summary: สรุปให้มือใหม่ตัดสินใจแบบตรงไปตรงมา:
            - technical_overview: ภาพรวมเทคนิคอลตอนนี้เป็นแบบไหนในภาษาคนทั่วไป
            - top_3_points: จุดที่น่าสนใจ 3 ข้อ
            - top_3_cautions: จุดที่ต้องระวัง 3 ข้อ
            - suitable_trade_style: เหมาะกับสไตล์การเทรดแบบไหน (เช่น day/swing/position trade ต้องสอดคล้องกับแผนเข้าจริง ถ้าโซนเข้าซื้ออยู่สูงกว่าปัจจุบัน ห้ามเรียกว่า Buy on Dip เด็ดขาด)
           14) scoring: คะแนน 1-10 พร้อมเหตุผล
-          15) final_verdict_summary: สรุปสุดท้าย`;
+          15) final_verdict_summary: สรุปสุดท้าย
+          เงื่อนไขสำคัญ:
+          - การวิเคราะห์ Technical ต้องอยู่บนพื้นฐานของราคา ปริมาณการซื้อขาย และอินดิเคเตอร์ทางเทคนิคเท่านั้น ห้ามอ้างอิงหรือดึงเนื้อหาจากเอกสารพื้นฐาน เช่น 10-K, 10-Q, annual report, business model, moat, หรือความเสี่ยงเชิงเครดิต มาปนในรายงานนี้เด็ดขาด`;
         } else {
           finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in English.
           Please follow this specific Technical Analysis guideline for the JSON fields in "technical_analysis":
           1) signal_summary: status (Buy/Wait/Avoid), trend_weekly/daily/4H, and confluence_score (List signals one by one using Markdown bullet points (one per line) whether they are positive, negative, or neutral, e.g. "MA Cross = Positive, MACD = Negative, RSI = Neutral", do not just sum them up. Then summarize the direction and invalidation level).
-          2) key_levels: current_price (numeric), support 3 levels, resistance 3 levels (Numeric. S1 and R1 must be closest to current price. Must not be too close to each other, use ATR for significance).
-          3) trade_plan: entry_zone (Numeric. If lower than current price, it's a buy on dip), stop_loss, target_1, target_2, risk_reward_ratio.
+          2) key_levels: current_price (numeric), support 3 levels, resistance 3 levels (Numeric. CRITICAL: Each S/R level MUST be at least 1x ATR away from the current price AND at least 1x ATR away from the next level. NEVER set them closer than this threshold. Skip to the next level if too close).
+          3) trade_plan: entry_zone (Numeric. If lower than current price, it's a buy on dip), stop_loss, target_1, target_2, risk_reward_ratio (Calculate Risk/Reward ratio using EXACTLY the same numbers specified in Target 1/Target 2. Do NOT use different numbers. Use the formula (Target - Entry) / (Entry - Stop-Loss) and show the numbers used in the calculation).
           4) overall_trend: Explain overall picture.
           5) price_structure: Price structure.
           6) volume_analysis: Volume analysis.
-          7) trend_indicators: MA, MACD, ADX.
-          8) momentum_indicators: RSI, Stochastic.
-          9) volatility_indicators: Bollinger Bands, ATR (Single value, not a range).
+          7) trend_indicators: MA, MACD, ADX (CRITICAL: Indicators like MACD and ADX MUST be exact single current values, NOT ranges).
+          8) momentum_indicators: RSI, Stochastic (CRITICAL: RSI and Stochastic MUST be exact single current values, NOT ranges).
+          9) volatility_indicators: Bollinger Bands, ATR
           10) chart_patterns: Chart patterns.
           11) relative_strength: Relative to market.
-          12) technical_risks: Risks (false breakout, gap risk, low volume).
+          12) technical_risks: Technical risks (MUST cover all 4 types: 1. False breakout/whipsaw risk, 2. Gap risk e.g., upcoming earnings/news, 3. Low volume/liquidity risk, 4. Current market regime trending vs choppy/sideways. Do not skip any of these 4.)
           13) beginner_summary: Straightforward summary for beginners:
            - technical_overview: Overall technical picture in simple terms.
            - top_3_points: 3 interesting points.
            - top_3_cautions: 3 cautions.
            - suitable_trade_style: Suitable style (day/swing/position, must match trade plan).
           14) scoring: Score 1-10 with reasons.
-          15) final_verdict_summary: Final short summary.`;
+          15) final_verdict_summary: Final short summary.
+          CRITICAL RULES:
+          - Technical Analysis MUST rely ONLY on price, volume, and technical indicators. NEVER include or reference fundamental data (e.g., 10-K, 10-Q, annual reports, business models, moats, or credit risks) in the technical analysis section.`;
         }
         
         dynamicSchema = `{
@@ -293,7 +297,7 @@ async function startServer() {
   },
   "deep_insights": [
     {
-      "category": "Risk Assessment",
+      "category": "${analysisType === 'technical' ? 'Technical Pattern' : 'Risk Assessment'}",
       "title": "...",
       "description": "...",
       "impact_score": 8
@@ -323,7 +327,7 @@ async function startServer() {
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats.
+          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats. STRICTLY FORBIDDEN to use Japanese (e.g., Katakana like ゾーン), Chinese, or any other languages. Translate terms like 'zone' to Thai (โซน).
           Please follow this specific guideline for BOTH Fundamental and Technical Analysis:
           
           - Fundamental Analysis:
@@ -346,17 +350,17 @@ async function startServer() {
           
           - Technical Analysis:
           1) signal_summary: สรุปสถานะ (Buy/Wait/Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมดจากหัวข้อข้างต้น ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, RSI = บวก" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน โดยต้องใช้ Markdown bullet points (ขึ้นบรรทัดใหม่แต่ละข้อ) เพื่อให้อ่านง่าย จากนั้นสรุปทิศทางรวม และระบุ Invalidation level ระดับราคาที่ถ้าหลุด/break จะทำให้มุมมองเปลี่ยนไป)
-          2) key_levels: แนวรับ (support) 3 ระดับ, แนวต้าน (resistance) 3 ระดับ เป็นตัวเลข (ต้องเรียงลำดับให้ S1 และ R1 อยู่ใกล้ราคาปัจจุบันที่สุดเสมอ และตัวเลขเหล่านี้ต้องตรงกับที่วิเคราะห์ไว้ใน price_structure และ chart_patterns อย่างเคร่งครัด ห้ามใช้สูตรคำนวณแยก)
-          3) trade_plan: แผนการเทรด จุดเข้า, stop loss, target 1, target 2, และ Risk/Reward ratio (คำแนะนำสไตล์เทรดต้องสอดคล้องกับแผนเข้าจริง เช่น ถ้าโซนเข้าซื้ออยู่สูงกว่าราคาปัจจุบัน ต้องเรียกว่า Breakout/Confirmation ไม่ใช่ Buy on Dip)
+          2) key_levels: แนวรับ (support) 3 ระดับ, แนวต้าน (resistance) 3 ระดับ เป็นตัวเลข (สำคัญมาก: แต่ละระดับ S/R ต้องห่างจากราคาปัจจุบันอย่างน้อย 1 เท่าของค่า ATR (1x ATR) และห่างจากระดับถัดไปอย่างน้อย 1x ATR เช่นกัน ห้ามระบุระดับที่ใกล้กว่าเกณฑ์นี้เด็ดขาด หากพบว่าใกล้เกินไปให้ข้ามไปหาระดับถัดไปที่ห่างพอแทน ต้องตรงกับที่วิเคราะห์ไว้ใน price_structure อย่างเคร่งครัด)
+          3) trade_plan: แผนการเทรด จุดเข้า, stop loss, target 1, target 2, และ Risk/Reward ratio (คำนวณ risk/reward ratio จากจุดเข้า-stop-target โดยใช้ตัวเลขเดียวกันเป๊ะกับ Target 1/Target 2 ห้ามใช้ตัวเลขคนละตัวในการคำนวณ ให้ใช้สูตร (Target - Entry) / (Entry - Stop-Loss) และแสดงตัวเลขที่ใช้คำนวณกำกับไว้ด้วย คำแนะนำสไตล์เทรดต้องสอดคล้องกับแผนเข้าจริง)
           4) overall_trend: อธิบายภาพรวม
           5) price_structure: โครงสร้างราคา
           6) volume_analysis: วิเคราะห์ Volume
-          7) trend_indicators: MA, MACD, ADX
-          8) momentum_indicators: RSI, Stochastic
+          7) trend_indicators: MA, MACD, ADX (สำคัญ: MACD, ADX ต้องระบุเป็นค่าตัวเลขเดียว ณ ปัจจุบัน ห้ามรายงานเป็นช่วงกว้างเด็ดขาด)
+          8) momentum_indicators: RSI, Stochastic (สำคัญ: RSI, Stochastic ต้องระบุเป็นค่าตัวเลขเดียว ณ ปัจจุบัน ห้ามรายงานเป็นช่วงกว้างเด็ดขาด)
           9) volatility_indicators: Bollinger Bands, ATR (ระวังอย่าให้ค่า ATR และ MACD สลับกันหรือซ้ำกัน)
           10) chart_patterns: รูปแบบราคา
           11) relative_strength: เทียบกับตลาด
-          12) technical_risks: ความเสี่ยง
+          12) technical_risks: ความเสี่ยงเชิงเทคนิคที่ต้องรู้ (ต้องตอบให้ครบ 4 ประเด็นนี้: 1. ความเสี่ยงจากสัญญาณหลอก (false breakout/whipsaw), 2. gap risk (เช่น ข่าว/earnings ถัดไป), 3. ความเสี่ยงจาก volume/liquidity ต่ำ, 4. regime ปัจจุบัน (trending หรือ choppy/sideways) ห้ามตอบแค่ข้อเดียวแล้วข้ามข้ออื่น)
           13) beginner_summary: สรุปให้มือใหม่ตัดสินใจแบบตรงไปตรงมา:
            - technical_overview: ภาพรวมเทคนิคอลตอนนี้เป็นแบบไหนในภาษาคนทั่วไป
            - top_3_points: จุดที่น่าสนใจ 3 ข้อ
@@ -372,11 +376,14 @@ async function startServer() {
           - ใช้ตัวเลขล่าสุดเท่าที่หาได้ ระบุแหล่งที่มาและช่วงเวลา (ไตรมาส/ปี)
           - อธิบายศัพท์ยากเป็นภาษาง่ายในวงเล็บ ตอบแบบภาษาคนลงทุน ไม่ใช่ภาษาทางการแข็ง ๆ
           - เทียบกับคู่แข่งหรืออุตสาหกรรมในจุดที่ทำได้
-          - ระวังอคติจากฝั่งผู้บริหาร (management bias) 
+          - ระวังอคติจากฝั่งผู้บริหาร (management bias)
+          - ส่วน Technical Analysis ต้องอยู่บนพื้นฐานของราคา ปริมาณการซื้อขาย และอินดิเคเตอร์เท่านั้น ห้ามดึงเนื้อหา Fundamental (เช่น 10-K, moat, credit risk) มาปนในส่วน Technical เด็ดขาด 
           - ห้ามตอบด้วยคำคุณศัพท์ลอยๆ เช่น "แข็งแกร่ง" โดยไม่มีตัวเลข ทุกประโยคต้องมีตัวเลขจริงกำกับ
+          - สำหรับตัวเลขประเภทนับต่อเนื่อง (เช่น กำไรติดต่อกันกี่ไตรมาส) ต้องนับจากข้อมูลจริงย้อนหลังทีละไตรมาสอย่างแม่นยำ ห้ามเดาหรือปัดเลขเด็ดขาด หากข้อมูลไม่พอให้นับ ให้ระบุว่า "ไม่สามารถยืนยันจำนวนที่แน่นอนได้"
           - แต่ละหัวข้อต้องตอบครบทุก bullet ห้ามข้ามเงียบๆ ถ้าหาไม่ได้ให้ระบุว่า "ไม่พบข้อมูลนี้ในเอกสารที่มี" (โดยเฉพาะส่วนที่ถามถึง Cash Flow และ Debt ห้ามข้ามเด็ดขาด)`;
         } else {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English. Please follow the structure covering both Fundamental and Technical aspects completely.`;
+          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English. Please follow the structure covering both Fundamental and Technical aspects completely.
+          - Technical Analysis MUST rely ONLY on price, volume, and technical indicators. NEVER include or reference fundamental data (e.g., 10-K, 10-Q, annual reports, business models, moats, or credit risks) in the technical analysis section.`;
         }
         
         dynamicSchema = `{
@@ -496,7 +503,7 @@ async function startServer() {
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology.
+          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology. STRICTLY FORBIDDEN to use Japanese (e.g., Katakana like ゾーン), Chinese, or any other languages. Translate terms like 'zone' to Thai (โซน).
           Please follow this specific Fundamental Analysis guideline for the JSON fields in "comprehensive_analysis":
           1) บริษัทนี้ทำธุรกิจอะไร (for business_overview): หาเงินจากอะไร สินค้าหรือบริการหลักคืออะไร รายได้แบ่งเป็นกี่ส่วน ส่วนไหนเป็นรายได้หลักสุด ธุรกิจนี้เข้าใจง่ายแบบคนทั่วไปฟังแล้วเห็นภาพ
           2) ลูกค้าของบริษัทคือใคร (for target_customers): ลูกค้าหลักเป็นใคร พึ่งลูกค้ารายใหญ่ไม่กี่รายหรือกระจายดี ลูกค้าเปลี่ยนเจ้าง่ายไหม อะไรทำให้ลูกค้าอยู่กับบริษัทต่อ
@@ -601,7 +608,8 @@ For financial_performance_4q, if the ticker is a regular stock, provide net inco
 
 CRITICAL INSTRUCTIONS FOR QUALITATIVE DATA (INSIGHTS & SUMMARIES):
 For the Executive Summary, Key Takeaways, Deep Insights, and Comprehensive Analysis, you MUST leverage BOTH the findings extracted from the SEC filings AND insights from broader open web searches to create a comprehensive analysis. 
-You MUST provide HIGHLY DETAILED, EXTREMELY IN-DEPTH analysis for every field. Do not write short or brief sentences. Elaborate thoroughly with quantitative backing and detailed explanations. IMPORTANT: Use rich Markdown formatting (bullet points, bold text, italics) inside your text fields to make the content highly readable, well-structured, and easy to scan. CRITICAL: For any lists (like strengths, risks, growth, signals), you MUST use proper Markdown list syntax (starting with "- " or "1. ") on NEW lines. Do NOT write "1) ... 2) ..." inline on a single line.
+CRITICAL: ALL technical indicator values (RSI, MACD, ADX, ATR, etc.) MUST be exact single current values. DO NOT report them as ranges (e.g., 35-42 is FORBIDDEN). When stating quantitative facts like "consecutive profitable quarters", YOU MUST BE ABSOLUTELY PRECISE. Count backward exactly from the latest available data. Do NOT guess or round numbers. If the exact consecutive count cannot be confirmed, state "Cannot confirm exact consecutive count" instead of providing an inaccurate number.
+          You MUST provide HIGHLY DETAILED, EXTREMELY IN-DEPTH analysis for every field. Do not write short or brief sentences. Elaborate thoroughly with quantitative backing and detailed explanations. IMPORTANT: Use rich Markdown formatting (bullet points, bold text, italics) inside your text fields to make the content highly readable, well-structured, and easy to scan. CRITICAL: For any lists (like strengths, risks, growth, signals), you MUST use proper Markdown list syntax (starting with "- " or "1. ") on NEW lines. Do NOT write "1) ... 2) ..." inline on a single line.
 
 CRITICAL: You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block in your final text response. The JSON must match the following schema EXACTLY. **HEAVILY PENALIZED:** Do NOT rename keys. Do NOT add extra root-level keys like "macro_risk_analysis". Make sure to populate the "findings" array with exactly the keys "documentType", "keyInsights", "date", and "sourceUrl". For stock_price_history, use exactly the keys "date" and "price". The "deep_insights" array MUST use exactly the keys "category", "title", "description", and "impact_score". Also include the entire "${analysisType === 'technical' ? 'technical_analysis' : analysisType === 'fundamental' ? 'comprehensive_analysis' : 'both comprehensive_analysis and technical_analysis'}" object exactly as structured in the schema:
 ${dynamicSchema}

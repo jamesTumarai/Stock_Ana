@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { FadingVideo } from './components/FadingVideo';
 import { BlurText } from './components/BlurText';
-import { ArrowUpRight, Play, FileText, Activity, ShieldAlert } from 'lucide-react';
+import { ArrowUpRight, Play, FileText, Activity, ShieldAlert, Sparkles } from 'lucide-react';
 
 export function LandingView({ language = 'English' }: { language?: string }) {
   const isThai = language === 'Thai';
@@ -26,6 +26,7 @@ export function LandingView({ language = 'English' }: { language?: string }) {
               {isThai ? "ระบบวิเคราะห์หุ้นด้วย AI" : "AI-Powered Stock Analysis"}
             </span>
           </motion.div>
+          
           
           <BlurText 
             text={isThai ? "Lumina\nวิเคราะห์หุ้นด้วย AI" : "Lumina\nAI Stock Analysis"}

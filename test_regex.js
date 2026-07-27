@@ -1,2 +1,3 @@
-const str = "1. Economic Moat ด้านแบรนด์และ UI/UX ที่เป็นผู้นำนักลงทุนรุ่นใหม่ 2) เครือข่ายการบริการ Financial SuperApp ที่ครบวงจรที่สุดในฝั่งรายย่อย (หุ้น, Options, Crypto, Prediction Markets, Cash, Card) 3) สเกลผู้ใช้งานขนาดใหญ่ 27.7 ล้านราย และ Total Platform Assets สูงถึง $377.0B (ณ พฤษภาคม 2026) 4) ยุทธศาสตร์การต่อยอดความประหยัดเชิงขนาด (Economies of Scale) ทำให้ Adjusted EBITDA Margin อยู่ในระดับสูงเกิน 50%";
-console.log(str.replace(/(?:\s|^)(\d{1,2})[\)\.]\s/g, '\n\n$1. '));
+const text = "RSI = 45.2";
+const match = text.match(/RSI.*?(\d+(\.\d+)?)/i);
+console.log(match ? match[1] : null);

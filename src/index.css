@@ -173,3 +173,10 @@
     font-weight: 700;
   }
 }
+
+@layer base {
+  .prose em, .prose i {
+    font-style: normal !important;
+    font-weight: 600;
+  }
+}

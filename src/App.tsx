@@ -5,7 +5,7 @@ import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/aut
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { FadingVideo } from './components/FadingVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
@@ -640,6 +640,7 @@ export default function App() {
                toolRuns={idx === allReports.length - 1 ? toolRuns : undefined}
                tokenCount={idx === allReports.length - 1 ? tokenCount : undefined}
                documentCount={report.findings?.length || 0}
+               historyReports={historyReports}
                language={selectedLanguage}
                hideHeader={true}
              />
@@ -682,7 +683,7 @@ export default function App() {
       {/* Header */}
       <header className={`flex items-center justify-between px-4 md:px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
         <div className="flex items-center gap-2">
-          <span className="font-display font-bold text-xl tracking-wider uppercase text-white">COIN KING</span>
+          <span className="font-display font-bold text-xl tracking-wider uppercase text-white drop-shadow-md">COIN KING</span>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
           {user ? (
@@ -862,7 +863,7 @@ export default function App() {
             </div>
             
             <div className="text-center mt-4">
-              <span className="text-xs text-white/40 font-mono tracking-wider">Gemini can make mistakes, don’t rely on it for financial advice.</span>
+              <span className="text-xs text-white/40 font-mono tracking-wider">{selectedLanguage === 'Thai' ? 'Gemini อาจให้ข้อมูลผิดพลาดได้ โปรดตรวจสอบด้วยตนเองและไม่ควรใช้เป็นคำแนะนำทางการลงทุน' : 'Gemini can make mistakes, don’t rely on it for financial advice.'}</span>
             </div>
           </div>
         </div>
