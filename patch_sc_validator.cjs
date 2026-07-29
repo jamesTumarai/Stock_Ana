@@ -1,39 +1,14 @@
 const fs = require('fs');
 let content = fs.readFileSync('server.ts', 'utf8');
 
-// Find the start of the block
-const startIdx = content.indexOf("if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {");
-if (startIdx === -1) throw new Error("Start not found");
+const regex = /if \(useSelfConsistency && \(analysisType === 'technical' \|\| analysisType === 'combined'\)\) \{[\s\S]*?res\.end\(\);\s*return;\s*\}/g;
 
-// Find the matching closing brace
-let count = 0;
-let endIdx = -1;
-for (let i = startIdx + 89; i < content.length; i++) {
-    if (content[i] === '{') count++;
-    if (content[i] === '}') {
-        if (count === 0) {
-            endIdx = i;
-            break;
-        }
-        count--;
-    }
-}
-if (endIdx === -1) throw new Error("End not found");
-
-const replacement = `if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
-          res.write(\`data: \${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Validation Protocol...' })}\\n\\n\`);
+const replacement = `      if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
+          res.write(\`data: \${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Self-Consistency & Validation Protocol...' })}\\n\\n\`);
           
           res.write(\`data: \${JSON.stringify({ type: 'thinking', text: 'Running Primary Analyst Agent...' })}\\n\\n\`);
           
           const resAgent = await createInteraction({ prompt, inlineSources: agentFiles, tools: [{ type: "google_search" }], model: actualModel });
-          if (!resAgent.ok) {
-              const errTxt = await resAgent.text();
-              res.write(\`data: \${JSON.stringify({ type: 'error', message: "Primary agent failed: " + errTxt })}\\n\\n\`);
-              res.write(\`data: [DONE]\\n\\n\`);
-              res.end();
-              return;
-          }
-
           const stream = streamInteraction(resAgent);
           let fullText = "";
           for await (const event of stream) {
@@ -91,6 +66,7 @@ Use the exact schema requested originally:
           return;
       }`;
 
-content = content.substring(0, startIdx) + replacement + content.substring(endIdx + 1);
+content = content.replace(regex, replacement);
+
 fs.writeFileSync('server.ts', content);
-console.log('Fixed server.ts block');
+console.log('Patched server.ts with Validator SC logic');

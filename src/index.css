@@ -180,3 +180,22 @@
     font-weight: 600;
   }
 }
+
+video::-webkit-media-controls {
+    display: none !important;
+}
+video::-webkit-media-controls-enclosure {
+    display: none !important;
+}
+video::-webkit-media-controls-start-playback-button {
+    display: none !important;
+}
+video::-webkit-media-controls-play-button {
+    display: none !important;
+}
+
+html, body {
+  background-color: #000;
+  overscroll-behavior-y: none;
+  touch-action: pan-x pan-y;
+}

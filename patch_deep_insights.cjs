@@ -1,15 +1,13 @@
 const fs = require('fs');
-
 let code = fs.readFileSync('src/ReportTemplate.tsx', 'utf8');
 
-const regex = /{([^}]+) && data\.deep_insights && data\.deep_insights\.length > 0 && \(/;
+const targetStr = `{(!data.technical_analysis || data.comprehensive_analysis) && data.deep_insights && data.deep_insights.length > 0 && (`;
+const replacementStr = `{data.analysis_type !== 'technical' && data.deep_insights && data.deep_insights.length > 0 && (`;
 
-const match = code.match(regex);
-if (match) {
-    console.log("Found: ", match[0]);
-    code = code.replace(match[1], '(!data.technical_analysis || data.comprehensive_analysis)');
+if (code.includes(targetStr)) {
+    code = code.replace(targetStr, replacementStr);
     fs.writeFileSync('src/ReportTemplate.tsx', code);
-    console.log("Patched successfully.");
+    console.log("Patched Deep Insights condition successfully.");
 } else {
-    console.log("Not found.");
+    console.log("Target string not found.");
 }

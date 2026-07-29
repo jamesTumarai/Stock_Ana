@@ -223,6 +223,7 @@ const KeyLevelsVisualizer = ({ currentPrice, support, resistance, isThai }: { cu
 
 export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0, toolRuns = 0, tokenCount = 0, documentCount = 0, language = 'English', hideHeader = false, historyReports = [] }: Props) {
   const isThai = language === 'Thai';
+  const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
 
   const generatePDF = () => {
     window.print();
@@ -323,7 +324,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         </div>
 
         {/* Comprehensive Analysis */}
-        {data.comprehensive_analysis && (
+        {data.analysis_type !== 'technical' && data.comprehensive_analysis && (
           <div className="flex flex-col gap-4 md:p-6 mt-2">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
               {isThai ? "การวิเคราะห์ปัจจัยพื้นฐานเชิงลึก" : "Comprehensive Fundamental Analysis"}
@@ -482,8 +483,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             </AnalysisCard>
           </div>
         )}
-
-        {/* Technical Analysis */}
+{/* Technical Analysis */}
         {data.technical_analysis && (
           <div className="flex flex-col gap-4 md:p-6 mt-2">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
@@ -523,7 +523,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                    </div>
                  </div>
                  <div className="flex justify-center">
-                   <TrackRecordBadge ticker={ticker} currentPrice={parseFloat(data.technical_analysis.key_levels?.current_price)} historyReports={historyReports} isThai={isThai} />
+                   <TrackRecordBadge ticker={ticker} currentPrice={parseFloat(String(data.technical_analysis.key_levels?.current_price || "0"))} historyReports={historyReports} isThai={isThai} />
                  </div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "แนวโน้ม (Trend)" : "Trend Badges"} className="bg-stone-50">
@@ -726,8 +726,10 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
           </div>
         )}
 
+
+
         {/* Deep Insights */}
-        {(!data.technical_analysis || data.comprehensive_analysis) && data.deep_insights && data.deep_insights.length > 0 && (
+        {!isTechnicalOnly && data.deep_insights && data.deep_insights.length > 0 && (
           <div className="mt-8">
             <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6">{isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6">
@@ -751,7 +753,9 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             </div>
           </div>
         )}
+
         
+
         {/* Detailed Findings */}
         <div className="mt-8">
            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6">{isThai ? "ผลการค้นพบในเอกสาร" : "Document Findings"}</h2>

@@ -11,7 +11,7 @@ export function LandingView({ language = 'English' }: { language?: string }) {
     <div className="absolute inset-0 overflow-y-auto no-scrollbar bg-transparent">
       
       {/* Section 1 — Hero */}
-      <div className="relative w-full min-h-[100dvh] flex flex-col justify-center items-center overflow-hidden z-0">
+      <div className="relative w-full min-h-screen flex flex-col justify-center items-center overflow-hidden z-0">
         
         <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center pt-32 md:pt-40 px-4 text-center">
           

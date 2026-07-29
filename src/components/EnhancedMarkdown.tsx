@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Props {
   children: string;
@@ -42,7 +43,7 @@ export const EnhancedMarkdown: React.FC<Props> = ({ children, findings = [] }) =
   };
 
   return (
-    <Markdown components={components}>
+    <Markdown remarkPlugins={[remarkGfm]} components={components}>
       {processedText}
     </Markdown>
   );

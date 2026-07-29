@@ -73,7 +73,7 @@ export function FadingVideo({ src, className, style }: { src: string, className?
       ref={videoRef}
       src={src}
       className={className}
-      style={{ ...style, opacity: 0 }}
+      style={{ ...style, opacity: 0, pointerEvents: "none" }}
       autoPlay 
       muted 
       playsInline 
