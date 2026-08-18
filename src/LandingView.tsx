@@ -1,11 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight } from 'lucide-react';
 
 interface LandingViewProps {
-  onStart?: () => void;
-  onLogin?: () => void;
-  user?: any;
-  onOpenHistory?: () => void;
+  language: string;
+  setLanguage: (lang: string) => void;
+  analysisType: 'fundamental' | 'technical' | 'combined';
+  setAnalysisType: (type: 'fundamental' | 'technical' | 'combined') => void;
+  useSelfConsistency: boolean;
+  setUseSelfConsistency: (val: boolean) => void;
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+  ticker: string;
+  setTicker: (t: string) => void;
+  instruction: string;
+  setInstruction: (i: string) => void;
+  runAnalysis: () => void;
+  running: boolean;
+  user: any;
+  onLogin: () => void;
+  onLogout: () => void;
+  onOpenHistory: () => void;
 }
 
 interface StatItem {
@@ -13,18 +28,19 @@ interface StatItem {
   target: number;
   suffix: string;
   decimals: number;
-  label: string;
+  labelEn: string;
+  labelTh: string;
   delay: string;
 }
 
 const STATS: StatItem[] = [
-  { glyph: '<', target: 120, suffix: 'ms', decimals: 0, label: 'Inference Time', delay: '0.5s' },
-  { glyph: '%', target: 99.99, suffix: '%', decimals: 2, label: 'Platform Uptime', delay: '0.58s' },
-  { glyph: '*', target: 24, suffix: '/7', decimals: 0, label: 'Autonomous Runtime', delay: '0.66s' },
-  { glyph: '#', target: 2.4, suffix: 'M', decimals: 1, label: 'Context Windows', delay: '0.74s' },
+  { glyph: '<', target: 100, suffix: '%', decimals: 0, labelEn: 'Audited SEC 10-K/10-Q Data', labelTh: 'ข้อมูลจริงจากเอกสาร SEC 10-K/10-Q 100%', delay: '0.5s' },
+  { glyph: '%', target: 4, suffix: 'x', decimals: 0, labelEn: 'Parallel AI Agent Swarm', labelTh: '4x Multi-Agent AI วิเคราะห์เจาะลึก', delay: '0.58s' },
+  { glyph: '*', target: 3, suffix: ' TF', decimals: 0, labelEn: 'Institutional Trade Plans & R:R', labelTh: 'คำนวณแผนเทรด & Risk/Reward อัตโนมัติ', delay: '0.66s' },
+  { glyph: '#', target: 3.7, suffix: ' Flash', decimals: 1, labelEn: 'Gemini Conviction Score Engine', labelTh: 'Gemini 3.7 Flash ประเมิน Conviction Score', delay: '0.74s' },
 ];
 
-function StatCounter({ stat }: { stat: StatItem }) {
+function StatCounter({ stat, isThai }: { stat: StatItem; isThai: boolean }) {
   const [currentValue, setCurrentValue] = useState(0);
   const [hasAnimated, setHasAnimated] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -93,32 +109,50 @@ function StatCounter({ stat }: { stat: StatItem }) {
         <span className="text-white/90 ml-0.5">{stat.suffix}</span>
       </div>
       <div className="text-[#8e8e8e] font-normal mt-0.5" style={{ fontSize: 'clamp(11px, 1.2vw, 12.5px)' }}>
-        {stat.label}
+        {isThai ? stat.labelTh : stat.labelEn}
       </div>
     </div>
   );
 }
 
-export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingViewProps) {
+export function LandingView({
+  language,
+  setLanguage,
+  analysisType,
+  setAnalysisType,
+  useSelfConsistency,
+  setUseSelfConsistency,
+  selectedModel,
+  setSelectedModel,
+  ticker,
+  setTicker,
+  instruction,
+  setInstruction,
+  runAnalysis,
+  running,
+  user,
+  onLogin,
+  onLogout,
+  onOpenHistory,
+}: LandingViewProps) {
+  const isThai = language === 'Thai';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeNav, setActiveNav] = useState('Home');
 
-  const navItems = ['Home', 'Product', 'Case Studies', 'Contact'];
+  const quickTickers = ['SOFI', 'NVDA', 'AAPL', 'TSLA', 'PLTR', 'COIN'];
 
-  const handleCtaClick = () => {
-    if (onStart) {
-      onStart();
-    } else {
-      const input = document.querySelector('input[placeholder="US TICKER"]') as HTMLInputElement;
-      if (input) {
-        input.focus();
-        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
+  const navModes: { id: 'fundamental' | 'technical' | 'combined'; labelEn: string; labelTh: string }[] = [
+    { id: 'combined', labelEn: 'All-in-One', labelTh: 'วิเคราะห์รวม' },
+    { id: 'fundamental', labelEn: 'Fundamental', labelTh: 'ปัจจัยพื้นฐาน' },
+    { id: 'technical', labelEn: 'Technical', labelTh: 'เทคนิคอล' },
+  ];
+
+  const handleSelectQuickTicker = (sym: string) => {
+    setTicker(sym);
   };
 
   return (
     <div className="relative w-full h-full min-h-[100vh] min-h-[100dvh] overflow-hidden bg-black text-white select-none">
+      
       {/* Background Video */}
       <div className="absolute inset-0 z-0 overflow-hidden bg-black pointer-events-none">
         <video
@@ -133,77 +167,69 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
             type="video/mp4"
           />
         </video>
-        {/* Subtle dark ambient gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-black/35 pointer-events-none" />
       </div>
 
-      {/* Main Single-Viewport Page Layout */}
+      {/* Main Single-Viewport Page Layout (3 Regions: Header, Hero, Stats) */}
       <div 
         className="relative z-10 w-full h-full min-h-[100vh] min-h-[100dvh] flex flex-col justify-between items-center overflow-hidden"
         style={{
           padding: 'clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px)',
         }}
       >
-        {/* 1) Header */}
+        
+        {/* 1) Top Header */}
         <header 
-          className="w-full max-w-[720px] flex items-center justify-between md:justify-center shrink-0 z-50 transition-all"
+          className="w-full max-w-[840px] flex items-center justify-between md:justify-center shrink-0 z-50 transition-all"
           style={{
-            gap: 'clamp(18px, 2.8vw, 28px)',
+            gap: 'clamp(14px, 2.4vw, 24px)',
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
         >
-          {/* Logo */}
-          <button
-            onClick={() => setActiveNav('Home')}
-            className="rounded-full bg-white flex items-center justify-center shrink-0 cursor-pointer transition-transform duration-300 hover:scale-104 shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
+          {/* Logo (Circular White Button) */}
+          <div
+            className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform hover:scale-104 cursor-pointer"
             style={{
               width: 'clamp(40px, 4.4vw, 46px)',
               height: 'clamp(40px, 4.4vw, 46px)',
             }}
-            title="Home"
+            title="Lumina AI"
           >
-            {/* Aperture Logo Icon */}
-            <svg 
-              viewBox="0 0 100 100" 
-              className="w-[72%] h-[72%] object-contain" 
-              fill="#111111"
-            >
+            <svg viewBox="0 0 100 100" className="w-[72%] h-[72%] object-contain" fill="#111111">
               <path d="M50 14 A36 36 0 0 1 86 50 L70 50 A20 20 0 0 0 50 30 Z" />
               <path d="M86 50 A36 36 0 0 1 50 86 L50 70 A20 20 0 0 0 70 50 Z" />
               <path d="M50 86 A36 36 0 0 1 14 50 L30 50 A20 20 0 0 0 50 70 Z" />
               <path d="M14 50 A36 36 0 0 1 50 14 L50 30 A20 20 0 0 0 30 50 Z" />
               <circle cx="50" cy="50" r="7" fill="#111111" />
             </svg>
-          </button>
+          </div>
 
-          {/* Desktop Nav Pill (White) */}
+          {/* Center Floating White Nav Pill */}
           <nav 
-            className="hidden md:flex items-center justify-between flex-1 max-w-[430px] bg-white rounded-full px-2 shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
+            className="hidden md:flex items-center justify-between bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
             style={{
               height: 'clamp(44px, 5.2vw, 48px)',
               padding: '4px 10px',
+              gap: '4px',
             }}
           >
-            {navItems.map((item) => {
-              const isActive = activeNav === item;
+            {navModes.map((mode) => {
+              const isActive = analysisType === mode.id;
               return (
                 <button
-                  key={item}
-                  onClick={() => {
-                    setActiveNav(item);
-                    if (item === 'Product' || item === 'Home') handleCtaClick();
-                  }}
-                  className={`relative px-3.5 py-1.5 font-medium transition-all duration-200 cursor-pointer ${
+                  key={mode.id}
+                  onClick={() => setAnalysisType(mode.id)}
+                  className={`relative px-4 py-1.5 font-medium transition-all duration-200 cursor-pointer ${
                     isActive 
-                      ? 'text-[#2e2e2e] opacity-100' 
+                      ? 'text-[#2e2e2e] opacity-100 font-semibold' 
                       : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
                   }`}
                   style={{
-                    fontSize: 'clamp(13px, 1.4vw, 15px)',
+                    fontSize: 'clamp(13px, 1.4vw, 14.5px)',
                     letterSpacing: '-0.01em',
                   }}
                 >
-                  {item}
+                  {isThai ? mode.labelTh : mode.labelEn}
                   {/* Active 3-dot indicator */}
                   {isActive && (
                     <span 
@@ -213,25 +239,61 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
                 </button>
               );
             })}
+
+            {/* Language Switch */}
+            <div className="h-4 w-px bg-stone-300 mx-1" />
+            <button
+              onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
+              className="px-3 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100"
+              title="Switch Language"
+            >
+              {isThai ? 'EN' : 'ไทย'}
+            </button>
           </nav>
 
-          {/* Desktop Sign In / User */}
-          <div className="hidden md:block">
+          {/* Right Controls: Deep Think & User Account */}
+          <div className="hidden md:flex items-center gap-2">
+            {/* Deep Think Pill */}
+            <button
+              onClick={() => setUseSelfConsistency(!useSelfConsistency)}
+              className={`rounded-full font-medium transition-all duration-200 flex items-center gap-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer ${
+                useSelfConsistency 
+                  ? 'bg-[#28282a] text-white border border-white/30' 
+                  : 'bg-[#28282a]/80 text-[#8e8e8e] hover:text-white'
+              }`}
+              style={{
+                height: 'clamp(44px, 5.2vw, 48px)',
+                padding: '0 clamp(14px, 1.8vw, 18px)',
+                fontSize: 'clamp(12px, 1.3vw, 13.5px)',
+              }}
+              title="Deep Think Mode"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${useSelfConsistency ? 'text-yellow-300' : 'text-[#8e8e8e]'}`} />
+              <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+            </button>
+
+            {/* User Account / Sign In */}
             {user ? (
-              <button
-                onClick={onOpenHistory}
-                className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] flex items-center gap-2 cursor-pointer"
-                style={{
-                  height: 'clamp(44px, 5.2vw, 48px)',
-                  padding: '0 clamp(16px, 2vw, 22px)',
-                  fontSize: 'clamp(13px, 1.4vw, 14.5px)',
-                }}
-              >
+              <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+                <button
+                  onClick={onOpenHistory}
+                  className="text-xs text-[#c8c8c8] hover:text-white px-2.5 py-1 flex items-center gap-1 cursor-pointer transition-colors"
+                  title="History"
+                >
+                  <HistoryIcon className="w-3.5 h-3.5" />
+                  <span>{isThai ? 'ประวัติ' : 'History'}</span>
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="text-xs text-[#c8c8c8] hover:text-red-400 px-2 py-1 cursor-pointer transition-colors"
+                  title="Logout"
+                >
+                  {isThai ? 'ออก' : 'Exit'}
+                </button>
                 {user.photoURL && (
-                  <img src={user.photoURL} alt="User" className="w-5 h-5 rounded-full border border-white/20" />
+                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border border-white/20 ml-1" />
                 )}
-                <span>History</span>
-              </button>
+              </div>
             ) : (
               <button
                 onClick={onLogin}
@@ -247,92 +309,78 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
             )}
           </div>
 
-          {/* Mobile Burger Button */}
+          {/* Mobile Menu Toggle Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className={`md:hidden flex flex-col items-center justify-center rounded-full w-12 h-12 transition-all duration-300 shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer ${
               mobileMenuOpen ? 'bg-white' : 'bg-[#28282a]'
             }`}
             aria-label="Toggle menu"
-            aria-expanded={mobileMenuOpen}
           >
-            <span
-              className={`w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${
-                mobileMenuOpen 
-                  ? 'bg-black translate-y-[6.5px] rotate-45' 
-                  : 'bg-white mb-1'
-              }`}
-            />
-            <span
-              className={`w-[18px] h-[1.5px] rounded-full transition-opacity duration-300 ${
-                mobileMenuOpen ? 'opacity-0' : 'bg-white mb-1'
-              }`}
-            />
-            <span
-              className={`w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${
-                mobileMenuOpen 
-                  ? 'bg-black -translate-y-[6.5px] -rotate-45' 
-                  : 'bg-white'
-              }`}
-            />
+            <span className={`w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${mobileMenuOpen ? 'bg-black translate-y-[6.5px] rotate-45' : 'bg-white mb-1'}`} />
+            <span className={`w-[18px] h-[1.5px] rounded-full transition-opacity duration-300 ${mobileMenuOpen ? 'opacity-0' : 'bg-white mb-1'}`} />
+            <span className={`w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${mobileMenuOpen ? 'bg-black -translate-y-[6.5px] -rotate-45' : 'bg-white'}`} />
           </button>
         </header>
 
-        {/* Mobile Menu Sheet Modal */}
+        {/* Mobile Dropdown Sheet Modal */}
         <AnimatePresence>
           {mobileMenuOpen && (
             <>
-              {/* Overlay */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.28 }}
                 onClick={() => setMobileMenuOpen(false)}
-                className="fixed inset-0 bg-black/62 backdrop-blur-md z-40 md:hidden"
+                className="fixed inset-0 bg-black/65 backdrop-blur-md z-40 md:hidden"
               />
-
-              {/* Sheet */}
               <motion.div
                 initial={{ opacity: 0, y: -12, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -12, scale: 0.97 }}
                 transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-                className="fixed top-20 left-4 right-4 bg-white text-[#2e2e2e] rounded-[28px] p-[22px_18px_20px] shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-50 flex flex-col gap-2 md:hidden"
+                className="fixed top-20 left-4 right-4 bg-white text-[#2e2e2e] rounded-[28px] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-50 flex flex-col gap-2.5 md:hidden"
               >
-                {navItems.map((item, idx) => {
-                  const isActive = activeNav === item;
-                  return (
-                    <button
-                      key={item}
-                      onClick={() => {
-                        setActiveNav(item);
-                        setMobileMenuOpen(false);
-                        if (item === 'Product' || item === 'Home') handleCtaClick();
-                      }}
-                      className={`w-full py-2.5 px-4 text-center font-medium rounded-xl relative transition-colors ${
-                        isActive ? 'text-black font-semibold bg-stone-100' : 'text-stone-600 hover:text-black'
-                      }`}
-                      style={{ animation: `linkIn 0.3s cubic-bezier(0.22,1,0.36,1) ${idx * 0.05}s both` }}
-                    >
-                      {item}
-                      {isActive && (
-                        <span className="absolute left-1/2 -translate-x-1/2 bottom-2 w-[3px] h-[3px] bg-black rounded-full shadow-[-5px_0_0_#000,5px_0_0_#000]" />
-                      )}
-                    </button>
-                  );
-                })}
+                <div className="text-xs text-stone-700 font-bold uppercase tracking-wider px-2 pb-1 border-b border-stone-200">
+                  {isThai ? 'โหมดการวิเคราะห์' : 'Analysis Mode'}
+                </div>
+                {navModes.map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => {
+                      setAnalysisType(mode.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full py-2.5 px-4 text-left font-medium rounded-xl transition-colors flex items-center justify-between ${
+                      analysisType === mode.id ? 'bg-stone-900 text-white' : 'text-stone-700 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span>{isThai ? mode.labelTh : mode.labelEn}</span>
+                    {analysisType === mode.id && <span>✓</span>}
+                  </button>
+                ))}
 
-                <div className="pt-2 mt-1 border-t border-stone-200">
+                <div className="pt-2 border-t border-stone-200 flex items-center justify-between px-2">
+                  <span className="text-xs font-medium text-stone-700">{isThai ? 'ภาษา (Language)' : 'Language'}</span>
+                  <button
+                    onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
+                    className="px-3 py-1 bg-stone-100 font-bold text-xs rounded-full"
+                  >
+                    {isThai ? 'ไทย (TH)' : 'English (EN)'}
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-stone-200">
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      if (user && onOpenHistory) onOpenHistory();
-                      else if (onLogin) onLogin();
+                      if (user) onOpenHistory();
+                      else onLogin();
                     }}
-                    className="w-full py-3 bg-[#28282a] text-white hover:bg-black font-medium rounded-full text-sm transition-colors cursor-pointer"
+                    className="w-full py-3 bg-[#28282a] text-white hover:bg-black font-medium rounded-full text-sm text-center transition-colors cursor-pointer"
                   >
-                    {user ? 'View History' : 'Sign In'}
+                    {user ? (isThai ? 'ดูประวัติการวิเคราะห์' : 'View History') : 'Sign In'}
                   </button>
                 </div>
               </motion.div>
@@ -340,68 +388,46 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
           )}
         </AnimatePresence>
 
-        {/* 2) Hero Section */}
+        {/* 2) Hero Center Section */}
         <main className="w-full max-w-[900px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2">
-          {/* Trust Row */}
+          
+          {/* Trust Row / AI & Market Intelligence Badge */}
           <div 
-            className="anim inline-flex items-center justify-center mb-[clamp(16px,2.5vh,26px)] select-none"
+            className="anim inline-flex items-center justify-center mb-[clamp(14px,2.2vh,22px)] select-none"
             style={{ 
               ['--d' as any]: '0.05s',
               ['--trust-size' as any]: 'clamp(36px, 4.5vw, 42px)'
             }}
           >
-            {/* Avatars Container */}
+            {/* 3 Overlapping Brand / Market Badges */}
             <div className="flex items-center">
-              {/* Microsoft Avatar */}
+              {/* SEC Badge */}
               <div 
                 className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
-                style={{
-                  width: 'var(--trust-size)',
-                  height: 'var(--trust-size)',
-                  zIndex: 1,
-                }}
+                style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', zIndex: 1 }}
               >
-                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i 
-                    className="fa-brands fa-microsoft" 
-                    style={{ fontSize: 'calc(var(--trust-size) * 0.36)' }}
-                  />
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111] font-bold text-[10px] tracking-tight">
+                  SEC
                 </div>
               </div>
 
-              {/* Amazon Avatar */}
+              {/* NASDAQ Badge */}
               <div 
                 className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[4px]"
-                style={{
-                  width: 'var(--trust-size)',
-                  height: 'var(--trust-size)',
-                  marginLeft: 'calc(var(--trust-size) * -0.42)',
-                  zIndex: 2,
-                }}
+                style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 2 }}
               >
-                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i 
-                    className="fa-brands fa-amazon" 
-                    style={{ fontSize: 'calc(var(--trust-size) * 0.36)' }}
-                  />
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111] font-bold text-[9px] tracking-tight">
+                  US
                 </div>
               </div>
 
-              {/* Google Avatar */}
+              {/* Gemini Sparkle Badge */}
               <div 
                 className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
-                style={{
-                  width: 'var(--trust-size)',
-                  height: 'var(--trust-size)',
-                  marginLeft: 'calc(var(--trust-size) * -0.42)',
-                  zIndex: 3,
-                }}
+                style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 3 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i 
-                    className="fa-brands fa-google" 
-                    style={{ fontSize: 'calc(var(--trust-size) * 0.36)' }}
-                  />
+                  <Sparkles className="w-3.5 h-3.5 text-black" />
                 </div>
               </div>
             </div>
@@ -418,16 +444,16 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
                 zIndex: 0,
               }}
             >
-              Trusted by 2000+ Enterprises
+              {isThai ? "ขับเคลื่อนด้วย Gemini 3.7 Flash · ข้อมูลตลาดสหรัฐฯ" : "Powered by Gemini 3.7 Flash · US Market AI"}
             </div>
           </div>
 
-          {/* Headline (Dot-Matrix Typography) */}
+          {/* Headline (Dot-Matrix Display Typography) */}
           <h1 
             className="headline font-normal text-white text-center leading-[1.12] whitespace-nowrap overflow-hidden select-none"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(28px, 6.2vw, 80px)',
+              fontSize: 'clamp(32px, 6.8vw, 84px)',
               letterSpacing: 'clamp(-0.08em, -0.04em, -0.04em)',
             }}
           >
@@ -437,7 +463,7 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
                 animation: 'headlineFade 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both',
               }}
             >
-              Intelligence
+              Lumina
             </span>
             <span 
               className="line block mt-1 md:mt-2"
@@ -445,46 +471,88 @@ export function LandingView({ onStart, onLogin, user, onOpenHistory }: LandingVi
                 animation: 'headlineFade 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both',
               }}
             >
-              Designed To Evolve
+              AI Stock Analysis
             </span>
           </h1>
 
           {/* Subhead */}
           <p 
-            className="subhead anim text-[#d0d0d0] font-normal leading-[1.55] max-w-[min(500px,92%)] mt-4 md:mt-5 opacity-80"
+            className="subhead anim text-[#d0d0d0] font-normal leading-[1.55] max-w-[min(540px,94%)] mt-3 md:mt-4 opacity-80"
             style={{
               ['--d' as any]: '0.28s',
-              fontSize: 'clamp(calc(13.5px + 2pt), calc(1.55vw + 2pt), calc(16.5px + 2pt))',
+              fontSize: 'clamp(calc(13px + 2pt), calc(1.4vw + 2pt), calc(16px + 2pt))',
             }}
           >
-            Build applications that reason, adapt and collaborate using a modular AI platform designed for production.
+            {isThai 
+              ? "วิเคราะห์หุ้นสหรัฐฯ เจาะลึกงบการเงิน รายงาน 10-K/10-Q และวางแผนเทรดอย่างแม่นยำ ด้วยพลัง AI ระดับสถาบัน"
+              : "Analyze US stocks, deep financial 10-K/10-Q filings, and institutional technical setups with real-time AI."}
           </p>
 
-          {/* CTA Button */}
-          <div className="mt-6 md:mt-7">
-            <button
-              onClick={handleCtaClick}
-              className="cta-btn anim-pulse bg-white text-black font-semibold rounded-full cursor-pointer transition-all duration-300 hover:scale-102 hover:-translate-y-0.5 active:scale-98"
-              style={{
-                ['--d' as any]: '0.4s',
-                fontSize: 'clamp(13.5px, 1.5vw, 14.5px)',
-                padding: 'clamp(11px, 1.6vh, 13px) clamp(22px, 3vw, 28px)',
-                boxShadow: '0 0 0 1px rgba(255,255,255,0.15), 0 0 22px rgba(255,255,255,0.32), 0 0 44px rgba(255,255,255,0.12)',
-              }}
-            >
-              Get Started
-            </button>
+          {/* Integrated Search Bar in Hero */}
+          <div className="mt-5 md:mt-6 w-full max-w-xl flex flex-col items-center">
+            
+            <div className="w-full liquid-glass border border-white/25 rounded-full p-1.5 md:p-2 flex items-center shadow-2xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
+              <div className="flex items-center gap-2 pl-3 flex-1 min-w-0">
+                <Search className="w-4 h-4 md:w-5 md:h-5 text-white/70 shrink-0" />
+                <input 
+                  type="text"
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value)}
+                  placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA, TSLA)" : "US TICKER (e.g. SOFI, NVDA, TSLA)"}
+                  disabled={running}
+                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-sm md:text-base text-white placeholder-white/40"
+                  onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
+                />
+              </div>
+
+              <button
+                onClick={runAnalysis}
+                disabled={!ticker.trim() || running}
+                className="bg-white text-black font-semibold rounded-full px-5 md:px-7 py-2 md:py-2.5 text-xs md:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_22px_rgba(255,255,255,0.32)]"
+              >
+                {running ? (
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <span>{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </div>
+                )}
+              </button>
+            </div>
+
+            {/* Quick Ticker Chips */}
+            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2.5">
+              <span className="text-[11px] text-white/50 mr-1">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
+              {quickTickers.map((sym) => (
+                <button
+                  key={sym}
+                  onClick={() => handleSelectQuickTicker(sym)}
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-mono transition-all cursor-pointer border ${
+                    ticker.toUpperCase() === sym 
+                      ? 'bg-white text-black border-white font-bold' 
+                      : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/15 hover:text-white'
+                  }`}
+                >
+                  {sym}
+                </button>
+              ))}
+            </div>
           </div>
         </main>
 
-        {/* 3) Stats Footer (Exact 4 Metrics) */}
+        {/* 3) Killer Lumina Stats Footer (4 Impactful App Metrics) */}
         <footer 
           className="w-full max-w-[920px] grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 pt-4 pb-2 shrink-0 z-10"
         >
           {STATS.map((stat) => (
-            <StatCounter key={stat.label} stat={stat} />
+            <StatCounter key={stat.labelEn} stat={stat} isThai={isThai} />
           ))}
         </footer>
+
       </div>
     </div>
   );
