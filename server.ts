@@ -658,7 +658,13 @@ CRITICAL: You MUST output the final synthesis report as a raw JSON object wrappe
 ${dynamicSchema}
 Do not include multiple sub-agents, just do the analysis yourself based on the retrieved documents and searches.
 CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MUST write a short validation text explaining your calculations for the Technical Trade Plan. You MUST explicitly show the ATR value, the distance of each Support/Resistance level from the current price in terms of ATR, and the math for Risk/Reward Ratio 1 and 2. Only after you have written this validation text, output the final JSON.`;
-      const actualModel = model === 'perseus' ? 'gemini-3.6-flash' : model === 'gemini-2.5-pro' ? 'gemini-3.1-pro' : (model || 'gemini-3.5-flash');
+      const actualModel = (model === 'gemini-3.7-flash' || model === 'perseus' || !model)
+        ? 'gemini-3.7-flash'
+        : model === 'gemini-3.6-flash'
+        ? 'gemini-3.6-flash'
+        : model === 'gemini-2.5-pro'
+        ? 'gemini-3.1-pro'
+        : model;
 
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');

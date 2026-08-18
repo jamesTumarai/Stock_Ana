@@ -4,7 +4,7 @@ const ai = new GoogleGenAI({});
 async function test() {
   const req = ai.interactions.create({
     agent: "antigravity-preview-05-2026",
-    agentConfig: { type: "antigravity", model: "gemini-3.6-flash" },
+    agentConfig: { type: "antigravity", model: "gemini-3.7-flash" },
     input: "Hello",
     config: { maxOutputTokens: 8192 }
   });

@@ -206,7 +206,7 @@ export default function App() {
   const [instruction, setInstruction] = useState('');
   const [analysisType, setAnalysisType] = useState<'fundamental' | 'technical' | 'combined'>('combined');
   
-  const [selectedModel, setSelectedModel] = useState<string>('perseus');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('Thai');
   const [useSelfConsistency, setUseSelfConsistency] = useState<boolean>(true);
 
@@ -751,8 +751,9 @@ export default function App() {
               onChange={setSelectedModel}
               disabled={running}
               options={[
+                { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
+                { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
                 { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-                { value: 'perseus', label: 'Gemini 3.6 Flash' },
               ]}
             />
           </div>
@@ -768,7 +769,7 @@ export default function App() {
                 <div className="p-4 bg-white/5 border-b border-white/10 font-bold text-white text-sm flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <img src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" alt="Gemini Sparkle" className="w-5 h-5" />
-                    <span>{selectedModel === 'gemini-3.5-flash' ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'}</span>
+                    <span>{selectedModel === 'gemini-3.7-flash' ? 'Gemini 3.7 Flash' : selectedModel === 'gemini-3.6-flash' || selectedModel === 'perseus' ? 'Gemini 3.6 Flash' : 'Gemini 3.5 Flash'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {running && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}
@@ -874,8 +875,9 @@ export default function App() {
                      disabled={running}
                      className="text-[11px] px-2 py-1.5 bg-white/10 border-white/20 text-white flex-1"
                      options={[
+                       { value: 'gemini-3.7-flash', label: '3.7' },
+                       { value: 'gemini-3.6-flash', label: '3.6' },
                        { value: 'gemini-3.5-flash', label: '3.5' },
-                       { value: 'perseus', label: '3.6' },
                      ]}
                    />
                    <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1.5 rounded border border-white/20 cursor-pointer flex-1 justify-center" onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}>

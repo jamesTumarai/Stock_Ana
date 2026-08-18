@@ -14,6 +14,7 @@ export interface InteractionOptions {
   environmentId?: string;
   previousInteractionId?: string;
   stream?: boolean;
+  model?: string;
   inlineSources?: Array<{
     type: string;
     content: string;
@@ -58,7 +59,7 @@ export async function createInteraction(
     agent: agentName,
     agent_config: {
       type: "antigravity",
-      model: "gemini-3.6-flash"
+      model: opts.model || "gemini-3.7-flash"
     },
     input: [
       {

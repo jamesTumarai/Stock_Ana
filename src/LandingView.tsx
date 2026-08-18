@@ -13,13 +13,13 @@ export function LandingView({ language = 'English' }: { language?: string }) {
       {/* Section 1 — Hero */}
       <div className="relative w-full min-h-screen flex flex-col justify-center items-center overflow-hidden z-0">
         
-        <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center pt-32 md:pt-40 px-4 text-center">
+        <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center pt-20 md:pt-24 px-4 text-center">
           
           <motion.div 
             initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
             animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
             transition={{ delay: 0.4, ease: "easeOut" }}
-            className="liquid-glass rounded-full flex items-center pr-3 mb-6 max-w-full"
+            className="liquid-glass rounded-full flex items-center pr-3 mb-4 max-w-full"
           >
             <span className="bg-white text-black px-3 py-1 text-xs font-semibold rounded-full mr-3">New</span>
             <span className="text-sm text-white/90 truncate">
@@ -30,14 +30,14 @@ export function LandingView({ language = 'English' }: { language?: string }) {
           
           <BlurText 
             text={isThai ? "Lumina\nวิเคราะห์หุ้นด้วย AI" : "Lumina\nAI Stock Analysis"}
-            className="text-5xl md:text-6xl lg:text-7xl font-heading italic text-white leading-[0.95] max-w-4xl justify-center tracking-[-1px] md:tracking-[-2px]"
+            className="text-4xl md:text-5xl lg:text-6xl font-heading italic text-white leading-[0.95] max-w-4xl justify-center tracking-[-1px] md:tracking-[-2px]"
           />
           
           <motion.p 
             initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
             animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
             transition={{ delay: 0.8, ease: "easeOut" }}
-            className="mt-6 text-sm md:text-base text-white max-w-2xl font-body font-light leading-tight px-4"
+            className="mt-4 text-sm md:text-base text-white max-w-2xl font-body font-light leading-tight px-4 opacity-90"
           >
             {isThai 
               ? "วิเคราะห์หุ้น เจาะลึกงบการเงิน และประเมินมูลค่าบริษัทได้อย่างแม่นยำ ด้วยพลังของ AI ที่ดึงข้อมูลเชิงลึกจากแหล่งข้อมูลโดยตรง" 
@@ -48,7 +48,7 @@ export function LandingView({ language = 'English' }: { language?: string }) {
             initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
             animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
             transition={{ delay: 1.1, ease: "easeOut" }}
-            className="flex items-center gap-6 mt-8"
+            className="flex items-center gap-6 mt-6"
           >
             <button 
               className="liquid-glass-strong rounded-full px-5 py-2.5 text-sm font-medium text-white flex items-center gap-1 hover:bg-white/10 transition-colors"
@@ -65,20 +65,20 @@ export function LandingView({ language = 'English' }: { language?: string }) {
             initial={{ filter: 'blur(10px)', opacity: 0, y: 20 }}
             animate={{ filter: 'blur(0px)', opacity: 1, y: 0 }}
             transition={{ delay: 1.3, ease: "easeOut" }}
-            className="flex flex-wrap justify-center items-stretch gap-4 mt-12"
+            className="flex flex-wrap justify-center items-stretch gap-4 mt-8"
           >
-            <div className="liquid-glass p-5 w-[220px] rounded-[1.25rem] flex flex-col items-start text-left">
-              <Activity className="w-7 h-7 text-white mb-auto" />
-              <div className="mt-8">
-                <div className="font-heading italic text-white text-4xl tracking-[-1px] leading-none">Real-time</div>
-                <div className="text-xs text-white font-body font-light mt-2">Market Data & Trends</div>
+            <div className="liquid-glass p-4 w-[200px] md:w-[220px] rounded-[1.25rem] flex flex-col items-start text-left">
+              <Activity className="w-6 h-6 text-white mb-auto" />
+              <div className="mt-4">
+                <div className="font-heading italic text-white text-3xl md:text-4xl tracking-[-1px] leading-none">Real-time</div>
+                <div className="text-xs text-white/80 font-body font-light mt-1">Market Data & Trends</div>
               </div>
             </div>
-            <div className="liquid-glass p-5 w-[220px] rounded-[1.25rem] flex flex-col items-start text-left">
-              <FileText className="w-7 h-7 text-white mb-auto" />
-              <div className="mt-8">
-                <div className="font-heading italic text-white text-4xl tracking-[-1px] leading-none">In-depth</div>
-                <div className="text-xs text-white font-body font-light mt-2">Financial Reports</div>
+            <div className="liquid-glass p-4 w-[200px] md:w-[220px] rounded-[1.25rem] flex flex-col items-start text-left">
+              <FileText className="w-6 h-6 text-white mb-auto" />
+              <div className="mt-4">
+                <div className="font-heading italic text-white text-3xl md:text-4xl tracking-[-1px] leading-none">In-depth</div>
+                <div className="text-xs text-white/80 font-body font-light mt-1">Financial Reports</div>
               </div>
             </div>
           </motion.div>
@@ -89,12 +89,12 @@ export function LandingView({ language = 'English' }: { language?: string }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.4, duration: 1 }}
-          className="relative z-10 flex flex-col items-center gap-4 pb-64 md:pb-40 mt-12 w-full"
+          className="relative z-10 flex flex-col items-center gap-2 pb-36 md:pb-32 mt-6 w-full"
         >
-          <div className="liquid-glass rounded-full px-3.5 py-1 text-xs font-medium text-white">
+          <div className="liquid-glass rounded-full px-3.5 py-1 text-xs font-medium text-white/90">
             {isThai ? "วิเคราะห์ข้อมูลจากตลาดหลักทรัพย์สหรัฐอเมริกา" : "Analyzing data from US stock exchanges"}
           </div>
-          <div className="flex flex-wrap justify-center font-heading italic text-white text-2xl md:text-3xl tracking-tight gap-8 md:gap-16 opacity-80">
+          <div className="flex flex-wrap justify-center font-heading italic text-white/80 text-xl md:text-2xl tracking-tight gap-6 md:gap-12">
             <span>NYSE</span> <span>·</span> <span>NASDAQ</span> <span>·</span> <span>AMEX</span>
           </div>
         </motion.div>

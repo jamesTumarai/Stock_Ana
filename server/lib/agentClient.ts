@@ -59,7 +59,7 @@ export async function createInteraction(
     agent: agentName,
     agent_config: {
       type: "antigravity",
-      model: opts.model || "gemini-3.5-flash"
+      model: opts.model || "gemini-3.7-flash"
     },
     input: [
       {
