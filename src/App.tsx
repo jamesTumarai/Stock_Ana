@@ -224,6 +224,7 @@ export default function App() {
 
   const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
   const [isSummaryCopied, setIsSummaryCopied] = useState<boolean>(false);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   
   const [user, setUser] = useState<User | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -732,85 +733,100 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
         style={{ width: "120%", height: "120%" }} 
       />
       
-      {/* Header */}
-      <header className={`flex items-center justify-between px-4 md:px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-transparent`}>
-        <div className="flex items-center gap-2">
-          <span className="font-display font-bold text-xl tracking-wider uppercase text-white drop-shadow-md">COIN KING</span>
-        </div>
-        <div className="flex items-center gap-2 md:gap-3">
-          {user ? (
-            <div className="flex items-center gap-1 md:gap-4">
-              <button 
-                onClick={() => setIsHistoryModalOpen(true)}
-                className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
-                title="History"
-              >
-                <History className="w-5 h-5 md:hidden" />
-                <span className="hidden md:inline">History</span>
-              </button>
-              <button 
-                onClick={handleLogout}
-                className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
-                title="Logout"
-              >
-                <LogOut className="w-5 h-5 md:hidden" />
-                <span className="hidden md:inline">Logout</span>
-              </button>
-              <img src={user.photoURL || ''} alt="avatar" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white/20 ml-1" />
-            </div>
-          ) : (
-            <button 
-              onClick={handleLogin}
-              className="text-xs md:text-sm font-medium text-white/80 hover:text-white px-3 py-1.5 border border-white/20 rounded-full hover:bg-white/10 transition-colors"
-            >
-              Sign In
-            </button>
-          )}
-          <div className="hidden md:flex items-center gap-2 md:gap-3">
-            <CustomSelect
-              value={analysisType}
-              onChange={(v) => setAnalysisType(v as any)}
-              disabled={running}
-              options={[
-                { value: 'fundamental', label: 'Fundamental Analysis' },
-                { value: 'technical', label: 'Technical Analysis' },
-                { value: 'combined', label: 'Fundamental + Technical' },
-              ]}
-            />
-            <CustomSelect
-              value={selectedLanguage}
-              onChange={setSelectedLanguage}
-              disabled={running}
-              options={[
-                { value: 'English', label: 'English' },
-                { value: 'Thai', label: 'ภาษาไทย' },
-              ]}
-            />
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 shadow-sm cursor-pointer hover:bg-white/10 transition-colors" onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}>
-              <div className={`w-4 h-4 rounded border flex items-center justify-center ${useSelfConsistency ? 'bg-white border-white' : 'border-white/30'}`}>
-                {useSelfConsistency && <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-              </div>
-              <span className="text-[11px] md:text-xs text-white/90 font-medium whitespace-nowrap select-none">
-                {selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}
-              </span>
-            </div>
-            <CustomSelect
-              value={selectedModel}
-              onChange={setSelectedModel}
-              disabled={running}
-              options={[
-                { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
-                { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-                { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-              ]}
-            />
+      {/* Header (shown during analysis or when viewing timeline) */}
+      {!isLanding && (
+        <header className="flex items-center justify-between px-4 md:px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-black/60 backdrop-blur-md border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="font-display font-bold text-xl tracking-wider uppercase text-white drop-shadow-md">COIN KING</span>
           </div>
-        </div>
-      </header>
+          <div className="flex items-center gap-2 md:gap-3">
+            {user ? (
+              <div className="flex items-center gap-1 md:gap-4">
+                <button 
+                  onClick={() => setIsHistoryModalOpen(true)}
+                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
+                  title="History"
+                >
+                  <History className="w-5 h-5 md:hidden" />
+                  <span className="hidden md:inline">History</span>
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
+                  title="Logout"
+                >
+                  <LogOut className="w-5 h-5 md:hidden" />
+                  <span className="hidden md:inline">Logout</span>
+                </button>
+                <img src={user.photoURL || ''} alt="avatar" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white/20 ml-1" />
+              </div>
+            ) : (
+              <button 
+                onClick={handleLogin}
+                className="text-xs md:text-sm font-medium text-white/80 hover:text-white px-3 py-1.5 border border-white/20 rounded-full hover:bg-white/10 transition-colors"
+              >
+                Sign In
+              </button>
+            )}
+            <div className="hidden md:flex items-center gap-2 md:gap-3">
+              <CustomSelect
+                value={analysisType}
+                onChange={(v) => setAnalysisType(v as any)}
+                disabled={running}
+                options={[
+                  { value: 'fundamental', label: 'Fundamental Analysis' },
+                  { value: 'technical', label: 'Technical Analysis' },
+                  { value: 'combined', label: 'Fundamental + Technical' },
+                ]}
+              />
+              <CustomSelect
+                value={selectedLanguage}
+                onChange={setSelectedLanguage}
+                disabled={running}
+                options={[
+                  { value: 'English', label: 'English' },
+                  { value: 'Thai', label: 'ภาษาไทย' },
+                ]}
+              />
+              <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 shadow-sm cursor-pointer hover:bg-white/10 transition-colors" onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}>
+                <div className={`w-4 h-4 rounded border flex items-center justify-center ${useSelfConsistency ? 'bg-white border-white' : 'border-white/30'}`}>
+                  {useSelfConsistency && <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                </div>
+                <span className="text-[11px] md:text-xs text-white/90 font-medium whitespace-nowrap select-none">
+                  {selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}
+                </span>
+              </div>
+              <CustomSelect
+                value={selectedModel}
+                onChange={setSelectedModel}
+                disabled={running}
+                options={[
+                  { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
+                  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
+                  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+                ]}
+              />
+            </div>
+          </div>
+        </header>
+      )}
 
       <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-20'}`}>
         {isLanding ? (
-           <LandingView language={selectedLanguage} />
+           <LandingView 
+             onStart={() => {
+               setIsSearchOpen(true);
+               setTimeout(() => {
+                 const input = document.querySelector('input[placeholder="US TICKER"]') as HTMLInputElement;
+                 if (input) {
+                   input.focus();
+                 }
+               }, 100);
+             }}
+             onLogin={handleLogin}
+             user={user}
+             onOpenHistory={() => setIsHistoryModalOpen(true)}
+           />
         ) : (
            <div className="flex-1 flex flex-row overflow-hidden pb-64 md:pb-40 gap-4 px-4 min-h-0 max-w-4xl mx-auto w-full mt-4">
               <div className="flex-1 flex flex-col liquid-glass rounded-[1.25rem] overflow-hidden min-h-0">
@@ -846,7 +862,9 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
         )}
 
         {/* Input area fixed at bottom */}
-        <div className={`mt-auto px-4 md:px-6 pb-6 md:pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none`}>
+        <div className={`mt-auto px-4 md:px-6 pb-6 md:pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none transition-all duration-300 ${
+          isLanding && !isSearchOpen ? 'opacity-0 translate-y-10 pointer-events-none' : 'opacity-100 translate-y-0'
+        }`}>
           <div className="max-w-4xl mx-auto w-full pointer-events-auto">
             {error && (
               <div className="mb-4 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded text-sm">
