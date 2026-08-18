@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EnhancedMarkdown as Markdown } from './components/EnhancedMarkdown';
 import { motion } from 'motion/react';
 import { 
-  X, FileText, CheckCircle2, ChevronRight, Link as LinkIcon, Calendar
-, TrendingUp, TrendingDown, Minus, Lightbulb, AlertTriangle} from 'lucide-react';
+  X, FileText, CheckCircle2, ChevronRight, Link as LinkIcon, Calendar,
+  TrendingUp, TrendingDown, Minus, Lightbulb, AlertTriangle, ArrowUp, Copy, Check, Printer, Sparkles
+} from 'lucide-react';
 import { Info } from 'lucide-react';
 import { ReportData } from './App';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
@@ -20,6 +21,61 @@ interface Props {
   hideHeader?: boolean;
   historyReports?: any[];
 }
+
+const ConvictionGauge = ({ score, isThai }: { score: number | string, isThai: boolean }) => {
+  const numScore = typeof score === 'number' ? score : parseInt(String(score), 10) || 0;
+  const radius = 38;
+  const strokeWidth = 7;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.min(100, Math.max(0, numScore));
+  const offset = circumference - (progress / 100) * circumference;
+
+  let strokeColor = '#0b5a4b';
+  let glowColor = 'rgba(11, 90, 75, 0.25)';
+  if (numScore < 50) {
+    strokeColor = '#dc2626';
+    glowColor = 'rgba(220, 38, 38, 0.25)';
+  } else if (numScore < 70) {
+    strokeColor = '#d97706';
+    glowColor = 'rgba(217, 119, 6, 0.25)';
+  }
+
+  return (
+    <div className="relative flex items-center justify-center my-1">
+      <svg className="w-28 h-28 transform -rotate-90">
+        <circle
+          cx="56"
+          cy="56"
+          r={radius}
+          stroke="#e7e5e4"
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        <circle
+          cx="56"
+          cy="56"
+          r={radius}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          fill="transparent"
+          className="transition-all duration-1000 ease-out"
+          style={{ filter: `drop-shadow(0 0 6px ${glowColor})` }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center">
+        <span className="text-3xl font-display font-bold" style={{ color: strokeColor }}>
+          {score || '-'}
+        </span>
+        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider">
+          {isThai ? 'เต็ม 100' : '/ 100'}
+        </span>
+      </div>
+    </div>
+  );
+};
 
 
 
@@ -148,7 +204,7 @@ const IndicatorVisualizer = ({ type, text, isThai }: { type: 'RSI' | 'MACD', tex
    return null;
 }
 
-const AnalysisCard = ({ title, subtext, children, className = "", titleClassName = "text-stone-900", delay = 0 }: any) => (
+const AnalysisCard = ({ title, action, subtext, children, className = "", titleClassName = "text-stone-900", delay = 0 }: any) => (
   <motion.div 
     initial={{ opacity: 0, y: 10 }} 
     whileInView={{ opacity: 1, y: 0 }} 
@@ -156,8 +212,9 @@ const AnalysisCard = ({ title, subtext, children, className = "", titleClassName
     transition={{ duration: 0.4, delay }} 
     className={`bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm border border-stone-200 flex flex-col ${className}`}
   >
-    <div className="flex justify-between items-start mb-2">
+    <div className="flex justify-between items-center mb-2 gap-2">
       <h3 className={`text-xl font-display uppercase tracking-wider font-bold ${titleClassName}`}>{title}</h3>
+      {action && <div>{action}</div>}
     </div>
     {subtext && (
       <div className="text-stone-700 text-[15px] mb-6">
@@ -225,8 +282,49 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
   const isThai = language === 'Thai';
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
 
-  const generatePDF = () => {
-    window.print();
+  const [activeNav, setActiveNav] = useState('section-summary');
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const [isTradePlanCopied, setIsTradePlanCopied] = useState(false);
+
+  useEffect(() => {
+    const container = document.getElementById('report-scroll-container');
+    if (!container) return;
+
+    const handleScroll = () => {
+      setShowBackToTop(container.scrollTop > 300);
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    setActiveNav(id);
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const scrollToTop = () => {
+    const container = document.getElementById('report-scroll-container');
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleCopyTradePlan = () => {
+    const tp = data.technical_analysis?.trade_plan;
+    if (!tp) return;
+    const text = `🎯 ${ticker.toUpperCase()} Trade Plan:
+- Entry: ${tp.entry_zone || '-'}
+- Stop-Loss: ${tp.stop_loss || '-'}
+- Target 1: ${tp.target_1 || '-'}
+- Target 2: ${tp.target_2 || '-'}
+- Risk/Reward: ${tp.risk_reward_ratio || '-'}`;
+    navigator.clipboard.writeText(text);
+    setIsTradePlanCopied(true);
+    setTimeout(() => setIsTradePlanCopied(false), 2000);
   };
 
   const scoreColor = (score: number) => {
@@ -237,6 +335,25 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
   };
 
   const findings = data.findings || [];
+
+  const navItems = [
+    { id: 'section-summary', label: isThai ? 'บทสรุป' : 'Summary', icon: '⚡' },
+    ...(data.analysis_type !== 'technical' && data.comprehensive_analysis ? [
+      { id: 'section-fundamentals', label: isThai ? 'ปัจจัยพื้นฐาน' : 'Fundamentals', icon: '🏛️' },
+    ] : []),
+    ...(data.financial_charts ? [
+      { id: 'section-financials', label: isThai ? 'กราฟการเงิน' : 'Charts', icon: '📈' },
+    ] : []),
+    ...(data.technical_analysis ? [
+      { id: 'section-technical', label: isThai ? 'เทคนิคอล & แผนเทรด' : 'Technical', icon: '🎯' },
+    ] : []),
+    ...(!isTechnicalOnly && data.deep_insights && data.deep_insights.length > 0 ? [
+      { id: 'section-insights', label: isThai ? 'ข้อมูลเชิงลึก' : 'Insights', icon: '💡' },
+    ] : []),
+    ...(findings.length > 0 ? [
+      { id: 'section-citations', label: isThai ? 'เอกสารอ้างอิง' : 'SEC Filings', icon: '📄' },
+    ] : []),
+  ];
   
   return (
     <motion.div 
@@ -259,10 +376,31 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
           </div>
         </div>
       )}
+
+      {/* Quick Navigation Sticky Pill Bar */}
+      <div className="sticky top-0 z-40 bg-[#F6F4F0]/90 backdrop-blur-md py-2.5 px-4 md:px-[40px] border-b border-stone-200/60 print:hidden overflow-x-auto no-scrollbar shadow-xs">
+        <div className="flex items-center gap-2 min-w-max max-w-[1200px] mx-auto">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => scrollToSection(item.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                activeNav === item.id 
+                  ? 'bg-stone-900 text-white shadow-sm ring-1 ring-stone-900' 
+                  : 'bg-white/80 hover:bg-white text-stone-700 border border-stone-200/80 hover:text-stone-900 hover:border-stone-300'
+              }`}
+            >
+              <span className="text-sm">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div id="report-content" className="flex-1 py-8 px-2 sm:px-4 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-4 md:gap-6 bg-[#F6F4F0]">
         
         {/* Executive Summary */}
-        <div className="flex flex-col gap-4 md:gap-6">
+        <div id="section-summary" className="flex flex-col gap-4 md:gap-6 scroll-mt-14">
           <AnalysisCard title={isThai ? "บทสรุปผู้บริหาร" : "Executive Summary"} className="w-full">
             <div className="bg-stone-50 p-3 md:p-5 rounded-xl border border-stone-100 mb-6 text-stone-800 leading-relaxed font-medium text-lg w-full">
               "{data.verdict?.summary || (isThai ? 'ไม่มีบทสรุป' : 'No summary available.')}"
@@ -290,14 +428,14 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                 )}
               </div>
               
-              <div className="md:col-span-3 flex flex-col h-full text-center md:border-l md:border-stone-100 md:pl-8">
-                 <h4 className="text-sm font-bold text-stone-700 uppercase tracking-wider mb-1">{isThai ? "คะแนนความเชื่อมั่น" : "Conviction Score"}</h4>
-                 <p className="text-xs text-stone-600 mb-4">{isThai ? "อ้างอิงจากเอกสารที่วิเคราะห์" : "Based on analyzed filings"}</p>
-                 <div className={`text-6xl font-display font-bold mb-1 flex-1 flex items-center justify-center ${data.verdict ? scoreColor(data.verdict.conviction_score) : 'text-stone-600'}`}>
-                    {data.verdict?.conviction_score || '-'}
+              <div className="md:col-span-3 flex flex-col h-full text-center md:border-l md:border-stone-100 md:pl-8 items-center justify-between">
+                 <div className="w-full">
+                   <h4 className="text-sm font-bold text-stone-700 uppercase tracking-wider mb-1">{isThai ? "คะแนนความเชื่อมั่น" : "Conviction Score"}</h4>
+                   <p className="text-xs text-stone-600 mb-2">{isThai ? "อ้างอิงจากเอกสารที่วิเคราะห์" : "Based on analyzed filings"}</p>
+                   
+                   <ConvictionGauge score={data.verdict?.conviction_score || '-'} isThai={isThai} />
                  </div>
                  
-                 <div className="text-xs text-stone-700 uppercase tracking-widest font-bold mb-6">{isThai ? "เต็ม 100" : "out of 100"}</div>
                  <div className="grid grid-cols-4 gap-1 border-t border-stone-100 pt-4 mt-auto w-full">
                    <div className="flex flex-col items-center">
                      <div className="text-[10px] text-stone-700 uppercase font-bold tracking-wider mb-1">{isThai ? "เอกสาร" : "Docs"}</div>
@@ -325,9 +463,10 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Comprehensive Analysis */}
         {data.analysis_type !== 'technical' && data.comprehensive_analysis && (
-          <div className="flex flex-col gap-4 md:p-6 mt-2">
-            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
-              {isThai ? "การวิเคราะห์ปัจจัยพื้นฐานเชิงลึก" : "Comprehensive Fundamental Analysis"}
+          <div id="section-fundamentals" className="flex flex-col gap-4 md:p-6 mt-2 scroll-mt-14">
+            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4 flex items-center gap-2">
+              <span>🏛️</span>
+              <span>{isThai ? "การวิเคราะห์ปัจจัยพื้นฐานเชิงลึก" : "Comprehensive Fundamental Analysis"}</span>
             </h2>
             
             <AnalysisCard title={isThai ? "ภาพรวมธุรกิจ (Business Overview)" : "Business Overview"}>
@@ -436,7 +575,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Financial Charts */}
         {data.financial_charts && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6 mt-8">
+          <div id="section-financials" className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6 mt-8 scroll-mt-14">
             <AnalysisCard title={isThai ? "ราคาหุ้น" : "Stock Price"} subtext={isThai ? "แผนภูมินี้แสดงราคาปิดย้อนหลังรายสัปดาห์ในวันซื้อขายสุดท้าย" : "This chart shows the weekly closing price for the past few weeks."}>
               <div className="h-64 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
@@ -445,16 +584,26 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                     <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dy={10} />
                     <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dx={-10} />
                     <RechartsTooltip 
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #e5e5e4', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      formatter={(value: number) => [`$${value}`, isThai ? 'ราคา' : 'Price']}
+                      contentStyle={{ 
+                        backgroundColor: '#1c1917', 
+                        borderRadius: '10px', 
+                        border: '1px solid rgba(255,255,255,0.15)', 
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        padding: '8px 12px'
+                      }}
+                      itemStyle={{ color: '#34d399', fontWeight: 600 }}
+                      labelStyle={{ color: '#a8a29e', marginBottom: '4px', fontWeight: 500 }}
+                      formatter={(value: number) => [`$${typeof value === 'number' ? value.toFixed(2) : value}`, isThai ? 'ราคาปิด' : 'Price']}
                     />
-                    <Line type="linear" dataKey="price" stroke="#0b5a4b" strokeWidth={2} dot={{ r: 4, fill: '#0b5a4b', strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="price" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 4, fill: '#0b5a4b', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6, fill: '#0b5a4b' }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </AnalysisCard>
             
-                        <AnalysisCard 
+            <AnalysisCard 
               title={isThai ? "ผลประกอบการทางการเงิน" : "Financial Performance"}
               subtext={data.financial_charts.financial_performance_4q && data.financial_charts.financial_performance_4q.length > 0 && data.financial_charts.financial_performance_4q[0].distributions !== undefined ? (isThai ? "แผนภูมินี้แสดงการจ่ายปันผลรายไตรมาส (เงินปันผล/ผลตอบแทนต่อหุ้น) สำหรับสี่ไตรมาสที่ผ่านมา" : "This chart shows the quarterly distributions (dividends/yield per share) for the past four completed quarters.") : (isThai ? "แผนภูมินี้แสดงรายได้และกำไรสุทธิสำหรับสี่ไตรมาสที่ผ่านมา" : "This chart shows the revenue and net income for the past four completed quarters.")}
             >
@@ -465,8 +614,24 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                     <XAxis dataKey="quarter" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dx={-10} tickFormatter={(value) => data.financial_charts?.financial_performance_4q?.[0]?.distributions !== undefined ? `$${value}` : `${value}B`} />
                     <RechartsTooltip 
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #e5e5e4', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      formatter={(value: number, name: string) => name === (isThai ? 'เงินปันผล' : 'Distributions') || name === 'Distributions' ? [`$${value}`, isThai ? 'เงินปันผล' : 'Distributions'] : [`$${value}B`, name === 'Revenue' || name === 'รายได้' ? (isThai ? 'รายได้' : 'Revenue') : (isThai ? 'กำไรสุทธิ' : 'Net Income')]}
+                      contentStyle={{ 
+                        backgroundColor: '#1c1917', 
+                        borderRadius: '10px', 
+                        border: '1px solid rgba(255,255,255,0.15)', 
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        padding: '8px 12px'
+                      }}
+                      itemStyle={{ fontWeight: 600 }}
+                      labelStyle={{ color: '#a8a29e', marginBottom: '4px', fontWeight: 500 }}
+                      formatter={(value: number, name: string) => {
+                        const isDist = name === (isThai ? 'เงินปันผล' : 'Distributions') || name === 'Distributions';
+                        const isRev = name === 'Revenue' || name === 'รายได้' || name === (isThai ? 'รายได้' : 'Revenue');
+                        const label = isDist ? (isThai ? 'เงินปันผล' : 'Distributions') : isRev ? (isThai ? 'รายได้' : 'Revenue') : (isThai ? 'กำไรสุทธิ' : 'Net Income');
+                        const formattedVal = isDist ? `$${value}` : `$${value}B`;
+                        return [formattedVal, label];
+                      }}
                     />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
                     {data.financial_charts.financial_performance_4q && data.financial_charts.financial_performance_4q.length > 0 && data.financial_charts.financial_performance_4q[0].distributions !== undefined ? (
@@ -483,11 +648,13 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             </AnalysisCard>
           </div>
         )}
-{/* Technical Analysis */}
+
+        {/* Technical Analysis */}
         {data.technical_analysis && (
-          <div className="flex flex-col gap-4 md:p-6 mt-2">
-            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4">
-              {isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}
+          <div id="section-technical" className="flex flex-col gap-4 md:p-6 mt-2 scroll-mt-14">
+            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4 flex items-center gap-2">
+              <span>🎯</span>
+              <span>{isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}</span>
             </h2>
             
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-center justify-between">
@@ -548,7 +715,29 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:p-6">
-              <AnalysisCard title={isThai ? "แผนการเทรด (Trade Plan)" : "Trade Plan"}>
+              <AnalysisCard 
+                title={isThai ? "แผนการเทรด (Trade Plan)" : "Trade Plan"}
+                action={
+                  <button
+                    type="button"
+                    onClick={handleCopyTradePlan}
+                    className="text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 border border-stone-200 cursor-pointer shadow-xs active:scale-95"
+                    title={isThai ? 'คัดลอกแผนการเทรด' : 'Copy Trade Plan'}
+                  >
+                    {isTradePlanCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-[#0b5a4b]" />
+                        <span className="text-[#0b5a4b] font-semibold">{isThai ? 'คัดลอกแล้ว!' : 'Copied!'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{isThai ? 'คัดลอกแผน' : 'Copy Plan'}</span>
+                      </>
+                    )}
+                  </button>
+                }
+              >
                  <div className="flex flex-col gap-3">
                    <div className="flex flex-col md:flex-row md:justify-between border-b border-stone-100 pb-2 gap-1 md:gap-4">
                      <span className="text-stone-500 text-sm font-medium whitespace-nowrap shrink-0">{isThai ? "จุดเข้า (Entry)" : "Entry"}</span>
@@ -730,8 +919,11 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Deep Insights */}
         {!isTechnicalOnly && data.deep_insights && data.deep_insights.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6">{isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}</h2>
+          <div id="section-insights" className="mt-8 scroll-mt-14">
+            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6 flex items-center gap-2">
+              <span>💡</span>
+              <span>{isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}</span>
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6">
               {data.deep_insights.slice(0, 3).map((insight, index) => (
                 <div key={index} className="bg-white p-4 md:p-6 rounded-xl border border-stone-200 shadow-sm flex flex-col">
@@ -757,8 +949,11 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         
 
         {/* Detailed Findings */}
-        <div className="mt-8">
-           <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6">{isThai ? "ผลการค้นพบในเอกสาร" : "Document Findings"}</h2>
+        <div id="section-citations" className="mt-8 scroll-mt-14">
+           <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6 flex items-center gap-2">
+             <span>📄</span>
+             <span>{isThai ? "ผลการค้นพบในเอกสาร" : "Document Findings"}</span>
+           </h2>
            
            {findings.length === 0 ? (
              <div className="text-stone-700 italic p-8 bg-white rounded border border-stone-200 text-center">
@@ -808,6 +1003,17 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
            )}
         </div>
       </div>
+
+      {/* Floating Back to Top Button */}
+      {showBackToTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-50 p-3 bg-stone-900 text-white rounded-full shadow-2xl hover:bg-black hover:scale-110 active:scale-95 transition-all print:hidden flex items-center justify-center border border-white/20 cursor-pointer"
+          title={isThai ? 'กลับขึ้นบนสุด' : 'Back to top'}
+        >
+          <ArrowUp className="w-5 h-5" />
+        </button>
+      )}
     </motion.div>
   );
 }

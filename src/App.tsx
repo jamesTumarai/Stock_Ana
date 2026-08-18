@@ -5,7 +5,7 @@ import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/aut
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { FadingVideo } from './components/FadingVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Printer, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
@@ -223,6 +223,7 @@ export default function App() {
   const [startTime, setStartTime] = useState<number | null>(null);
 
   const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
+  const [isSummaryCopied, setIsSummaryCopied] = useState<boolean>(false);
   
   const [user, setUser] = useState<User | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -617,18 +618,65 @@ export default function App() {
   const allReports = [...pastReports, ...(currentReport ? [currentReport] : [])];
 
   if (isReportOpen && allReports.length > 0) {
+    const handleCopyExecutiveSummary = () => {
+      const latest = allReports[allReports.length - 1];
+      if (!latest) return;
+      const summaryText = `📊 Lumina Analysis: ${ticker.toUpperCase()}
+⭐ Conviction Score: ${latest.verdict?.conviction_score || '-'}/100
+
+📌 Executive Summary:
+"${latest.verdict?.summary || '-'}"
+
+${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
+- Entry: ${latest.technical_analysis.trade_plan.entry_zone || '-'}
+- Stop-Loss: ${latest.technical_analysis.trade_plan.stop_loss || '-'}
+- Target 1: ${latest.technical_analysis.trade_plan.target_1 || '-'}
+- Target 2: ${latest.technical_analysis.trade_plan.target_2 || '-'}` : ''}`;
+      
+      navigator.clipboard.writeText(summaryText);
+      setIsSummaryCopied(true);
+      setTimeout(() => setIsSummaryCopied(false), 2000);
+    };
+
     return (
       <div id="report-scroll-container" className="w-full h-full overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
-        <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white shadow-sm gap-4 sm:gap-0">
+        <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-3.5 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-sm gap-3 sm:gap-0">
           <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
             {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
           </div>
-          <div className="flex items-center gap-4 print:hidden">
+          <div className="flex items-center gap-2 print:hidden">
+            <button
+              onClick={handleCopyExecutiveSummary}
+              className="text-xs font-medium bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+              title={selectedLanguage === 'Thai' ? 'คัดลอกบทสรุป' : 'Copy Summary'}
+            >
+              {isSummaryCopied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-[#0b5a4b]" />
+                  <span className="text-[#0b5a4b]">{selectedLanguage === 'Thai' ? 'คัดลอกแล้ว!' : 'Copied!'}</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{selectedLanguage === 'Thai' ? 'คัดลอกบทสรุป' : 'Copy Summary'}</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="text-xs font-medium bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+              title={selectedLanguage === 'Thai' ? 'พิมพ์ / ส่งออก PDF' : 'Print / Export PDF'}
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">{selectedLanguage === 'Thai' ? 'พิมพ์ / PDF' : 'Print / PDF'}</span>
+            </button>
+            <div className="h-4 w-px bg-stone-300 mx-1" />
             <button 
               onClick={handleCloseReport}
-              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
+              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-colors flex items-center justify-center p-1.5 rounded-lg"
+              title={selectedLanguage === 'Thai' ? 'ปิดหน้ารายงาน' : 'Close Report'}
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
