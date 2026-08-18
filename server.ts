@@ -6,7 +6,6 @@ import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 
 import { createInteraction, streamInteraction } from "./server/lib/agentClient.ts";
-import { createInteraction as createInteractionPerseus, streamInteraction as streamInteractionPerseus } from "./server/lib/agentClientPerseus.ts";
 
 function loadAgentFiles(dir: string, basePath: string): Array<{type: string, content: string, target: string}> {
   let files: Array<{type: string, content: string, target: string}> = [];
