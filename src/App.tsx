@@ -619,70 +619,9 @@ export default function App() {
   const allReports = [...pastReports, ...(currentReport ? [currentReport] : [])];
 
   if (isReportOpen && allReports.length > 0) {
-    const handleCopyExecutiveSummary = () => {
-      const latest = allReports[allReports.length - 1];
-      if (!latest) return;
-      const summaryText = `📊 Lumina Analysis: ${ticker.toUpperCase()}
-⭐ Conviction Score: ${latest.verdict?.conviction_score || '-'}/100
-
-📌 Executive Summary:
-"${latest.verdict?.summary || '-'}"
-
-${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
-- Entry: ${latest.technical_analysis.trade_plan.entry_zone || '-'}
-- Stop-Loss: ${latest.technical_analysis.trade_plan.stop_loss || '-'}
-- Target 1: ${latest.technical_analysis.trade_plan.target_1 || '-'}
-- Target 2: ${latest.technical_analysis.trade_plan.target_2 || '-'}` : ''}`;
-      
-      navigator.clipboard.writeText(summaryText);
-      setIsSummaryCopied(true);
-      setTimeout(() => setIsSummaryCopied(false), 2000);
-    };
-
     return (
-      <div id="report-scroll-container" className="w-full h-full overflow-y-auto bg-[#F6F4F0] text-stone-900 font-sans print:h-auto print:overflow-visible print:block">
-        <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-3.5 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-sm gap-3 sm:gap-0">
-          <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
-            {selectedLanguage === 'Thai' ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
-          </div>
-          <div className="flex items-center gap-2 print:hidden">
-            <button
-              onClick={handleCopyExecutiveSummary}
-              className="text-xs font-medium bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
-              title={selectedLanguage === 'Thai' ? 'คัดลอกบทสรุป' : 'Copy Summary'}
-            >
-              {isSummaryCopied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-[#0b5a4b]" />
-                  <span className="text-[#0b5a4b]">{selectedLanguage === 'Thai' ? 'คัดลอกแล้ว!' : 'Copied!'}</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>{selectedLanguage === 'Thai' ? 'คัดลอกบทสรุป' : 'Copy Summary'}</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="text-xs font-medium bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
-              title={selectedLanguage === 'Thai' ? 'พิมพ์ / ส่งออก PDF' : 'Print / Export PDF'}
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">{selectedLanguage === 'Thai' ? 'พิมพ์ / PDF' : 'Print / PDF'}</span>
-            </button>
-            <div className="h-4 w-px bg-stone-300 mx-1" />
-            <button 
-              onClick={handleCloseReport}
-              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-colors flex items-center justify-center p-1.5 rounded-lg"
-              title={selectedLanguage === 'Thai' ? 'ปิดหน้ารายงาน' : 'Close Report'}
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        
-        <div className="flex flex-col">
+      <div id="report-scroll-container" className="w-full h-full overflow-y-auto bg-[#F6F4F0] text-stone-900 report-cute-font print:h-auto print:overflow-visible print:block">
+        <div className="flex flex-col min-h-full">
           {allReports.map((report, idx) => (
              <ReportTemplate 
                key={idx}
@@ -695,7 +634,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
                documentCount={report.findings?.length || 0}
                historyReports={historyReports}
                language={selectedLanguage}
-               hideHeader={true}
+               hideHeader={idx > 0}
              />
           ))}
         </div>
