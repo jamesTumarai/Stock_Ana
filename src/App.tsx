@@ -847,8 +847,12 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
           {/* Right Controls: Model Badge & User Account */}
           <div className="flex items-center gap-2 z-10">
             {/* Model Pill */}
-            <div className="hidden sm:flex items-center gap-1.5 bg-[#28282a] text-white/90 text-xs px-3.5 py-2 rounded-full border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+            <div className="hidden sm:flex items-center gap-2 bg-[#28282a] text-white/90 text-xs px-3.5 py-2 rounded-full border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              <img 
+                src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" 
+                alt="Gemini" 
+                className="w-3.5 h-3.5 shrink-0" 
+              />
               <span className="font-medium">Gemini 3.7 Flash</span>
             </div>
 
