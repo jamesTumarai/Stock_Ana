@@ -5,7 +5,7 @@ import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/aut
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { FadingVideo } from './components/FadingVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
@@ -898,110 +898,54 @@ export default function App() {
 
         {/* Input area fixed at bottom (shown when not on landing) */}
         {!isLanding && (
-          <div className="mt-auto px-4 md:px-6 pb-6 md:pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none">
-            <div className="max-w-4xl mx-auto w-full pointer-events-auto">
+          <div className="mt-auto px-4 md:px-6 pb-5 md:pb-7 pt-3 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none">
+            <div className="max-w-xl mx-auto w-full pointer-events-auto flex flex-col items-center">
               {error && (
-                <div className="mb-4 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded text-sm">
+                <div className="mb-3 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-2 rounded-xl text-xs w-full text-center">
                   {error}
                 </div>
               )}
             
-            <div className={`liquid-glass !overflow-visible border-white/20 border rounded-xl shadow-2xl p-1.5 md:p-2 w-full flex flex-col md:flex-row md:items-center gap-1 md:gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
-              
-              {/* Row 1 on mobile: Ticker & Analyze button */}
-              <div className="flex items-center gap-2 md:w-auto w-full border-b border-white/20 md:border-b-0 md:border-r pb-1.5 md:pb-0 pr-0 md:pr-3 pl-2 py-1 md:py-2">
-                 <div className="flex items-center gap-2 flex-1">
-                   <Search className="w-4 h-4 md:w-5 md:h-5 shrink-0 text-white/60" />
-                   <input 
-                     type="text"
-                     value={ticker}
-                     onChange={(e) => setTicker(e.target.value)}
-                     placeholder="US TICKER" 
-                     disabled={running}
-                     className={`bg-transparent border-none outline-none w-full md:w-28 font-mono uppercase text-sm md:text-base text-white placeholder-white/40`}
-                     onKeyDown={(e) => e.key === 'Enter' && runAnalysis()} onBlur={() => window.scrollTo(0, 0)}
-                   />
-                 </div>
-                 {/* Analyze button on mobile */}
-                 <button 
+              <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 md:p-2 flex items-center shadow-2xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
+                <div className="flex items-center gap-1.5 sm:gap-2 pl-2.5 sm:pl-3 flex-1 min-w-0">
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white/70 shrink-0" />
+                  <input 
+                    type="text"
+                    value={ticker}
+                    onChange={(e) => setTicker(e.target.value)}
+                    placeholder={selectedLanguage === 'Thai' ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA, TSLA)" : "US TICKER (e.g. SOFI, NVDA, TSLA)"}
+                    disabled={running}
+                    className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm md:text-base text-white placeholder-white/40 min-w-0"
+                    onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
+                  />
+                </div>
+
+                <button
                   onClick={runAnalysis}
                   disabled={!ticker.trim() || running}
-                  className={`md:hidden bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/40 disabled:cursor-not-allowed px-4 py-1.5 rounded-lg font-medium transition-colors text-xs flex items-center justify-center w-24`}
-                 >
-                  {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Analyze"}
-                 </button>
-              </div>
-              
-              {/* Row 2 on mobile: Instructions */}
-              <input 
-                type="text"
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                disabled={running}
-                placeholder="Optional custom instructions..."
-                className={`bg-transparent border-none outline-none flex-1 px-2 py-1.5 md:py-0 text-sm md:text-base text-white placeholder-white/50 border-b border-white/20 md:border-none`}
-                onKeyDown={(e) => e.key === 'Enter' && runAnalysis()} onBlur={() => window.scrollTo(0, 0)}
-              />
-
-              {/* Mobile Controls */}
-              <div className="md:hidden flex items-center gap-1.5 shrink-0 justify-between py-1 px-1">
-                   <CustomSelect
-                     direction="up"
-                     value={analysisType}
-                     onChange={(v) => setAnalysisType(v as any)}
-                     disabled={running}
-                     className="text-[11px] px-2 py-1.5 bg-white/10 border-white/20 text-white flex-1"
-                     options={[
-                       { value: 'fundamental', label: 'Fund' },
-                       { value: 'technical', label: 'Tech' },
-                       { value: 'combined', label: 'Both' },
-                     ]}
-                   />
-                   <CustomSelect
-                     direction="up"
-                     value={selectedLanguage}
-                     onChange={setSelectedLanguage}
-                     disabled={running}
-                     className="text-[11px] px-2 py-1.5 bg-white/10 border-white/20 text-white flex-1"
-                     options={[
-                       { value: 'English', label: 'EN' },
-                       { value: 'Thai', label: 'TH' },
-                     ]}
-                   />
-                   <CustomSelect
-                     direction="up"
-                     value={selectedModel}
-                     onChange={setSelectedModel}
-                     disabled={running}
-                     className="text-[11px] px-2 py-1.5 bg-white/10 border-white/20 text-white flex-1"
-                     options={[
-                       { value: 'gemini-3.7-flash', label: '3.7' },
-                       { value: 'gemini-3.6-flash', label: '3.6' },
-                       { value: 'gemini-3.5-flash', label: '3.5' },
-                     ]}
-                   />
-                   <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1.5 rounded border border-white/20 cursor-pointer flex-1 justify-center" onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}>
-                     <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center ${useSelfConsistency ? 'bg-white border-white' : 'border-white/30'}`}>
-                       {useSelfConsistency && <svg className="w-2.5 h-2.5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                     </div>
-                     <span className="text-[10px] md:text-[11px] text-white/90 font-medium whitespace-nowrap">{selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-                   </div>
+                  className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 md:px-7 py-2 sm:py-2 md:py-2.5 text-xs md:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_22px_rgba(255,255,255,0.32)]"
+                >
+                  {running ? (
+                    <div className="flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span className="text-xs sm:text-sm">{selectedLanguage === 'Thai' ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs sm:text-sm">{selectedLanguage === 'Thai' ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                </button>
               </div>
 
-              {/* Analyze button on desktop */}
-              <button 
-                onClick={runAnalysis}
-                disabled={!ticker.trim() || running}
-                className={`hidden md:flex bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/40 disabled:cursor-not-allowed px-6 py-2 rounded-lg font-medium transition-colors md:ml-2 tracking-wide text-sm items-center justify-center min-w-[100px] w-auto mt-0`}
-              >
-                {running ? <Loader2 className="w-4 h-4 animate-spin" /> : "Analyze"}
-              </button>
-            </div>
-            <div className="text-center mt-4">
-              <span className="text-xs text-white/40 font-mono tracking-wider">{selectedLanguage === 'Thai' ? 'Gemini อาจให้ข้อมูลผิดพลาดได้ โปรดตรวจสอบด้วยตนเองและไม่ควรใช้เป็นคำแนะนำทางการลงทุน' : 'Gemini can make mistakes, don’t rely on it for financial advice.'}</span>
+              <div className="text-center mt-2.5 sm:mt-3 px-2">
+                <span className="text-[10px] sm:text-xs text-white/40 font-mono tracking-wider">
+                  {selectedLanguage === 'Thai' ? 'Gemini อาจให้ข้อมูลผิดพลาดได้ โปรดตรวจสอบด้วยตนเองและไม่ควรใช้เป็นคำแนะนำทางการลงทุน' : 'Gemini can make mistakes, don’t rely on it for financial advice.'}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
         )}
       </main>
     </div>
