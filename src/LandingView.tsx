@@ -162,28 +162,33 @@ export function LandingView({
         
         {/* 1) Top Header */}
         <header 
-          className="w-full max-w-[840px] flex items-center justify-between md:justify-center shrink-0 z-50 transition-all"
+          className="w-full max-w-[1240px] flex items-center justify-between shrink-0 z-50 transition-all px-1 md:px-3"
           style={{
             gap: 'clamp(14px, 2.4vw, 24px)',
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
         >
-          {/* Logo (Circular White Button) */}
-          <div
-            className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform hover:scale-104 cursor-pointer"
-            style={{
-              width: 'clamp(40px, 4.4vw, 46px)',
-              height: 'clamp(40px, 4.4vw, 46px)',
-            }}
-            title="Lumina AI"
-          >
-            <svg viewBox="0 0 100 100" className="w-[72%] h-[72%] object-contain" fill="#111111">
-              <path d="M50 14 A36 36 0 0 1 86 50 L70 50 A20 20 0 0 0 50 30 Z" />
-              <path d="M86 50 A36 36 0 0 1 50 86 L50 70 A20 20 0 0 0 70 50 Z" />
-              <path d="M50 86 A36 36 0 0 1 14 50 L30 50 A20 20 0 0 0 50 70 Z" />
-              <path d="M14 50 A36 36 0 0 1 50 14 L50 30 A20 20 0 0 0 30 50 Z" />
-              <circle cx="50" cy="50" r="7" fill="#111111" />
-            </svg>
+          {/* Top Left Logo & Brand Title */}
+          <div className="flex items-center gap-2.5 shrink-0 cursor-pointer group">
+            <div
+              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
+              style={{
+                width: 'clamp(38px, 4.2vw, 44px)',
+                height: 'clamp(38px, 4.2vw, 44px)',
+              }}
+              title="COIN KING"
+            >
+              <svg viewBox="0 0 100 100" className="w-[72%] h-[72%] object-contain" fill="#111111">
+                <path d="M50 14 A36 36 0 0 1 86 50 L70 50 A20 20 0 0 0 50 30 Z" />
+                <path d="M86 50 A36 36 0 0 1 50 86 L50 70 A20 20 0 0 0 70 50 Z" />
+                <path d="M50 86 A36 36 0 0 1 14 50 L30 50 A20 20 0 0 0 50 70 Z" />
+                <path d="M14 50 A36 36 0 0 1 50 14 L50 30 A20 20 0 0 0 30 50 Z" />
+                <circle cx="50" cy="50" r="7" fill="#111111" />
+              </svg>
+            </div>
+            <span className="font-display font-bold text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
+              COIN KING
+            </span>
           </div>
 
           {/* Center Floating White Nav Pill */}
