@@ -34,10 +34,10 @@ interface StatItem {
 }
 
 const STATS: StatItem[] = [
-  { glyph: '<', target: 100, suffix: '%', decimals: 0, labelEn: 'Audited SEC 10-K/10-Q Data', labelTh: 'ข้อมูลจริงจากเอกสาร SEC 10-K/10-Q 100%', delay: '0.5s' },
+  { glyph: '<', target: 100, suffix: '%', decimals: 0, labelEn: 'Audited SEC 10-K/10-Q Filings', labelTh: 'ข้อมูลจริงจากเอกสาร SEC 10-K/10-Q', delay: '0.5s' },
   { glyph: '%', target: 4, suffix: 'x', decimals: 0, labelEn: 'Parallel AI Agent Swarm', labelTh: '4x Multi-Agent AI วิเคราะห์เจาะลึก', delay: '0.58s' },
-  { glyph: '*', target: 3, suffix: ' TF', decimals: 0, labelEn: 'Institutional Trade Plans & R:R', labelTh: 'คำนวณแผนเทรด & Risk/Reward อัตโนมัติ', delay: '0.66s' },
-  { glyph: '#', target: 3.7, suffix: ' Flash', decimals: 1, labelEn: 'Gemini Conviction Score Engine', labelTh: 'Gemini 3.7 Flash ประเมิน Conviction Score', delay: '0.74s' },
+  { glyph: '*', target: 3, suffix: ' TF', decimals: 0, labelEn: 'Trade Plan & R:R Calculation', labelTh: 'คำนวณแผนเทรด & Risk/Reward', delay: '0.66s' },
+  { glyph: '#', target: 3.7, suffix: ' Flash', decimals: 1, labelEn: 'Gemini AI Conviction Engine', labelTh: 'Gemini AI ประเมิน Conviction Score', delay: '0.74s' },
 ];
 
 function StatCounter({ stat, isThai }: { stat: StatItem; isThai: boolean }) {
@@ -92,7 +92,7 @@ function StatCounter({ stat, isThai }: { stat: StatItem; isThai: boolean }) {
   return (
     <div 
       ref={ref} 
-      className="anim flex flex-col items-center text-center select-none"
+      className="anim flex flex-col items-center text-center select-none w-full min-w-0 px-1"
       style={{ ['--d' as any]: stat.delay }}
     >
       <div 
@@ -108,7 +108,11 @@ function StatCounter({ stat, isThai }: { stat: StatItem; isThai: boolean }) {
         {formattedValue}
         <span className="text-white/90 ml-0.5">{stat.suffix}</span>
       </div>
-      <div className="text-[#8e8e8e] font-normal mt-0.5" style={{ fontSize: 'clamp(11px, 1.2vw, 12.5px)' }}>
+      <div 
+        className="text-[#8e8e8e] font-normal mt-1 whitespace-nowrap overflow-hidden text-ellipsis w-full" 
+        style={{ fontSize: 'clamp(10px, 1.15vw, 12px)' }}
+        title={isThai ? stat.labelTh : stat.labelEn}
+      >
         {isThai ? stat.labelTh : stat.labelEn}
       </div>
     </div>
@@ -533,7 +537,7 @@ export function LandingView({
 
         {/* 3) Killer Lumina Stats Footer (4 Impactful App Metrics) */}
         <footer 
-          className="w-full max-w-[920px] grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 pt-4 pb-2 shrink-0 z-10"
+          className="w-full max-w-[1080px] grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 pt-4 pb-2 shrink-0 z-10"
         >
           {STATS.map((stat) => (
             <StatCounter key={stat.labelEn} stat={stat} isThai={isThai} />
