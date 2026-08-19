@@ -151,25 +151,7 @@ export function LandingView({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[100vh] min-h-[100dvh] overflow-hidden bg-black text-white select-none">
-      
-      {/* Background Video */}
-      <div className="absolute inset-0 z-0 overflow-hidden bg-black pointer-events-none">
-        <video
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-          autoPlay
-          muted
-          loop
-          playsInline
-        >
-          <source
-            src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4"
-            type="video/mp4"
-          />
-        </video>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-black/35 pointer-events-none" />
-      </div>
-
+    <div className="relative w-full h-full min-h-[100vh] min-h-[100dvh] overflow-hidden bg-transparent text-white select-none">
       {/* Main Single-Viewport Page Layout (3 Regions: Header, Hero, Stats) */}
       <div 
         className="relative z-10 w-full h-full min-h-[100vh] min-h-[100dvh] flex flex-col justify-between items-center overflow-hidden"

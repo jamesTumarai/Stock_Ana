@@ -725,13 +725,22 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
         )}
       </AnimatePresence>
 
-
-
-      <FadingVideo 
-        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4" 
-        className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top z-0" 
-        style={{ width: "120%", height: "120%" }} 
-      />
+      {/* Global Background Video (New CloudFront Video) */}
+      <div className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-none">
+        <video
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          autoPlay
+          muted
+          loop
+          playsInline
+        >
+          <source
+            src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4"
+            type="video/mp4"
+          />
+        </video>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/40 pointer-events-none" />
+      </div>
       
       {/* Header (shown during analysis or when viewing timeline) */}
       {!isLanding && (
@@ -744,7 +753,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
               <div className="flex items-center gap-1 md:gap-4">
                 <button 
                   onClick={() => setIsHistoryModalOpen(true)}
-                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
+                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1 cursor-pointer"
                   title="History"
                 >
                   <History className="w-5 h-5 md:hidden" />
@@ -752,7 +761,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
                 </button>
                 <button 
                   onClick={handleLogout}
-                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1"
+                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1 cursor-pointer"
                   title="Logout"
                 >
                   <LogOut className="w-5 h-5 md:hidden" />
@@ -763,7 +772,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
             ) : (
               <button 
                 onClick={handleLogin}
-                className="text-xs md:text-sm font-medium text-white/80 hover:text-white px-3 py-1.5 border border-white/20 rounded-full hover:bg-white/10 transition-colors"
+                className="text-xs md:text-sm font-medium text-white/80 hover:text-white px-3 py-1.5 border border-white/20 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
               >
                 Sign In
               </button>
@@ -814,17 +823,23 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
       <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-20'}`}>
         {isLanding ? (
            <LandingView 
-             onStart={() => {
-               setIsSearchOpen(true);
-               setTimeout(() => {
-                 const input = document.querySelector('input[placeholder="US TICKER"]') as HTMLInputElement;
-                 if (input) {
-                   input.focus();
-                 }
-               }, 100);
-             }}
-             onLogin={handleLogin}
+             language={selectedLanguage}
+             setLanguage={setSelectedLanguage}
+             analysisType={analysisType}
+             setAnalysisType={setAnalysisType}
+             useSelfConsistency={useSelfConsistency}
+             setUseSelfConsistency={setUseSelfConsistency}
+             selectedModel={selectedModel}
+             setSelectedModel={setSelectedModel}
+             ticker={ticker}
+             setTicker={setTicker}
+             instruction={instruction}
+             setInstruction={setInstruction}
+             runAnalysis={runAnalysis}
+             running={running}
              user={user}
+             onLogin={handleLogin}
+             onLogout={handleLogout}
              onOpenHistory={() => setIsHistoryModalOpen(true)}
            />
         ) : (
@@ -861,16 +876,15 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
            </div>
         )}
 
-        {/* Input area fixed at bottom */}
-        <div className={`mt-auto px-4 md:px-6 pb-6 md:pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none transition-all duration-300 ${
-          isLanding && !isSearchOpen ? 'opacity-0 translate-y-10 pointer-events-none' : 'opacity-100 translate-y-0'
-        }`}>
-          <div className="max-w-4xl mx-auto w-full pointer-events-auto">
-            {error && (
-              <div className="mb-4 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded text-sm">
-                {error}
-              </div>
-            )}
+        {/* Input area fixed at bottom (shown when not on landing) */}
+        {!isLanding && (
+          <div className="mt-auto px-4 md:px-6 pb-6 md:pb-8 pt-4 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none">
+            <div className="max-w-4xl mx-auto w-full pointer-events-auto">
+              {error && (
+                <div className="mb-4 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded text-sm">
+                  {error}
+                </div>
+              )}
             
             <div className={`liquid-glass !overflow-visible border-white/20 border rounded-xl shadow-2xl p-1.5 md:p-2 w-full flex flex-col md:flex-row md:items-center gap-1 md:gap-2 relative z-30 transition-all focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/40`}>
               
@@ -968,6 +982,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
             </div>
           </div>
         </div>
+        )}
       </main>
     </div>
   );
