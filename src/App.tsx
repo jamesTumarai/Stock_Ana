@@ -863,7 +863,7 @@ export default function App() {
              onOpenHistory={() => setIsHistoryModalOpen(true)}
            />
         ) : (
-           <div className="flex-1 flex flex-col overflow-hidden pb-24 sm:pb-28 md:pb-28 gap-3 sm:gap-4 px-3 sm:px-4 min-h-0 max-w-2xl lg:max-w-[680px] mx-auto w-full mt-1 sm:mt-2 mb-1">
+           <div className="flex-1 flex flex-col overflow-hidden pb-32 sm:pb-36 md:pb-[148px] gap-3 sm:gap-4 px-3 sm:px-4 min-h-0 max-w-3xl lg:max-w-[820px] mx-auto w-full mt-1 sm:mt-2">
               <div className="flex-1 flex flex-col liquid-glass rounded-[1.5rem] overflow-hidden min-h-0 shadow-2xl border border-white/20">
                 <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-white/[0.06] border-b border-white/10 font-bold text-white text-sm flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-2">
@@ -898,7 +898,7 @@ export default function App() {
 
         {/* Input area fixed at bottom (shown when not on landing) */}
         {!isLanding && (
-          <div className="mt-auto px-4 md:px-6 pb-5 md:pb-7 pt-3 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none">
+          <div className="mt-auto px-4 md:px-6 pb-4 sm:pb-6 md:pb-7 pt-2 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none">
             <div className="max-w-xl mx-auto w-full pointer-events-auto flex flex-col items-center">
               {error && (
                 <div className="mb-3 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-2 rounded-xl text-xs w-full text-center">
