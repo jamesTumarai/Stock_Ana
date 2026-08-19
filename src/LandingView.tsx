@@ -380,7 +380,7 @@ export function LandingView({
         </AnimatePresence>
 
         {/* 2) Hero Center Section */}
-        <main className="w-full max-w-[900px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2">
+        <main className="w-full max-w-[960px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-2 md:pt-6">
           
           {/* Trust Row / AI & Market Intelligence Badge */}
           <div 
@@ -454,7 +454,7 @@ export function LandingView({
                 animation: 'headlineFade 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both',
               }}
             >
-              Lumina
+              Intelligence
             </span>
             <span 
               className="line block mt-1 md:mt-2"
@@ -462,7 +462,7 @@ export function LandingView({
                 animation: 'headlineFade 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both',
               }}
             >
-              AI Stock Analysis
+              Designed To Evolve
             </span>
           </h1>
 
