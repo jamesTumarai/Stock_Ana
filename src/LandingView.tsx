@@ -164,15 +164,15 @@ export function LandingView({
         }}
       >
         
-        {/* 1) Top Header (3-Column Grid for Exact Mathematical Centering) */}
+        {/* 1) Top Header (Absolute Centering so Nav Pill Never Wraps) */}
         <header 
-          className="w-full max-w-[1280px] grid grid-cols-2 md:grid-cols-3 items-center shrink-0 z-50 transition-all px-2 md:px-4"
+          className="relative w-full max-w-[1360px] flex items-center justify-between shrink-0 z-50 transition-all px-2 md:px-4"
           style={{
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
         >
           {/* Top Left Logo & Brand Title (Minimalist Monochrome) */}
-          <div className="flex items-center gap-2.5 justify-self-start cursor-pointer group">
+          <div className="flex items-center gap-2.5 shrink-0 cursor-pointer group z-10">
             <div
               className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
               style={{
@@ -191,75 +191,73 @@ export function LandingView({
             </span>
           </div>
 
-          {/* Center Floating White Nav Pill (Absolute 100% Center of Screen) */}
-          <div className="hidden md:flex justify-self-center">
-            <nav 
-              className="flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
+          {/* Center Floating White Nav Pill (Absolute 100% Center of Screen, Single Line Guaranteed) */}
+          <nav 
+            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0"
+            style={{
+              height: 'clamp(44px, 5.2vw, 48px)',
+              padding: '4px 10px',
+              gap: '4px',
+            }}
+          >
+            {navModes.map((mode) => {
+              const isActive = analysisType === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => setAnalysisType(mode.id)}
+                  className={`relative px-4 py-1.5 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
+                    isActive 
+                      ? 'text-[#2e2e2e] opacity-100 font-semibold' 
+                      : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
+                  }`}
+                  style={{
+                    fontSize: 'clamp(13px, 1.4vw, 14.5px)',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {isThai ? mode.labelTh : mode.labelEn}
+                  {/* Active 3-dot indicator */}
+                  {isActive && (
+                    <span 
+                      className="absolute left-1/2 -translate-x-1/2 bottom-[5px] w-[3px] h-[3px] bg-black rounded-full shadow-[-5px_0_0_#000,5px_0_0_#000]" 
+                    />
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Deep Think toggle inside the white nav pill */}
+            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
+            <button
+              onClick={() => setUseSelfConsistency(!useSelfConsistency)}
+              className={`px-3.5 py-1 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 ${
+                useSelfConsistency 
+                  ? 'bg-black text-white shadow-sm font-semibold' 
+                  : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+              }`}
               style={{
-                height: 'clamp(44px, 5.2vw, 48px)',
-                padding: '4px 8px',
-                gap: '3px',
+                fontSize: 'clamp(12px, 1.3vw, 13px)',
               }}
+              title="Deep Think Mode"
             >
-              {navModes.map((mode) => {
-                const isActive = analysisType === mode.id;
-                return (
-                  <button
-                    key={mode.id}
-                    onClick={() => setAnalysisType(mode.id)}
-                    className={`relative px-3.5 py-1.5 font-medium transition-all duration-200 cursor-pointer ${
-                      isActive 
-                        ? 'text-[#2e2e2e] opacity-100 font-semibold' 
-                        : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
-                    }`}
-                    style={{
-                      fontSize: 'clamp(12.5px, 1.35vw, 14px)',
-                      letterSpacing: '-0.01em',
-                    }}
-                  >
-                    {isThai ? mode.labelTh : mode.labelEn}
-                    {/* Active 3-dot indicator */}
-                    {isActive && (
-                      <span 
-                        className="absolute left-1/2 -translate-x-1/2 bottom-[5px] w-[3px] h-[3px] bg-black rounded-full shadow-[-5px_0_0_#000,5px_0_0_#000]" 
-                      />
-                    )}
-                  </button>
-                );
-              })}
+              <Sparkles className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+              <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+            </button>
 
-              {/* Deep Think toggle inside the white nav pill */}
-              <div className="h-4 w-px bg-stone-300 mx-1" />
-              <button
-                onClick={() => setUseSelfConsistency(!useSelfConsistency)}
-                className={`px-3 py-1 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer ${
-                  useSelfConsistency 
-                    ? 'bg-black text-white shadow-sm font-semibold' 
-                    : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
-                }`}
-                style={{
-                  fontSize: 'clamp(11.5px, 1.25vw, 13px)',
-                }}
-                title="Deep Think Mode"
-              >
-                <Sparkles className={`w-3.5 h-3.5 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
-                <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-              </button>
-
-              {/* Language Switch */}
-              <div className="h-4 w-px bg-stone-300 mx-1" />
-              <button
-                onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
-                className="px-2.5 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100"
-                title="Switch Language"
-              >
-                {isThai ? 'EN' : 'ไทย'}
-              </button>
-            </nav>
-          </div>
+            {/* Language Switch */}
+            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
+            <button
+              onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
+              className="px-2.5 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+              title="Switch Language"
+            >
+              {isThai ? 'EN' : 'ไทย'}
+            </button>
+          </nav>
 
           {/* Right Controls: User Account / Sign In */}
-          <div className="hidden md:flex items-center gap-2 justify-self-end">
+          <div className="hidden md:flex items-center gap-2 z-10">
             {user ? (
               <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
                 <button
@@ -297,7 +295,7 @@ export function LandingView({
           </div>
 
           {/* Mobile Menu Toggle Button */}
-          <div className="md:hidden justify-self-end">
+          <div className="md:hidden">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className={`flex flex-col items-center justify-center rounded-full w-12 h-12 transition-all duration-300 shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer ${
