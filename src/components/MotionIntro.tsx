@@ -174,6 +174,28 @@ export const MotionIntro: React.FC<MotionIntroProps> = ({ onComplete }) => {
         </div>
 
       </motion.div>
+
+      {/* 4) Bottom Signature: 'by James Alfred Craig' (Kinetic Reveal & Smooth Fade) */}
+      <div className="absolute bottom-8 sm:bottom-10 left-1/2 -translate-x-1/2 overflow-hidden py-1 z-20 pointer-events-none">
+        <motion.div
+          initial={{ y: 20, opacity: 0, filter: 'blur(8px)', letterSpacing: '0.35em' }}
+          animate={{
+            y: stage === 'lumina' || stage === 'glide' ? 0 : 20,
+            opacity: stage === 'lumina' ? 0.75 : stage === 'glide' ? 0.35 : 0,
+            filter: stage === 'lumina' || stage === 'glide' ? 'blur(0px)' : 'blur(8px)',
+            letterSpacing: stage === 'lumina' || stage === 'glide' ? '0.22em' : '0.35em',
+          }}
+          transition={{
+            duration: 0.9,
+            delay: 0.15,
+            ease: [0.16, 1, 0.3, 1],
+          }}
+          className="text-[11px] sm:text-xs font-mono uppercase tracking-[0.22em] text-white/60 select-none whitespace-nowrap flex items-center gap-1.5"
+        >
+          <span className="text-white/40 font-light lowercase">by</span>
+          <span className="text-white/85 font-medium tracking-[0.22em] drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">James Alfred Craig</span>
+        </motion.div>
+      </div>
     </motion.div>
   );
 };
