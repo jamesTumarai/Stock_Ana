@@ -386,35 +386,35 @@ export function LandingView({
               ['--trust-size' as any]: 'clamp(36px, 4.5vw, 42px)'
             }}
           >
-            {/* 3 Overlapping Brand / Market Badges */}
+            {/* 3 Overlapping Brand Logos (Microsoft, Amazon, Google) */}
             <div className="flex items-center">
-              {/* SEC Badge */}
+              {/* Microsoft */}
               <div 
                 className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', zIndex: 1 }}
               >
-                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111] font-bold text-[10px] tracking-tight">
-                  SEC
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
+                  <i className="fa-brands fa-microsoft text-[12px] md:text-[14px]"></i>
                 </div>
               </div>
 
-              {/* NASDAQ Badge */}
+              {/* Amazon */}
               <div 
                 className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[4px]"
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 2 }}
               >
-                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111] font-bold text-[9px] tracking-tight">
-                  US
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
+                  <i className="fa-brands fa-amazon text-[12px] md:text-[14px]"></i>
                 </div>
               </div>
 
-              {/* Gemini Sparkle Badge */}
+              {/* Google */}
               <div 
                 className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 3 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <Sparkles className="w-3.5 h-3.5 text-black" />
+                  <i className="fa-brands fa-google text-[12px] md:text-[14px]"></i>
                 </div>
               </div>
             </div>
@@ -431,7 +431,7 @@ export function LandingView({
                 zIndex: 0,
               }}
             >
-              {isThai ? "ขับเคลื่อนด้วย Gemini 3.7 Flash · ข้อมูลตลาดสหรัฐฯ" : "Powered by Gemini 3.7 Flash · US Market AI"}
+              {isThai ? "Trusted by 2000+ Enterprises" : "Trusted by 2000+ Enterprises"}
             </div>
           </div>
 
