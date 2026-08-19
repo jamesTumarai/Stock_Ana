@@ -9,6 +9,7 @@ import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Spark
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
+import { MotionIntro } from './components/MotionIntro';
 
 export interface DocumentFinding {
   documentType?: string;
@@ -229,6 +230,15 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyReports, setHistoryReports] = useState<any[]>([]);
+
+  // $100M Motion Intro State
+  const [showIntro, setShowIntro] = useState<boolean>(() => {
+    try {
+      return !sessionStorage.getItem('lumina_intro_seen');
+    } catch (e) {
+      return true;
+    }
+  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -664,6 +674,21 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Cinematic $100M Motion Intro */}
+      <AnimatePresence>
+        {showIntro && (
+          <MotionIntro
+            onComplete={() => {
+              try {
+                sessionStorage.setItem('lumina_intro_seen', 'true');
+              } catch (e) {}
+              setShowIntro(false);
+            }}
+            isThai={selectedLanguage === 'Thai'}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Global Background Video (New CloudFront Video) */}
       <div className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-none">
         <CrossfadeVideo
@@ -856,6 +881,7 @@ export default function App() {
              onLogin={handleLogin}
              onLogout={handleLogout}
              onOpenHistory={() => setIsHistoryModalOpen(true)}
+             onReplayIntro={() => setShowIntro(true)}
            />
         ) : (
            <div className="flex-1 flex flex-col overflow-hidden pb-40 sm:pb-44 md:pb-44 gap-3 sm:gap-4 px-3 sm:px-4 min-h-0 max-w-3xl lg:max-w-[820px] mx-auto w-full mt-0">

@@ -21,6 +21,7 @@ interface LandingViewProps {
   onLogin: () => void;
   onLogout: () => void;
   onOpenHistory: () => void;
+  onReplayIntro?: () => void;
 }
 
 interface StatItem {
@@ -138,6 +139,7 @@ export function LandingView({
   onLogin,
   onLogout,
   onOpenHistory,
+  onReplayIntro,
 }: LandingViewProps) {
   const isThai = language === 'Thai';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -171,22 +173,25 @@ export function LandingView({
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
         >
-          {/* Top Left Logo & Brand Title (Minimalist Monochrome) */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10 w-[180px]">
+          {/* Top Left Logo & Brand Title (Minimalist Monochrome - Click to replay intro motion) */}
+          <div 
+            onClick={onReplayIntro}
+            className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10 w-[180px]"
+            title={isThai ? "COIN KING (กดเพื่อเล่นแอนิเมชันเปิดตัว)" : "COIN KING (Click to replay intro motion)"}
+          >
             <div
-              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
+              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_20px_rgba(255,255,255,0.4)]"
               style={{
                 width: 'clamp(28px, 3vw, 32px)',
                 height: 'clamp(28px, 3vw, 32px)',
               }}
-              title="COIN KING"
             >
               {/* Minimalist Crown Coin Emblem */}
               <svg viewBox="0 0 24 24" className="w-[58%] h-[58%]" fill="#111111" stroke="none">
                 <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
               </svg>
             </div>
-            <span className="font-display font-bold text-sm sm:text-base md:text-lg tracking-wider uppercase text-white drop-shadow-md select-none">
+            <span className="font-display font-bold text-sm sm:text-base md:text-lg tracking-wider uppercase text-white drop-shadow-md select-none group-hover:text-amber-200 transition-colors">
               COIN KING
             </span>
           </div>
