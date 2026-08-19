@@ -96,21 +96,21 @@ function StatCounter({ stat, isThai }: { stat: StatItem; isThai: boolean }) {
       style={{ ['--d' as any]: stat.delay }}
     >
       <div 
-        className="text-white mb-1.5 leading-none transition-transform hover:scale-110 duration-300"
+        className="text-white mb-1 leading-none transition-transform hover:scale-110 duration-300"
         style={{
           fontFamily: 'var(--font-display)',
-          fontSize: 'clamp(22px, 3vw, 33px)',
+          fontSize: 'clamp(18px, 2vw, 24px)',
         }}
       >
         {stat.glyph}
       </div>
-      <div className="font-semibold text-white tracking-[-0.025em] tabular-nums leading-tight" style={{ fontSize: 'clamp(18px, 2.2vw, 26px)' }}>
+      <div className="font-semibold text-white tracking-[-0.025em] tabular-nums leading-tight" style={{ fontSize: 'clamp(15px, 1.6vw, 21px)' }}>
         {formattedValue}
         <span className="text-white/90 ml-0.5">{stat.suffix}</span>
       </div>
       <div 
-        className="text-[#8e8e8e] font-normal mt-1 whitespace-nowrap overflow-hidden text-ellipsis w-full" 
-        style={{ fontSize: 'clamp(10px, 1.15vw, 12px)' }}
+        className="text-[#8e8e8e] font-normal mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis w-full" 
+        style={{ fontSize: 'clamp(9.5px, 0.95vw, 11px)' }}
         title={isThai ? stat.labelTh : stat.labelEn}
       >
         {isThai ? stat.labelTh : stat.labelEn}
@@ -176,8 +176,8 @@ export function LandingView({
             <div
               className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
               style={{
-                width: 'clamp(32px, 3.8vw, 38px)',
-                height: 'clamp(32px, 3.8vw, 38px)',
+                width: 'clamp(28px, 3vw, 32px)',
+                height: 'clamp(28px, 3vw, 32px)',
               }}
               title="COIN KING"
             >
@@ -186,18 +186,18 @@ export function LandingView({
                 <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
               </svg>
             </div>
-            <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
+            <span className="font-display font-bold text-sm sm:text-base md:text-lg tracking-wider uppercase text-white drop-shadow-md select-none">
               COIN KING
             </span>
           </div>
 
           {/* Center Floating White Nav Pill (Absolute 100% Center of Screen, Scaled for iPad & Desktop) */}
           <nav 
-            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-95 lg:scale-100 transition-transform"
+            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-90 lg:scale-95 transition-transform"
             style={{
-              height: 'clamp(42px, 5vw, 48px)',
-              padding: '4px 10px',
-              gap: '4px',
+              height: 'clamp(36px, 3.8vw, 40px)',
+              padding: '3px 8px',
+              gap: '3px',
             }}
           >
             {navModes.map((mode) => {
@@ -206,13 +206,13 @@ export function LandingView({
                 <button
                   key={mode.id}
                   onClick={() => setAnalysisType(mode.id)}
-                  className={`relative px-4 py-1.5 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`relative px-3.5 py-1 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
                     isActive 
                       ? 'text-[#2e2e2e] opacity-100 font-semibold' 
                       : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
                   }`}
                   style={{
-                    fontSize: 'clamp(13px, 1.4vw, 14.5px)',
+                    fontSize: 'clamp(11.5px, 1.15vw, 13px)',
                     letterSpacing: '-0.01em',
                   }}
                 >
@@ -220,7 +220,7 @@ export function LandingView({
                   {/* Active 3-dot indicator */}
                   {isActive && (
                     <span 
-                      className="absolute left-1/2 -translate-x-1/2 bottom-[5px] w-[3px] h-[3px] bg-black rounded-full shadow-[-5px_0_0_#000,5px_0_0_#000]" 
+                      className="absolute left-1/2 -translate-x-1/2 bottom-[4px] w-[2.5px] h-[2.5px] bg-black rounded-full shadow-[-4px_0_0_#000,4px_0_0_#000]" 
                     />
                   )}
                 </button>
@@ -228,28 +228,28 @@ export function LandingView({
             })}
 
             {/* Deep Think toggle inside the white nav pill */}
-            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
+            <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
             <button
               onClick={() => setUseSelfConsistency(!useSelfConsistency)}
-              className={`px-3.5 py-1 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-3 py-0.5 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 ${
                 useSelfConsistency 
                   ? 'bg-black text-white shadow-sm font-semibold' 
                   : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
               }`}
               style={{
-                fontSize: 'clamp(12px, 1.3vw, 13px)',
+                fontSize: 'clamp(11px, 1.1vw, 12px)',
               }}
               title="Deep Think Mode"
             >
-              <Sparkles className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+              <Sparkles className={`w-3 h-3 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
               <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
             </button>
 
             {/* Language Switch */}
-            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
+            <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
             <button
               onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
-              className="px-2.5 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+              className="px-2 py-0.5 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-[11px] tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
               title="Switch Language"
             >
               {isThai ? 'EN' : 'ไทย'}
@@ -257,26 +257,26 @@ export function LandingView({
           </nav>
 
           {/* Right Controls: User Account / Sign In */}
-          <div className="hidden md:flex items-center gap-2 z-10">
+          <div className="hidden md:flex items-center gap-2 z-10 scale-90 lg:scale-95 origin-right">
             {user ? (
-              <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-0.5 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
                 <button
                   onClick={onOpenHistory}
-                  className="text-xs text-[#c8c8c8] hover:text-white px-2.5 py-1 flex items-center gap-1 cursor-pointer transition-colors"
+                  className="text-xs text-[#c8c8c8] hover:text-white px-2 py-0.5 flex items-center gap-1 cursor-pointer transition-colors"
                   title="History"
                 >
-                  <HistoryIcon className="w-3.5 h-3.5" />
+                  <HistoryIcon className="w-3 h-3" />
                   <span>{isThai ? 'ประวัติ' : 'History'}</span>
                 </button>
                 <button
                   onClick={onLogout}
-                  className="text-xs text-[#c8c8c8] hover:text-red-400 px-2 py-1 cursor-pointer transition-colors"
+                  className="text-xs text-[#c8c8c8] hover:text-red-400 px-1.5 py-0.5 cursor-pointer transition-colors"
                   title="Logout"
                 >
                   {isThai ? 'ออก' : 'Exit'}
                 </button>
                 {user.photoURL && (
-                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border border-white/20 ml-1" />
+                  <img src={user.photoURL} alt="avatar" className="w-6 h-6 rounded-full border border-white/20 ml-1" />
                 )}
               </div>
             ) : (
@@ -284,9 +284,9 @@ export function LandingView({
                 onClick={onLogin}
                 className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer"
                 style={{
-                  height: 'clamp(44px, 5.2vw, 48px)',
-                  padding: '0 clamp(18px, 2.2vw, 24px)',
-                  fontSize: 'clamp(13px, 1.4vw, 14.5px)',
+                  height: 'clamp(36px, 3.8vw, 40px)',
+                  padding: '0 clamp(14px, 1.6vw, 18px)',
+                  fontSize: 'clamp(11.5px, 1.2vw, 13px)',
                 }}
               >
                 Sign In
@@ -389,45 +389,45 @@ export function LandingView({
         </AnimatePresence>
 
         {/* 2) Hero Center Section */}
-        <main className="w-full max-w-[960px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-8 md:pt-14">
+        <main className="w-full max-w-[860px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-4 md:pt-6">
           
           {/* Trust Row / AI & Market Intelligence Badge */}
           <div 
-            className="anim inline-flex items-center justify-center mb-[clamp(14px,2.2vh,22px)] select-none"
+            className="anim inline-flex items-center justify-center mb-[clamp(10px,1.6vh,16px)] select-none"
             style={{ 
               ['--d' as any]: '0.05s',
-              ['--trust-size' as any]: 'clamp(36px, 4.5vw, 42px)'
+              ['--trust-size' as any]: 'clamp(26px, 2.8vw, 32px)'
             }}
           >
             {/* 3 Overlapping Brand Logos (Microsoft, Amazon, Google) */}
             <div className="flex items-center">
               {/* Microsoft */}
               <div 
-                className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
+                className="rounded-full bg-[#28282a] border border-white/40 p-[4px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', zIndex: 1 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i className="fa-brands fa-microsoft text-[12px] md:text-[14px]"></i>
+                  <i className="fa-brands fa-microsoft text-[10px] md:text-[11.5px]"></i>
                 </div>
               </div>
 
               {/* Amazon */}
               <div 
-                className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[4px]"
+                className="rounded-full bg-[#28282a] border border-white/40 p-[4px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[4px]"
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 2 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i className="fa-brands fa-amazon text-[12px] md:text-[14px]"></i>
+                  <i className="fa-brands fa-amazon text-[10px] md:text-[11.5px]"></i>
                 </div>
               </div>
 
               {/* Google */}
               <div 
-                className="rounded-full bg-[#28282a] border border-white/40 p-[5px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
+                className="rounded-full bg-[#28282a] border border-white/40 p-[4px] flex items-center justify-center shadow-lg transition-transform duration-350 hover:-translate-y-[2px]"
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 3 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i className="fa-brands fa-google text-[12px] md:text-[14px]"></i>
+                  <i className="fa-brands fa-google text-[10px] md:text-[11.5px]"></i>
                 </div>
               </div>
             </div>
@@ -439,8 +439,8 @@ export function LandingView({
                 height: 'var(--trust-size)',
                 marginLeft: 'calc(var(--trust-size) * -0.42)',
                 paddingLeft: 'calc(var(--trust-size) * 0.58)',
-                paddingRight: 'clamp(12px, 1.6vw, 18px)',
-                fontSize: 'clamp(12px, 1.4vw, 13.5px)',
+                paddingRight: 'clamp(10px, 1.2vw, 15px)',
+                fontSize: 'clamp(10.5px, 1.1vw, 12px)',
                 zIndex: 0,
               }}
             >
@@ -448,12 +448,12 @@ export function LandingView({
             </div>
           </div>
 
-          {/* Headline (Dot-Matrix Display Typography) */}
+          {/* Headline (Dot-Matrix Display Typography - Scaled for Elegant Proportion) */}
           <h1 
             className="headline font-normal text-white text-center leading-[1.12] whitespace-nowrap overflow-hidden select-none px-2"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(24px, 6vw, 82px)',
+              fontSize: 'clamp(20px, 4.4vw, 56px)',
               letterSpacing: 'clamp(-0.06em, -0.04em, -0.04em)',
             }}
           >
@@ -466,7 +466,7 @@ export function LandingView({
               Lumina
             </span>
             <span 
-              className="line block mt-1 md:mt-2"
+              className="line block mt-1 md:mt-1.5"
               style={{ 
                 animation: 'headlineFade 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both',
               }}
@@ -477,10 +477,10 @@ export function LandingView({
 
           {/* Subhead */}
           <p 
-            className="subhead anim text-[#d0d0d0] font-normal leading-[1.55] max-w-[min(540px,94%)] mt-2.5 md:mt-4 opacity-80 px-2"
+            className="subhead anim text-[#c2c2c2] font-normal leading-relaxed max-w-[min(480px,90%)] mt-2 md:mt-2.5 opacity-80 px-2"
             style={{
               ['--d' as any]: '0.28s',
-              fontSize: 'clamp(calc(12px + 2pt), calc(1.3vw + 2pt), calc(16px + 2pt))',
+              fontSize: 'clamp(11px, 1.1vw, 13.5px)',
             }}
           >
             {isThai 
@@ -489,18 +489,18 @@ export function LandingView({
           </p>
 
           {/* Integrated Search Bar in Hero */}
-          <div className="mt-4 sm:mt-5 md:mt-6 w-full max-w-xl flex flex-col items-center px-1">
+          <div className="mt-3.5 sm:mt-4 md:mt-5 w-full max-w-[480px] flex flex-col items-center px-1">
             
-            <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 md:p-2 flex items-center shadow-2xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
-              <div className="flex items-center gap-1.5 sm:gap-2 pl-2.5 sm:pl-3 flex-1 min-w-0">
-                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white/70 shrink-0" />
+            <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 flex items-center shadow-xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
+              <div className="flex items-center gap-1.5 pl-2.5 sm:pl-3 flex-1 min-w-0">
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 shrink-0" />
                 <input 
                   type="text"
                   value={ticker}
                   onChange={(e) => setTicker(e.target.value)}
                   placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA)" : "US TICKER (e.g. SOFI, NVDA)"}
                   disabled={running}
-                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm md:text-base text-white placeholder-white/40 min-w-0"
+                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm text-white placeholder-white/40 min-w-0"
                   onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                 />
               </div>
@@ -508,30 +508,30 @@ export function LandingView({
               <button
                 onClick={runAnalysis}
                 disabled={!ticker.trim() || running}
-                className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 md:px-7 py-2 sm:py-2 md:py-2.5 text-xs md:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_22px_rgba(255,255,255,0.32)]"
+                className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 py-1.5 sm:py-2 text-xs shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_18px_rgba(255,255,255,0.28)]"
               >
                 {running ? (
                   <div className="flex items-center gap-1.5">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span className="text-xs sm:text-sm">{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span className="text-xs">{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span className="text-xs sm:text-sm">{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span className="text-xs">{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
+                    <ArrowUpRight className="w-3 h-3" />
                   </div>
                 )}
               </button>
             </div>
 
             {/* Quick Ticker Chips */}
-            <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 mt-2 sm:mt-2.5 px-1">
-              <span className="text-[10px] sm:text-[11px] text-white/50 mr-0.5">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
+            <div className="flex flex-wrap items-center justify-center gap-1 mt-2 px-1">
+              <span className="text-[10px] text-white/50 mr-0.5">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
               {quickTickers.map((sym) => (
                 <button
                   key={sym}
                   onClick={() => handleSelectQuickTicker(sym)}
-                  className={`px-2 sm:px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-mono transition-all cursor-pointer border ${
+                  className={`px-2 py-0.5 rounded-full text-[10.5px] sm:text-[11px] font-mono transition-all cursor-pointer border ${
                     ticker.toUpperCase() === sym 
                       ? 'bg-white text-black border-white font-bold' 
                       : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/15 hover:text-white'
@@ -544,9 +544,9 @@ export function LandingView({
           </div>
         </main>
 
-        {/* 3) Killer Lumina Stats Footer (4 Impactful App Metrics) */}
+        {/* 3) Killer Lumina Stats Footer (4 Impactful App Metrics - Scaled) */}
         <footer 
-          className="w-full max-w-[1080px] grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6 pt-3 md:pt-4 pb-2 shrink-0 z-10 px-2"
+          className="w-full max-w-[880px] grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 pt-2 md:pt-3 pb-2 shrink-0 z-10 px-2"
         >
           {STATS.map((stat) => (
             <StatCounter key={stat.labelEn} stat={stat} isThai={isThai} />

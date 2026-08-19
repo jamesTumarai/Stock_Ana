@@ -899,23 +899,23 @@ export default function App() {
         {/* Input area fixed at bottom (shown when not on landing) */}
         {!isLanding && (
           <div className="mt-auto px-4 md:px-6 pb-3.5 sm:pb-4 md:pb-5 pt-2 w-full fixed bottom-0 print:hidden z-50 bg-transparent pointer-events-none">
-            <div className="max-w-xl mx-auto w-full pointer-events-auto flex flex-col items-center">
+            <div className="max-w-[480px] mx-auto w-full pointer-events-auto flex flex-col items-center">
               {error && (
-                <div className="mb-3 bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-2 rounded-xl text-xs w-full text-center">
+                <div className="mb-2.5 bg-red-500/10 border border-red-500/50 text-red-200 px-3.5 py-1.5 rounded-xl text-xs w-full text-center">
                   {error}
                 </div>
               )}
             
-              <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 md:p-2 flex items-center shadow-2xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
-                <div className="flex items-center gap-1.5 sm:gap-2 pl-2.5 sm:pl-3 flex-1 min-w-0">
-                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white/70 shrink-0" />
+              <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 flex items-center shadow-xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
+                <div className="flex items-center gap-1.5 pl-2.5 sm:pl-3 flex-1 min-w-0">
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 shrink-0" />
                   <input 
                     type="text"
                     value={ticker}
                     onChange={(e) => setTicker(e.target.value)}
-                    placeholder={selectedLanguage === 'Thai' ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA, TSLA)" : "US TICKER (e.g. SOFI, NVDA, TSLA)"}
+                    placeholder={selectedLanguage === 'Thai' ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA)" : "US TICKER (e.g. SOFI, NVDA)"}
                     disabled={running}
-                    className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm md:text-base text-white placeholder-white/40 min-w-0"
+                    className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm text-white placeholder-white/40 min-w-0"
                     onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                   />
                 </div>
@@ -923,17 +923,17 @@ export default function App() {
                 <button
                   onClick={runAnalysis}
                   disabled={!ticker.trim() || running}
-                  className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 md:px-7 py-2 sm:py-2 md:py-2.5 text-xs md:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_22px_rgba(255,255,255,0.32)]"
+                  className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 py-1.5 sm:py-2 text-xs shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_18px_rgba(255,255,255,0.28)]"
                 >
                   {running ? (
                     <div className="flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span className="text-xs sm:text-sm">{selectedLanguage === 'Thai' ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span className="text-xs">{selectedLanguage === 'Thai' ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs sm:text-sm">{selectedLanguage === 'Thai' ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
-                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      <span className="text-xs">{selectedLanguage === 'Thai' ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
+                      <ArrowUpRight className="w-3 h-3" />
                     </div>
                   )}
                 </button>
