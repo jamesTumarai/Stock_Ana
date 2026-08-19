@@ -362,39 +362,43 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
       transition={{ duration: 0.5, ease: 'easeOut' }}
       className={`min-h-full bg-[#F6F4F0] text-stone-900 report-cute-font w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
       {!hideHeader && (
-        <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white">
-          <div className="font-bold text-stone-900 text-lg md:text-xl tracking-tight flex items-center gap-2 font-['Prompt','Mitr','Nunito',sans-serif]">
-            {isThai ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
+        <div className="w-full border-b border-stone-200/80 px-4 md:px-8 py-3 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-xs gap-3">
+          {/* Left Title */}
+          <div className="font-bold text-stone-900 text-base md:text-lg tracking-tight flex items-center gap-2 font-['Prompt','Mitr','Nunito',sans-serif] shrink-0">
+            {isThai ? `วิเคราะห์ ${ticker}` : `${ticker} Analysis`}
           </div>
-          <div className="flex items-center gap-4 print:hidden">
+
+          {/* Center Navigation Pills (Centered) */}
+          <div className="flex-1 flex items-center justify-center overflow-x-auto no-scrollbar py-0.5 px-2">
+            <div className="flex items-center gap-2 min-w-max">
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToSection(item.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                    activeNav === item.id 
+                      ? 'bg-stone-900 text-white shadow-sm ring-1 ring-stone-900' 
+                      : 'bg-white/80 hover:bg-white text-stone-700 border border-stone-200/80 hover:text-stone-900 hover:border-stone-300'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right Controls: Close Button */}
+          <div className="flex items-center gap-2 print:hidden shrink-0">
             <button 
               onClick={onClose}
-              className="text-stone-700 hover:text-stone-900 transition-colors flex items-center justify-center p-2"
+              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-all rounded-full p-2 cursor-pointer flex items-center justify-center"
+              title={isThai ? 'ปิด' : 'Close'}
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
       )}
-
-      {/* Quick Navigation Sticky Pill Bar (Centered, No Emojis) */}
-      <div className="sticky top-0 z-40 bg-[#F6F4F0]/90 backdrop-blur-md py-3 px-4 md:px-[40px] border-b border-stone-200/60 print:hidden overflow-x-auto no-scrollbar shadow-xs">
-        <div className="flex items-center justify-center gap-2.5 min-w-max max-w-[1200px] mx-auto">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => scrollToSection(item.id)}
-              className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none ${
-                activeNav === item.id 
-                  ? 'bg-stone-900 text-white shadow-sm ring-1 ring-stone-900' 
-                  : 'bg-white/80 hover:bg-white text-stone-700 border border-stone-200/80 hover:text-stone-900 hover:border-stone-300'
-              }`}
-            >
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div id="report-content" className="flex-1 py-8 px-2 sm:px-4 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-4 md:gap-6 bg-[#F6F4F0]">
         
