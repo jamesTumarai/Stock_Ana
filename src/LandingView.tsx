@@ -175,33 +175,27 @@ export function LandingView({
           {/* Top Left Logo & Brand Title */}
           <div className="flex items-center gap-2.5 shrink-0 cursor-pointer group">
             <div
-              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
+              className="rounded-full bg-gradient-to-br from-white/20 to-white/5 p-[2px] border border-white/25 flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-transform group-hover:scale-105"
               style={{
-                width: 'clamp(38px, 4.2vw, 44px)',
-                height: 'clamp(38px, 4.2vw, 44px)',
+                width: 'clamp(36px, 4vw, 42px)',
+                height: 'clamp(36px, 4vw, 42px)',
               }}
               title="COIN KING"
             >
-              <svg viewBox="0 0 100 100" className="w-[72%] h-[72%] object-contain" fill="#111111">
-                <path d="M50 14 A36 36 0 0 1 86 50 L70 50 A20 20 0 0 0 50 30 Z" />
-                <path d="M86 50 A36 36 0 0 1 50 86 L50 70 A20 20 0 0 0 70 50 Z" />
-                <path d="M50 86 A36 36 0 0 1 14 50 L30 50 A20 20 0 0 0 50 70 Z" />
-                <path d="M14 50 A36 36 0 0 1 50 14 L50 30 A20 20 0 0 0 30 50 Z" />
-                <circle cx="50" cy="50" r="7" fill="#111111" />
-              </svg>
+              <img src="/icon.svg" alt="Coin King" className="w-full h-full object-contain rounded-full shadow-inner" />
             </div>
             <span className="font-display font-bold text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
               COIN KING
             </span>
           </div>
 
-          {/* Center Floating White Nav Pill */}
+          {/* Center Floating White Nav Pill (with Modes, Deep Think, and Language) */}
           <nav 
             className="hidden md:flex items-center justify-between bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
             style={{
               height: 'clamp(44px, 5.2vw, 48px)',
-              padding: '4px 10px',
-              gap: '4px',
+              padding: '4px 8px',
+              gap: '3px',
             }}
           >
             {navModes.map((mode) => {
@@ -210,13 +204,13 @@ export function LandingView({
                 <button
                   key={mode.id}
                   onClick={() => setAnalysisType(mode.id)}
-                  className={`relative px-4 py-1.5 font-medium transition-all duration-200 cursor-pointer ${
+                  className={`relative px-3.5 py-1.5 font-medium transition-all duration-200 cursor-pointer ${
                     isActive 
                       ? 'text-[#2e2e2e] opacity-100 font-semibold' 
                       : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
                   }`}
                   style={{
-                    fontSize: 'clamp(13px, 1.4vw, 14.5px)',
+                    fontSize: 'clamp(12.5px, 1.35vw, 14px)',
                     letterSpacing: '-0.01em',
                   }}
                 >
@@ -231,39 +225,37 @@ export function LandingView({
               );
             })}
 
+            {/* Deep Think toggle inside the white nav pill */}
+            <div className="h-4 w-px bg-stone-300 mx-1" />
+            <button
+              onClick={() => setUseSelfConsistency(!useSelfConsistency)}
+              className={`px-3 py-1 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer ${
+                useSelfConsistency 
+                  ? 'bg-black text-white shadow-sm font-semibold' 
+                  : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+              }`}
+              style={{
+                fontSize: 'clamp(11.5px, 1.25vw, 13px)',
+              }}
+              title="Deep Think Mode"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+              <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+            </button>
+
             {/* Language Switch */}
             <div className="h-4 w-px bg-stone-300 mx-1" />
             <button
               onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
-              className="px-3 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100"
+              className="px-2.5 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100"
               title="Switch Language"
             >
               {isThai ? 'EN' : 'ไทย'}
             </button>
           </nav>
 
-          {/* Right Controls: Deep Think & User Account */}
+          {/* Right Controls: User Account / Sign In */}
           <div className="hidden md:flex items-center gap-2">
-            {/* Deep Think Pill */}
-            <button
-              onClick={() => setUseSelfConsistency(!useSelfConsistency)}
-              className={`rounded-full font-medium transition-all duration-200 flex items-center gap-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer ${
-                useSelfConsistency 
-                  ? 'bg-[#28282a] text-white border border-white/30' 
-                  : 'bg-[#28282a]/80 text-[#8e8e8e] hover:text-white'
-              }`}
-              style={{
-                height: 'clamp(44px, 5.2vw, 48px)',
-                padding: '0 clamp(14px, 1.8vw, 18px)',
-                fontSize: 'clamp(12px, 1.3vw, 13.5px)',
-              }}
-              title="Deep Think Mode"
-            >
-              <Sparkles className={`w-3.5 h-3.5 ${useSelfConsistency ? 'text-yellow-300' : 'text-[#8e8e8e]'}`} />
-              <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-            </button>
-
-            {/* User Account / Sign In */}
             {user ? (
               <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
                 <button
@@ -351,6 +343,19 @@ export function LandingView({
                     {analysisType === mode.id && <span>✓</span>}
                   </button>
                 ))}
+
+                <div className="pt-2 border-t border-stone-200 flex items-center justify-between px-2">
+                  <span className="text-xs font-medium text-stone-700">{isThai ? 'คิดเชิงลึก (Deep Think)' : 'Deep Think'}</span>
+                  <button
+                    onClick={() => setUseSelfConsistency(!useSelfConsistency)}
+                    className={`px-3 py-1 font-bold text-xs rounded-full flex items-center gap-1 ${
+                      useSelfConsistency ? 'bg-black text-white' : 'bg-stone-100 text-stone-700'
+                    }`}
+                  >
+                    <Sparkles className={`w-3 h-3 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-500'}`} />
+                    <span>{useSelfConsistency ? (isThai ? 'เปิดใช้งาน' : 'ON') : (isThai ? 'ปิด' : 'OFF')}</span>
+                  </button>
+                </div>
 
                 <div className="pt-2 border-t border-stone-200 flex items-center justify-between px-2">
                   <span className="text-xs font-medium text-stone-700">{isThai ? 'ภาษา (Language)' : 'Language'}</span>
