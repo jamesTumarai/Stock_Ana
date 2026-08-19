@@ -713,6 +713,8 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
           const validatePrompt = `You are the Lead Validator. You have received an analysis report for ${ticker}. 
 Your job is to cross-check it, fix any mathematical inconsistencies, and produce the final perfect JSON report.
 
+CRITICAL INSTRUCTION: You are encouraged to think deeply and step-by-step to verify the calculations and logic. However, to avoid hitting output token limits, DO NOT repeat or summarize the original report in your internal thoughts. Focus your thinking strictly on the mathematical corrections, then output the final JSON.
+
 CRITICAL CHECKS:
 - Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.
 - Technical Key Levels: Ensure ALL Support/Resistance levels (S1, S2, S3, R1, R2, R3) are at least 1.5x ATR away from the current price AND spaced at least 1.5x ATR away from EACH OTHER (e.g., S1-S2 >= 1.5x ATR).

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight } from 'lucide-react';
+import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut } from 'lucide-react';
 
 interface LandingViewProps {
   language: string;
@@ -142,7 +142,7 @@ export function LandingView({
   const isThai = language === 'Thai';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const quickTickers = ['SOFI', 'NVDA', 'AAPL', 'TSLA', 'PLTR', 'COIN'];
+  const quickTickers = ['SOFI', 'NVDA', 'AAPL', 'TSLA', 'PLTR'];
 
   const navModes: { id: 'fundamental' | 'technical' | 'combined'; labelEn: string; labelTh: string }[] = [
     { id: 'combined', labelEn: 'All-in-One', labelTh: 'วิเคราะห์รวม' },
@@ -172,7 +172,7 @@ export function LandingView({
           }}
         >
           {/* Top Left Logo & Brand Title (Minimalist Monochrome) */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10 w-[180px]">
             <div
               className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
               style={{
@@ -257,26 +257,30 @@ export function LandingView({
           </nav>
 
           {/* Right Controls: User Account / Sign In */}
-          <div className="hidden md:flex items-center gap-2 z-10 scale-90 lg:scale-95 origin-right">
+          <div className="hidden md:flex items-center justify-end z-10 w-[180px]">
             {user ? (
-              <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-0.5 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              <div className="flex items-center gap-3 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
                 <button
                   onClick={onOpenHistory}
-                  className="text-xs text-[#c8c8c8] hover:text-white px-2 py-0.5 flex items-center gap-1 cursor-pointer transition-colors"
+                  className="text-white/70 hover:text-white flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium tracking-wide"
                   title="History"
                 >
-                  <HistoryIcon className="w-3 h-3" />
-                  <span>{isThai ? 'ประวัติ' : 'History'}</span>
+                  <HistoryIcon className="w-3.5 h-3.5" strokeWidth={2} />
+                  {isThai ? 'ประวัติ' : 'History'}
                 </button>
                 <button
                   onClick={onLogout}
-                  className="text-xs text-[#c8c8c8] hover:text-red-400 px-1.5 py-0.5 cursor-pointer transition-colors"
+                  className="text-white/70 hover:text-white flex items-center cursor-pointer transition-colors text-[11px] font-medium tracking-wide"
                   title="Logout"
                 >
                   {isThai ? 'ออก' : 'Exit'}
                 </button>
-                {user.photoURL && (
-                  <img src={user.photoURL} alt="avatar" className="w-6 h-6 rounded-full border border-white/20 ml-1" />
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border-[1.5px] border-white/20 shadow-sm" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                    {user.displayName ? user.displayName.slice(0, 1) : 'U'}
+                  </div>
                 )}
               </div>
             ) : (
@@ -294,18 +298,43 @@ export function LandingView({
             )}
           </div>
 
-          {/* Mobile Menu Toggle Button */}
-          <div className="md:hidden">
+          {/* Mobile Right Controls: User Avatar + Toggle Menu */}
+          <div className="md:hidden flex items-center gap-3 sm:gap-4 z-10">
+            {user && (
+              <div className="flex items-center gap-3 sm:gap-4">
+                <button
+                  onClick={onOpenHistory}
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors"
+                  title="History"
+                >
+                  <HistoryIcon className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
+                </button>
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="avatar" className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full border border-white/20 shadow-sm" />
+                ) : (
+                  <div className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full bg-stone-700 border border-white/20 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
+                    {user.displayName ? user.displayName.slice(0, 1) : 'U'}
+                  </div>
+                )}
+              </div>
+            )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={`flex flex-col items-center justify-center rounded-full w-12 h-12 transition-all duration-300 shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer ${
+              className={`flex flex-col items-center justify-center rounded-full w-[36px] h-[36px] sm:w-[40px] sm:h-[40px] transition-all duration-300 shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer ${
                 mobileMenuOpen ? 'bg-white' : 'bg-[#28282a]'
               }`}
               aria-label="Toggle menu"
             >
-              <span className={`w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${mobileMenuOpen ? 'bg-black translate-y-[6.5px] rotate-45' : 'bg-white mb-1'}`} />
-              <span className={`w-[18px] h-[1.5px] rounded-full transition-opacity duration-300 ${mobileMenuOpen ? 'opacity-0' : 'bg-white mb-1'}`} />
-              <span className={`w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${mobileMenuOpen ? 'bg-black -translate-y-[6.5px] -rotate-45' : 'bg-white'}`} />
+              <span className={`w-[16px] sm:w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${mobileMenuOpen ? 'bg-black translate-y-[5.5px] sm:translate-y-[6.5px] rotate-45' : 'bg-white mb-1'}`} />
+              <span className={`w-[16px] sm:w-[18px] h-[1.5px] rounded-full transition-opacity duration-300 ${mobileMenuOpen ? 'opacity-0' : 'bg-white mb-1'}`} />
+              <span className={`w-[16px] sm:w-[18px] h-[1.5px] rounded-full transition-transform duration-300 ${mobileMenuOpen ? 'bg-black -translate-y-[5.5px] sm:-translate-y-[6.5px] -rotate-45' : 'bg-white'}`} />
             </button>
           </div>
         </header>
@@ -378,10 +407,22 @@ export function LandingView({
                       if (user) onOpenHistory();
                       else onLogin();
                     }}
-                    className="w-full py-3 bg-[#28282a] text-white hover:bg-black font-medium rounded-full text-sm text-center transition-colors cursor-pointer"
+                    className="w-full py-3 bg-[#28282a] text-white hover:bg-black font-medium rounded-full text-sm text-center transition-colors cursor-pointer mb-2"
                   >
                     {user ? (isThai ? 'ดูประวัติการวิเคราะห์' : 'View History') : 'Sign In'}
                   </button>
+                  {user && (
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onLogout();
+                      }}
+                      className="w-full py-3 bg-red-50 text-red-600 hover:bg-red-100 font-medium rounded-full text-sm text-center transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      {isThai ? 'ออกจากระบบ' : 'Log Out'}
+                    </button>
+                  )}
                 </div>
               </motion.div>
             </>
@@ -389,14 +430,14 @@ export function LandingView({
         </AnimatePresence>
 
         {/* 2) Hero Center Section */}
-        <main className="w-full max-w-[860px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-4 md:pt-6">
+        <main className="w-full max-w-[860px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-10 md:pt-16 pb-2 md:pb-4 mt-2 md:mt-4">
           
           {/* Trust Row / AI & Market Intelligence Badge */}
           <div 
-            className="anim inline-flex items-center justify-center mb-[clamp(10px,1.6vh,16px)] select-none"
+            className="anim inline-flex items-center justify-center mb-4 md:mb-5 select-none"
             style={{ 
               ['--d' as any]: '0.05s',
-              ['--trust-size' as any]: 'clamp(26px, 2.8vw, 32px)'
+              ['--trust-size' as any]: 'clamp(30px, 3.5vw, 36px)'
             }}
           >
             {/* 3 Overlapping Brand Logos (Microsoft, Amazon, Google) */}
@@ -407,7 +448,7 @@ export function LandingView({
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', zIndex: 1 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i className="fa-brands fa-microsoft text-[10px] md:text-[11.5px]"></i>
+                  <i className="fa-brands fa-microsoft text-[12px] md:text-[14px]"></i>
                 </div>
               </div>
 
@@ -417,7 +458,7 @@ export function LandingView({
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 2 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i className="fa-brands fa-amazon text-[10px] md:text-[11.5px]"></i>
+                  <i className="fa-brands fa-amazon text-[12px] md:text-[14px]"></i>
                 </div>
               </div>
 
@@ -427,7 +468,7 @@ export function LandingView({
                 style={{ width: 'var(--trust-size)', height: 'var(--trust-size)', marginLeft: 'calc(var(--trust-size) * -0.42)', zIndex: 3 }}
               >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[#111]">
-                  <i className="fa-brands fa-google text-[10px] md:text-[11.5px]"></i>
+                  <i className="fa-brands fa-google text-[12px] md:text-[14px]"></i>
                 </div>
               </div>
             </div>
@@ -439,8 +480,8 @@ export function LandingView({
                 height: 'var(--trust-size)',
                 marginLeft: 'calc(var(--trust-size) * -0.42)',
                 paddingLeft: 'calc(var(--trust-size) * 0.58)',
-                paddingRight: 'clamp(10px, 1.2vw, 15px)',
-                fontSize: 'clamp(10.5px, 1.1vw, 12px)',
+                paddingRight: 'clamp(14px, 1.8vw, 20px)',
+                fontSize: 'clamp(12px, 1.3vw, 14px)',
                 zIndex: 0,
               }}
             >
@@ -450,10 +491,10 @@ export function LandingView({
 
           {/* Headline (Dot-Matrix Display Typography - Scaled for Elegant Proportion) */}
           <h1 
-            className="headline font-normal text-white text-center leading-[1.12] whitespace-nowrap overflow-hidden select-none px-2"
+            className="headline font-normal text-white text-center leading-[0.85] md:leading-[0.85] whitespace-nowrap select-none px-2 flex flex-col items-center justify-center gap-1 md:gap-2"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(20px, 4.4vw, 56px)',
+              fontSize: 'clamp(32px, 5.5vw, 56px)',
               letterSpacing: 'clamp(-0.06em, -0.04em, -0.04em)',
             }}
           >
@@ -466,7 +507,7 @@ export function LandingView({
               Lumina
             </span>
             <span 
-              className="line block mt-1 md:mt-1.5"
+              className="line block"
               style={{ 
                 animation: 'headlineFade 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both',
               }}
@@ -477,30 +518,32 @@ export function LandingView({
 
           {/* Subhead */}
           <p 
-            className="subhead anim text-[#c2c2c2] font-normal leading-relaxed max-w-[min(480px,90%)] mt-2 md:mt-2.5 opacity-80 px-2"
+            className="subhead anim text-[#c2c2c2] font-normal leading-relaxed max-w-[min(580px,94%)] mt-3 md:mt-5 opacity-80 px-2"
             style={{
               ['--d' as any]: '0.28s',
-              fontSize: 'clamp(11px, 1.1vw, 13.5px)',
+              fontSize: 'clamp(12px, 1.2vw, 13px)',
             }}
           >
-            {isThai 
-              ? "วิเคราะห์หุ้นสหรัฐฯ เจาะลึกงบการเงิน รายงาน 10-K/10-Q และวางแผนเทรดอย่างแม่นยำ ด้วยพลัง AI ระดับสถาบัน"
-              : "Analyze US stocks, deep financial 10-K/10-Q filings, and institutional technical setups with real-time AI."}
+            {isThai ? (
+              <>วิเคราะห์หุ้นสหรัฐฯ เจาะลึกงบการเงิน รายงาน 10-K/10-Q และวางแผนเทรดอย่างแม่นยำ<br className="hidden sm:block" /> ด้วยพลัง AI ระดับสถาบัน</>
+            ) : (
+              <>Analyze US stocks, deep financial 10-K/10-Q filings, and institutional technical setups<br className="hidden sm:block" /> with real-time AI.</>
+            )}
           </p>
 
           {/* Integrated Search Bar in Hero */}
-          <div className="mt-3.5 sm:mt-4 md:mt-5 w-full max-w-[480px] flex flex-col items-center px-1">
+          <div className="mt-5 sm:mt-6 md:mt-8 w-full max-w-[500px] flex flex-col items-center px-1">
             
             <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 flex items-center shadow-xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
-              <div className="flex items-center gap-1.5 pl-2.5 sm:pl-3 flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 pl-2.5 sm:pl-3 flex-1 min-w-0 pr-2">
                 <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 shrink-0" />
                 <input 
                   type="text"
                   value={ticker}
                   onChange={(e) => setTicker(e.target.value)}
-                  placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA)" : "US TICKER (e.g. SOFI, NVDA)"}
+                  placeholder={isThai ? "ชื่อหุ้น (เช่น NVDA, SOFI)" : "TICKER (e.g. NVDA, SOFI)"}
                   disabled={running}
-                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm text-white placeholder-white/40 min-w-0"
+                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-[13px] sm:text-sm text-white placeholder-white/40 min-w-0 truncate"
                   onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                 />
               </div>
@@ -508,30 +551,30 @@ export function LandingView({
               <button
                 onClick={runAnalysis}
                 disabled={!ticker.trim() || running}
-                className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 py-1.5 sm:py-2 text-xs shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_18px_rgba(255,255,255,0.28)]"
+                className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_18px_rgba(255,255,255,0.28)]"
               >
                 {running ? (
                   <div className="flex items-center gap-1.5">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span className="text-xs">{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span className="text-xs sm:text-sm">{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span className="text-xs">{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
-                    <ArrowUpRight className="w-3 h-3" />
+                    <span className="text-xs sm:text-sm">{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
                   </div>
                 )}
               </button>
             </div>
 
             {/* Quick Ticker Chips */}
-            <div className="flex flex-wrap items-center justify-center gap-1 mt-2 px-1">
-              <span className="text-[10px] text-white/50 mr-0.5">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
+            <div className="flex flex-wrap items-center justify-center gap-1 mt-3 px-1">
+              <span className="text-[10px] sm:text-[11px] text-white/50 mr-1">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
               {quickTickers.map((sym) => (
                 <button
                   key={sym}
                   onClick={() => handleSelectQuickTicker(sym)}
-                  className={`px-2 py-0.5 rounded-full text-[10.5px] sm:text-[11px] font-mono transition-all cursor-pointer border ${
+                  className={`px-2.5 py-1 rounded-full text-[10.5px] sm:text-[11px] font-mono transition-all cursor-pointer border ${
                     ticker.toUpperCase() === sym 
                       ? 'bg-white text-black border-white font-bold' 
                       : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/15 hover:text-white'

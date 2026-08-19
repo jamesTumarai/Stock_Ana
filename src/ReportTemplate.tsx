@@ -360,25 +360,38 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className={`min-h-full bg-[#F6F4F0] text-stone-900 report-cute-font w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
+      className={`min-h-full bg-[#F6F4F0] text-stone-900 w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block scrollbar-hide ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
       {!hideHeader && (
-        <div className="w-full border-b border-stone-200/80 px-3 sm:px-6 md:px-8 py-2.5 sm:py-3 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-xs gap-2 sm:gap-3">
-          {/* Left Title */}
-          <div className="font-bold text-stone-900 text-sm sm:text-base md:text-lg tracking-tight flex items-center gap-1.5 sm:gap-2 font-['Prompt','Mitr','Nunito',sans-serif] shrink-0">
-            {isThai ? `วิเคราะห์ ${ticker}` : `${ticker} Analysis`}
+        <div className="w-full border-b border-stone-200/80 px-3 sm:px-6 md:px-8 py-2.5 sm:py-3 flex flex-col md:flex-row md:items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-xs gap-2 md:gap-3">
+          
+          {/* Top Row for Mobile (Title + Close) or Left side for Desktop */}
+          <div className="flex items-center justify-between w-full md:w-auto shrink-0">
+            <div className="font-bold text-stone-900 text-[15px] sm:text-base md:text-lg tracking-tight flex items-center gap-1.5 sm:gap-2 font-['Prompt','Mitr','Nunito',sans-serif]">
+              {isThai ? `วิเคราะห์ ${ticker}` : `${ticker} Analysis`}
+            </div>
+
+            <div className="md:hidden flex items-center gap-2 print:hidden shrink-0">
+              <button 
+                onClick={onClose}
+                className="text-stone-600 hover:text-stone-900 bg-white shadow-sm border border-stone-200 hover:bg-stone-100 transition-all rounded-full p-1.5 cursor-pointer flex items-center justify-center"
+                title={isThai ? 'ปิด' : 'Close'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Center Navigation Pills (Centered & Smooth Mobile Touch Scrolling) */}
-          <div className="flex-1 flex items-center justify-center overflow-x-auto no-scrollbar scroll-smooth touch-pan-x py-0.5 px-1 sm:px-2">
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-max">
+          {/* Center Navigation Pills (Centered on Desktop, Left-scrollable on Mobile) */}
+          <div className="flex-1 flex items-center justify-start md:justify-center overflow-x-auto no-scrollbar scroll-smooth touch-pan-x py-0.5 w-full md:w-auto">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-max pr-4 md:pr-0">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => scrollToSection(item.id)}
-                  className={`px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                  className={`px-3 sm:px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none whitespace-nowrap shrink-0 ${
                     activeNav === item.id 
                       ? 'bg-stone-900 text-white shadow-sm ring-1 ring-stone-900' 
-                      : 'bg-white/80 hover:bg-white text-stone-700 border border-stone-200/80 hover:text-stone-900 hover:border-stone-300'
+                      : 'bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 shadow-sm hover:text-stone-900 hover:border-stone-300'
                   }`}
                 >
                   <span>{item.label}</span>
@@ -387,14 +400,14 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
             </div>
           </div>
 
-          {/* Right Controls: Close Button */}
-          <div className="flex items-center gap-2 print:hidden shrink-0">
+          {/* Right Controls: Close Button (Desktop) */}
+          <div className="hidden md:flex items-center gap-2 print:hidden shrink-0">
             <button 
               onClick={onClose}
-              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-all rounded-full p-1.5 sm:p-2 cursor-pointer flex items-center justify-center"
+              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-all rounded-full p-2 cursor-pointer flex items-center justify-center"
               title={isThai ? 'ปิด' : 'Close'}
             >
-              <X className="w-4 h-4 sm:w-5 sm:h-5" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -409,21 +422,21 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
               "{data.verdict?.summary || (isThai ? 'ไม่มีบทสรุป' : 'No summary available.')}"
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-10 gap-8 w-full mt-2">
-              <div className="md:col-span-7 flex flex-col">
+            <div className="grid grid-cols-1 md:grid-cols-10 gap-6 md:gap-8 w-full mt-2">
+              <div className="md:col-span-7 flex flex-col order-last md:order-first mt-2 md:mt-0">
                 {data.verdict?.key_takeaways && (Array.isArray(data.verdict.key_takeaways) ? data.verdict.key_takeaways.length > 0 : true) && (
                   <div className="w-full text-left flex-1">
                      <div className="text-sm font-bold text-stone-700 uppercase tracking-wider mb-4 border-b border-stone-100 pb-2">{isThai ? "ประเด็นสำคัญ" : "Key Takeaways"}</div>
                      <div className="space-y-3">
                        {Array.isArray(data.verdict.key_takeaways) ? data.verdict.key_takeaways.map((takeaway, i) => (
-                          <div key={i} className="flex gap-3 text-base">
-                             <CheckCircle2 className="w-5 h-5 text-[#0b5a4b] shrink-0 mt-0.5" />
-                             <div className="text-stone-700 leading-relaxed prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{takeaway}</Markdown></div>
+                          <div key={i} className="flex gap-3 text-[15px] sm:text-base">
+                             <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#0b5a4b] shrink-0 mt-0.5" />
+                             <div className="text-stone-700 leading-relaxed prose prose-sm sm:prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{takeaway}</Markdown></div>
                           </div>
                        )) : (
-                          <div className="flex gap-3 text-base">
-                             <CheckCircle2 className="w-5 h-5 text-[#0b5a4b] shrink-0 mt-0.5" />
-                             <div className="text-stone-700 leading-relaxed prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{String(data.verdict.key_takeaways)}</Markdown></div>
+                          <div className="flex gap-3 text-[15px] sm:text-base">
+                             <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#0b5a4b] shrink-0 mt-0.5" />
+                             <div className="text-stone-700 leading-relaxed prose prose-sm sm:prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{String(data.verdict.key_takeaways)}</Markdown></div>
                           </div>
                        )}
                      </div>
@@ -431,7 +444,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
                 )}
               </div>
               
-              <div className="md:col-span-3 flex flex-col h-full text-center md:border-l md:border-stone-100 md:pl-8 items-center justify-between">
+              <div className="md:col-span-3 flex flex-col md:h-full text-center md:border-l md:border-stone-100 md:pl-8 items-center justify-between order-first md:order-last bg-stone-50 md:bg-transparent p-4 md:p-0 rounded-xl md:rounded-none border border-stone-100 md:border-none">
                  <div className="w-full">
                    <h4 className="text-sm font-bold text-stone-700 uppercase tracking-wider mb-1">{isThai ? "คะแนนความเชื่อมั่น" : "Conviction Score"}</h4>
                    <p className="text-xs text-stone-600 mb-2">{isThai ? "อ้างอิงจากเอกสารที่วิเคราะห์" : "Based on analyzed filings"}</p>

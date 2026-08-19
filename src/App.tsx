@@ -4,7 +4,7 @@ import { auth, db, googleProvider } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
-import { FadingVideo } from './components/FadingVideo';
+import { CrossfadeVideo } from './components/CrossfadeVideo';
 import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
@@ -620,7 +620,7 @@ export default function App() {
 
   if (isReportOpen && allReports.length > 0) {
     return (
-      <div id="report-scroll-container" className="w-full h-full overflow-y-auto bg-[#F6F4F0] text-stone-900 report-cute-font print:h-auto print:overflow-visible print:block">
+      <div id="report-scroll-container" className="w-full h-[100dvh] overflow-y-auto bg-[#F6F4F0] text-stone-900 scrollbar-hide print:h-auto print:overflow-visible print:block">
         <div className="flex flex-col min-h-full">
           {allReports.map((report, idx) => (
              <ReportTemplate 
@@ -666,19 +666,11 @@ export default function App() {
 
       {/* Global Background Video (New CloudFront Video) */}
       <div className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-none">
-        <video
+        <CrossfadeVideo
+          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4"
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
           style={{ objectPosition: 'center 62%' }}
-          autoPlay
-          muted
-          loop
-          playsInline
-        >
-          <source
-            src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4"
-            type="video/mp4"
-          />
-        </video>
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/45 pointer-events-none" />
       </div>
       
@@ -797,24 +789,27 @@ export default function App() {
 
             {/* User Account / Sign In */}
             {user ? (
-              <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              <div className="flex items-center gap-3 sm:gap-4 mr-1 sm:mr-2">
                 <button
                   onClick={() => setIsHistoryModalOpen(true)}
-                  className="text-xs text-[#c8c8c8] hover:text-white px-2.5 py-1 flex items-center gap-1 cursor-pointer transition-colors"
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors"
                   title="History"
                 >
-                  <History className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{selectedLanguage === 'Thai' ? 'ประวัติ' : 'History'}</span>
+                  <History className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="text-xs text-[#c8c8c8] hover:text-red-400 px-2 py-1 cursor-pointer transition-colors"
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors"
                   title="Logout"
                 >
-                  {selectedLanguage === 'Thai' ? 'ออก' : 'Exit'}
+                  <LogOut className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
                 </button>
-                {user.photoURL && (
-                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border border-white/20 ml-1" />
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="avatar" className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full border-[1.5px] border-white/20 shadow-sm" />
+                ) : (
+                  <div className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
+                    {user.displayName ? user.displayName.slice(0, 1) : 'U'}
+                  </div>
                 )}
               </div>
             ) : (
