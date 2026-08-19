@@ -444,7 +444,7 @@ export function LandingView({
                 zIndex: 0,
               }}
             >
-              {isThai ? "Trusted by 2000+ Enterprises" : "Trusted by 2000+ Enterprises"}
+              {isThai ? "หุ้นชั้นนำระดับโลก" : "Global Stocks"}
             </div>
           </div>
 
