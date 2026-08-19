@@ -5,7 +5,7 @@ import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/aut
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { FadingVideo } from './components/FadingVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Printer, Copy, Check } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
@@ -745,78 +745,154 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
       
       {/* Header (shown during analysis or when viewing timeline) */}
       {!isLanding && (
-        <header className="flex items-center justify-between px-4 md:px-6 py-4 print:hidden absolute top-0 w-full z-50 bg-black/60 backdrop-blur-md border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="font-display font-bold text-xl tracking-wider uppercase text-white drop-shadow-md">COIN KING</span>
+        <header 
+          className="relative w-full max-w-[1360px] mx-auto flex items-center justify-between px-3 md:px-6 py-4 shrink-0 z-50 transition-all print:hidden"
+          style={{
+            animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
+          }}
+        >
+          {/* Top Left Logo & Brand Title */}
+          <div 
+            onClick={resetAnalysis}
+            className="flex items-center gap-2.5 shrink-0 cursor-pointer group z-10"
+            title={selectedLanguage === 'Thai' ? 'กลับหน้าแรก' : 'Back to Home'}
+          >
+            <div
+              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
+              style={{
+                width: 'clamp(34px, 3.8vw, 38px)',
+                height: 'clamp(34px, 3.8vw, 38px)',
+              }}
+            >
+              <svg viewBox="0 0 24 24" className="w-[58%] h-[58%]" fill="#111111" stroke="none">
+                <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
+              </svg>
+            </div>
+            <span className="font-display font-bold text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
+              COIN KING
+            </span>
           </div>
-          <div className="flex items-center gap-2 md:gap-3">
+
+          {/* Center Floating White Nav Pill (Exact same style as Landing View!) */}
+          <nav 
+            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0"
+            style={{
+              height: 'clamp(44px, 5.2vw, 48px)',
+              padding: '4px 10px',
+              gap: '4px',
+            }}
+          >
+            {[
+              { id: 'combined', labelEn: 'All-in-One', labelTh: 'วิเคราะห์รวม' },
+              { id: 'fundamental', labelEn: 'Fundamental', labelTh: 'ปัจจัยพื้นฐาน' },
+              { id: 'technical', labelEn: 'Technical', labelTh: 'เทคนิคอล' },
+            ].map((mode) => {
+              const isActive = analysisType === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => !running && setAnalysisType(mode.id as any)}
+                  disabled={running}
+                  className={`relative px-4 py-1.5 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
+                    isActive 
+                      ? 'text-[#2e2e2e] opacity-100 font-semibold' 
+                      : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
+                  }`}
+                  style={{
+                    fontSize: 'clamp(13px, 1.4vw, 14.5px)',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {selectedLanguage === 'Thai' ? mode.labelTh : mode.labelEn}
+                  {isActive && (
+                    <span 
+                      className="absolute left-1/2 -translate-x-1/2 bottom-[5px] w-[3px] h-[3px] bg-black rounded-full shadow-[-5px_0_0_#000,5px_0_0_#000]" 
+                    />
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Deep Think toggle */}
+            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
+            <button
+              onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}
+              disabled={running}
+              className={`px-3.5 py-1 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 ${
+                useSelfConsistency 
+                  ? 'bg-black text-white shadow-sm font-semibold' 
+                  : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+              }`}
+              style={{
+                fontSize: 'clamp(12px, 1.3vw, 13px)',
+              }}
+              title="Deep Think Mode"
+            >
+              <Sparkles className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+              <span>{selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+            </button>
+
+            {/* Language Switch */}
+            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
+            <button
+              onClick={() => !running && setSelectedLanguage(selectedLanguage === 'Thai' ? 'English' : 'Thai')}
+              disabled={running}
+              className="px-2.5 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+              title="Switch Language"
+            >
+              {selectedLanguage === 'Thai' ? 'EN' : 'ไทย'}
+            </button>
+          </nav>
+
+          {/* Right Controls: Model Badge & User Account */}
+          <div className="flex items-center gap-2 z-10">
+            {/* Model Pill */}
+            <div className="hidden sm:flex items-center gap-1.5 bg-[#28282a] text-white/90 text-xs px-3.5 py-2 rounded-full border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              <Sparkles className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+              <span className="font-medium">Gemini 3.7 Flash</span>
+            </div>
+
+            {/* User Account / Sign In */}
             {user ? (
-              <div className="flex items-center gap-1 md:gap-4">
-                <button 
+              <div className="flex items-center gap-1 bg-[#28282a] rounded-full px-2 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+                <button
                   onClick={() => setIsHistoryModalOpen(true)}
-                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-[#c8c8c8] hover:text-white px-2.5 py-1 flex items-center gap-1 cursor-pointer transition-colors"
                   title="History"
                 >
-                  <History className="w-5 h-5 md:hidden" />
-                  <span className="hidden md:inline">History</span>
+                  <History className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{selectedLanguage === 'Thai' ? 'ประวัติ' : 'History'}</span>
                 </button>
-                <button 
+                <button
                   onClick={handleLogout}
-                  className="text-xs md:text-sm font-medium text-white/80 hover:text-white p-2 md:px-2 md:py-1.5 flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-[#c8c8c8] hover:text-red-400 px-2 py-1 cursor-pointer transition-colors"
                   title="Logout"
                 >
-                  <LogOut className="w-5 h-5 md:hidden" />
-                  <span className="hidden md:inline">Logout</span>
+                  {selectedLanguage === 'Thai' ? 'ออก' : 'Exit'}
                 </button>
-                <img src={user.photoURL || ''} alt="avatar" className="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white/20 ml-1" />
+                {user.photoURL && (
+                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border border-white/20 ml-1" />
+                )}
               </div>
             ) : (
-              <button 
+              <button
                 onClick={handleLogin}
-                className="text-xs md:text-sm font-medium text-white/80 hover:text-white px-3 py-1.5 border border-white/20 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+                className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer text-xs md:text-sm px-4 py-2"
               >
                 Sign In
               </button>
             )}
-            <div className="hidden md:flex items-center gap-2 md:gap-3">
-              <CustomSelect
-                value={analysisType}
-                onChange={(v) => setAnalysisType(v as any)}
-                disabled={running}
-                options={[
-                  { value: 'fundamental', label: 'Fundamental Analysis' },
-                  { value: 'technical', label: 'Technical Analysis' },
-                  { value: 'combined', label: 'Fundamental + Technical' },
-                ]}
-              />
-              <CustomSelect
-                value={selectedLanguage}
-                onChange={setSelectedLanguage}
-                disabled={running}
-                options={[
-                  { value: 'English', label: 'English' },
-                  { value: 'Thai', label: 'ภาษาไทย' },
-                ]}
-              />
-              <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 shadow-sm cursor-pointer hover:bg-white/10 transition-colors" onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}>
-                <div className={`w-4 h-4 rounded border flex items-center justify-center ${useSelfConsistency ? 'bg-white border-white' : 'border-white/30'}`}>
-                  {useSelfConsistency && <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                </div>
-                <span className="text-[11px] md:text-xs text-white/90 font-medium whitespace-nowrap select-none">
-                  {selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}
-                </span>
-              </div>
-              <CustomSelect
-                value={selectedModel}
-                onChange={setSelectedModel}
-                disabled={running}
-                options={[
-                  { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
-                  { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-                  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-                ]}
-              />
-            </div>
+
+            {/* Close / Return to Landing button */}
+            <button
+              onClick={resetAnalysis}
+              className="bg-[#28282a] hover:bg-white/20 text-white/80 hover:text-white rounded-full p-2.5 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer"
+              title={selectedLanguage === 'Thai' ? 'กลับหน้าแรก' : 'Back to Home'}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </header>
       )}
