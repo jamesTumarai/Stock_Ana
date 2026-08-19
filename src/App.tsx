@@ -729,7 +729,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
       <div className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-none">
         <video
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-          style={{ objectPosition: 'center 38%' }}
+          style={{ objectPosition: 'center 62%' }}
           autoPlay
           muted
           loop
@@ -740,7 +740,7 @@ ${latest.technical_analysis?.trade_plan ? `🎯 Trade Plan:
             type="video/mp4"
           />
         </video>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/40 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/45 pointer-events-none" />
       </div>
       
       {/* Header (shown during analysis or when viewing timeline) */}
