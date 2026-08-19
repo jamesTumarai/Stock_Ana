@@ -66,10 +66,10 @@ const ConvictionGauge = ({ score, isThai }: { score: number | string, isThai: bo
         />
       </svg>
       <div className="absolute flex flex-col items-center justify-center">
-        <span className="text-3xl font-display font-bold" style={{ color: strokeColor }}>
+        <span className="text-3xl font-bold font-['Nunito',sans-serif] tabular-nums" style={{ color: strokeColor }}>
           {score || '-'}
         </span>
-        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-wider">
+        <span className="text-[10px] text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif]">
           {isThai ? 'เต็ม 100' : '/ 100'}
         </span>
       </div>
@@ -213,7 +213,7 @@ const AnalysisCard = ({ title, action, subtext, children, className = "", titleC
     className={`bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm border border-stone-200 flex flex-col ${className}`}
   >
     <div className="flex justify-between items-center mb-2 gap-2">
-      <h3 className={`text-xl font-display uppercase tracking-wider font-bold ${titleClassName}`}>{title}</h3>
+      <h3 className={`text-lg md:text-xl font-bold font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight ${titleClassName}`}>{title}</h3>
       {action && <div>{action}</div>}
     </div>
     {subtext && (
@@ -337,21 +337,21 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
   const findings = data.findings || [];
 
   const navItems = [
-    { id: 'section-summary', label: isThai ? 'บทสรุป' : 'Summary', icon: '⚡' },
+    { id: 'section-summary', label: isThai ? 'บทสรุป' : 'Summary' },
     ...(data.analysis_type !== 'technical' && data.comprehensive_analysis ? [
-      { id: 'section-fundamentals', label: isThai ? 'ปัจจัยพื้นฐาน' : 'Fundamentals', icon: '🏛️' },
+      { id: 'section-fundamentals', label: isThai ? 'ปัจจัยพื้นฐาน' : 'Fundamentals' },
     ] : []),
     ...(data.financial_charts ? [
-      { id: 'section-financials', label: isThai ? 'กราฟการเงิน' : 'Charts', icon: '📈' },
+      { id: 'section-financials', label: isThai ? 'กราฟการเงิน' : 'Charts' },
     ] : []),
     ...(data.technical_analysis ? [
-      { id: 'section-technical', label: isThai ? 'เทคนิคอล & แผนเทรด' : 'Technical', icon: '🎯' },
+      { id: 'section-technical', label: isThai ? 'เทคนิคอล & แผนเทรด' : 'Technical' },
     ] : []),
     ...(!isTechnicalOnly && data.deep_insights && data.deep_insights.length > 0 ? [
-      { id: 'section-insights', label: isThai ? 'ข้อมูลเชิงลึก' : 'Insights', icon: '💡' },
+      { id: 'section-insights', label: isThai ? 'ข้อมูลเชิงลึก' : 'Insights' },
     ] : []),
     ...(findings.length > 0 ? [
-      { id: 'section-citations', label: isThai ? 'เอกสารอ้างอิง' : 'SEC Filings', icon: '📄' },
+      { id: 'section-citations', label: isThai ? 'เอกสารอ้างอิง' : 'SEC Filings' },
     ] : []),
   ];
   
@@ -360,10 +360,10 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className={`min-h-full bg-[#F6F4F0] text-stone-900 font-sans w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
+      className={`min-h-full bg-[#F6F4F0] text-stone-900 report-cute-font w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
       {!hideHeader && (
         <div className="w-full border-b border-stone-200 px-4 md:px-[40px] py-4 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0] print:static print:bg-white">
-          <div className="font-display uppercase font-bold text-stone-900 text-lg tracking-wider flex items-center gap-2">
+          <div className="font-bold text-stone-900 text-lg md:text-xl tracking-tight flex items-center gap-2 font-['Prompt','Mitr','Nunito',sans-serif]">
             {isThai ? `การวิเคราะห์เอกสาร ${ticker}` : `${ticker} Document Analysis`}
           </div>
           <div className="flex items-center gap-4 print:hidden">
@@ -377,20 +377,19 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         </div>
       )}
 
-      {/* Quick Navigation Sticky Pill Bar */}
-      <div className="sticky top-0 z-40 bg-[#F6F4F0]/90 backdrop-blur-md py-2.5 px-4 md:px-[40px] border-b border-stone-200/60 print:hidden overflow-x-auto no-scrollbar shadow-xs">
-        <div className="flex items-center gap-2 min-w-max max-w-[1200px] mx-auto">
+      {/* Quick Navigation Sticky Pill Bar (Centered, No Emojis) */}
+      <div className="sticky top-0 z-40 bg-[#F6F4F0]/90 backdrop-blur-md py-3 px-4 md:px-[40px] border-b border-stone-200/60 print:hidden overflow-x-auto no-scrollbar shadow-xs">
+        <div className="flex items-center justify-center gap-2.5 min-w-max max-w-[1200px] mx-auto">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => scrollToSection(item.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+              className={`px-4 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none ${
                 activeNav === item.id 
                   ? 'bg-stone-900 text-white shadow-sm ring-1 ring-stone-900' 
                   : 'bg-white/80 hover:bg-white text-stone-700 border border-stone-200/80 hover:text-stone-900 hover:border-stone-300'
               }`}
             >
-              <span className="text-sm">{item.icon}</span>
               <span>{item.label}</span>
             </button>
           ))}
@@ -464,9 +463,8 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         {/* Comprehensive Analysis */}
         {data.analysis_type !== 'technical' && data.comprehensive_analysis && (
           <div id="section-fundamentals" className="flex flex-col gap-4 md:p-6 mt-2 scroll-mt-14">
-            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4 flex items-center gap-2">
-              <span>🏛️</span>
-              <span>{isThai ? "การวิเคราะห์ปัจจัยพื้นฐานเชิงลึก" : "Comprehensive Fundamental Analysis"}</span>
+            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 mt-4">
+              {isThai ? "การวิเคราะห์ปัจจัยพื้นฐานเชิงลึก" : "Comprehensive Fundamental Analysis"}
             </h2>
             
             <AnalysisCard title={isThai ? "ภาพรวมธุรกิจ (Business Overview)" : "Business Overview"}>
@@ -652,9 +650,8 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         {/* Technical Analysis */}
         {data.technical_analysis && (
           <div id="section-technical" className="flex flex-col gap-4 md:p-6 mt-2 scroll-mt-14">
-            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider border-b border-stone-200 pb-2 mt-4 flex items-center gap-2">
-              <span>🎯</span>
-              <span>{isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}</span>
+            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 mt-4">
+              {isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}
             </h2>
             
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-center justify-between">
@@ -920,9 +917,8 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
         {/* Deep Insights */}
         {!isTechnicalOnly && data.deep_insights && data.deep_insights.length > 0 && (
           <div id="section-insights" className="mt-8 scroll-mt-14">
-            <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6 flex items-center gap-2">
-              <span>💡</span>
-              <span>{isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}</span>
+            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight mb-6">
+              {isThai ? "ข้อมูลเชิงลึก" : "Deep Insights"}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:p-6">
               {data.deep_insights.slice(0, 3).map((insight, index) => (
@@ -950,9 +946,8 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
 
         {/* Detailed Findings */}
         <div id="section-citations" className="mt-8 scroll-mt-14">
-           <h2 className="text-2xl font-display font-bold text-stone-900 uppercase tracking-wider mb-6 flex items-center gap-2">
-             <span>📄</span>
-             <span>{isThai ? "ผลการค้นพบในเอกสาร" : "Document Findings"}</span>
+           <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight mb-6">
+             {isThai ? "ผลการค้นพบในเอกสาร" : "Document Findings"}
            </h2>
            
            {findings.length === 0 ? (
