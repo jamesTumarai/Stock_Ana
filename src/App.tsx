@@ -840,7 +840,7 @@ export default function App() {
         </header>
       )}
 
-      <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-20'}`}>
+      <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-16 sm:pt-18'}`}>
         {isLanding ? (
            <LandingView 
              language={selectedLanguage}
@@ -863,9 +863,9 @@ export default function App() {
              onOpenHistory={() => setIsHistoryModalOpen(true)}
            />
         ) : (
-           <div className="flex-1 flex flex-row overflow-hidden pb-64 md:pb-40 gap-4 px-4 min-h-0 max-w-4xl mx-auto w-full mt-4">
-              <div className="flex-1 flex flex-col liquid-glass rounded-[1.25rem] overflow-hidden min-h-0">
-                <div className="p-4 bg-white/5 border-b border-white/10 font-bold text-white text-sm flex justify-between items-center">
+           <div className="flex-1 flex flex-col overflow-hidden pb-24 sm:pb-28 md:pb-28 gap-3 sm:gap-4 px-3 sm:px-4 min-h-0 max-w-2xl lg:max-w-[680px] mx-auto w-full mt-1 sm:mt-2 mb-1">
+              <div className="flex-1 flex flex-col liquid-glass rounded-[1.5rem] overflow-hidden min-h-0 shadow-2xl border border-white/20">
+                <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-white/[0.06] border-b border-white/10 font-bold text-white text-sm flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-2">
                     <img src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" alt="Gemini Sparkle" className="w-5 h-5" />
                     <span>{selectedModel === 'gemini-3.7-flash' ? 'Gemini 3.7 Flash' : selectedModel === 'gemini-3.6-flash' || selectedModel === 'perseus' ? 'Gemini 3.6 Flash' : 'Gemini 3.5 Flash'}</span>
@@ -875,7 +875,7 @@ export default function App() {
                     {!running && (
                       <button 
                         onClick={resetAnalysis}
-                        className="text-white/60 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+                        className="text-white/60 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10 cursor-pointer"
                         title={selectedLanguage === 'Thai' ? 'ปิดและเริ่มใหม่' : 'Close and Reset'}
                       >
                         <X className="w-4 h-4" />
