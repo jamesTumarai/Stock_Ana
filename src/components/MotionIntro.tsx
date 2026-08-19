@@ -16,14 +16,14 @@ export const MotionIntro: React.FC<MotionIntroProps> = ({ onComplete }) => {
   const [stage, setStage] = useState<'ignite' | 'emblem' | 'slide' | 'lumina' | 'glide' | 'exit'>('ignite');
 
   useEffect(() => {
-    const t1 = setTimeout(() => setStage('emblem'), 450);
-    const t2 = setTimeout(() => setStage('slide'), 1100);
-    const t3 = setTimeout(() => setStage('lumina'), 1900);
-    const t4 = setTimeout(() => setStage('glide'), 2700);
+    const t1 = setTimeout(() => setStage('emblem'), 600);
+    const t2 = setTimeout(() => setStage('slide'), 1600);
+    const t3 = setTimeout(() => setStage('lumina'), 2900);
+    const t4 = setTimeout(() => setStage('glide'), 4300);
     const t5 = setTimeout(() => {
       setStage('exit');
       onComplete();
-    }, 3400);
+    }, 5300);
 
     return () => {
       clearTimeout(t1);
@@ -123,7 +123,7 @@ export const MotionIntro: React.FC<MotionIntroProps> = ({ onComplete }) => {
                 letterSpacing: stage === 'ignite' || stage === 'emblem' ? '0.3em' : '0.18em',
               }}
               transition={{
-                duration: 0.85,
+                duration: 1.05,
                 ease: [0.16, 1, 0.3, 1],
               }}
               className="font-display font-black text-2xl sm:text-3xl md:text-4xl uppercase text-white select-none drop-shadow-[0_2px_20px_rgba(255,255,255,0.3)] whitespace-nowrap"
@@ -140,8 +140,8 @@ export const MotionIntro: React.FC<MotionIntroProps> = ({ onComplete }) => {
             scaleX: stage === 'slide' || stage === 'lumina' || stage === 'glide' ? 1 : 0,
             opacity: stage === 'slide' || stage === 'lumina' || stage === 'glide' ? 0.75 : 0,
           }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          className="w-32 sm:w-44 h-[1px] bg-gradient-to-r from-transparent via-white/60 to-transparent my-3 sm:my-3.5 relative"
+          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+          className="w-32 sm:w-44 h-[1px] bg-gradient-to-r from-transparent via-white/60 to-transparent my-3.5 sm:my-4 relative"
         >
           <motion.div
             animate={{
@@ -164,7 +164,7 @@ export const MotionIntro: React.FC<MotionIntroProps> = ({ onComplete }) => {
               letterSpacing: stage === 'lumina' || stage === 'glide' ? '0.32em' : '0.45em',
             }}
             transition={{
-              duration: 0.9,
+              duration: 1.1,
               ease: [0.16, 1, 0.3, 1],
             }}
             className="font-display font-medium text-lg sm:text-xl md:text-2xl uppercase text-white/80 select-none drop-shadow-[0_0_15px_rgba(255,255,255,0.25)] whitespace-nowrap"
@@ -186,8 +186,8 @@ export const MotionIntro: React.FC<MotionIntroProps> = ({ onComplete }) => {
             letterSpacing: stage === 'lumina' || stage === 'glide' ? '0.22em' : '0.35em',
           }}
           transition={{
-            duration: 0.9,
-            delay: 0.15,
+            duration: 1.1,
+            delay: 0.2,
             ease: [0.16, 1, 0.3, 1],
           }}
           className="text-[11px] sm:text-xs font-mono uppercase tracking-[0.22em] text-white/60 select-none whitespace-nowrap flex items-center gap-1.5"
