@@ -362,20 +362,20 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
       transition={{ duration: 0.5, ease: 'easeOut' }}
       className={`min-h-full bg-[#F6F4F0] text-stone-900 report-cute-font w-full flex flex-col print:overflow-visible print:h-auto print:bg-white print:block ${hideHeader ? 'mb-8 border-b-4 border-stone-300 pb-8' : 'h-full overflow-y-auto'}`}>
       {!hideHeader && (
-        <div className="w-full border-b border-stone-200/80 px-4 md:px-8 py-3 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-xs gap-3">
+        <div className="w-full border-b border-stone-200/80 px-3 sm:px-6 md:px-8 py-2.5 sm:py-3 flex items-center justify-between sticky top-0 z-50 bg-[#F6F4F0]/95 backdrop-blur-md print:static print:bg-white shadow-xs gap-2 sm:gap-3">
           {/* Left Title */}
-          <div className="font-bold text-stone-900 text-base md:text-lg tracking-tight flex items-center gap-2 font-['Prompt','Mitr','Nunito',sans-serif] shrink-0">
+          <div className="font-bold text-stone-900 text-sm sm:text-base md:text-lg tracking-tight flex items-center gap-1.5 sm:gap-2 font-['Prompt','Mitr','Nunito',sans-serif] shrink-0">
             {isThai ? `วิเคราะห์ ${ticker}` : `${ticker} Analysis`}
           </div>
 
-          {/* Center Navigation Pills (Centered) */}
-          <div className="flex-1 flex items-center justify-center overflow-x-auto no-scrollbar py-0.5 px-2">
-            <div className="flex items-center gap-2 min-w-max">
+          {/* Center Navigation Pills (Centered & Smooth Mobile Touch Scrolling) */}
+          <div className="flex-1 flex items-center justify-center overflow-x-auto no-scrollbar scroll-smooth touch-pan-x py-0.5 px-1 sm:px-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-max">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => scrollToSection(item.id)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                  className={`px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all flex items-center justify-center cursor-pointer select-none whitespace-nowrap shrink-0 ${
                     activeNav === item.id 
                       ? 'bg-stone-900 text-white shadow-sm ring-1 ring-stone-900' 
                       : 'bg-white/80 hover:bg-white text-stone-700 border border-stone-200/80 hover:text-stone-900 hover:border-stone-300'
@@ -391,16 +391,16 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
           <div className="flex items-center gap-2 print:hidden shrink-0">
             <button 
               onClick={onClose}
-              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-all rounded-full p-2 cursor-pointer flex items-center justify-center"
+              className="text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 transition-all rounded-full p-1.5 sm:p-2 cursor-pointer flex items-center justify-center"
               title={isThai ? 'ปิด' : 'Close'}
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
       )}
 
-      <div id="report-content" className="flex-1 py-8 px-2 sm:px-4 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-4 md:gap-6 bg-[#F6F4F0]">
+      <div id="report-content" className="flex-1 py-4 sm:py-8 px-2.5 sm:px-6 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-4 md:gap-6 bg-[#F6F4F0]">
         
         {/* Executive Summary */}
         <div id="section-summary" className="flex flex-col gap-4 md:gap-6 scroll-mt-14">
@@ -670,7 +670,7 @@ export default function ReportTemplate({ data, ticker, onClose, durationSecs = 0
               </div>
             </div>
 
-            <div className="w-full h-[500px] bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden relative">
+            <div className="w-full h-[360px] sm:h-[460px] md:h-[520px] bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden relative">
               <iframe 
                 src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_1&symbol=${ticker}&interval=D&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=%5B%22MASimple%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%2C%22RSI%40tv-basicstudies%22%2C%22BollingerBands%40tv-basicstudies%22%5D&theme=light&style=1&timezone=Asia%2FBangkok&withdateranges=1&showpopupbutton=1&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en&utm_source=&utm_medium=widget&utm_campaign=chart&utm_term=${ticker}`}
                 width="100%" 

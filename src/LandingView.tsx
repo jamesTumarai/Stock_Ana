@@ -172,12 +172,12 @@ export function LandingView({
           }}
         >
           {/* Top Left Logo & Brand Title (Minimalist Monochrome) */}
-          <div className="flex items-center gap-2.5 shrink-0 cursor-pointer group z-10">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10">
             <div
               className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
               style={{
-                width: 'clamp(34px, 3.8vw, 38px)',
-                height: 'clamp(34px, 3.8vw, 38px)',
+                width: 'clamp(32px, 3.8vw, 38px)',
+                height: 'clamp(32px, 3.8vw, 38px)',
               }}
               title="COIN KING"
             >
@@ -186,16 +186,16 @@ export function LandingView({
                 <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
               </svg>
             </div>
-            <span className="font-display font-bold text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
+            <span className="font-display font-bold text-base sm:text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
               COIN KING
             </span>
           </div>
 
-          {/* Center Floating White Nav Pill (Absolute 100% Center of Screen, Single Line Guaranteed) */}
+          {/* Center Floating White Nav Pill (Absolute 100% Center of Screen, Scaled for iPad & Desktop) */}
           <nav 
-            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0"
+            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-95 lg:scale-100 transition-transform"
             style={{
-              height: 'clamp(44px, 5.2vw, 48px)',
+              height: 'clamp(42px, 5vw, 48px)',
               padding: '4px 10px',
               gap: '4px',
             }}
@@ -450,11 +450,11 @@ export function LandingView({
 
           {/* Headline (Dot-Matrix Display Typography) */}
           <h1 
-            className="headline font-normal text-white text-center leading-[1.12] whitespace-nowrap overflow-hidden select-none"
+            className="headline font-normal text-white text-center leading-[1.12] whitespace-nowrap overflow-hidden select-none px-2"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(32px, 6.8vw, 84px)',
-              letterSpacing: 'clamp(-0.08em, -0.04em, -0.04em)',
+              fontSize: 'clamp(24px, 6vw, 82px)',
+              letterSpacing: 'clamp(-0.06em, -0.04em, -0.04em)',
             }}
           >
             <span 
@@ -477,10 +477,10 @@ export function LandingView({
 
           {/* Subhead */}
           <p 
-            className="subhead anim text-[#d0d0d0] font-normal leading-[1.55] max-w-[min(540px,94%)] mt-3 md:mt-4 opacity-80"
+            className="subhead anim text-[#d0d0d0] font-normal leading-[1.55] max-w-[min(540px,94%)] mt-2.5 md:mt-4 opacity-80 px-2"
             style={{
               ['--d' as any]: '0.28s',
-              fontSize: 'clamp(calc(13px + 2pt), calc(1.4vw + 2pt), calc(16px + 2pt))',
+              fontSize: 'clamp(calc(12px + 2pt), calc(1.3vw + 2pt), calc(16px + 2pt))',
             }}
           >
             {isThai 
@@ -489,18 +489,18 @@ export function LandingView({
           </p>
 
           {/* Integrated Search Bar in Hero */}
-          <div className="mt-5 md:mt-6 w-full max-w-xl flex flex-col items-center">
+          <div className="mt-4 sm:mt-5 md:mt-6 w-full max-w-xl flex flex-col items-center px-1">
             
-            <div className="w-full liquid-glass border border-white/25 rounded-full p-1.5 md:p-2 flex items-center shadow-2xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
-              <div className="flex items-center gap-2 pl-3 flex-1 min-w-0">
-                <Search className="w-4 h-4 md:w-5 md:h-5 text-white/70 shrink-0" />
+            <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 md:p-2 flex items-center shadow-2xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
+              <div className="flex items-center gap-1.5 sm:gap-2 pl-2.5 sm:pl-3 flex-1 min-w-0">
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-white/70 shrink-0" />
                 <input 
                   type="text"
                   value={ticker}
                   onChange={(e) => setTicker(e.target.value)}
-                  placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA, TSLA)" : "US TICKER (e.g. SOFI, NVDA, TSLA)"}
+                  placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น (เช่น SOFI, NVDA)" : "US TICKER (e.g. SOFI, NVDA)"}
                   disabled={running}
-                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-sm md:text-base text-white placeholder-white/40"
+                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-xs sm:text-sm md:text-base text-white placeholder-white/40 min-w-0"
                   onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                 />
               </div>
@@ -508,16 +508,16 @@ export function LandingView({
               <button
                 onClick={runAnalysis}
                 disabled={!ticker.trim() || running}
-                className="bg-white text-black font-semibold rounded-full px-5 md:px-7 py-2 md:py-2.5 text-xs md:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_22px_rgba(255,255,255,0.32)]"
+                className="bg-white text-black font-semibold rounded-full px-4 sm:px-5 md:px-7 py-2 sm:py-2 md:py-2.5 text-xs md:text-sm shrink-0 cursor-pointer hover:scale-102 hover:bg-white/95 disabled:bg-white/30 disabled:text-white/40 disabled:cursor-not-allowed transition-all shadow-[0_0_22px_rgba(255,255,255,0.32)]"
               >
                 {running ? (
                   <div className="flex items-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
+                    <span className="text-xs sm:text-sm">{isThai ? 'กำลังวิเคราะห์...' : 'Analyzing...'}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span>{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
+                    <span className="text-xs sm:text-sm">{isThai ? 'วิเคราะห์หุ้น' : 'Analyze'}</span>
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </div>
                 )}
@@ -525,13 +525,13 @@ export function LandingView({
             </div>
 
             {/* Quick Ticker Chips */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2.5">
-              <span className="text-[11px] text-white/50 mr-1">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
+            <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 mt-2 sm:mt-2.5 px-1">
+              <span className="text-[10px] sm:text-[11px] text-white/50 mr-0.5">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
               {quickTickers.map((sym) => (
                 <button
                   key={sym}
                   onClick={() => handleSelectQuickTicker(sym)}
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-mono transition-all cursor-pointer border ${
+                  className={`px-2 sm:px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-mono transition-all cursor-pointer border ${
                     ticker.toUpperCase() === sym 
                       ? 'bg-white text-black border-white font-bold' 
                       : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/15 hover:text-white'
@@ -546,7 +546,7 @@ export function LandingView({
 
         {/* 3) Killer Lumina Stats Footer (4 Impactful App Metrics) */}
         <footer 
-          className="w-full max-w-[1080px] grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 pt-4 pb-2 shrink-0 z-10"
+          className="w-full max-w-[1080px] grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6 pt-3 md:pt-4 pb-2 shrink-0 z-10 px-2"
         >
           {STATS.map((stat) => (
             <StatCounter key={stat.labelEn} stat={stat} isThai={isThai} />
