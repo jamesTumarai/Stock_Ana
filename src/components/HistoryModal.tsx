@@ -85,7 +85,7 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
           </div>
         </div>
         
-        <div className="p-3 sm:p-4 overflow-y-auto flex-1 scrollbar-hide">
+        <div className="p-3 sm:p-4 overflow-y-auto flex-1 no-scrollbar scrollbar-hide">
           {filteredReports.length === 0 ? (
             <div className="text-center py-12 flex flex-col items-center gap-2">
               <p className="text-sm text-stone-400 font-medium">

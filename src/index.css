@@ -3,19 +3,19 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --font-sans: "Instrument Sans", "Noto Sans Thai", "Itim", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Nunito", "Prompt", "Mitr", "Plus Jakarta Sans", "Itim", "Instrument Sans", "Noto Sans Thai", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", Georgia, ui-serif, serif;
-  --font-display: "Big Shoulders Display", "Kanit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Big Shoulders Display", "Prompt", "Kanit", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --font-report: "Nunito", "Prompt", "Mitr", "Plus Jakarta Sans", sans-serif;
-  --font-report-heading: "Mitr", "Prompt", "Nunito", sans-serif;
+  --font-report: "Nunito", "Prompt", "Mitr", "Plus Jakarta Sans", "Itim", sans-serif;
+  --font-report-heading: "Prompt", "Mitr", "Nunito", "Plus Jakarta Sans", sans-serif;
 
   --color-io-blue: #4285f4;
   --color-io-red: #ea4335;
   --color-io-yellow: #fbbc04;
   --color-io-green: #34a853;
-  --font-heading: "Instrument Serif", serif;
-  --font-body: "Barlow", "Noto Sans Thai", sans-serif;
+  --font-heading: "Prompt", "Mitr", "Instrument Serif", serif;
+  --font-body: "Nunito", "Prompt", "Mitr", "Noto Sans Thai", sans-serif;
   --radius-default: 9999px;
 }
 
@@ -37,6 +37,34 @@
   .report-cute-font li,
   .report-cute-font div {
     font-family: 'Nunito', 'Prompt', 'Mitr', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Universal scrollbar hiding */
+  .no-scrollbar::-webkit-scrollbar,
+  .scrollbar-hide::-webkit-scrollbar,
+  .overflow-x-auto::-webkit-scrollbar {
+    height: 4px;
+    width: 4px;
+  }
+  .no-scrollbar::-webkit-scrollbar-thumb,
+  .scrollbar-hide::-webkit-scrollbar-thumb,
+  .overflow-x-auto::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 9999px;
+  }
+  .no-scrollbar::-webkit-scrollbar-track,
+  .scrollbar-hide::-webkit-scrollbar-track,
+  .overflow-x-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .no-scrollbar,
+  .scrollbar-hide {
+    -ms-overflow-style: none !important;
+    scrollbar-width: none !important;
+  }
+  .no-scrollbar::-webkit-scrollbar,
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none !important;
   }
   .liquid-glass {
     background: rgba(255, 255, 255, 0.01);
@@ -108,9 +136,56 @@
   }
 
   @media print {
-    body {
+    @page {
+      size: A4;
+      margin: 12mm 10mm 12mm 10mm;
+    }
+
+    html,
+    body,
+    #root,
+    #report-scroll-container,
+    #report-content {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      position: static !important;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      color: #1c1917 !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+    }
+
+    /* Prevent awkward page cuts in cards and tables */
+    .bg-white,
+    .bg-stone-50,
+    .rounded-2xl,
+    .rounded-3xl,
+    table,
+    tbody,
+    tr,
+    .grid > div {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    /* Force all elements to full opacity and reset transforms */
+    * {
+      opacity: 1 !important;
+      transform: none !important;
+      animation: none !important;
+      transition: none !important;
+    }
+
+    /* Hide sticky navigation and buttons during print/save */
+    .print\:hidden {
+      display: none !important;
+    }
+
+    .print\:block {
+      display: block !important;
     }
   }
 }

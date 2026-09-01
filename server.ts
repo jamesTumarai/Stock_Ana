@@ -210,7 +210,18 @@ async function startServer() {
       const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
       const publicUrl = origin || `${protocol}://${host}`;
 
-      let finalInstruction = `Find and analyze recent public information, news, and stock data for ${ticker}.`;
+      const now = new Date();
+      const todayISO = now.toISOString().split('T')[0];
+      const currentYear = now.getFullYear();
+
+      let finalInstruction = `Find and analyze the absolute latest real-time public information, official SEC filings, verified financial statements, and live market data for ${ticker}.
+
+CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
+1. TODAY'S EXACT DATE: Today is ${todayISO} (Year ${currentYear}). ALL DATA MUST BE AS CURRENT AS POSSIBLE (UP TO TODAY ${todayISO}).
+2. LIVE MARKET REALITY: The current stock price, market cap, valuation multiples (TTM P/E, Forward P/E, EV/EBITDA, P/S, P/B), 52-week high/low, and technical indicators MUST be fetched from live searches (Yahoo Finance, Google Finance, Bloomberg, TradingView) as of TODAY (${todayISO}). NEVER use outdated past years or placeholder example values from the schema.
+3. 100% REAL DATA & ZERO HALLUCINATIONS: Every single metric, revenue number, margin percentage, cash flow, debt level, institutional holder name, and insider transaction MUST come from verified, authentic public records (SEC Form 10-K, 10-Q, 8-K, Form 4, 13F filings, and official investor relations).
+4. EXHAUST ALL SEARCH EFFORTS: You MUST execute multiple thorough web searches to locate authentic figures for all required fields.
+5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.`;
       
       let dynamicSchema = ``;
       
@@ -415,6 +426,7 @@ async function startServer() {
           - หัวข้อ 4 (งบการเงิน), 8 (ความเสี่ยง), 9 (ผู้บริหาร) ต้องมีความยาวอย่างน้อย 3-5 ประโยคที่มีเนื้อหาเฉพาะเจาะจงต่อ bullet ห้ามสรุปทั้งหัวข้อด้วยประโยคเดียว
           - ระวังอคติจากฝั่งผู้บริหาร (management bias) 
           - ใช้ตัวเลขล่าสุดเท่าที่หาได้ ระบุแหล่งที่มาและช่วงเวลา (ไตรมาส/ปี) กำกับตัวเลขสำคัญ
+          - ข้อมูลราคาหุ้น, Market Cap, Trailing P/E (TTM), Forward P/E, EV/EBITDA, 52-Week Range ต้องค้นหาและดึงข้อมูลสดของวันนี้ (Live Real-Time Data จาก Yahoo Finance/Google Finance) มาใช้จริงเสมอ ห้ามใช้ตัวเลขตัวอย่างใน Schema หรือคาดเดาจากข้อมูลเก่าในอดีต
           - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุน`;
         } else {
           finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English. Please follow the structure covering both Fundamental and Technical aspects completely.
@@ -426,6 +438,403 @@ async function startServer() {
     "summary": "...",
     "conviction_score": 85,
     "key_takeaways": ["...", "..."]
+  },
+  "financial_statements": {
+    "currency": "USD",
+    "fiscal_period_type": "quarterly",
+    "as_of_date": "2026-09-01",
+    "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
+    "income_statement": {
+      "revenue": [726, 828, 884, 1004],
+      "cogs": [146, 164, 150, 160],
+      "gross_profit": [580, 664, 734, 844],
+      "gross_margin_pct": [79.9, 80.2, 83.0, 84.1],
+      "operating_expenses": [385, 382, 345, 371],
+      "operating_income": [195, 282, 389, 473],
+      "operating_margin_pct": [26.8, 34.0, 44.0, 47.1],
+      "net_income": [143, 79, 214, 326],
+      "net_margin_pct": [19.7, 9.5, 24.2, 32.5],
+      "eps_diluted": [0.06, 0.03, 0.08, 0.13],
+      "yoy_revenue_growth_pct": [63, 70, 85, 93],
+      "commentary": "..."
+    },
+    "balance_sheet": {
+      "cash_and_equivalents": [4000, 4200, 4500, 5000],
+      "total_current_assets": [4800, 5100, 5500, 6200],
+      "total_assets": [6200, 6600, 7100, 7900],
+      "total_current_liabilities": [700, 750, 800, 900],
+      "total_debt": [0, 0, 0, 0],
+      "total_liabilities": [950, 1020, 1100, 1250],
+      "total_equity": [5250, 5580, 6000, 6650],
+      "current_ratio": [6.85, 6.80, 6.88, 6.90],
+      "quick_ratio": [6.1, 6.2, 6.3, 6.4],
+      "debt_to_equity": [0, 0, 0, 0],
+      "debt_to_ebitda": [0, 0, 0, 0],
+      "commentary": "..."
+    },
+    "cash_flow": {
+      "operating_cash_flow": [220, 310, 420, 550],
+      "capex": [15, 18, 20, 25],
+      "free_cash_flow": [205, 292, 400, 525],
+      "fcf_margin_pct": [28.2, 35.3, 45.2, 52.3],
+      "fcf_vs_net_income_ratio": [1.43, 3.70, 1.87, 1.61],
+      "commentary": "..."
+    },
+    "red_flags": ["..."]
+  },
+  "valuation_ratios": [
+    {
+      "name": "P/E (Trailing)",
+      "formula": "ราคาหุ้นปัจจุบัน / EPS ย้อนหลัง 12 เดือน",
+      "value": 137.5,
+      "unit": "x",
+      "peer_avg": 30.7,
+      "own_5yr_percentile": 82,
+      "interpretation": "...",
+      "verdict": "expensive"
+    },
+    {
+      "name": "PEG Ratio",
+      "formula": "P/E ÷ อัตราการเติบโตกำไรคาดการณ์ (%)",
+      "value": 1.8,
+      "unit": "x",
+      "peer_avg": 2.1,
+      "own_5yr_percentile": 65,
+      "interpretation": "...",
+      "verdict": "fair"
+    },
+    { "name": "EV/EBITDA", "formula": "Enterprise Value / EBITDA (TTM)", "value": 85.2, "unit": "x", "peer_avg": 25.4, "own_5yr_percentile": 78, "interpretation": "...", "verdict": "expensive" },
+    { "name": "EV/Sales", "formula": "Enterprise Value / Revenue (TTM)", "value": 38.4, "unit": "x", "peer_avg": 12.1, "own_5yr_percentile": 85, "interpretation": "...", "verdict": "expensive" },
+    { "name": "P/FCF", "formula": "Market Cap / Free Cash Flow (TTM)", "value": 65.0, "unit": "x", "peer_avg": 28.0, "own_5yr_percentile": 70, "interpretation": "...", "verdict": "expensive" },
+    { "name": "P/B", "formula": "ราคาหุ้น / มูลค่าทางบัญชีต่อหุ้น", "value": 24.5, "unit": "x", "peer_avg": 8.5, "own_5yr_percentile": 75, "interpretation": "...", "verdict": "expensive" }
+  ],
+  "valuation_percentile_chart": {
+    "description": "ตำแหน่ง P/E ปัจจุบันเทียบกับช่วง 5 ปี",
+    "min_5yr": 45.2,
+    "max_5yr": 210.8,
+    "current": 137.5,
+    "median_5yr": 95.0
+  },
+  "intrinsic_value": {
+    "current_price": 186.38,
+    "as_of_date": "2026-09-01",
+    "dcf_model": {
+      "assumptions": {
+        "wacc_pct": 9.5,
+        "terminal_growth_pct": 3.0,
+        "projection_years": 5
+      },
+      "scenarios": {
+        "bear": {
+          "revenue_cagr_pct": 25,
+          "terminal_margin_pct": 30,
+          "fair_value_per_share": 95.0,
+          "key_assumption_note": "..."
+        },
+        "base": {
+          "revenue_cagr_pct": 40,
+          "terminal_margin_pct": 38,
+          "fair_value_per_share": 165.0,
+          "key_assumption_note": "..."
+        },
+        "bull": {
+          "revenue_cagr_pct": 55,
+          "terminal_margin_pct": 45,
+          "fair_value_per_share": 260.0,
+          "key_assumption_note": "..."
+        }
+      }
+    },
+    "relative_valuation": {
+      "method": "EV/EBITDA multiple ของกลุ่มเทียบ",
+      "peer_multiple_used": 45.0,
+      "metric_applied": "Forward EBITDA",
+      "fair_value_per_share": 175.0
+    },
+    "summary": {
+      "fair_value_range_low": 95.0,
+      "fair_value_range_high": 260.0,
+      "base_case_fair_value": 165.0,
+      "current_price_position_pct": 55,
+      "margin_of_safety_pct": -12.9,
+      "verdict_text": "..."
+    },
+    "disclaimer": "การประเมินมูลค่านี้เป็นแบบจำลองอย่างง่ายจากสมมติฐาน ไม่ใช่คำแนะนำการลงทุน"
+  },
+  "earnings_analysis": {
+    "as_of_date": "2026-09-01",
+    "next_earnings_date": "2026-11-03",
+    "next_earnings_date_confirmed": false,
+    "days_until_next_earnings": 63,
+    "past_earnings_history": [
+      {
+        "period": "Q2 2026",
+        "report_date": "2026-08-04",
+        "eps_estimate": 0.11,
+        "eps_actual": 0.13,
+        "eps_surprise_pct": 18.2,
+        "revenue_estimate_musd": 940,
+        "revenue_actual_musd": 1004,
+        "revenue_surprise_pct": 6.8,
+        "stock_reaction_1d_pct": 8.5,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      }
+    ],
+    "beat_streak": {
+      "eps_beat_streak_quarters": 14,
+      "revenue_beat_streak_quarters": 10,
+      "commentary": "..."
+    },
+    "average_earnings_day_move_pct": 12.4,
+    "current_quarter_setup": {
+      "period": "Q3 2026",
+      "company_guidance_revenue_musd": [1050, 1060],
+      "consensus_estimate_revenue_musd": 1055,
+      "consensus_estimate_eps": 0.14,
+      "whisper_vs_consensus": "...",
+      "key_things_to_watch": ["...", "..."]
+    },
+    "estimate_revisions_trend": {
+      "description": "ทิศทางการปรับประมาณการของนักวิเคราะห์ในช่วง 90 วันที่ผ่านมา",
+      "eps_estimate_90d_ago": 0.12,
+      "eps_estimate_current": 0.14,
+      "direction": "upward",
+      "num_analysts_raised": 18,
+      "num_analysts_lowered": 2,
+      "commentary": "..."
+    },
+    "full_year_guidance": {
+      "fiscal_year": 2026,
+      "company_guidance_revenue_musd": [8150, 8158],
+      "implied_growth_pct": 82,
+      "consensus_vs_guidance": "..."
+    },
+    "analyst_consensus": {
+      "consensus_rating": "Moderate Buy",
+      "total_analysts": 24,
+      "ratings_breakdown": {
+        "buy_count": 16,
+        "hold_count": 6,
+        "sell_count": 2
+      },
+      "price_target": {
+        "mean": 215.0,
+        "high": 260.0,
+        "low": 140.0,
+        "median": 210.0,
+        "implied_upside_pct": 15.4
+      },
+      "as_of_date": "2026-09-01",
+      "commentary": "..."
+    },
+    "summary_verdict": "..."
+  },
+  "peer_comparison": {
+    "as_of_date": "2026-09-01",
+    "industry_name": "Sector / Industry",
+    "peers": [
+      {
+        "ticker": "...",
+        "company_name": "...",
+        "market_cap": "$180B",
+        "pe_trailing": 137.5,
+        "pe_forward": 75.2,
+        "revenue_growth_yoy_pct": 93.0,
+        "gross_margin_pct": 84.1,
+        "net_margin_pct": 32.5,
+        "ev_ebitda": 85.2
+      }
+    ],
+    "key_takeaway": "..."
+  },
+  "catalysts_and_events": {
+    "as_of_date": "2026-09-01",
+    "items": [
+      {
+        "title": "...",
+        "date": "2026-11-03",
+        "expected_impact": "high",
+        "description": "...",
+        "category": "earnings"
+      }
+    ]
+  },
+  "insider_activity": {
+    "as_of_date": "2026-09-01",
+    "insider_ownership_pct": 8.5,
+    "institutional_ownership_pct": 45.2,
+    "institutional_qoq_change_pct": 2.4,
+    "recent_transactions": [
+      {
+        "date": "2026-08-15",
+        "insider_name": "...",
+        "title": "Executive",
+        "transaction_type": "sell",
+        "shares_count": 50000,
+        "price_per_share": 180.0,
+        "total_value_usd": 9000000
+      }
+    ],
+    "commentary": "..."
+  },
+  "smart_money": {
+    "as_of_date": "2026-09-01",
+    "institution_overview": {
+      "total_institutions_count": 2840,
+      "institutions_count_change_qoq": 48,
+      "total_shares_held": "1.28B",
+      "shares_held_change_qoq": "+42.5M",
+      "pct_owned": 56.73,
+      "pct_owned_change_qoq": 2.40
+    },
+    "major_holders": [
+      {
+        "name": "The Vanguard Group, Inc.",
+        "shares_held": "215.4M",
+        "pct_owned": 9.54,
+        "change_shares": "+4.85M",
+        "change_pct": 0.21,
+        "holder_type": "Mutual Fund / Index",
+        "filing_date": "2026-06-30",
+        "disclosure": "13F"
+      }
+    ],
+    "shareholder_activity": [
+      {
+        "holder_name": "...",
+        "change_type": "increase",
+        "change_shares": "+4.50M",
+        "change_amount_usd": "+$810M",
+        "total_pct_held": 1.01,
+        "holder_type": "Hedge Fund",
+        "date": "2026-06-30"
+      }
+    ],
+    "insiders_overview": {
+      "insider_ownership_pct": 7.42,
+      "bullish_insiders_count": 4,
+      "bearish_insiders_count": 6,
+      "key_insiders": [
+        {
+          "name": "...",
+          "title": "...",
+          "shares_held": "10M",
+          "pct_owned": 1.5
+        }
+      ]
+    },
+    "recent_transactions": [
+      {
+        "date": "2026-08-15",
+        "insider_name": "...",
+        "title": "Executive",
+        "transaction_type": "sell (Rule 10b5-1)",
+        "shares_count": 50000,
+        "price_per_share": 180.0,
+        "total_value_usd": 9000000
+      }
+    ],
+    "commentary": "..."
+  },
+  "corporate_actions": {
+    "as_of_date": "2026-09-01",
+    "dividends": {
+      "summary": {
+        "has_dividend": false,
+        "dividend_yield_pct": 0.0,
+        "annual_payout_usd": 0.0,
+        "payout_ratio_pct": 0.0,
+        "frequency": "ไม่มีการจ่ายเงินปันผล",
+        "policy_note": "..."
+      },
+      "history": [
+        {
+          "announced_date": "2026-07-31",
+          "allocation_plan": "Cash Dividend: 0.27 USD Per Share",
+          "amount_usd": 0.27,
+          "record_date": "2026-08-10",
+          "ex_date": "2026-08-10",
+          "pay_date": "2026-08-13"
+        }
+      ]
+    },
+    "stock_splits": [
+      {
+        "effective_date": "2020-08-31",
+        "split_type": "Split",
+        "ratio": "1:4"
+      }
+    ],
+    "buybacks": {
+      "authorized_amount_musd": 1000,
+      "remaining_amount_musd": 850,
+      "shares_repurchased_last_12m": 1500000,
+      "net_share_reduction_pct": 0.8,
+      "commentary": "..."
+    }
+  },
+  "company_profile": {
+    "as_of_date": "2026-09-01",
+    "overview": {
+      "company_name": "...",
+      "symbol": "...",
+      "listing_date": "2020-09-30",
+      "issue_price": 10.0,
+      "isin": "US69608A1088",
+      "founded_year": 2003,
+      "ceo": "Dr. Alexander C. Karp",
+      "exchange": "NASDAQ",
+      "employees_count": 3850,
+      "fiscal_year_end": "12-31",
+      "address": "1200 17th Street, Floor 15",
+      "city": "Denver",
+      "province_state": "Colorado",
+      "country": "United States of America",
+      "zip_code": "80202",
+      "phone": "1-720-358-3679",
+      "website_url": "https://www.palantir.com",
+      "description": "..."
+    },
+    "executives": [
+      {
+        "name": "Dr. Alexander C. Karp",
+        "title": "Co-Founder, Chief Executive Officer & Director",
+        "salary_usd": 5430000,
+        "age": 58,
+        "gender": "male",
+        "bio": "...",
+        "updated_date": "2026-06-03"
+      }
+    ]
+  },
+  "business_analysis": {
+    "as_of_date": "2026-09-01",
+    "revenue_breakdown": {
+      "period": "2026/Q2",
+      "by_business": [
+        { "name": "Commercial - AIP / Foundry", "revenue_usd": "$520M", "ratio_pct": 52.0, "growth_yoy_pct": 55.4 },
+        { "name": "Government - Gotham Defense", "revenue_usd": "$340M", "ratio_pct": 34.0, "growth_yoy_pct": 28.2 }
+      ],
+      "by_region": [
+        { "name": "United States", "revenue_usd": "$860M", "ratio_pct": 86.0, "growth_yoy_pct": 44.0 },
+        { "name": "International", "revenue_usd": "$140M", "ratio_pct": 14.0, "growth_yoy_pct": 18.0 }
+      ]
+    },
+    "operational_efficiency": [
+      {
+        "period": "2025/FY",
+        "headcount": 3750,
+        "headcount_yoy_pct": 2.7,
+        "revenue_per_employee_k_usd": 945.0,
+        "revenue_per_employee_yoy_pct": 21.0,
+        "operating_profit_per_employee_k_usd": 215.0,
+        "op_profit_per_employee_yoy_pct": 48.1,
+        "net_income_per_employee_k_usd": 165.0,
+        "net_income_per_employee_yoy_pct": 34.8
+      }
+    ],
+    "key_takeaways": "..."
   },
   "comprehensive_analysis": {
     "business_overview": "...",
@@ -583,6 +992,403 @@ async function startServer() {
     "conviction_score": 85,
     "key_takeaways": ["...", "..."]
   },
+  "financial_statements": {
+    "currency": "USD",
+    "fiscal_period_type": "quarterly",
+    "as_of_date": "2026-09-01",
+    "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
+    "income_statement": {
+      "revenue": [726, 828, 884, 1004],
+      "cogs": [146, 164, 150, 160],
+      "gross_profit": [580, 664, 734, 844],
+      "gross_margin_pct": [79.9, 80.2, 83.0, 84.1],
+      "operating_expenses": [385, 382, 345, 371],
+      "operating_income": [195, 282, 389, 473],
+      "operating_margin_pct": [26.8, 34.0, 44.0, 47.1],
+      "net_income": [143, 79, 214, 326],
+      "net_margin_pct": [19.7, 9.5, 24.2, 32.5],
+      "eps_diluted": [0.06, 0.03, 0.08, 0.13],
+      "yoy_revenue_growth_pct": [63, 70, 85, 93],
+      "commentary": "..."
+    },
+    "balance_sheet": {
+      "cash_and_equivalents": [4000, 4200, 4500, 5000],
+      "total_current_assets": [4800, 5100, 5500, 6200],
+      "total_assets": [6200, 6600, 7100, 7900],
+      "total_current_liabilities": [700, 750, 800, 900],
+      "total_debt": [0, 0, 0, 0],
+      "total_liabilities": [950, 1020, 1100, 1250],
+      "total_equity": [5250, 5580, 6000, 6650],
+      "current_ratio": [6.85, 6.80, 6.88, 6.90],
+      "quick_ratio": [6.1, 6.2, 6.3, 6.4],
+      "debt_to_equity": [0, 0, 0, 0],
+      "debt_to_ebitda": [0, 0, 0, 0],
+      "commentary": "..."
+    },
+    "cash_flow": {
+      "operating_cash_flow": [220, 310, 420, 550],
+      "capex": [15, 18, 20, 25],
+      "free_cash_flow": [205, 292, 400, 525],
+      "fcf_margin_pct": [28.2, 35.3, 45.2, 52.3],
+      "fcf_vs_net_income_ratio": [1.43, 3.70, 1.87, 1.61],
+      "commentary": "..."
+    },
+    "red_flags": ["..."]
+  },
+  "valuation_ratios": [
+    {
+      "name": "P/E (Trailing)",
+      "formula": "ราคาหุ้นปัจจุบัน / EPS ย้อนหลัง 12 เดือน",
+      "value": 137.5,
+      "unit": "x",
+      "peer_avg": 30.7,
+      "own_5yr_percentile": 82,
+      "interpretation": "...",
+      "verdict": "expensive"
+    },
+    {
+      "name": "PEG Ratio",
+      "formula": "P/E ÷ อัตราการเติบโตกำไรคาดการณ์ (%)",
+      "value": 1.8,
+      "unit": "x",
+      "peer_avg": 2.1,
+      "own_5yr_percentile": 65,
+      "interpretation": "...",
+      "verdict": "fair"
+    },
+    { "name": "EV/EBITDA", "formula": "Enterprise Value / EBITDA (TTM)", "value": 85.2, "unit": "x", "peer_avg": 25.4, "own_5yr_percentile": 78, "interpretation": "...", "verdict": "expensive" },
+    { "name": "EV/Sales", "formula": "Enterprise Value / Revenue (TTM)", "value": 38.4, "unit": "x", "peer_avg": 12.1, "own_5yr_percentile": 85, "interpretation": "...", "verdict": "expensive" },
+    { "name": "P/FCF", "formula": "Market Cap / Free Cash Flow (TTM)", "value": 65.0, "unit": "x", "peer_avg": 28.0, "own_5yr_percentile": 70, "interpretation": "...", "verdict": "expensive" },
+    { "name": "P/B", "formula": "ราคาหุ้น / มูลค่าทางบัญชีต่อหุ้น", "value": 24.5, "unit": "x", "peer_avg": 8.5, "own_5yr_percentile": 75, "interpretation": "...", "verdict": "expensive" }
+  ],
+  "valuation_percentile_chart": {
+    "description": "ตำแหน่ง P/E ปัจจุบันเทียบกับช่วง 5 ปี",
+    "min_5yr": 45.2,
+    "max_5yr": 210.8,
+    "current": 137.5,
+    "median_5yr": 95.0
+  },
+  "intrinsic_value": {
+    "current_price": 186.38,
+    "as_of_date": "2026-09-01",
+    "dcf_model": {
+      "assumptions": {
+        "wacc_pct": 9.5,
+        "terminal_growth_pct": 3.0,
+        "projection_years": 5
+      },
+      "scenarios": {
+        "bear": {
+          "revenue_cagr_pct": 25,
+          "terminal_margin_pct": 30,
+          "fair_value_per_share": 95.0,
+          "key_assumption_note": "..."
+        },
+        "base": {
+          "revenue_cagr_pct": 40,
+          "terminal_margin_pct": 38,
+          "fair_value_per_share": 165.0,
+          "key_assumption_note": "..."
+        },
+        "bull": {
+          "revenue_cagr_pct": 55,
+          "terminal_margin_pct": 45,
+          "fair_value_per_share": 260.0,
+          "key_assumption_note": "..."
+        }
+      }
+    },
+    "relative_valuation": {
+      "method": "EV/EBITDA multiple ของกลุ่มเทียบ",
+      "peer_multiple_used": 45.0,
+      "metric_applied": "Forward EBITDA",
+      "fair_value_per_share": 175.0
+    },
+    "summary": {
+      "fair_value_range_low": 95.0,
+      "fair_value_range_high": 260.0,
+      "base_case_fair_value": 165.0,
+      "current_price_position_pct": 55,
+      "margin_of_safety_pct": -12.9,
+      "verdict_text": "..."
+    },
+    "disclaimer": "การประเมินมูลค่านี้เป็นแบบจำลองอย่างง่ายจากสมมติฐาน ไม่ใช่คำแนะนำการลงทุน"
+  },
+  "earnings_analysis": {
+    "as_of_date": "2026-09-01",
+    "next_earnings_date": "2026-11-03",
+    "next_earnings_date_confirmed": false,
+    "days_until_next_earnings": 63,
+    "past_earnings_history": [
+      {
+        "period": "Q2 2026",
+        "report_date": "2026-08-04",
+        "eps_estimate": 0.11,
+        "eps_actual": 0.13,
+        "eps_surprise_pct": 18.2,
+        "revenue_estimate_musd": 940,
+        "revenue_actual_musd": 1004,
+        "revenue_surprise_pct": 6.8,
+        "stock_reaction_1d_pct": 8.5,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      }
+    ],
+    "beat_streak": {
+      "eps_beat_streak_quarters": 14,
+      "revenue_beat_streak_quarters": 10,
+      "commentary": "..."
+    },
+    "average_earnings_day_move_pct": 12.4,
+    "current_quarter_setup": {
+      "period": "Q3 2026",
+      "company_guidance_revenue_musd": [1050, 1060],
+      "consensus_estimate_revenue_musd": 1055,
+      "consensus_estimate_eps": 0.14,
+      "whisper_vs_consensus": "...",
+      "key_things_to_watch": ["...", "..."]
+    },
+    "estimate_revisions_trend": {
+      "description": "ทิศทางการปรับประมาณการของนักวิเคราะห์ในช่วง 90 วันที่ผ่านมา",
+      "eps_estimate_90d_ago": 0.12,
+      "eps_estimate_current": 0.14,
+      "direction": "upward",
+      "num_analysts_raised": 18,
+      "num_analysts_lowered": 2,
+      "commentary": "..."
+    },
+    "full_year_guidance": {
+      "fiscal_year": 2026,
+      "company_guidance_revenue_musd": [8150, 8158],
+      "implied_growth_pct": 82,
+      "consensus_vs_guidance": "..."
+    },
+    "analyst_consensus": {
+      "consensus_rating": "Moderate Buy",
+      "total_analysts": 24,
+      "ratings_breakdown": {
+        "buy_count": 16,
+        "hold_count": 6,
+        "sell_count": 2
+      },
+      "price_target": {
+        "mean": 215.0,
+        "high": 260.0,
+        "low": 140.0,
+        "median": 210.0,
+        "implied_upside_pct": 15.4
+      },
+      "as_of_date": "2026-09-01",
+      "commentary": "..."
+    },
+    "summary_verdict": "..."
+  },
+  "peer_comparison": {
+    "as_of_date": "2026-09-01",
+    "industry_name": "Sector / Industry",
+    "peers": [
+      {
+        "ticker": "...",
+        "company_name": "...",
+        "market_cap": "$180B",
+        "pe_trailing": 137.5,
+        "pe_forward": 75.2,
+        "revenue_growth_yoy_pct": 93.0,
+        "gross_margin_pct": 84.1,
+        "net_margin_pct": 32.5,
+        "ev_ebitda": 85.2
+      }
+    ],
+    "key_takeaway": "..."
+  },
+  "catalysts_and_events": {
+    "as_of_date": "2026-09-01",
+    "items": [
+      {
+        "title": "...",
+        "date": "2026-11-03",
+        "expected_impact": "high",
+        "description": "...",
+        "category": "earnings"
+      }
+    ]
+  },
+  "insider_activity": {
+    "as_of_date": "2026-09-01",
+    "insider_ownership_pct": 8.5,
+    "institutional_ownership_pct": 45.2,
+    "institutional_qoq_change_pct": 2.4,
+    "recent_transactions": [
+      {
+        "date": "2026-08-15",
+        "insider_name": "...",
+        "title": "Executive",
+        "transaction_type": "sell",
+        "shares_count": 50000,
+        "price_per_share": 180.0,
+        "total_value_usd": 9000000
+      }
+    ],
+    "commentary": "..."
+  },
+  "smart_money": {
+    "as_of_date": "2026-09-01",
+    "institution_overview": {
+      "total_institutions_count": 2840,
+      "institutions_count_change_qoq": 48,
+      "total_shares_held": "1.28B",
+      "shares_held_change_qoq": "+42.5M",
+      "pct_owned": 56.73,
+      "pct_owned_change_qoq": 2.40
+    },
+    "major_holders": [
+      {
+        "name": "The Vanguard Group, Inc.",
+        "shares_held": "215.4M",
+        "pct_owned": 9.54,
+        "change_shares": "+4.85M",
+        "change_pct": 0.21,
+        "holder_type": "Mutual Fund / Index",
+        "filing_date": "2026-06-30",
+        "disclosure": "13F"
+      }
+    ],
+    "shareholder_activity": [
+      {
+        "holder_name": "...",
+        "change_type": "increase",
+        "change_shares": "+4.50M",
+        "change_amount_usd": "+$810M",
+        "total_pct_held": 1.01,
+        "holder_type": "Hedge Fund",
+        "date": "2026-06-30"
+      }
+    ],
+    "insiders_overview": {
+      "insider_ownership_pct": 7.42,
+      "bullish_insiders_count": 4,
+      "bearish_insiders_count": 6,
+      "key_insiders": [
+        {
+          "name": "...",
+          "title": "...",
+          "shares_held": "10M",
+          "pct_owned": 1.5
+        }
+      ]
+    },
+    "recent_transactions": [
+      {
+        "date": "2026-08-15",
+        "insider_name": "...",
+        "title": "Executive",
+        "transaction_type": "sell (Rule 10b5-1)",
+        "shares_count": 50000,
+        "price_per_share": 180.0,
+        "total_value_usd": 9000000
+      }
+    ],
+    "commentary": "..."
+  },
+  "corporate_actions": {
+    "as_of_date": "2026-09-01",
+    "dividends": {
+      "summary": {
+        "has_dividend": false,
+        "dividend_yield_pct": 0.0,
+        "annual_payout_usd": 0.0,
+        "payout_ratio_pct": 0.0,
+        "frequency": "No Dividend (Growth Reinvestment)",
+        "policy_note": "..."
+      },
+      "history": [
+        {
+          "announced_date": "2026-07-31",
+          "allocation_plan": "Cash Dividend: 0.27 USD Per Share",
+          "amount_usd": 0.27,
+          "record_date": "2026-08-10",
+          "ex_date": "2026-08-10",
+          "pay_date": "2026-08-13"
+        }
+      ]
+    },
+    "stock_splits": [
+      {
+        "effective_date": "2020-08-31",
+        "split_type": "Split",
+        "ratio": "1:4"
+      }
+    ],
+    "buybacks": {
+      "authorized_amount_musd": 1000,
+      "remaining_amount_musd": 850,
+      "shares_repurchased_last_12m": 1500000,
+      "net_share_reduction_pct": 0.8,
+      "commentary": "..."
+    }
+  },
+  "company_profile": {
+    "as_of_date": "2026-09-01",
+    "overview": {
+      "company_name": "...",
+      "symbol": "...",
+      "listing_date": "2020-09-30",
+      "issue_price": 10.0,
+      "isin": "US69608A1088",
+      "founded_year": 2003,
+      "ceo": "Dr. Alexander C. Karp",
+      "exchange": "NASDAQ",
+      "employees_count": 3850,
+      "fiscal_year_end": "12-31",
+      "address": "1200 17th Street, Floor 15",
+      "city": "Denver",
+      "province_state": "Colorado",
+      "country": "United States of America",
+      "zip_code": "80202",
+      "phone": "1-720-358-3679",
+      "website_url": "https://www.palantir.com",
+      "description": "..."
+    },
+    "executives": [
+      {
+        "name": "Dr. Alexander C. Karp",
+        "title": "Co-Founder, Chief Executive Officer & Director",
+        "salary_usd": 5430000,
+        "age": 58,
+        "gender": "male",
+        "bio": "...",
+        "updated_date": "2026-06-03"
+      }
+    ]
+  },
+  "business_analysis": {
+    "as_of_date": "2026-09-01",
+    "revenue_breakdown": {
+      "period": "2026/Q2",
+      "by_business": [
+        { "name": "Commercial - AIP / Foundry", "revenue_usd": "$520M", "ratio_pct": 52.0, "growth_yoy_pct": 55.4 },
+        { "name": "Government - Gotham Defense", "revenue_usd": "$340M", "ratio_pct": 34.0, "growth_yoy_pct": 28.2 }
+      ],
+      "by_region": [
+        { "name": "United States", "revenue_usd": "$860M", "ratio_pct": 86.0, "growth_yoy_pct": 44.0 },
+        { "name": "International", "revenue_usd": "$140M", "ratio_pct": 14.0, "growth_yoy_pct": 18.0 }
+      ]
+    },
+    "operational_efficiency": [
+      {
+        "period": "2025/FY",
+        "headcount": 3750,
+        "headcount_yoy_pct": 2.7,
+        "revenue_per_employee_k_usd": 945.0,
+        "revenue_per_employee_yoy_pct": 21.0,
+        "operating_profit_per_employee_k_usd": 215.0,
+        "op_profit_per_employee_yoy_pct": 48.1,
+        "net_income_per_employee_k_usd": 165.0,
+        "net_income_per_employee_yoy_pct": 34.8
+      }
+    ],
+    "key_takeaways": "..."
+  },
   "comprehensive_analysis": {
     "business_overview": "...",
     "target_customers": "...",
@@ -711,23 +1517,28 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Primary Analysis complete. Running Validator Agent for 10/10 Accuracy...' })}\n\n`);
           
           const validatePrompt = `You are the Lead Validator. You have received an analysis report for ${ticker}. 
-Your job is to cross-check it, fix any mathematical inconsistencies, and produce the final perfect JSON report.
+TODAY'S EXACT DATE IS: ${todayISO} (Year ${currentYear}).
+Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, fix any mathematical inconsistencies, and produce the final perfect JSON report.
 
 CRITICAL INSTRUCTION: You are encouraged to think deeply and step-by-step to verify the calculations and logic. However, to avoid hitting output token limits, DO NOT repeat or summarize the original report in your internal thoughts. Focus your thinking strictly on the mathematical corrections, then output the final JSON.
 
 CRITICAL CHECKS:
+- Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
 - Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.
 - Technical Key Levels: Ensure ALL Support/Resistance levels (S1, S2, S3, R1, R2, R3) are at least 1.5x ATR away from the current price AND spaced at least 1.5x ATR away from EACH OTHER (e.g., S1-S2 >= 1.5x ATR).
 - Technical Completeness: You MUST verify that BOTH 'Divergence' (under momentum indicators) and 'Candlestick Pattern' (under chart patterns or momentum indicators) are explicitly analyzed and present in the final output. Even if they do not exist, they MUST be explicitly stated as "No Divergence observed" and "No clear Candlestick pattern observed". If they are missing, you MUST deduce them from the data and include them.
 - Formatting Checks: Make sure 'business_overview', 'target_customers', 'revenue_model', and 'financial_overview' are formatted as Markdown bullet points (-), NOT large paragraphs. Make sure the R:R calculation in 'trade_plan' is nicely formatted as a Markdown table (Target | Formula | Result) using proper \n newlines.
-- Fundamental Fundamentals Check: Must have exactly 8 bullet points.
+- Fundamental Fundamentals Check: Must have exactly 8 numbered points.
 - Fundamental Key Risks: Must have exactly 8 risk categories.
+- Financial Statements: Check that revenue, net income, margins %, and growth % are mathematically consistent across quarters.
+- Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
+- Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
 - Insider Ownership: Must be a numeric percentage.
 
 Primary Analyst Output:
 ${fullText}
 
-Check the facts and re-calculate the Risk/Reward ratios yourself to be 100% sure they are correct.
+Check the facts and re-calculate the Risk/Reward ratios and DCF values yourself to be 100% sure they are correct.
 You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block.
 Use the exact schema requested originally:
 ${dynamicSchema}`;

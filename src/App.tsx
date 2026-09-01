@@ -11,122 +11,37 @@ import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 import { MotionIntro } from './components/MotionIntro';
 
-export interface DocumentFinding {
-  documentType?: string;
-  document_type?: string;
-  keyInsights?: string[];
-  key_insights?: string[];
-  date?: string;
-  sourceUrl?: string;
-  source_url?: string;
-}
+import { 
+  DocumentFinding, 
+  DeepInsight, 
+  ComprehensiveAnalysis, 
+  TechnicalAnalysis, 
+  FinancialStatementsData,
+  ValuationRatioItem,
+  ValuationPercentileChart,
+  IntrinsicValueData,
+  EarningsAnalysisData,
+  PeerComparisonData,
+  CatalystsData,
+  InsiderActivityData,
+  AnalysisReport as ReportData 
+} from './types';
 
-export interface DeepInsight {
-  category: string;
-  title: string;
-  description: string;
-  impact_score: number;
-}
-
-export interface ComprehensiveAnalysis {
-  business_overview: string;
-  target_customers: string;
-  revenue_model: string;
-  financial_overview: string;
-  fundamentals_check: string;
-  business_strengths: string;
-  future_growth: string;
-  key_risks: string;
-  management: string;
-  beginner_summary: {
-    business_type_simple: string;
-    top_3_strengths: string[];
-    top_3_risks: string[];
-    suitable_investor_type: string;
-    further_reading: string;
-  };
-  scoring: {
-    understandability: { score: number; reason: string };
-    revenue_quality: { score: number; reason: string };
-    financial_strength: { score: number; reason: string };
-    growth_potential: { score: number; reason: string };
-    risk_level: { score: number; reason: string };
-    overall_attractiveness: { score: number; reason: string };
-  };
-  final_verdict_summary: {
-    worth_further_study: string;
-    strong_fundamentals: string;
-    what_to_look_for: string;
-  };
-}
-
-export interface TechnicalAnalysis {
-  signal_summary: {
-    status: string;
-    trend_weekly: string;
-    trend_daily: string;
-    trend_4h: string;
-    confluence_score: string;
-  };
-  key_levels: {
-    current_price?: number;
-    support: string[];
-    resistance: string[];
-  };
-  trade_plan: {
-    entry_zone: string;
-    stop_loss: string;
-    target_1: string;
-    target_2: string;
-    risk_reward_ratio: string;
-  };
-  overall_trend: string;
-  price_structure: string;
-  volume_analysis: string;
-  trend_indicators: string;
-  momentum_indicators: string;
-  volatility_indicators: string;
-  chart_patterns: string;
-  relative_strength: string;
-  technical_risks: string;
-  beginner_summary: {
-    technical_overview: string;
-    top_3_points: string[];
-    top_3_cautions: string[];
-    suitable_trade_style: string;
-  };
-  scoring: {
-    trend_clarity: { score: number; reason: string };
-    momentum_strength: { score: number; reason: string };
-    risk_reward: { score: number; reason: string };
-    signal_confluence: { score: number; reason: string };
-    false_signal_risk: { score: number; reason: string };
-    overall_attractiveness: { score: number; reason: string };
-  };
-  final_verdict_summary: {
-    is_good_timing: string;
-    what_to_wait_for: string;
-    trade_plan: string;
-  };
-}
-
-export interface ReportData {
-  ticker?: string;
-  verdict?: {
-    summary: string;
-    conviction_score: number;
-    key_takeaways: string[];
-  };
-  analysis_type?: 'fundamental' | 'technical';
-  comprehensive_analysis?: ComprehensiveAnalysis;
-  technical_analysis?: TechnicalAnalysis;
-  deep_insights?: DeepInsight[];
-  findings?: DocumentFinding[];
-  financial_charts?: {
-    stock_price_history: { date: string; price: number }[];
-    financial_performance_4q: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[];
-  };
-}
+export type { 
+  DocumentFinding, 
+  DeepInsight, 
+  ComprehensiveAnalysis, 
+  TechnicalAnalysis, 
+  FinancialStatementsData,
+  ValuationRatioItem,
+  ValuationPercentileChart,
+  IntrinsicValueData,
+  EarningsAnalysisData,
+  PeerComparisonData,
+  CatalystsData,
+  InsiderActivityData,
+  ReportData 
+};
 
 // Toggle this to true if you want the JSON logs to be downloaded automatically after a run.
 const ENABLE_JSON_DOWNLOAD = false;
@@ -702,137 +617,128 @@ export default function App() {
       {/* Header (shown during analysis or when viewing timeline) */}
       {!isLanding && (
         <header 
-          className="relative w-full max-w-[1360px] mx-auto flex items-center justify-between px-3 md:px-6 py-4 shrink-0 z-50 transition-all print:hidden"
+          className="relative w-full max-w-[1360px] mx-auto grid grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-6 py-3 shrink-0 z-50 transition-all print:hidden gap-2"
           style={{
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
         >
-          {/* Top Left Logo & Brand Title */}
+          {/* Column 1: Left Logo & Brand Title */}
           <div 
             onClick={resetAnalysis}
-            className="flex items-center gap-2.5 shrink-0 cursor-pointer group z-10"
+            className="flex items-center justify-start gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10 min-w-0"
             title={selectedLanguage === 'Thai' ? 'กลับหน้าแรก' : 'Back to Home'}
           >
             <div
-              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105"
-              style={{
-                width: 'clamp(34px, 3.8vw, 38px)',
-                height: 'clamp(34px, 3.8vw, 38px)',
-              }}
+              className="rounded-full bg-white flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-transform group-hover:scale-105 w-8 h-8 sm:w-9 sm:h-9"
             >
               <svg viewBox="0 0 24 24" className="w-[58%] h-[58%]" fill="#111111" stroke="none">
                 <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
               </svg>
             </div>
-            <span className="font-display font-bold text-lg md:text-xl tracking-wider uppercase text-white drop-shadow-md select-none">
+            <span className="font-display font-bold text-sm sm:text-base md:text-lg tracking-wider uppercase text-white drop-shadow-md select-none hidden sm:inline-block whitespace-nowrap">
               COIN KING
             </span>
           </div>
 
-          {/* Center Floating White Nav Pill (Exact same style as Landing View!) */}
-          <nav 
-            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0"
-            style={{
-              height: 'clamp(44px, 5.2vw, 48px)',
-              padding: '4px 10px',
-              gap: '4px',
-            }}
-          >
-            {[
-              { id: 'combined', labelEn: 'All-in-One', labelTh: 'วิเคราะห์รวม' },
-              { id: 'fundamental', labelEn: 'Fundamental', labelTh: 'ปัจจัยพื้นฐาน' },
-              { id: 'technical', labelEn: 'Technical', labelTh: 'เทคนิคอล' },
-            ].map((mode) => {
-              const isActive = analysisType === mode.id;
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => !running && setAnalysisType(mode.id as any)}
-                  disabled={running}
-                  className={`relative px-4 py-1.5 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
-                    isActive 
-                      ? 'text-[#2e2e2e] opacity-100 font-semibold' 
-                      : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
-                  }`}
-                  style={{
-                    fontSize: 'clamp(13px, 1.4vw, 14.5px)',
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  {selectedLanguage === 'Thai' ? mode.labelTh : mode.labelEn}
-                  {isActive && (
-                    <span 
-                      className="absolute left-1/2 -translate-x-1/2 bottom-[5px] w-[3px] h-[3px] bg-black rounded-full shadow-[-5px_0_0_#000,5px_0_0_#000]" 
-                    />
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Deep Think toggle */}
-            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
-            <button
-              onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}
-              disabled={running}
-              className={`px-3.5 py-1 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 ${
-                useSelfConsistency 
-                  ? 'bg-black text-white shadow-sm font-semibold' 
-                  : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
-              }`}
+          {/* Column 2: Center Floating White Nav Pill (EXACT 50% Mathematical True Center) */}
+          <div className="flex items-center justify-center">
+            <nav 
+              className="hidden md:flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-[0.85] lg:scale-95 xl:scale-100 transition-all origin-center shrink-0"
               style={{
-                fontSize: 'clamp(12px, 1.3vw, 13px)',
+                height: '38px',
+                padding: '3px 8px',
+                gap: '2px',
               }}
-              title="Deep Think Mode"
             >
-              <Sparkles className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
-              <span>{selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-            </button>
+              {[
+                { id: 'combined', labelEn: 'All-in-One', labelTh: 'วิเคราะห์รวม' },
+                { id: 'fundamental', labelEn: 'Fundamental', labelTh: 'ปัจจัยพื้นฐาน' },
+                { id: 'technical', labelEn: 'Technical', labelTh: 'เทคนิคอล' },
+              ].map((mode) => {
+                const isActive = analysisType === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => !running && setAnalysisType(mode.id as any)}
+                    disabled={running}
+                    className={`relative px-3 py-1 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 text-xs sm:text-[13px] ${
+                      isActive 
+                        ? 'text-[#2e2e2e] opacity-100 font-semibold' 
+                        : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
+                    }`}
+                  >
+                    {selectedLanguage === 'Thai' ? mode.labelTh : mode.labelEn}
+                    {isActive && (
+                      <span 
+                        className="absolute left-1/2 -translate-x-1/2 bottom-[3px] w-[2.5px] h-[2.5px] bg-black rounded-full shadow-[-4px_0_0_#000,4px_0_0_#000]" 
+                      />
+                    )}
+                  </button>
+                );
+              })}
 
-            {/* Language Switch */}
-            <div className="h-4 w-px bg-stone-300 mx-1 shrink-0" />
-            <button
-              onClick={() => !running && setSelectedLanguage(selectedLanguage === 'Thai' ? 'English' : 'Thai')}
-              disabled={running}
-              className="px-2.5 py-1 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-xs tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
-              title="Switch Language"
-            >
-              {selectedLanguage === 'Thai' ? 'EN' : 'ไทย'}
-            </button>
-          </nav>
+              {/* Deep Think toggle */}
+              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
+              <button
+                onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}
+                disabled={running}
+                className={`px-2.5 py-0.5 font-medium transition-all duration-200 flex items-center gap-1 rounded-full cursor-pointer whitespace-nowrap shrink-0 text-xs ${
+                  useSelfConsistency 
+                    ? 'bg-black text-white shadow-sm font-semibold' 
+                    : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+                }`}
+                title="Deep Think Mode"
+              >
+                <Sparkles className={`w-3 h-3 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+                <span>{selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+              </button>
 
-          {/* Right Controls: Model Badge & User Account */}
-          <div className="flex items-center gap-2 z-10">
-            {/* Model Pill */}
-            <div className="hidden sm:flex items-center gap-2 bg-[#28282a] text-white/90 text-xs px-3.5 py-2 rounded-full border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              {/* Language Switch */}
+              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
+              <button
+                onClick={() => !running && setSelectedLanguage(selectedLanguage === 'Thai' ? 'English' : 'Thai')}
+                disabled={running}
+                className="px-2 py-0.5 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-[11px] tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+                title="Switch Language"
+              >
+                {selectedLanguage === 'Thai' ? 'EN' : 'ไทย'}
+              </button>
+            </nav>
+          </div>
+
+          {/* Column 3: Right Controls & User Profile (Aligned to the Right) */}
+          <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0 z-10 min-w-0">
+            {/* Model Pill (Visible on xl+ with strict whitespace-nowrap to prevent line breaks) */}
+            <div className="hidden xl:inline-flex items-center gap-1.5 bg-[#28282a] text-white/90 text-xs px-3 py-1.5 rounded-full border border-white/10 shadow-sm whitespace-nowrap shrink-0">
               <img 
                 src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" 
                 alt="Gemini" 
                 className="w-3.5 h-3.5 shrink-0" 
               />
-              <span className="font-medium">Gemini 3.7 Flash</span>
+              <span className="font-medium text-[11px] whitespace-nowrap">Gemini 3.7 Flash</span>
             </div>
 
             {/* User Account / Sign In */}
             {user ? (
-              <div className="flex items-center gap-3 sm:gap-4 mr-1 sm:mr-2">
+              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <button
                   onClick={() => setIsHistoryModalOpen(true)}
-                  className="text-white/80 hover:text-white cursor-pointer transition-colors"
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
                   title="History"
                 >
-                  <History className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
+                  <History className="w-[18px] h-[18px]" strokeWidth={2} />
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="text-white/80 hover:text-white cursor-pointer transition-colors"
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
                   title="Logout"
                 >
-                  <LogOut className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
+                  <LogOut className="w-[18px] h-[18px]" strokeWidth={2} />
                 </button>
                 {user.photoURL ? (
-                  <img src={user.photoURL} alt="avatar" className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full border-[1.5px] border-white/20 shadow-sm" />
+                  <img src={user.photoURL} alt="avatar" className="w-[28px] h-[28px] sm:w-[32px] sm:h-[32px] rounded-full border-[1.5px] border-white/20 shadow-sm shrink-0" />
                 ) : (
-                  <div className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
+                  <div className="w-[28px] h-[28px] sm:w-[32px] sm:h-[32px] rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
                     {user.displayName ? user.displayName.slice(0, 1) : 'U'}
                   </div>
                 )}
@@ -840,7 +746,7 @@ export default function App() {
             ) : (
               <button
                 onClick={handleLogin}
-                className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer text-xs md:text-sm px-4 py-2"
+                className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 shadow-sm cursor-pointer text-xs px-3 py-1.5 shrink-0"
               >
                 Sign In
               </button>
@@ -849,18 +755,16 @@ export default function App() {
             {/* Close / Return to Landing button */}
             <button
               onClick={resetAnalysis}
-              className="bg-[#28282a] hover:bg-white/20 text-white/80 hover:text-white rounded-full p-2.5 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer"
+              className="bg-[#28282a] hover:bg-white/20 text-white/80 hover:text-white rounded-full p-2 transition-all shadow-sm cursor-pointer shrink-0"
               title={selectedLanguage === 'Thai' ? 'กลับหน้าแรก' : 'Back to Home'}
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-4 h-4" />
             </button>
           </div>
         </header>
       )}
 
-      <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-12 sm:pt-14'}`}>
+      <main className={`relative z-10 flex-1 flex flex-col min-h-0 print:hidden ${isLanding ? '' : 'pt-2 sm:pt-3'}`}>
         {isLanding ? (
            <LandingView 
              language={selectedLanguage}
@@ -884,7 +788,7 @@ export default function App() {
              onReplayIntro={() => setShowIntro(true)}
            />
         ) : (
-           <div className="flex-1 flex flex-col overflow-hidden pb-40 sm:pb-44 md:pb-44 gap-3 sm:gap-4 px-3 sm:px-4 min-h-0 max-w-3xl lg:max-w-[820px] mx-auto w-full mt-0">
+           <div className="flex-1 flex flex-col overflow-hidden pb-28 sm:pb-32 md:pb-36 gap-3 px-2.5 sm:px-4 min-h-0 max-w-2xl lg:max-w-3xl mx-auto w-full mt-0">
               <div className="flex-1 flex flex-col liquid-glass rounded-[1.5rem] overflow-hidden min-h-0 shadow-2xl border border-white/20">
                 <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-white/[0.06] border-b border-white/10 font-bold text-white text-sm flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-2">

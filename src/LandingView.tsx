@@ -168,15 +168,15 @@ export function LandingView({
         
         {/* 1) Top Header (Absolute Centering so Nav Pill Never Wraps) */}
         <header 
-          className="relative w-full max-w-[1360px] flex items-center justify-between shrink-0 z-50 transition-all px-2 md:px-4"
+          className="relative w-full max-w-[1360px] grid grid-cols-[1fr_auto_1fr] items-center shrink-0 z-50 transition-all px-2 md:px-4 gap-2"
           style={{
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
         >
-          {/* Top Left Logo & Brand Title (Minimalist Monochrome - Click to replay intro motion) */}
+          {/* Top Left Logo & Brand Title */}
           <div 
             onClick={onReplayIntro}
-            className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10 w-[180px]"
+            className="flex items-center justify-start gap-2 sm:gap-2.5 shrink-0 cursor-pointer group z-10 min-w-0"
             title={isThai ? "COIN KING (กดเพื่อเล่นแอนิเมชันเปิดตัว)" : "COIN KING (Click to replay intro motion)"}
           >
             <div
@@ -191,80 +191,75 @@ export function LandingView({
                 <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
               </svg>
             </div>
-            <span className="font-display font-bold text-sm sm:text-base md:text-lg tracking-wider uppercase text-white drop-shadow-md select-none group-hover:text-amber-200 transition-colors">
+            <span className="font-display font-bold text-sm sm:text-base md:text-lg tracking-wider uppercase text-white drop-shadow-md select-none group-hover:text-amber-200 transition-colors whitespace-nowrap hidden sm:inline-block">
               COIN KING
             </span>
           </div>
 
-          {/* Center Floating White Nav Pill (Absolute 100% Center of Screen, Scaled for iPad & Desktop) */}
-          <nav 
-            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-90 lg:scale-95 transition-transform"
-            style={{
-              height: 'clamp(36px, 3.8vw, 40px)',
-              padding: '3px 8px',
-              gap: '3px',
-            }}
-          >
-            {navModes.map((mode) => {
-              const isActive = analysisType === mode.id;
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => setAnalysisType(mode.id)}
-                  className={`relative px-3.5 py-1 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 ${
-                    isActive 
-                      ? 'text-[#2e2e2e] opacity-100 font-semibold' 
-                      : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
-                  }`}
-                  style={{
-                    fontSize: 'clamp(11.5px, 1.15vw, 13px)',
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  {isThai ? mode.labelTh : mode.labelEn}
-                  {/* Active 3-dot indicator */}
-                  {isActive && (
-                    <span 
-                      className="absolute left-1/2 -translate-x-1/2 bottom-[4px] w-[2.5px] h-[2.5px] bg-black rounded-full shadow-[-4px_0_0_#000,4px_0_0_#000]" 
-                    />
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Deep Think toggle inside the white nav pill */}
-            <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
-            <button
-              onClick={() => setUseSelfConsistency(!useSelfConsistency)}
-              className={`px-3 py-0.5 font-medium transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 ${
-                useSelfConsistency 
-                  ? 'bg-black text-white shadow-sm font-semibold' 
-                  : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
-              }`}
+          {/* Center Floating White Nav Pill (EXACT 50% Mathematical True Center) */}
+          <div className="flex items-center justify-center">
+            <nav 
+              className="hidden md:flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-[0.85] lg:scale-95 xl:scale-100 transition-all origin-center shrink-0"
               style={{
-                fontSize: 'clamp(11px, 1.1vw, 12px)',
+                height: '38px',
+                padding: '3px 8px',
+                gap: '2px',
               }}
-              title="Deep Think Mode"
             >
-              <Sparkles className={`w-3 h-3 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
-              <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-            </button>
+              {navModes.map((mode) => {
+                const isActive = analysisType === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => setAnalysisType(mode.id)}
+                    className={`relative px-3 py-1 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 text-xs sm:text-[13px] ${
+                      isActive 
+                        ? 'text-[#2e2e2e] opacity-100 font-semibold' 
+                        : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
+                    }`}
+                  >
+                    {isThai ? mode.labelTh : mode.labelEn}
+                    {/* Active 3-dot indicator */}
+                    {isActive && (
+                      <span 
+                        className="absolute left-1/2 -translate-x-1/2 bottom-[3px] w-[2.5px] h-[2.5px] bg-black rounded-full shadow-[-4px_0_0_#000,4px_0_0_#000]" 
+                      />
+                    )}
+                  </button>
+                );
+              })}
 
-            {/* Language Switch */}
-            <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
-            <button
-              onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
-              className="px-2 py-0.5 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-[11px] tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
-              title="Switch Language"
-            >
-              {isThai ? 'EN' : 'ไทย'}
-            </button>
-          </nav>
+              {/* Deep Think toggle inside the white nav pill */}
+              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
+              <button
+                onClick={() => setUseSelfConsistency(!useSelfConsistency)}
+                className={`px-2.5 py-0.5 font-medium transition-all duration-200 flex items-center gap-1 rounded-full cursor-pointer whitespace-nowrap shrink-0 text-xs ${
+                  useSelfConsistency 
+                    ? 'bg-black text-white shadow-sm font-semibold' 
+                    : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+                }`}
+                title="Deep Think Mode"
+              >
+                <Sparkles className={`w-3 h-3 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+                <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+              </button>
+
+              {/* Language Switch */}
+              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
+              <button
+                onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
+                className="px-2 py-0.5 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-[11px] tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+                title="Switch Language"
+              >
+                {isThai ? 'EN' : 'ไทย'}
+              </button>
+            </nav>
+          </div>
 
           {/* Right Controls: User Account / Sign In */}
-          <div className="hidden md:flex items-center justify-end z-10 w-[180px]">
+          <div className="hidden md:flex items-center justify-end z-10 min-w-0">
             {user ? (
-              <div className="flex items-center gap-3 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)]">
+              <div className="flex items-center gap-3 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)] shrink-0">
                 <button
                   onClick={onOpenHistory}
                   className="text-white/70 hover:text-white flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium tracking-wide"
@@ -281,9 +276,9 @@ export function LandingView({
                   {isThai ? 'ออก' : 'Exit'}
                 </button>
                 {user.photoURL ? (
-                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border-[1.5px] border-white/20 shadow-sm" />
+                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border-[1.5px] border-white/20 shadow-sm shrink-0" />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                  <div className="w-7 h-7 rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
                     {user.displayName ? user.displayName.slice(0, 1) : 'U'}
                   </div>
                 )}
@@ -291,7 +286,7 @@ export function LandingView({
             ) : (
               <button
                 onClick={onLogin}
-                className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer"
+                className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer shrink-0"
                 style={{
                   height: 'clamp(36px, 3.8vw, 40px)',
                   padding: '0 clamp(14px, 1.6vw, 18px)',
@@ -304,7 +299,7 @@ export function LandingView({
           </div>
 
           {/* Mobile Right Controls: User Avatar + Toggle Menu */}
-          <div className="md:hidden flex items-center gap-3 sm:gap-4 z-10">
+          <div className="md:hidden flex items-center justify-end gap-3 sm:gap-4 z-10 min-w-0">
             {user && (
               <div className="flex items-center gap-3 sm:gap-4">
                 <button

@@ -46,7 +46,7 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
          <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/15 -translate-x-1/2 z-0" />
       )}
       
-      <div className="space-y-4 sm:space-y-6 w-full max-w-lg relative z-10">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-xl sm:max-w-2xl relative z-10">
         <AnimatePresence initial={false}>
           {events.map((e) => {
             const Icon = ICONS[e.kind];
@@ -78,7 +78,7 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
                             <div className="w-3.5 h-3.5 border-2 border-white/40 border-dashed rounded-full" />
                          )}
                       </div>
-                      <div className="text-[11px] sm:text-xs leading-relaxed text-white/80 font-mono overflow-x-auto whitespace-pre-wrap break-words max-h-36 overflow-y-auto scrollbar-hide w-full">
+                      <div className="text-[11px] sm:text-xs leading-relaxed text-white/80 font-mono overflow-x-auto whitespace-pre-wrap break-all sm:break-words max-h-48 overflow-y-auto scrollbar-hide w-full">
                         {e.detail}
                       </div>
                     </div>
