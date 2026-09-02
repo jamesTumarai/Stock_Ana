@@ -10,7 +10,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Legend, ReferenceLine
 } from 'recharts';
-import { FinancialStatementsData, KeyIndicatorMetric, KeyIndicatorsCategory } from '../types';
+import { FinancialStatementsData, KeyIndicatorsData, KeyIndicatorMetric, KeyIndicatorsCategory } from '../types';
 import { getFinancialAiInsight } from '../utils/financialAiInsights';
 
 interface Props {
@@ -189,26 +189,26 @@ export function FinancialStatementsTable({
 
   // Dynamic Key Indicators derived deterministically from company's actual statements
   const grossMarginVals = rawPeriods.map((_, i) => {
-    if (income?.gross_margin_pct?.[i] !== undefined) return income.gross_margin_pct[i];
     const rev = income?.revenue?.[i];
     const gp = income?.gross_profit?.[i];
-    if (rev && gp !== undefined && gp !== null) return Number(((gp / rev) * 100).toFixed(2));
+    if (rev && gp !== undefined && gp !== null && rev > 0) return Number(((gp / rev) * 100).toFixed(2));
+    if (income?.gross_margin_pct?.[i] !== undefined && income?.gross_margin_pct?.[i] !== null) return income.gross_margin_pct[i];
     return null;
   });
 
   const opMarginVals = rawPeriods.map((_, i) => {
-    if (income?.operating_margin_pct?.[i] !== undefined) return income.operating_margin_pct[i];
     const rev = income?.revenue?.[i];
     const op = income?.operating_income?.[i];
-    if (rev && op !== undefined && op !== null) return Number(((op / rev) * 100).toFixed(2));
+    if (rev && op !== undefined && op !== null && rev > 0) return Number(((op / rev) * 100).toFixed(2));
+    if (income?.operating_margin_pct?.[i] !== undefined && income?.operating_margin_pct?.[i] !== null) return income.operating_margin_pct[i];
     return null;
   });
 
   const netMarginVals = rawPeriods.map((_, i) => {
-    if (income?.net_margin_pct?.[i] !== undefined) return income.net_margin_pct[i];
     const rev = income?.revenue?.[i];
     const ni = income?.net_income?.[i];
-    if (rev && ni !== undefined && ni !== null) return Number(((ni / rev) * 100).toFixed(2));
+    if (rev && ni !== undefined && ni !== null && rev > 0) return Number(((ni / rev) * 100).toFixed(2));
+    if (income?.net_margin_pct?.[i] !== undefined && income?.net_margin_pct?.[i] !== null) return income.net_margin_pct[i];
     return null;
   });
 
@@ -216,32 +216,41 @@ export function FinancialStatementsTable({
     const rev = income?.revenue?.[i];
     const op = income?.operating_income?.[i];
     const dep = cashflow?.depreciation?.[i] || 0;
-    if (rev && op !== undefined && op !== null) return Number((((op + dep) / rev) * 100).toFixed(2));
+    if (rev && op !== undefined && op !== null && rev > 0) return Number((((op + dep) / rev) * 100).toFixed(2));
     return opMarginVals[i];
   });
 
+  const taxRateVals = rawPeriods.map((_, i) => {
+    const ni = income?.net_income?.[i];
+    const op = income?.operating_income?.[i];
+    if (op && ni !== undefined && ni !== null && op > 0 && op > ni) {
+      return Number((((op - ni) / op) * 100).toFixed(2));
+    }
+    return null;
+  });
+
   const currentRatioVals = rawPeriods.map((_, i) => {
-    if (balance?.current_ratio?.[i] !== undefined) return balance.current_ratio[i];
     const ca = balance?.total_current_assets?.[i];
     const cl = balance?.total_current_liabilities?.[i];
     if (ca && cl && cl > 0) return Number((ca / cl).toFixed(2));
+    if (balance?.current_ratio?.[i] !== undefined && balance?.current_ratio?.[i] !== null) return balance.current_ratio[i];
     return null;
   });
 
   const quickRatioVals = rawPeriods.map((_, i) => {
-    if (balance?.quick_ratio?.[i] !== undefined) return balance.quick_ratio[i];
     const ca = balance?.total_current_assets?.[i];
     const cl = balance?.total_current_liabilities?.[i];
     const inv = balance?.inventory?.[i] || 0;
     if (ca && cl && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
+    if (balance?.quick_ratio?.[i] !== undefined && balance?.quick_ratio?.[i] !== null) return balance.quick_ratio[i];
     return currentRatioVals[i];
   });
 
   const debtToEquityVals = rawPeriods.map((_, i) => {
-    if (balance?.debt_to_equity?.[i] !== undefined) return balance.debt_to_equity[i];
     const debt = balance?.total_debt?.[i];
     const eq = balance?.total_equity?.[i];
     if (debt !== undefined && debt !== null && eq && eq > 0) return Number((debt / eq).toFixed(2));
+    if (balance?.debt_to_equity?.[i] !== undefined && balance?.debt_to_equity?.[i] !== null) return balance.debt_to_equity[i];
     return null;
   });
 
@@ -284,56 +293,56 @@ export function FinancialStatementsTable({
   });
 
   const fcfMarginVals = rawPeriods.map((_, i) => {
-    if (cashflow?.fcf_margin_pct?.[i] !== undefined) return cashflow.fcf_margin_pct[i];
     const rev = income?.revenue?.[i];
     const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
-    if (rev && fcf !== null && fcf !== undefined) return Number(((fcf / rev) * 100).toFixed(2));
+    if (rev && fcf !== null && fcf !== undefined && rev > 0) return Number(((fcf / rev) * 100).toFixed(2));
+    if (cashflow?.fcf_margin_pct?.[i] !== undefined && cashflow?.fcf_margin_pct?.[i] !== null) return cashflow.fcf_margin_pct[i];
     return null;
   });
 
   const fcfToNetIncomeVals = rawPeriods.map((_, i) => {
-    if (cashflow?.fcf_vs_net_income_ratio?.[i] !== undefined) return Number((cashflow.fcf_vs_net_income_ratio[i] * 100).toFixed(2));
     const ni = income?.net_income?.[i];
     const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
     if (ni && fcf !== null && fcf !== undefined && ni !== 0) return Number(((fcf / ni) * 100).toFixed(2));
+    if (cashflow?.fcf_vs_net_income_ratio?.[i] !== undefined && cashflow?.fcf_vs_net_income_ratio?.[i] !== null) return Number((cashflow.fcf_vs_net_income_ratio[i] * 100).toFixed(2));
     return null;
   });
 
-  const keyIndicators = data.key_indicators || {
+  const keyIndicators: KeyIndicatorsData = {
     periods: rawPeriods,
     categories: [
       {
         category_key: 'profitability',
         category_title: isThai ? '1. ความสามารถในการทำกำไร (Profitability)' : 'Profitability',
         metrics: [
-          { key: 'gross_margin', name: 'Gross Margin', name_th: 'อัตรากำไรขั้นต้น', unit: '%', values: grossMarginVals },
-          { key: 'operating_margin', name: 'Operating Margin', name_th: 'อัตรากำไรจากการดำเนินงาน', unit: '%', values: opMarginVals },
-          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', unit: '%', values: opMarginVals },
-          { key: 'net_margin', name: 'Net Margin', name_th: 'อัตรากำไรสุทธิ', unit: '%', values: netMarginVals },
-          { key: 'ebitda_margin', name: 'EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', unit: '%', values: ebitdaMarginVals },
-          { key: 'tax_rate', name: 'Effective Tax Rate', name_th: 'อัตราภาษีเงินได้ที่แท้จริง', unit: '%', values: rawPeriods.map(() => 15.0) }
+          { key: 'gross_margin', name: 'Gross Margin', name_th: 'อัตรากำไรขั้นต้น', category: 'profitability', unit: '%', values: grossMarginVals },
+          { key: 'operating_margin', name: 'Operating Margin', name_th: 'อัตรากำไรจากการดำเนินงาน', category: 'profitability', unit: '%', values: opMarginVals },
+          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', category: 'profitability', unit: '%', values: opMarginVals },
+          { key: 'net_margin', name: 'Net Margin', name_th: 'อัตรากำไรสุทธิ', category: 'profitability', unit: '%', values: netMarginVals },
+          { key: 'ebitda_margin', name: 'EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', category: 'profitability', unit: '%', values: ebitdaMarginVals },
+          { key: 'tax_rate', name: 'Effective Tax Rate', name_th: 'อัตราภาษีเงินได้ที่แท้จริง', category: 'profitability', unit: '%', values: taxRateVals }
         ]
       },
       {
         category_key: 'solvency',
         category_title: isThai ? '2. สภาพคล่องและภาระหนี้สิน (Solvency & Leverage)' : 'Solvency & Leverage',
         metrics: [
-          { key: 'current_ratio', name: 'Current Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียน (Current Assets / Current Liabilities)', unit: 'x', values: currentRatioVals },
-          { key: 'quick_ratio', name: 'Quick Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียนเร็ว (Quick Assets / Current Liabilities)', unit: 'x', values: quickRatioVals },
-          { key: 'debt_to_equity', name: 'Debt to Equity Ratio', name_th: 'อัตราส่วนหนี้สินต่อส่วนของผู้ถือหุ้น (D/E)', unit: 'x', values: debtToEquityVals },
-          { key: 'equity_ratio', name: 'Equity Ratio', name_th: 'อัตราส่วนส่วนของผู้ถือหุ้นต่อสินทรัพย์รวม', unit: '%', values: equityRatioVals },
-          { key: 'debt_to_asset', name: 'Debt to Asset Ratio', name_th: 'อัตราส่วนหนี้สินรวมต่อสินทรัพย์รวม', unit: '%', values: debtToAssetVals }
+          { key: 'current_ratio', name: 'Current Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียน (Current Assets / Current Liabilities)', category: 'solvency', unit: 'x', values: currentRatioVals },
+          { key: 'quick_ratio', name: 'Quick Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียนเร็ว (Quick Assets / Current Liabilities)', category: 'solvency', unit: 'x', values: quickRatioVals },
+          { key: 'debt_to_equity', name: 'Debt to Equity Ratio', name_th: 'อัตราส่วนหนี้สินต่อส่วนของผู้ถือหุ้น (D/E)', category: 'solvency', unit: 'x', values: debtToEquityVals },
+          { key: 'equity_ratio', name: 'Equity Ratio', name_th: 'อัตราส่วนส่วนของผู้ถือหุ้นต่อสินทรัพย์รวม', category: 'solvency', unit: '%', values: equityRatioVals },
+          { key: 'debt_to_asset', name: 'Debt to Asset Ratio', name_th: 'อัตราส่วนหนี้สินรวมต่อสินทรัพย์รวม', category: 'solvency', unit: '%', values: debtToAssetVals }
         ]
       },
       {
         category_key: 'operating_capacity',
         category_title: isThai ? '3. ประสิทธิภาพการดำเนินงาน (Operating Capacity & Returns)' : 'Operating Capacity & Returns',
         metrics: [
-          { key: 'roe', name: 'ROE (Return on Equity)', name_th: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น', unit: '%', values: roeVals },
-          { key: 'roa', name: 'ROA (Return on Assets)', name_th: 'ผลตอบแทนต่อสินทรัพย์รวม', unit: '%', values: roaVals },
-          { key: 'roic', name: 'ROIC (Return on Invested Capital)', name_th: 'ผลตอบแทนจากเงินลงทุนรวม', unit: '%', values: roicVals },
-          { key: 'fcf_to_sales', name: 'FCF to Sales Margin', name_th: 'อัตราส่วนกระแสเงินสดอิสระต่อรายได้', unit: '%', values: fcfMarginVals },
-          { key: 'fcf_to_net_income', name: 'FCF to Net Income Ratio', name_th: 'สัดส่วนกระแสเงินสดอิสระต่อกำไรสุทธิ (Cash Conversion)', unit: '%', values: fcfToNetIncomeVals }
+          { key: 'roe', name: 'ROE (Return on Equity)', name_th: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น', category: 'operating_capacity', unit: '%', values: roeVals },
+          { key: 'roa', name: 'ROA (Return on Assets)', name_th: 'ผลตอบแทนต่อสินทรัพย์รวม', category: 'operating_capacity', unit: '%', values: roaVals },
+          { key: 'roic', name: 'ROIC (Return on Invested Capital)', name_th: 'ผลตอบแทนจากเงินลงทุนรวม', category: 'operating_capacity', unit: '%', values: roicVals },
+          { key: 'fcf_to_sales', name: 'FCF to Sales Margin', name_th: 'อัตราส่วนกระแสเงินสดอิสระต่อรายได้', category: 'operating_capacity', unit: '%', values: fcfMarginVals },
+          { key: 'fcf_to_net_income', name: 'FCF to Net Income Ratio', name_th: 'สัดส่วนกระแสเงินสดอิสระต่อกำไรสุทธิ (Cash Conversion)', category: 'operating_capacity', unit: '%', values: fcfToNetIncomeVals }
         ]
       }
     ]
