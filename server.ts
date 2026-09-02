@@ -225,8 +225,14 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 4. EXHAUST ALL SEARCH EFFORTS: You MUST execute multiple thorough web searches to locate authentic figures for all required fields.
 5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.
 6. PEER BENCHMARK & TARGET TICKER LIVE SEARCH MANDATE:
-   - For ${ticker} AND all peer companies listed in "peer_comparison" (e.g., TSLA, BYDDF, GM, RIVN, AMD, INTC, AVGO, TSM, MSFT, ORCL, etc.), you MUST execute live web searches to retrieve their LIVE current stock price, Market Cap, and P/E ratios (Trailing and Forward) as of TODAY (${todayISO}).
-   - For example: TSLA Market Cap is ~$1.41 Trillion (stock price ~$356, NOT $1.14T from past quarters); RIVN Market Cap is ~$22.5 Billion (NOT $14B); GM is ~$75B–$77B (NOT $68B); AMD is ~$750B–$770B (NOT $280B–$295B).
+   - SELECT DIRECT, MODERN PURE-PLAY PEERS: Always select the most direct, relevant, and modern public peers in the same niche industry:
+     * For Space & Orbital Launch (e.g., RKLB): You MUST compare with pure-play space companies like ASTS (AST SpaceMobile), LUNR (Intuitive Machines), RDW (Redwire), PL (Planet Labs), and explicitly benchmark and compare against SpaceX (Launch dominance, Starlink, private market cap ~$210B–$350B) in the commentary and key takeaways!
+     * For AI Infrastructure & Chips (e.g., NVDA): Compare with AMD, AVGO (Broadcom), TSM (TSMC), INTC.
+     * For Enterprise AI & Data Platforms (e.g., PLTR): Compare with SNOW, MDB, DDOG, C3.ai (AI).
+     * For Digital Banking & Fintech (e.g., SOFI): Compare with HOOD (Robinhood), UPST (Upstart), NU (Nu Holdings), AFRM (Affirm).
+     * For EV & Clean Energy (e.g., TSLA): Compare with BYDDF (BYD), RIVN (Rivian), GM, LCID.
+   - For ${ticker} AND all peer companies listed in "peer_comparison" (e.g., ASTS, RDW, PL, AMD, TSM, BYD, etc.), you MUST execute dedicated live web searches to retrieve their LIVE current stock price, Market Cap, and P/E ratios (Trailing and Forward) as of TODAY (${todayISO}).
+   - For example: TSLA Market Cap is ~$1.41 Trillion (stock price ~$356, NOT $1.14T from past quarters); RKLB Market Cap is ~$37B–$40B (stock price ~$62–$64); ASTS Market Cap is ~$10B–$15B; AMD is ~$750B–$770B.
    - NEVER rely on static memory or outdated pre-training knowledge. All Market Caps, P/E multiples, and margins in "peer_comparison" MUST match live financial reality as of TODAY (${todayISO}).
 7. AUTHENTIC 3 FINANCIAL STATEMENTS (INCOME, BALANCE SHEET, CASH FLOW):
    - In "financial_statements", do NOT stop at searching only headline revenue and EPS. You MUST execute dedicated web searches for the company's official SEC Form 10-Q and 10-K "CONSOLIDATED BALANCE SHEETS" and "CONSOLIDATED STATEMENTS OF CASH FLOWS" across all 4 reporting periods.
