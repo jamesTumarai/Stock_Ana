@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut } from 'lucide-react';
+import { UserAvatar } from './components/UserAvatar';
 
 interface LandingViewProps {
   language: string;
@@ -275,13 +276,11 @@ export function LandingView({
                 >
                   {isThai ? 'ออก' : 'Exit'}
                 </button>
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full border-[1.5px] border-white/20 shadow-sm shrink-0" />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
-                    {user.displayName ? user.displayName.slice(0, 1) : 'U'}
-                  </div>
-                )}
+                <UserAvatar 
+                  photoURL={user.photoURL} 
+                  displayName={user.displayName} 
+                  sizeClassName="w-7 h-7 text-[10px]" 
+                />
               </div>
             ) : (
               <button
@@ -316,13 +315,11 @@ export function LandingView({
                 >
                   <LogOut className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
                 </button>
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="avatar" className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full border border-white/20 shadow-sm" />
-                ) : (
-                  <div className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-full bg-stone-700 border border-white/20 flex items-center justify-center text-white text-[11px] font-bold shadow-sm">
-                    {user.displayName ? user.displayName.slice(0, 1) : 'U'}
-                  </div>
-                )}
+                <UserAvatar 
+                  photoURL={user.photoURL} 
+                  displayName={user.displayName} 
+                  sizeClassName="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] text-[11px]" 
+                />
               </div>
             )}
             <button

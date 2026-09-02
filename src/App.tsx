@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 import { MotionIntro } from './components/MotionIntro';
+import { UserAvatar } from './components/UserAvatar';
 
 import { 
   DocumentFinding, 
@@ -735,13 +736,11 @@ export default function App() {
                 >
                   <LogOut className="w-[18px] h-[18px]" strokeWidth={2} />
                 </button>
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="avatar" className="w-[28px] h-[28px] sm:w-[32px] sm:h-[32px] rounded-full border-[1.5px] border-white/20 shadow-sm shrink-0" />
-                ) : (
-                  <div className="w-[28px] h-[28px] sm:w-[32px] sm:h-[32px] rounded-full bg-stone-700 border-[1.5px] border-white/20 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0">
-                    {user.displayName ? user.displayName.slice(0, 1) : 'U'}
-                  </div>
-                )}
+                <UserAvatar 
+                  photoURL={user.photoURL} 
+                  displayName={user.displayName} 
+                  sizeClassName="w-[28px] h-[28px] sm:w-[32px] sm:h-[32px] text-[10px]" 
+                />
               </div>
             ) : (
               <button
