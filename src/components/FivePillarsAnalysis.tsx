@@ -382,8 +382,8 @@ export function FivePillarsAnalysis({
         <p className="text-xs text-stone-700 leading-relaxed font-sans">
           <strong>{isThai ? 'สรุปมุมมองนักวิเคราะห์:' : 'Analyst Synthesis:'} </strong>
           {data?.analyst_takeaway || (isThai
-            ? `แม้ค่า P/E ของ ${ticker} จะเทรดที่ระดับพรีเมียม แต่เมื่อพิจารณาครบทั้ง 5 มิติ (PEG ต่ำกว่า 1.0x, ROIC ระดับ 28.4%, สถานะ Net Cash สูงถึง $6.6B และ FCF Yield 4.15%) สะท้อนว่ามูลค่าหุ้นได้รับการสนับสนุนจากคุณภาพกำไรและความแข็งแกร่งของงบดุลอย่างแท้จริง`
-            : `While multiples trade at a premium, the 5-pillar composite (sub-1.0x PEG, 28.4% ROIC, $6.6B Net Cash, and 4.15% FCF Yield) proves the valuation is fundamentally anchored.`)}
+            ? `แม้ค่า P/E ของ ${ticker} (${yields.pe_multiple}x) จะเทรดที่ระดับพรีเมียมตามการเติบโต แต่เมื่อพิจารณาครบทั้ง 5 มิติ (สถานะ Net Cash $${balance.net_cash_or_debt_b}B, ROIC ระดับ ${profit.roic_pct}%, และ FCF Yield ${yields.fcf_yield_pct}%) สะท้อนความแข็งแกร่งของฐานทุนและงบการเงิน`
+            : `While multiples for ${ticker} (${yields.pe_multiple}x P/E) trade at a growth premium, the 5-pillar composite ($${balance.net_cash_or_debt_b}B Net Cash, ${profit.roic_pct}% ROIC, and ${yields.fcf_yield_pct}% FCF Yield) reflects strong balance sheet solvency.`)}
         </p>
       </div>
     </div>
