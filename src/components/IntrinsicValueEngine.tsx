@@ -401,67 +401,121 @@ export function IntrinsicValueEngine({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Slider 1: Revenue CAGR */}
               <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-xs font-semibold text-stone-700">
+                <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
                   <span>{isThai ? 'Revenue CAGR (5 ปี)' : '5-Yr Revenue CAGR'}</span>
-                  <span className="font-mono text-[#0b5a4b] font-bold text-sm">{simCagr}%</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[#0b5a4b] font-bold text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setSimCagr(prev => Math.max(10, Number((prev - 0.1).toFixed(1))))}
+                      className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="-0.1%"
+                    >
+                      -
+                    </button>
+                    <span className="min-w-[48px] text-center">{simCagr.toFixed(1)}%</span>
+                    <button
+                      type="button"
+                      onClick={() => setSimCagr(prev => Math.min(80, Number((prev + 0.1).toFixed(1))))}
+                      className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="+0.1%"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <input 
                   type="range" 
-                  min="15" 
-                  max="65" 
-                  step="1"
+                  min="10" 
+                  max="80" 
+                  step="0.1"
                   value={simCagr}
                   onChange={(e) => setSimCagr(parseFloat(e.target.value))}
                   className="w-full accent-[#0b5a4b] cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
-                  <span>15%</span>
-                  <span>40% (Base)</span>
-                  <span>65%</span>
+                  <span>10.0%</span>
+                  <span>{(base.revenue_cagr_pct || 40).toFixed(1)}% (Base)</span>
+                  <span>80.0%</span>
                 </div>
               </div>
 
               {/* Slider 2: WACC */}
               <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-xs font-semibold text-stone-700">
+                <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
                   <span>{isThai ? 'อัตราคิดลด (WACC)' : 'Discount Rate (WACC)'}</span>
-                  <span className="font-mono text-stone-900 font-bold text-sm">{simWacc}%</span>
+                  <div className="flex items-center gap-1.5 font-mono text-stone-900 font-bold text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setSimWacc(prev => Math.max(5.0, Number((prev - 0.1).toFixed(1))))}
+                      className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="-0.1%"
+                    >
+                      -
+                    </button>
+                    <span className="min-w-[48px] text-center">{simWacc.toFixed(1)}%</span>
+                    <button
+                      type="button"
+                      onClick={() => setSimWacc(prev => Math.min(16.0, Number((prev + 0.1).toFixed(1))))}
+                      className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="+0.1%"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <input 
                   type="range" 
-                  min="6" 
-                  max="14" 
-                  step="0.5"
+                  min="5.0" 
+                  max="16.0" 
+                  step="0.1"
                   value={simWacc}
                   onChange={(e) => setSimWacc(parseFloat(e.target.value))}
                   className="w-full accent-stone-900 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
-                  <span>6.0%</span>
-                  <span>9.5% (Base)</span>
-                  <span>14.0%</span>
+                  <span>5.0%</span>
+                  <span>{(dcf.assumptions.wacc_pct || 9.5).toFixed(1)}% (Base)</span>
+                  <span>16.0%</span>
                 </div>
               </div>
 
               {/* Slider 3: Terminal Growth Rate */}
               <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-xs font-semibold text-stone-700">
+                <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
                   <span>{isThai ? 'อัตราเติบโตยั่งยืน (Terminal Growth)' : 'Terminal Growth (g)'}</span>
-                  <span className="font-mono text-stone-900 font-bold text-sm">{simGrowth}%</span>
+                  <div className="flex items-center gap-1.5 font-mono text-stone-900 font-bold text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setSimGrowth(prev => Math.max(1.0, Number((prev - 0.1).toFixed(1))))}
+                      className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="-0.1%"
+                    >
+                      -
+                    </button>
+                    <span className="min-w-[48px] text-center">{simGrowth.toFixed(1)}%</span>
+                    <button
+                      type="button"
+                      onClick={() => setSimGrowth(prev => Math.min(5.5, Number((prev + 0.1).toFixed(1))))}
+                      className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="+0.1%"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <input 
                   type="range" 
-                  min="1.5" 
-                  max="4.5" 
-                  step="0.25"
+                  min="1.0" 
+                  max="5.5" 
+                  step="0.1"
                   value={simGrowth}
                   onChange={(e) => setSimGrowth(parseFloat(e.target.value))}
                   className="w-full accent-stone-900 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
-                  <span>1.5%</span>
-                  <span>3.0% (Base)</span>
-                  <span>4.5%</span>
+                  <span>1.0%</span>
+                  <span>{(dcf.assumptions.terminal_growth_pct || 3.0).toFixed(1)}% (Base)</span>
+                  <span>5.5%</span>
                 </div>
               </div>
             </div>
