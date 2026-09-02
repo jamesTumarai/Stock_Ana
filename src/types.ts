@@ -10,6 +10,8 @@ export interface IncomeStatementData {
   net_income: (number | null)[];
   net_margin_pct?: (number | null)[];
   eps_diluted?: (number | null)[];
+  interest_expense?: (number | null)[];
+  tax_rate?: (number | null)[];
   yoy_revenue_growth_pct?: (number | null)[];
   commentary?: string;
 }
@@ -132,18 +134,61 @@ export interface ValuationData {
   valuation_percentile_chart?: ValuationPercentileChart;
 }
 
+export type ValuationModelType = 
+  | 'dcf_standard'      // 3-Stage DCF for Growth/Tech
+  | 'dcf_multistage'    // 4-Stage+ DCF for Super Growth / AI
+  | 'dcf_gordon'        // 1-2 Stage Gordon DCF for Mature/Value
+  | 'dcf_cyclical'      // Through-Cycle Normalized DCF for Cyclicals
+  | 'ddm'               // Dividend Discount Model & Residual Income for Banks/Financials
+  | 'reit_affo'         // FFO/AFFO Multiple & DCF for REITs
+  | 'relative_only';    // Relative Valuation fallback for Negative FCF / Pre-Revenue
+
+export interface ModelSelectorResult {
+  model_type: ValuationModelType;
+  model_name_th: string;
+  model_name_en: string;
+  reason_th: string;
+  reason_en: string;
+  sector_category: string;
+  alternative_models?: ValuationModelType[];
+  disclaimer_note?: string;
+}
+
+export interface CostOfCapitalResult {
+  region: string;
+  currency: string;
+  risk_free_rate_pct: number;
+  risk_free_benchmark_label: string;
+  beta: number;
+  beta_benchmark_index: string;
+  equity_risk_premium_pct: number;
+  country_risk_premium_pct: number;
+  cost_of_equity_pct: number;
+  cost_of_debt_pct: number;
+  effective_tax_rate_pct: number;
+  weight_equity_pct: number;
+  weight_debt_pct: number;
+  wacc_pct: number;
+  currency_risk_premium_pct?: number;
+  is_foreign_currency_converted?: boolean;
+}
+
 export interface DCFScenario {
   revenue_cagr_pct: number;
   terminal_margin_pct: number;
   fair_value_per_share: number;
   key_assumption_note: string;
+  stage_growth_rates?: number[];
 }
 
 export interface DCFModel {
+  model_type?: 'standard_3stage' | 'multistage_4stage' | 'gordon_growth' | 'cyclical_normalized';
   assumptions: {
     wacc_pct: number;
     terminal_growth_pct: number;
     projection_years: number;
+    cost_of_equity_pct?: number;
+    stages_count?: number;
   };
   scenarios: {
     bear: DCFScenario;
@@ -152,11 +197,109 @@ export interface DCFModel {
   };
 }
 
+export interface DDMScenario {
+  dividend_growth_rate_pct: number;
+  terminal_payout_ratio_pct: number;
+  fair_value_per_share: number;
+  key_assumption_note: string;
+}
+
+export interface DDMModel {
+  assumptions: {
+    cost_of_equity_pct: number;
+    terminal_growth_pct: number;
+    current_dividend_per_share: number;
+    current_payout_ratio_pct: number;
+    current_roe_pct: number;
+  };
+  scenarios: {
+    bear: DDMScenario;
+    base: DDMScenario;
+    bull: DDMScenario;
+  };
+  residual_income_fair_value?: number;
+  book_value_per_share?: number;
+}
+
+export interface REITAFFOScenario {
+  affo_multiple: number;
+  affo_growth_cagr_pct: number;
+  fair_value_per_share: number;
+  key_assumption_note: string;
+}
+
+export interface REITAFFOModel {
+  sub_sector: 'Industrial' | 'Data Center' | 'Retail' | 'Residential' | 'Healthcare' | 'Office' | 'Diversified' | string;
+  assumptions: {
+    current_ffo_per_share: number;
+    current_affo_per_share: number;
+    peer_median_affo_multiple: number;
+    cap_rate_pct?: number;
+  };
+  scenarios: {
+    bear: REITAFFOScenario;
+    base: REITAFFOScenario;
+    bull: REITAFFOScenario;
+  };
+}
+
+export interface CyclicalScenario {
+  commodity_cycle_assumption: string;
+  normalized_margin_pct: number;
+  fair_value_per_share: number;
+  key_assumption_note: string;
+}
+
+export interface CyclicalModel {
+  cycle_length_years: number;
+  historical_margins: {
+    cycle_peak_margin_pct: number;
+    cycle_trough_margin_pct: number;
+    normalized_average_margin_pct: number;
+    current_margin_pct: number;
+  };
+  scenarios: {
+    bear: CyclicalScenario;
+    base: CyclicalScenario;
+    bull: CyclicalScenario;
+  };
+}
+
+export interface RelativeValuationPeerItem {
+  ticker: string;
+  name: string;
+  market_cap_b: number;
+  growth_stage: string;
+  ev_revenue_multiple: number;
+  ev_gross_profit_multiple?: number;
+}
+
+export interface RelativeOnlyModel {
+  primary_metric: 'EV/Revenue' | 'EV/Gross Profit' | 'EV/Users' | string;
+  peer_median_multiple: number;
+  applied_company_metric_value: number;
+  implied_enterprise_value_b: number;
+  implied_equity_value_b: number;
+  fair_value_per_share: number;
+  peers_evaluated: RelativeValuationPeerItem[];
+  peer_selection_rationale: string;
+  stage_confidence_score: 'Low' | 'Moderate' | 'High';
+  pre_revenue_disclaimer: string;
+}
+
 export interface RelativeValuation {
   method: string;
   peer_multiple_used: number;
   metric_applied: string;
   fair_value_per_share: number;
+}
+
+export interface ValuationValidationAlert {
+  type: 'error' | 'warning' | 'info';
+  code: string;
+  message_th: string;
+  message_en: string;
+  detail?: string;
 }
 
 export interface IntrinsicValueSummary {
@@ -171,10 +314,18 @@ export interface IntrinsicValueSummary {
 export interface IntrinsicValueData {
   current_price: number;
   as_of_date?: string;
+  selected_model?: ModelSelectorResult;
+  cost_of_capital?: CostOfCapitalResult;
   dcf_model: DCFModel;
+  ddm_model?: DDMModel;
+  reit_model?: REITAFFOModel;
+  cyclical_model?: CyclicalModel;
+  relative_only_model?: RelativeOnlyModel;
   relative_valuation?: RelativeValuation;
+  validation_alerts?: ValuationValidationAlert[];
   summary: IntrinsicValueSummary;
   disclaimer?: string;
+  philosophy_disclaimer?: string;
 }
 
 export interface PastEarningsItem {
@@ -322,6 +473,7 @@ export interface EarningsAnalysisData {
 export interface PeerCompanyItem {
   ticker: string;
   company_name: string;
+  name?: string;
   market_cap?: string | number;
   pe_trailing?: number | null;
   pe_forward?: number | null;
@@ -508,6 +660,13 @@ export interface CompanyProfileData {
   as_of_date?: string;
   overview?: CompanyOverviewData;
   executives?: ExecutiveMember[];
+  country?: string;
+  sector?: string;
+  industry?: string;
+  description?: string;
+  beta?: number;
+  stock_price?: number;
+  currency?: string;
 }
 
 export interface RevenueSegmentItem {
@@ -790,6 +949,7 @@ export interface AnalysisReport {
   comprehensive_analysis?: ComprehensiveAnalysis;
   technical_analysis?: TechnicalAnalysis;
   financial_statements?: FinancialStatementsData;
+  key_indicators?: any;
   valuation_ratios?: ValuationRatioItem[];
   valuation_percentile_chart?: ValuationPercentileChart;
   valuation_dashboard?: ValuationDashboardData;
