@@ -221,7 +221,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 2. LIVE MARKET REALITY: The current stock price, market cap, valuation multiples (TTM P/E, Forward P/E, EV/EBITDA, P/S, P/B), 52-week high/low, and technical indicators MUST be fetched from live searches (Yahoo Finance, Google Finance, Bloomberg, TradingView) as of TODAY (${todayISO}). NEVER use outdated past years or placeholder example values from the schema.
 3. 100% REAL DATA & ZERO HALLUCINATIONS: Every single metric, revenue number, margin percentage, cash flow, debt level, institutional holder name, and insider transaction MUST come from verified, authentic public records (SEC Form 10-K, 10-Q, 8-K, Form 4, 13F filings, and official investor relations).
 4. EXHAUST ALL SEARCH EFFORTS: You MUST execute multiple thorough web searches to locate authentic figures for all required fields.
-5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.`;
+5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.
+6. PEER BENCHMARK REAL-TIME GROUNDING: For all peer companies listed in "peer_comparison" (e.g., AMD, INTC, AVGO, TSM, MSFT, ORCL, etc.), you MUST perform live web searches to fetch their LIVE current Market Cap and P/E ratios as of TODAY (${todayISO}). NEVER rely on static memory or outdated pre-training knowledge which severely underestimates companies that surged recently (e.g., AMD market cap is ~$750B–$770B in 2026, NOT $280B–$295B).`;
       
       let dynamicSchema = ``;
       
