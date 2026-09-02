@@ -98,11 +98,14 @@ export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?:
   const cyclicalModel = calculateCyclicalModel(data, sym);
   const relativeOnlyModel = calculateRelativeOnlyModel(data, sym);
 
-  // 4. Standard / Multi-stage DCF
-  const defaultDcf = data?.intrinsic_value?.dcf_model || {
+  // 4. Standard / Multi-stage DCF: Preserve authentic data if present
+  const existingDcf = data?.intrinsic_value?.dcf_model;
+  const existingSummary = data?.intrinsic_value?.summary;
+
+  const defaultDcf = existingDcf || {
     assumptions: {
       wacc_pct: costOfCapital.wacc_pct,
-      terminal_growth_pct: 3.0,
+      terminal_growth_pct: 3.5,
       projection_years: 5
     },
     scenarios: {
@@ -112,30 +115,12 @@ export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?:
     }
   };
 
-  // 5. Select Primary Output Values based on Chosen Model
-  let baseFairVal = defaultDcf.scenarios.base.fair_value_per_share;
-  let bearFairVal = defaultDcf.scenarios.bear.fair_value_per_share;
-  let bullFairVal = defaultDcf.scenarios.bull.fair_value_per_share;
+  // 5. Keep authentic DCF fair values as primary
+  const baseFairVal = existingDcf?.scenarios?.base?.fair_value_per_share || existingSummary?.base_case_fair_value || defaultDcf.scenarios.base.fair_value_per_share;
+  const bearFairVal = existingDcf?.scenarios?.bear?.fair_value_per_share || existingSummary?.fair_value_range_low || defaultDcf.scenarios.bear.fair_value_per_share;
+  const bullFairVal = existingDcf?.scenarios?.bull?.fair_value_per_share || existingSummary?.fair_value_range_high || defaultDcf.scenarios.bull.fair_value_per_share;
 
-  if (modelSelector.model_type === 'ddm') {
-    baseFairVal = ddmModel.scenarios.base.fair_value_per_share;
-    bearFairVal = ddmModel.scenarios.bear.fair_value_per_share;
-    bullFairVal = ddmModel.scenarios.bull.fair_value_per_share;
-  } else if (modelSelector.model_type === 'reit_affo') {
-    baseFairVal = reitModel.scenarios.base.fair_value_per_share;
-    bearFairVal = reitModel.scenarios.bear.fair_value_per_share;
-    bullFairVal = reitModel.scenarios.bull.fair_value_per_share;
-  } else if (modelSelector.model_type === 'dcf_cyclical') {
-    baseFairVal = cyclicalModel.scenarios.base.fair_value_per_share;
-    bearFairVal = cyclicalModel.scenarios.bear.fair_value_per_share;
-    bullFairVal = cyclicalModel.scenarios.bull.fair_value_per_share;
-  } else if (modelSelector.model_type === 'relative_only') {
-    baseFairVal = relativeOnlyModel.fair_value_per_share;
-    bearFairVal = Number((baseFairVal * 0.78).toFixed(2));
-    bullFairVal = Number((baseFairVal * 1.35).toFixed(2));
-  }
-
-  const marginOfSafety = Number((((baseFairVal - currentPrice) / currentPrice) * 100).toFixed(2));
+  const marginOfSafety = Number((((baseFairVal - currentPrice) / currentPrice) * 100).toFixed(1));
 
   const valuationPayload: IntrinsicValueData = {
     current_price: currentPrice,
@@ -147,13 +132,14 @@ export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?:
     reit_model: reitModel,
     cyclical_model: cyclicalModel,
     relative_only_model: relativeOnlyModel,
-    relative_valuation: data?.intrinsic_value?.relative_valuation || {
-      method: 'EV/EBITDA Relative Multiple',
-      peer_multiple_used: 16.5,
-      metric_applied: 'Forward EBITDA',
-      fair_value_per_share: baseFairVal
-    },
-    summary: {
+    relative_valuation: data?.intrinsic_value?.relative_valuation,
+    summary: existingSummary ? {
+      ...existingSummary,
+      fair_value_range_low: bearFairVal,
+      fair_value_range_high: bullFairVal,
+      base_case_fair_value: baseFairVal,
+      margin_of_safety_pct: marginOfSafety
+    } : {
       fair_value_range_low: bearFairVal,
       fair_value_range_high: bullFairVal,
       base_case_fair_value: baseFairVal,
