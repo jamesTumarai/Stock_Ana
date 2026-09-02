@@ -238,5 +238,15 @@ export function harmonizeReportData(data: ReportData, ticker?: string): ReportDa
     });
   }
 
+  // 3. Harmonize Intrinsic Value Margin of Safety
+  if (result.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share && result.intrinsic_value.current_price) {
+    const cp = result.intrinsic_value.current_price;
+    const baseVal = result.intrinsic_value.dcf_model.scenarios.base.fair_value_per_share;
+    const exactMoS = roundTo(((baseVal - cp) / cp) * 100, 1);
+    if (result.intrinsic_value.summary) {
+      result.intrinsic_value.summary.margin_of_safety_pct = exactMoS ?? 0;
+    }
+  }
+
   return result;
 }

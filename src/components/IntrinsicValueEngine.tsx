@@ -126,8 +126,23 @@ export function IntrinsicValueEngine({
           </div>
         </div>
 
+        {/* Model Timestamp & Fixed Assumption Anchor Banner */}
+        <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-stone-50 rounded-2xl border border-stone-200 text-xs text-stone-600 font-mono">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-3.5 h-3.5 text-[#0b5a4b]" />
+            <span><strong>{isThai ? 'แบบจำลอง:' : 'Model:'}</strong> 3-Stage DCF (FCFE/FCFF)</span>
+            <span className="text-stone-300">•</span>
+            <span><strong>WACC:</strong> {dcf.assumptions.wacc_pct}%</span>
+            <span className="text-stone-300">•</span>
+            <span><strong>Terminal g:</strong> {dcf.assumptions.terminal_growth_pct}%</span>
+          </div>
+          <div className="text-[11px] text-stone-500 font-sans">
+            <span>{isThai ? 'คำนวณล่าสุดเมื่อ:' : 'Model Date:'} <strong className="font-mono text-stone-800">{data.as_of_date || new Date().toISOString().split('T')[0]}</strong></span>
+          </div>
+        </div>
+
         {/* HERO SPECTRUM BAR */}
-        <div className="flex flex-col gap-4 py-4">
+        <div className="flex flex-col gap-4 py-2">
           <div className="relative pt-12 pb-8">
             {/* The Gradient Spectrum Track */}
             <div className="h-4 rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500 w-full relative shadow-inner">
