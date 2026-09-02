@@ -123,7 +123,7 @@ export default function App() {
   const [instruction, setInstruction] = useState('');
   const [analysisType, setAnalysisType] = useState<'fundamental' | 'technical' | 'combined'>('combined');
   
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.8-flash');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('Thai');
   const [useSelfConsistency, setUseSelfConsistency] = useState<boolean>(true);
 
@@ -716,7 +716,7 @@ export default function App() {
                 alt="Gemini" 
                 className="w-3.5 h-3.5 shrink-0" 
               />
-              <span className="font-medium text-[11px] whitespace-nowrap">Gemini 3.7 Flash</span>
+              <span className="font-medium text-[11px] whitespace-nowrap">Gemini 3.8 Flash</span>
             </div>
 
             {/* User Account / Sign In */}
@@ -792,7 +792,7 @@ export default function App() {
                 <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-white/[0.06] border-b border-white/10 font-bold text-white text-sm flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-2">
                     <img src="https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg" alt="Gemini Sparkle" className="w-5 h-5" />
-                    <span>{selectedModel === 'gemini-3.7-flash' ? 'Gemini 3.7 Flash' : selectedModel === 'gemini-3.6-flash' || selectedModel === 'perseus' ? 'Gemini 3.6 Flash' : 'Gemini 3.5 Flash'}</span>
+                    <span>{selectedModel === 'gemini-3.8-flash' ? 'Gemini 3.8 Flash' : selectedModel === 'gemini-3.7-flash' ? 'Gemini 3.7 Flash' : selectedModel === 'gemini-3.6-flash' || selectedModel === 'perseus' ? 'Gemini 3.6 Flash' : 'Gemini 3.5 Flash'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {running && <Loader2 className="w-4 h-4 animate-spin text-white/60" />}

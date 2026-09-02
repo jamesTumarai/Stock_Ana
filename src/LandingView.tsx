@@ -39,7 +39,7 @@ const STATS: StatItem[] = [
   { glyph: '<', target: 100, suffix: '%', decimals: 0, labelEn: 'Audited SEC 10-K/10-Q Filings', labelTh: 'ข้อมูลจริงจากเอกสาร SEC 10-K/10-Q', delay: '0.5s' },
   { glyph: '%', target: 4, suffix: 'x', decimals: 0, labelEn: 'Parallel AI Agent Swarm', labelTh: '4x Multi-Agent AI วิเคราะห์เจาะลึก', delay: '0.58s' },
   { glyph: '*', target: 3, suffix: ' TF', decimals: 0, labelEn: 'Trade Plan & R:R Calculation', labelTh: 'คำนวณแผนเทรด & Risk/Reward', delay: '0.66s' },
-  { glyph: '#', target: 3.7, suffix: ' Flash', decimals: 1, labelEn: 'Gemini AI Conviction Engine', labelTh: 'Gemini AI ประเมิน Conviction Score', delay: '0.74s' },
+  { glyph: '#', target: 3.8, suffix: ' Flash', decimals: 1, labelEn: 'Gemini AI Conviction Engine', labelTh: 'Gemini AI ประเมิน Conviction Score', delay: '0.74s' },
 ];
 
 function StatCounter({ stat, isThai }: { stat: StatItem; isThai: boolean }) {
