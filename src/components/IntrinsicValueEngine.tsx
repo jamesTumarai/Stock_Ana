@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { IntrinsicValueData } from '../types';
 
+import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
+
 interface Props {
   data?: IntrinsicValueData;
   isThai: boolean;
@@ -48,24 +50,28 @@ export function IntrinsicValueEngine({
   const [showSimulator, setShowSimulator] = useState(false);
   
   // Interactive Simulator state
-  const [simWacc, setSimWacc] = useState(dcf.assumptions.wacc_pct || coc?.wacc_pct || 9.2);
+  const [simWacc, setSimWacc] = useState(dcf.assumptions.wacc_pct || coc?.wacc_pct || 11.8);
   const [simGrowth, setSimGrowth] = useState(dcf.assumptions.terminal_growth_pct || 3.5);
   const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct || 22);
 
-  // Live DCF formula calculation based on user adjustments
+  // Exact closed-form live DCF calculation based on user adjustments
   const recalculatedBaseFairValue = useMemo(() => {
-    const defaultWacc = dcf.assumptions.wacc_pct || coc?.wacc_pct || 9.2;
-    const defaultGrowth = dcf.assumptions.terminal_growth_pct || 3.5;
-    const defaultCagr = base.revenue_cagr_pct || 22;
-    const baseVal = summary.base_case_fair_value || base.fair_value_per_share || currentPrice;
+    const margin = base.terminal_margin_pct || 14.5;
+    const startingRevM = 97600;
+    const sharesM = 3200;
+    const netCashM = 27280;
 
-    const cagrDelta = (simCagr - defaultCagr) * 0.018;
-    const waccDelta = (defaultWacc - simWacc) * 0.09;
-    const growthDelta = (simGrowth - defaultGrowth) * 0.12;
-
-    const adjustedValue = baseVal * (1 + cagrDelta + waccDelta + growthDelta);
-    return Math.max(1, Number(adjustedValue.toFixed(2)));
-  }, [simWacc, simGrowth, simCagr, base, dcf, coc, summary, currentPrice]);
+    return calculateStrictDCFValue(
+      startingRevM,
+      sharesM,
+      netCashM,
+      simWacc,
+      simGrowth,
+      simCagr,
+      margin,
+      dcf.assumptions.projection_years || 5
+    );
+  }, [simWacc, simGrowth, simCagr, base, dcf]);
 
   const simulatedMarginOfSafety = useMemo(() => {
     return ((recalculatedBaseFairValue - currentPrice) / currentPrice) * 100;
