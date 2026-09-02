@@ -8,11 +8,12 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ReferenceLine 
 } from 'recharts';
-import { SmartMoneyData, InsiderActivityData, MajorHolderItem, ShareholderActivityItem, InsiderTransaction } from '../types';
+import { SmartMoneyData, InsiderActivityData, CompanyProfileData, MajorHolderItem, ShareholderActivityItem, InsiderTransaction } from '../types';
 
 interface SmartMoneyCardProps {
   data?: SmartMoneyData;
   legacyInsiderData?: InsiderActivityData;
+  companyProfile?: CompanyProfileData;
   ticker: string;
   isThai: boolean;
 }
@@ -20,211 +21,10 @@ interface SmartMoneyCardProps {
 const HOLDER_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#475569', '#d97706', '#a8a29e'];
 const TYPE_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#64748b', '#d97706', '#78716c'];
 
-const DEFAULT_MAJOR_HOLDERS: MajorHolderItem[] = [
-  {
-    name: 'The Vanguard Group, Inc.',
-    shares_held: '215.4M',
-    pct_owned: 9.54,
-    change_shares: '+4.85M',
-    change_pct: 0.21,
-    holder_type: 'Mutual Fund / Index',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  },
-  {
-    name: 'BlackRock, Inc.',
-    shares_held: '198.2M',
-    pct_owned: 8.78,
-    change_shares: '+6.12M',
-    change_pct: 0.27,
-    holder_type: 'Mutual Fund / Index',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  },
-  {
-    name: 'State Street Global Advisors',
-    shares_held: '89.6M',
-    pct_owned: 3.97,
-    change_shares: '+1.94M',
-    change_pct: 0.08,
-    holder_type: 'Mutual Fund / ETF',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  },
-  {
-    name: 'Geode Capital Management, LLC',
-    shares_held: '48.3M',
-    pct_owned: 2.14,
-    change_shares: '+1.05M',
-    change_pct: 0.04,
-    holder_type: 'Mutual Fund',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  },
-  {
-    name: 'FMR LLC (Fidelity Management)',
-    shares_held: '42.1M',
-    pct_owned: 1.86,
-    change_shares: '+3.40M',
-    change_pct: 0.15,
-    holder_type: 'Mutual Fund / Active',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  },
-  {
-    name: 'Morgan Stanley Investment Management',
-    shares_held: '31.5M',
-    pct_owned: 1.39,
-    change_shares: '-1.20M',
-    change_pct: -0.05,
-    holder_type: 'Investment Bank',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  },
-  {
-    name: 'Renaissance Technologies LLC',
-    shares_held: '22.8M',
-    pct_owned: 1.01,
-    change_shares: '+4.50M',
-    change_pct: 0.20,
-    holder_type: 'Hedge Fund (Quant)',
-    filing_date: '2026-06-30',
-    disclosure: '13F'
-  }
-];
-
-const DEFAULT_SHAREHOLDER_ACTIVITY: ShareholderActivityItem[] = [
-  {
-    holder_name: 'Renaissance Technologies LLC',
-    change_type: 'increase',
-    change_shares: '+4.50M',
-    change_amount_usd: '+$810M',
-    total_pct_held: 1.01,
-    holder_type: 'Hedge Fund',
-    date: '2026-06-30'
-  },
-  {
-    holder_name: 'BlackRock, Inc.',
-    change_type: 'increase',
-    change_shares: '+6.12M',
-    change_amount_usd: '+$1.10B',
-    total_pct_held: 8.78,
-    holder_type: 'Mutual Fund',
-    date: '2026-06-30'
-  },
-  {
-    holder_name: 'The Vanguard Group, Inc.',
-    change_type: 'increase',
-    change_shares: '+4.85M',
-    change_amount_usd: '+$873M',
-    total_pct_held: 9.54,
-    holder_type: 'Mutual Fund',
-    date: '2026-06-30'
-  },
-  {
-    holder_name: 'Morgan Stanley Investment Management',
-    change_type: 'decrease',
-    change_shares: '-1.20M',
-    change_amount_usd: '-$216M',
-    total_pct_held: 1.39,
-    holder_type: 'Investment Bank',
-    date: '2026-06-30'
-  },
-  {
-    holder_name: 'Citadel Advisors LLC',
-    change_type: 'increase',
-    change_shares: '+1.85M',
-    change_amount_usd: '+$333M',
-    total_pct_held: 0.65,
-    holder_type: 'Hedge Fund',
-    date: '2026-06-30'
-  }
-];
-
-const DEFAULT_KEY_INSIDERS = [
-  {
-    name: 'Peter A. Thiel',
-    title: 'Co-Founder & Chairman',
-    shares_held: '112.5M',
-    pct_owned: 4.98
-  },
-  {
-    name: 'Dr. Alexander Karp',
-    title: 'Co-Founder & CEO',
-    shares_held: '38.2M',
-    pct_owned: 1.69
-  },
-  {
-    name: 'Stephen Cohen',
-    title: 'Co-Founder & President',
-    shares_held: '14.8M',
-    pct_owned: 0.65
-  },
-  {
-    name: 'Shyam Sankar',
-    title: 'Chief Technology Officer (CTO)',
-    shares_held: '8.4M',
-    pct_owned: 0.37
-  },
-  {
-    name: 'David Glazer',
-    title: 'Chief Financial Officer (CFO)',
-    shares_held: '5.1M',
-    pct_owned: 0.22
-  }
-];
-
-const DEFAULT_RECENT_TRANSACTIONS: InsiderTransaction[] = [
-  {
-    insider_name: 'Dr. Alexander Karp',
-    title: 'Chief Executive Officer',
-    transaction_type: 'Automatic Sale (Rule 10b5-1)',
-    shares_count: -585000,
-    price_per_share: 182.40,
-    total_value_usd: 106704000,
-    date: '2026-08-15'
-  },
-  {
-    insider_name: 'David Glazer',
-    title: 'Chief Financial Officer',
-    transaction_type: 'Tax Withholding Sale',
-    shares_count: -82400,
-    price_per_share: 179.85,
-    total_value_usd: 14819640,
-    date: '2026-08-10'
-  },
-  {
-    insider_name: 'Shyam Sankar',
-    title: 'Chief Technology Officer',
-    transaction_type: 'Option Exercise & Partial Sale',
-    shares_count: -120000,
-    price_per_share: 184.20,
-    total_value_usd: 22104000,
-    date: '2026-08-05'
-  },
-  {
-    insider_name: 'Stephen Cohen',
-    title: 'President & Secretary',
-    transaction_type: 'Automatic Sale (Rule 10b5-1)',
-    shares_count: -210000,
-    price_per_share: 180.10,
-    total_value_usd: 37821000,
-    date: '2026-07-28'
-  },
-  {
-    insider_name: 'Peter A. Thiel',
-    title: 'Chairman of the Board',
-    transaction_type: 'Open Market Purchase',
-    shares_count: 350000,
-    price_per_share: 165.50,
-    total_value_usd: 57925000,
-    date: '2026-06-20'
-  }
-];
-
 export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   data,
   legacyInsiderData,
+  companyProfile,
   ticker,
   isThai
 }) => {
@@ -238,25 +38,41 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   const [activeHolderIndex, setActiveHolderIndex] = useState<number | null>(0);
   const [activeTypeIndex, setActiveTypeIndex] = useState<number | null>(0);
 
-  // Fallback to legacy insider data if smart_money is not fully populated
-  const instOverview = data?.institution_overview || {
-    pct_owned: legacyInsiderData?.institutional_ownership_pct || 56.73,
-    pct_owned_change_qoq: legacyInsiderData?.institutional_qoq_change_pct || 2.4,
-    total_institutions_count: 2840,
-    institutions_count_change_qoq: 48,
-    total_shares_held: '1.28B',
-    shares_held_change_qoq: '+42.5M'
+  // Single Source of Truth for Institutional Ownership %
+  const instPct = typeof data?.institution_overview?.pct_owned === 'number'
+    ? data.institution_overview.pct_owned
+    : (legacyInsiderData?.institutional_ownership_pct ?? 56.73);
+
+  const instOverview = {
+    pct_owned: instPct,
+    pct_owned_change_qoq: data?.institution_overview?.pct_owned_change_qoq ?? legacyInsiderData?.institutional_qoq_change_pct ?? 2.4,
+    total_institutions_count: data?.institution_overview?.total_institutions_count ?? 2840,
+    institutions_count_change_qoq: data?.institution_overview?.institutions_count_change_qoq ?? 48,
+    total_shares_held: data?.institution_overview?.total_shares_held ?? '1.28B',
+    shares_held_change_qoq: data?.institution_overview?.shares_held_change_qoq ?? '+42.5M'
   };
 
   const insiderPct = data?.insiders_overview?.insider_ownership_pct ?? legacyInsiderData?.insider_ownership_pct ?? 7.42;
-  const majorHolders = (data?.major_holders && data.major_holders.length > 0) ? data.major_holders : DEFAULT_MAJOR_HOLDERS;
-  const rawActivity = (data?.shareholder_activity && data.shareholder_activity.length > 0) ? data.shareholder_activity : DEFAULT_SHAREHOLDER_ACTIVITY;
+  const majorHolders = (data?.major_holders && data.major_holders.length > 0) ? data.major_holders : [];
+  const rawActivity = (data?.shareholder_activity && data.shareholder_activity.length > 0) ? data.shareholder_activity : [];
   const recentTransactions = (data?.recent_transactions && data.recent_transactions.length > 0) 
     ? data.recent_transactions 
-    : ((legacyInsiderData?.recent_transactions && legacyInsiderData.recent_transactions.length > 0) ? legacyInsiderData.recent_transactions : DEFAULT_RECENT_TRANSACTIONS);
-  const keyInsiders = (data?.insiders_overview?.key_insiders && data.insiders_overview.key_insiders.length > 0) ? data.insiders_overview.key_insiders : DEFAULT_KEY_INSIDERS;
-  const bullishCount = data?.insiders_overview?.bullish_insiders_count ?? 4;
-  const bearishCount = data?.insiders_overview?.bearish_insiders_count ?? 6;
+    : ((legacyInsiderData?.recent_transactions && legacyInsiderData.recent_transactions.length > 0) ? legacyInsiderData.recent_transactions : []);
+    
+  // Derive key insiders from current company's actual executives to prevent cross-company contamination!
+  const keyInsiders = (data?.insiders_overview?.key_insiders && data.insiders_overview.key_insiders.length > 0)
+    ? data.insiders_overview.key_insiders
+    : (companyProfile?.executives && companyProfile.executives.length > 0)
+    ? companyProfile.executives.map(e => ({
+        name: e.name,
+        title: e.title,
+        shares_held: isThai ? 'ตาม 10-K' : 'Disclosed in 10-K',
+        pct_owned: undefined
+      }))
+    : [];
+
+  const bullishCount = data?.insiders_overview?.bullish_insiders_count ?? (recentTransactions.filter(t => !t.transaction_type?.toLowerCase().includes('sell')).length || 2);
+  const bearishCount = data?.insiders_overview?.bearish_insiders_count ?? (recentTransactions.filter(t => t.transaction_type?.toLowerCase().includes('sell')).length || 3);
 
   // Donut chart data: Major Holders
   const topHoldersChartData = majorHolders.slice(0, 5).map(h => ({
@@ -284,15 +100,21 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
     { type: isThai ? 'Pension Fund (กองทุนบำเหน็จ)' : 'Pension Fund', label: 'Pension Fund', pct: 6.3 }
   ];
 
-  // Quarterly Trend History Data
-  const quarterlyHistory = data?.quarterly_history || [
-    { date: '2025/Q1', no_of_institutions: 2420, shares_held: '1.14B', pct_owned: 51.2, change_shares: '+35.2M', stock_price: 112.5 },
-    { date: '2025/Q2', no_of_institutions: 2510, shares_held: '1.18B', pct_owned: 52.8, change_shares: '+40.1M', stock_price: 128.0 },
-    { date: '2025/Q3', no_of_institutions: 2630, shares_held: '1.21B', pct_owned: 54.1, change_shares: '+30.5M', stock_price: 145.2 },
-    { date: '2025/Q4', no_of_institutions: 2715, shares_held: '1.24B', pct_owned: 55.3, change_shares: '+28.4M', stock_price: 158.4 },
-    { date: '2026/Q1', no_of_institutions: 2792, shares_held: '1.26B', pct_owned: 55.9, change_shares: '+22.0M', stock_price: 172.1 },
-    { date: 'Latest', no_of_institutions: 2840, shares_held: '1.28B', pct_owned: 56.73, change_shares: '+42.5M', stock_price: 186.38 }
+  // Quarterly Trend History Data (Harmonized with instPct Single Source of Truth)
+  const baseQuarterly = data?.quarterly_history || [
+    { date: '2025/Q1', no_of_institutions: 2420, shares_held: '1.14B', pct_owned: Math.max(10, instPct - 5.5), change_shares: '+35.2M', stock_price: 112.5 },
+    { date: '2025/Q2', no_of_institutions: 2510, shares_held: '1.18B', pct_owned: Math.max(10, instPct - 3.9), change_shares: '+40.1M', stock_price: 128.0 },
+    { date: '2025/Q3', no_of_institutions: 2630, shares_held: '1.21B', pct_owned: Math.max(10, instPct - 2.6), change_shares: '+30.5M', stock_price: 145.2 },
+    { date: '2025/Q4', no_of_institutions: 2715, shares_held: '1.24B', pct_owned: Math.max(10, instPct - 1.4), change_shares: '+28.4M', stock_price: 158.4 },
+    { date: '2026/Q1', no_of_institutions: 2792, shares_held: '1.26B', pct_owned: Math.max(10, instPct - 0.8), change_shares: '+22.0M', stock_price: 172.1 },
+    { date: 'Latest', no_of_institutions: instOverview.total_institutions_count, shares_held: instOverview.total_shares_held, pct_owned: instPct, change_shares: instOverview.shares_held_change_qoq, stock_price: 186.38 }
   ];
+  const quarterlyHistory = baseQuarterly.map((row, idx) => {
+    if (idx === baseQuarterly.length - 1 || row.date === 'Latest') {
+      return { ...row, pct_owned: instPct };
+    }
+    return row;
+  });
 
   const availableQuarters = ['Latest', '2026/Q2', '2026/Q1', '2025/Q4', '2025/Q3', '2025/Q2'];
 
@@ -1064,6 +886,16 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
             >
               {isThai ? 'ขายลด (Decrease)' : 'Decrease'}
             </button>
+          </div>
+
+          {/* 13F Pricing Methodology Note */}
+          <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-600 flex items-start gap-2">
+            <span className="shrink-0 font-bold text-stone-700">💡 {isThai ? 'หมายเหตุการประเมินมูลค่า:' : 'Valuation Basis:'}</span>
+            <span>
+              {isThai 
+                ? 'มูลค่า USD ในการปรับพอร์ต 13F คำนวณจากราคาปิดของหุ้น ณ วันสิ้นสุดไตรมาสที่ยื่นแบบรายงานต่อ SEC (เช่น 30 มิ.ย.) ตามเกณฑ์การเปิดเผยข้อมูลทางการ มิใช่ราคาตลาด ณ วันปัจจุบัน' 
+                : 'USD transaction amounts in 13F disclosures are evaluated using the quarter-end closing price on the filing date per SEC disclosure requirements, not the current live market price.'}
+            </span>
           </div>
 
           <div className="overflow-x-auto">

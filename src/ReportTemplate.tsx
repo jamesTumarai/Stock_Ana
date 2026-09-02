@@ -732,6 +732,7 @@ export default function ReportTemplate({
               <SmartMoneyCard
                 data={data.smart_money}
                 legacyInsiderData={data.insider_activity}
+                companyProfile={data.company_profile}
                 ticker={ticker}
                 isThai={isThai}
               />
