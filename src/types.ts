@@ -6,6 +6,7 @@ export interface IncomeStatementData {
   operating_expenses?: (number | null)[];
   operating_income?: (number | null)[];
   operating_margin_pct?: (number | null)[];
+  other_income?: (number | null)[];
   net_income: (number | null)[];
   net_margin_pct?: (number | null)[];
   eps_diluted?: (number | null)[];
@@ -15,12 +16,30 @@ export interface IncomeStatementData {
 
 export interface BalanceSheetData {
   cash_and_equivalents?: (number | null)[];
+  short_term_investments?: (number | null)[];
   total_current_assets?: (number | null)[];
+  receivables?: (number | null)[];
+  accounts_receivable?: (number | null)[];
+  inventory?: (number | null)[];
+  total_non_current_assets?: (number | null)[];
+  net_ppe?: (number | null)[];
+  available_for_sale_securities?: (number | null)[];
+  goodwill?: (number | null)[];
   total_assets?: (number | null)[];
+  current_liabilities?: (number | null)[];
   total_current_liabilities?: (number | null)[];
+  payables?: (number | null)[];
+  accounts_payable?: (number | null)[];
+  tax_payable?: (number | null)[];
+  short_term_debt?: (number | null)[];
+  current_deferred_liabilities?: (number | null)[];
   total_debt?: (number | null)[];
   total_liabilities?: (number | null)[];
   total_equity?: (number | null)[];
+  capital_stock?: (number | null)[];
+  common_stock?: (number | null)[];
+  retained_earnings?: (number | null)[];
+  aoci?: (number | null)[];
   current_ratio?: (number | null)[];
   quick_ratio?: (number | null)[];
   debt_to_equity?: (number | null)[];
@@ -30,7 +49,25 @@ export interface BalanceSheetData {
 
 export interface CashFlowData {
   operating_cash_flow?: (number | null)[];
+  depreciation?: (number | null)[];
+  non_cash_items?: (number | null)[];
+  change_working_capital?: (number | null)[];
+  change_receivables?: (number | null)[];
+  change_inventory?: (number | null)[];
+  change_payables?: (number | null)[];
+  change_other_ca?: (number | null)[];
+  change_other_cl?: (number | null)[];
+  investing_cash_flow?: (number | null)[];
   capex?: (number | null)[];
+  investment_purchase?: (number | null)[];
+  other_investing?: (number | null)[];
+  financing_cash_flow?: (number | null)[];
+  debt_issuance_payments?: (number | null)[];
+  stock_issuance_repurchase?: (number | null)[];
+  dividends_paid?: (number | null)[];
+  other_financing?: (number | null)[];
+  beginning_cash?: (number | null)[];
+  net_change_cash?: (number | null)[];
   free_cash_flow?: (number | null)[];
   fcf_margin_pct?: (number | null)[];
   fcf_vs_net_income_ratio?: (number | null)[];

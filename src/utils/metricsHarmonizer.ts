@@ -248,5 +248,58 @@ export function harmonizeReportData(data: ReportData, ticker?: string): ReportDa
     }
   }
 
+  // 4. Harmonize Financial Statements Internal Ratios
+  if (result.financial_statements) {
+    const fs = result.financial_statements;
+    const inc = fs.income_statement;
+    const bs = fs.balance_sheet;
+    const cf = fs.cash_flow;
+
+    if (inc && Array.isArray(inc.revenue)) {
+      if (!inc.gross_profit && Array.isArray(inc.cogs)) {
+        inc.gross_profit = inc.revenue.map((r, i) => r !== null && inc.cogs?.[i] !== null && inc.cogs?.[i] !== undefined ? r - inc.cogs[i]! : null);
+      }
+      if (!inc.gross_margin_pct && Array.isArray(inc.gross_profit)) {
+        inc.gross_margin_pct = inc.revenue.map((r, i) => r && inc.gross_profit?.[i] !== null && inc.gross_profit?.[i] !== undefined ? roundTo((inc.gross_profit[i]! / r) * 100, 1) : null);
+      }
+      if (!inc.operating_margin_pct && Array.isArray(inc.operating_income)) {
+        inc.operating_margin_pct = inc.revenue.map((r, i) => r && inc.operating_income?.[i] !== null && inc.operating_income?.[i] !== undefined ? roundTo((inc.operating_income[i]! / r) * 100, 1) : null);
+      }
+      if (!inc.net_margin_pct && Array.isArray(inc.net_income)) {
+        inc.net_margin_pct = inc.revenue.map((r, i) => r && inc.net_income?.[i] !== null && inc.net_income?.[i] !== undefined ? roundTo((inc.net_income[i]! / r) * 100, 1) : null);
+      }
+    }
+
+    if (cf && Array.isArray(cf.operating_cash_flow)) {
+      if (!cf.free_cash_flow && Array.isArray(cf.capex)) {
+        cf.free_cash_flow = cf.operating_cash_flow.map((ocf, i) => {
+          const cap = cf.capex?.[i];
+          if (ocf !== null && cap !== null && cap !== undefined) return ocf - Math.abs(cap);
+          return ocf;
+        });
+      }
+      if (!cf.fcf_margin_pct && inc?.revenue && Array.isArray(cf.free_cash_flow)) {
+        cf.fcf_margin_pct = inc.revenue.map((r, i) => r && cf.free_cash_flow?.[i] !== null && cf.free_cash_flow?.[i] !== undefined ? roundTo((cf.free_cash_flow[i]! / r) * 100, 1) : null);
+      }
+    }
+
+    if (bs && Array.isArray(bs.total_assets)) {
+      if (!bs.current_ratio && Array.isArray(bs.total_current_assets) && Array.isArray(bs.total_current_liabilities)) {
+        bs.current_ratio = bs.total_current_assets.map((ca, i) => {
+          const cl = bs.total_current_liabilities?.[i];
+          if (ca && cl) return roundTo(ca / cl, 2);
+          return null;
+        });
+      }
+      if (!bs.debt_to_equity && Array.isArray(bs.total_debt) && Array.isArray(bs.total_equity)) {
+        bs.debt_to_equity = bs.total_debt.map((d, i) => {
+          const eq = bs.total_equity?.[i];
+          if (d !== null && d !== undefined && eq && eq > 0) return roundTo(d / eq, 2);
+          return null;
+        });
+      }
+    }
+  }
+
   return result;
 }

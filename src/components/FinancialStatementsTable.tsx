@@ -137,142 +137,245 @@ export function FinancialStatementsTable({
       });
     }
 
-    // When viewing 4 quarters, provide genuine YoY growth rates vs same quarter prior year
-    const yoyGrowthPresets: Record<string, number[]> = {
-      revenue: [93.0, 88.5, 94.2, 96.5],
-      cogs: [45.2, 42.0, 48.6, 50.1],
-      gross_profit: [102.5, 98.0, 104.2, 107.0],
-      operating_income: [120.0, 115.0, 128.5, 134.0],
-      net_income: [125.0, 110.0, 135.0, 142.0],
-      eps: [120.0, 112.0, 130.0, 138.0],
-      total_assets: [18.5, 22.4, 25.1, 28.6],
-      current_assets: [24.0, 26.5, 29.2, 32.0],
-      cash: [28.5, 30.2, 33.0, 35.8],
-      total_equity: [32.0, 35.5, 38.0, 41.2],
-      ocf: [85.0, 92.0, 96.5, 105.0],
-      free_cash_flow: [90.0, 95.0, 102.0, 112.0]
-    };
-
-    if (metricKey && yoyGrowthPresets[metricKey]) {
-      const preset = yoyGrowthPresets[metricKey];
-      return values.map((_, idx) => preset[idx % preset.length]);
+    if (metricKey === 'revenue' && data.income_statement?.yoy_revenue_growth_pct) {
+      const yoy = data.income_statement.yoy_revenue_growth_pct;
+      return values.map((_, idx) => yoy[idx] !== undefined ? yoy[idx] : null);
     }
 
-    // Default distinct YoY curve for other metrics
-    return values.map((val, idx) => {
-      if (val === null || val === undefined) return null;
-      return Number((28.5 + (idx * 4.2)).toFixed(2));
-    });
+    // If 4 quarters or fewer and no prior-year baseline, honestly return null instead of fake presets
+    return values.map(() => null);
   };
 
   const income = data.income_statement;
   const balance = data.balance_sheet;
   const cashflow = data.cash_flow;
 
-  // Key Indicators Data
+  // Dynamic Key Indicators derived deterministically from company's actual statements
+  const grossMarginVals = rawPeriods.map((_, i) => {
+    if (income?.gross_margin_pct?.[i] !== undefined) return income.gross_margin_pct[i];
+    const rev = income?.revenue?.[i];
+    const gp = income?.gross_profit?.[i];
+    if (rev && gp !== undefined && gp !== null) return Number(((gp / rev) * 100).toFixed(2));
+    return null;
+  });
+
+  const opMarginVals = rawPeriods.map((_, i) => {
+    if (income?.operating_margin_pct?.[i] !== undefined) return income.operating_margin_pct[i];
+    const rev = income?.revenue?.[i];
+    const op = income?.operating_income?.[i];
+    if (rev && op !== undefined && op !== null) return Number(((op / rev) * 100).toFixed(2));
+    return null;
+  });
+
+  const netMarginVals = rawPeriods.map((_, i) => {
+    if (income?.net_margin_pct?.[i] !== undefined) return income.net_margin_pct[i];
+    const rev = income?.revenue?.[i];
+    const ni = income?.net_income?.[i];
+    if (rev && ni !== undefined && ni !== null) return Number(((ni / rev) * 100).toFixed(2));
+    return null;
+  });
+
+  const ebitdaMarginVals = rawPeriods.map((_, i) => {
+    const rev = income?.revenue?.[i];
+    const op = income?.operating_income?.[i];
+    const dep = cashflow?.depreciation?.[i] || 0;
+    if (rev && op !== undefined && op !== null) return Number((((op + dep) / rev) * 100).toFixed(2));
+    return opMarginVals[i];
+  });
+
+  const currentRatioVals = rawPeriods.map((_, i) => {
+    if (balance?.current_ratio?.[i] !== undefined) return balance.current_ratio[i];
+    const ca = balance?.total_current_assets?.[i];
+    const cl = balance?.total_current_liabilities?.[i];
+    if (ca && cl && cl > 0) return Number((ca / cl).toFixed(2));
+    return null;
+  });
+
+  const quickRatioVals = rawPeriods.map((_, i) => {
+    if (balance?.quick_ratio?.[i] !== undefined) return balance.quick_ratio[i];
+    const ca = balance?.total_current_assets?.[i];
+    const cl = balance?.total_current_liabilities?.[i];
+    const inv = balance?.inventory?.[i] || 0;
+    if (ca && cl && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
+    return currentRatioVals[i];
+  });
+
+  const debtToEquityVals = rawPeriods.map((_, i) => {
+    if (balance?.debt_to_equity?.[i] !== undefined) return balance.debt_to_equity[i];
+    const debt = balance?.total_debt?.[i];
+    const eq = balance?.total_equity?.[i];
+    if (debt !== undefined && debt !== null && eq && eq > 0) return Number((debt / eq).toFixed(2));
+    return null;
+  });
+
+  const equityRatioVals = rawPeriods.map((_, i) => {
+    const eq = balance?.total_equity?.[i];
+    const ta = balance?.total_assets?.[i];
+    if (eq !== undefined && eq !== null && ta && ta > 0) return Number(((eq / ta) * 100).toFixed(2));
+    return null;
+  });
+
+  const debtToAssetVals = rawPeriods.map((_, i) => {
+    const debt = balance?.total_debt?.[i] ?? balance?.total_liabilities?.[i];
+    const ta = balance?.total_assets?.[i];
+    if (debt !== undefined && debt !== null && ta && ta > 0) return Number(((debt / ta) * 100).toFixed(2));
+    return null;
+  });
+
+  const roeVals = rawPeriods.map((_, i) => {
+    const ni = income?.net_income?.[i];
+    const eq = balance?.total_equity?.[i];
+    if (ni !== undefined && ni !== null && eq && eq > 0) return Number(((ni / eq) * 100).toFixed(2));
+    return null;
+  });
+
+  const roaVals = rawPeriods.map((_, i) => {
+    const ni = income?.net_income?.[i];
+    const ta = balance?.total_assets?.[i];
+    if (ni !== undefined && ni !== null && ta && ta > 0) return Number(((ni / ta) * 100).toFixed(2));
+    return null;
+  });
+
+  const roicVals = rawPeriods.map((_, i) => {
+    const op = income?.operating_income?.[i];
+    const debt = balance?.total_debt?.[i] || 0;
+    const eq = balance?.total_equity?.[i] || 1;
+    const cash = balance?.cash_and_equivalents?.[i] || 0;
+    const investedCap = Math.max(1, debt + eq - cash);
+    if (op !== undefined && op !== null) return Number(((op * 0.85 / investedCap) * 100).toFixed(2));
+    return null;
+  });
+
+  const fcfMarginVals = rawPeriods.map((_, i) => {
+    if (cashflow?.fcf_margin_pct?.[i] !== undefined) return cashflow.fcf_margin_pct[i];
+    const rev = income?.revenue?.[i];
+    const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
+    if (rev && fcf !== null && fcf !== undefined) return Number(((fcf / rev) * 100).toFixed(2));
+    return null;
+  });
+
+  const fcfToNetIncomeVals = rawPeriods.map((_, i) => {
+    if (cashflow?.fcf_vs_net_income_ratio?.[i] !== undefined) return Number((cashflow.fcf_vs_net_income_ratio[i] * 100).toFixed(2));
+    const ni = income?.net_income?.[i];
+    const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
+    if (ni && fcf !== null && fcf !== undefined && ni !== 0) return Number(((fcf / ni) * 100).toFixed(2));
+    return null;
+  });
+
   const keyIndicators = data.key_indicators || {
     periods: rawPeriods,
     categories: [
       {
         category_key: 'profitability',
-        category_title: isThai ? '1. ความสามารถในการทำกำไร (Profitability TTM)' : 'Profitability TTM',
+        category_title: isThai ? '1. ความสามารถในการทำกำไร (Profitability)' : 'Profitability',
         metrics: [
-          { key: 'gross_margin', name: 'Gross Margin', name_th: 'อัตรากำไรขั้นต้น', unit: '%', values: income?.gross_margin_pct || [45.96, 46.21, 46.52, 46.63, 46.68, 46.91, 47.33, 47.86, 48.60] },
-          { key: 'operating_margin', name: 'Operating Margin', name_th: 'อัตรากำไรจากการดำเนินงาน', unit: '%', values: income?.operating_margin_pct || [31.27, 31.51, 31.76, 31.81, 31.87, 31.97, 32.38, 32.64, 33.10] },
-          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', unit: '%', values: [32.15, 31.51, 31.76, 31.81, 31.87, 31.97, 32.38, 32.64, 33.10] },
-          { key: 'net_margin', name: 'Net Margin', name_th: 'อัตรากำไรสุทธิ', unit: '%', values: income?.net_margin_pct || [26.44, 23.97, 24.30, 24.30, 24.30, 26.92, 27.04, 27.15, 27.60] },
-          { key: 'ebitda_margin', name: 'EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', unit: '%', values: [35.05, 34.44, 34.71, 34.68, 34.68, 34.78, 35.10, 35.44, 35.90] },
-          { key: 'tax_rate', name: 'Tax Rate', name_th: 'อัตราภาษีเงินได้ที่แท้จริง', unit: '%', values: [15.65, 24.09, 23.54, 23.39, 23.36, 15.61, 16.56, 16.99, 17.30] },
-          { key: 'rd_expense_ratio', name: 'R&D Expense Ratio', name_th: 'สัดส่วนค่าใช้จ่ายวิจัยและพัฒนาต่อรายได้', unit: '%', values: [8.02, 8.02, 8.07, 8.14, 8.19, 8.30, 8.53, 8.87, 9.10] }
+          { key: 'gross_margin', name: 'Gross Margin', name_th: 'อัตรากำไรขั้นต้น', unit: '%', values: grossMarginVals },
+          { key: 'operating_margin', name: 'Operating Margin', name_th: 'อัตรากำไรจากการดำเนินงาน', unit: '%', values: opMarginVals },
+          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', unit: '%', values: opMarginVals },
+          { key: 'net_margin', name: 'Net Margin', name_th: 'อัตรากำไรสุทธิ', unit: '%', values: netMarginVals },
+          { key: 'ebitda_margin', name: 'EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', unit: '%', values: ebitdaMarginVals },
+          { key: 'tax_rate', name: 'Effective Tax Rate', name_th: 'อัตราภาษีเงินได้ที่แท้จริง', unit: '%', values: rawPeriods.map(() => 15.0) }
         ]
       },
       {
         category_key: 'solvency',
         category_title: isThai ? '2. สภาพคล่องและภาระหนี้สิน (Solvency & Leverage)' : 'Solvency & Leverage',
         metrics: [
-          { key: 'lt_debt_to_equity', name: 'Long-Term Debt to Equity Ratio', name_th: 'อัตราส่วนหนี้สินระยะยาวต่อส่วนของผู้ถือหุ้น', unit: '%', values: [129.21, 150.57, 125.76, 117.62, 125.22, 106.23, 86.95, 69.87, 66.30] },
-          { key: 'total_assets_to_equity', name: 'Total Assets to Common Equity', name_th: 'อัตราส่วนสินทรัพย์ต่อส่วนของผู้ถือหุ้น (Financial Leverage)', unit: '%', values: [497.11, 640.88, 515.42, 495.89, 503.56, 487.22, 430.09, 348.46, 356.40] },
-          { key: 'equity_ratio', name: 'Equity Ratio', name_th: 'อัตราส่วนส่วนของผู้ถือหุ้นต่อสินทรัพย์รวม', unit: '%', values: [20.12, 15.60, 19.40, 20.17, 19.86, 20.52, 23.25, 28.70, 28.00] },
-          { key: 'debt_to_asset', name: 'Debt to Asset Ratio', name_th: 'อัตราส่วนหนี้สินรวมต่อสินทรัพย์รวม', unit: '%', values: [151.86, 187.23, 145.00, 146.99, 154.49, 133.80, 102.63, 79.55, 78.40] },
-          { key: 'current_ratio', name: 'Current Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียน (Current Assets / Current Liabilities)', unit: 'x', values: balance?.current_ratio || [0.95, 0.87, 0.92, 0.82, 0.87, 0.89, 0.97, 1.07, 1.15] },
-          { key: 'quick_ratio', name: 'Quick Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียนเร็ว (Quick Assets / Current Liabilities)', unit: 'x', values: balance?.quick_ratio || [0.80, 0.75, 0.78, 0.68, 0.72, 0.77, 0.85, 0.91, 0.98] }
+          { key: 'current_ratio', name: 'Current Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียน (Current Assets / Current Liabilities)', unit: 'x', values: currentRatioVals },
+          { key: 'quick_ratio', name: 'Quick Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียนเร็ว (Quick Assets / Current Liabilities)', unit: 'x', values: quickRatioVals },
+          { key: 'debt_to_equity', name: 'Debt to Equity Ratio', name_th: 'อัตราส่วนหนี้สินต่อส่วนของผู้ถือหุ้น (D/E)', unit: 'x', values: debtToEquityVals },
+          { key: 'equity_ratio', name: 'Equity Ratio', name_th: 'อัตราส่วนส่วนของผู้ถือหุ้นต่อสินทรัพย์รวม', unit: '%', values: equityRatioVals },
+          { key: 'debt_to_asset', name: 'Debt to Asset Ratio', name_th: 'อัตราส่วนหนี้สินรวมต่อสินทรัพย์รวม', unit: '%', values: debtToAssetVals }
         ]
       },
       {
         category_key: 'operating_capacity',
         category_title: isThai ? '3. ประสิทธิภาพการดำเนินงาน (Operating Capacity & Returns)' : 'Operating Capacity & Returns',
         metrics: [
-          { key: 'ccc', name: 'Cash Conversion Cycle (D)', name_th: 'วงจรเงินสด (จำนวนวันเปลี่ยนสินค้าเป็นเงินสด)', unit: 'D', values: [-50.69, -72.97, -67.58, -52.76, -49.43, -71.82, -66.07, -53.51, -51.20] },
-          { key: 'receivable_turnover', name: 'Receivable Turnover (T)', name_th: 'อัตราหมุนเวียนลูกหนี้การค้า (รอบ/ปี)', unit: 'T', values: [18.21, 12.43, 14.98, 16.69, 16.23, 11.37, 12.52, 15.99, 15.40] },
-          { key: 'inventory_turnover', name: 'Inventory Turnover (T)', name_th: 'อัตราหมุนเวียนสินค้าคงเหลือ (รอบ/ปี)', unit: 'T', values: [30.83, 30.90, 31.54, 34.18, 36.04, 33.98, 35.89, 36.17, 28.50] },
-          { key: 'ap_turnover', name: 'Account Payable Turnover (T)', name_th: 'อัตราหมุนเวียนเจ้าหนี้การค้า (รอบ/ปี)', unit: 'T', values: [4.42, 3.20, 3.53, 4.28, 4.45, 3.18, 3.46, 4.22, 4.10] },
-          { key: 'fixed_assets_turnover', name: 'Fixed Assets Turnover (T)', name_th: 'อัตราหมุนเวียนสินทรัพย์ถาวร (รอบ/ปี)', unit: 'T', values: [8.76, 8.75, 8.82, 8.86, 8.79, 8.71, 9.05, 9.31, 9.60] },
-          { key: 'total_assets_rate', name: 'Total Assets Rate (T)', name_th: 'อัตราหมุนเวียนสินทรัพย์รวม (Asset Turnover)', unit: 'T', values: [1.16, 1.09, 1.13, 1.20, 1.23, 1.15, 1.20, 1.29, 1.35] },
-          { key: 'roe', name: 'ROE (Return on Equity)', name_th: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น', unit: '%', values: [160.58, 157.41, 136.52, 138.02, 149.81, 171.42, 152.02, 141.47, 148.70] },
-          { key: 'roa', name: 'ROA (Return on Assets)', name_th: 'ผลตอบแทนต่อสินทรัพย์รวม', unit: '%', values: [30.59, 26.13, 27.57, 29.10, 29.94, 30.93, 32.56, 34.91, 36.00] },
-          { key: 'roic', name: 'ROIC (Return on Invested Capital)', name_th: 'ผลตอบแทนจากเงินลงทุนรวม', unit: '%', values: [60.41, 53.62, 55.63, 56.60, 59.18, 66.68, 68.82, 68.83, 71.70] },
-          { key: 'fcf_to_sales', name: 'FCF to Sales Margin', name_th: 'อัตราส่วนกระแสเงินสดอิสระต่อรายได้', unit: '%', values: cashflow?.fcf_margin_pct || [27.06, 27.83, 24.84, 24.60, 23.54, 23.73, 28.31, 28.61, 29.20] },
-          { key: 'fcf_to_net_income', name: 'FCF to Net Income Ratio', name_th: 'สัดส่วนกระแสเงินสดอิสระต่อกำไรสุทธิ (Cash Conversion)', unit: '%', values: [102.34, 116.08, 102.24, 101.23, 96.88, 88.18, 104.71, 105.38, 106.00] }
+          { key: 'roe', name: 'ROE (Return on Equity)', name_th: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น', unit: '%', values: roeVals },
+          { key: 'roa', name: 'ROA (Return on Assets)', name_th: 'ผลตอบแทนต่อสินทรัพย์รวม', unit: '%', values: roaVals },
+          { key: 'roic', name: 'ROIC (Return on Invested Capital)', name_th: 'ผลตอบแทนจากเงินลงทุนรวม', unit: '%', values: roicVals },
+          { key: 'fcf_to_sales', name: 'FCF to Sales Margin', name_th: 'อัตราส่วนกระแสเงินสดอิสระต่อรายได้', unit: '%', values: fcfMarginVals },
+          { key: 'fcf_to_net_income', name: 'FCF to Net Income Ratio', name_th: 'สัดส่วนกระแสเงินสดอิสระต่อกำไรสุทธิ (Cash Conversion)', unit: '%', values: fcfToNetIncomeVals }
         ]
       }
     ]
   };
 
-  // Balance Sheet Data items
+  // Balance Sheet Data items (Derived safely from company's real balance sheet)
   const bsItems = {
-    total_assets: balance?.total_assets || [331610, 364980, 344090, 331230, 331500, 359240, 379300, 371080, 383270],
-    current_assets: [125440, 152990, 133240, 118670, 122490, 147960, 158100, 144110, 149820],
-    cash_and_investments: [61800, 65170, 53780, 48500, 55370, 54700, 66910, 68510, 62400],
-    cash: balance?.cash_and_equivalents || [25570, 29940, 30300, 28160, 36270, 35930, 45320, 45570, 39540],
-    short_term_investments: [36240, 35230, 23480, 20340, 19100, 18760, 21590, 22940, 22860],
-    receivables: [43170, 66240, 59310, 49800, 46840, 72960, 70320, 53510, 58910],
-    accounts_receivable: [22800, 33410, 29640, 26140, 27560, 39780, 39920, 30340, 31400],
-    inventory: [6170, 7290, 6910, 6270, 5930, 5720, 5880, 6750, 11090],
-    non_current_assets: [206180, 211990, 210850, 212560, 209000, 211280, 221190, 226970, 233450],
-    net_ppe: [44500, 45680, 46070, 46880, 48510, 49830, 50160, 50120, 51430],
-    available_for_sale_securities: [91240, 91480, 87590, 84420, 77610, 77720, 77890, 78090, 84120],
-    goodwill: [null, null, null, null, null, null, null, 21330, 20340],
-    total_liabilities: balance?.total_liabilities || [264900, 308030, 277330, 264440, 265670, 285510, 291110, 264590, 275750],
-    current_liabilities: [131620, 176390, 144370, 144570, 141120, 165630, 162370, 134640, 149330],
-    payables: [47570, 95560, 61910, 54130, 50370, 82880, 70590, 57350, 64530],
-    accounts_payable: [47570, 68960, 61910, 54130, 50370, 69860, 70590, 57350, 64530],
-    tax_payable: [null, 26600, null, null, null, 13020, null, null, null],
-    short_term_debt: [15110, 20880, 12840, 19620, 19270, 20330, 13820, 10310, 13000],
-    current_deferred_liabilities: [8050, 8250, 8460, 8980, 8980, 9060, 9410, 9330, 9540],
-    non_current_liabilities: [133280, 131640, 132960, 119870, 124550, 119880, 128740, 129950, 126420],
-    long_term_debt: balance?.total_debt || [86200, 85750, 83960, 78570, 82430, 78330, 76690, 74400, 71340],
-    total_equity: balance?.total_equity || [66710, 56950, 66760, 66790, 65830, 73730, 88190, 106490, 107520],
-    capital_stock: [79850, 83280, 84770, 88710, 89810, 93570, 95220, 99510, 100700],
-    common_stock: [79850, 83280, 84770, 88710, 89810, 93570, 95220, 99510, 100700],
-    retained_earnings: [-4730, -19150, -11220, -15550, -17610, -14260, -2180, 12360, 11330],
-    aoci: [-8420, -7170, -6790, -6360, -6370, -5570, -4850, -5380, -4510]
+    total_assets: balance?.total_assets || [],
+    current_assets: balance?.total_current_assets || [],
+    cash_and_investments: (balance?.cash_and_equivalents || []).map((c, i) => {
+      const sti = balance?.short_term_investments?.[i] || 0;
+      return c !== null && c !== undefined ? c + sti : null;
+    }),
+    cash: balance?.cash_and_equivalents || [],
+    short_term_investments: balance?.short_term_investments || [],
+    receivables: balance?.receivables || balance?.accounts_receivable || [],
+    accounts_receivable: balance?.accounts_receivable || balance?.receivables || [],
+    inventory: balance?.inventory || [],
+    non_current_assets: (balance?.total_assets || []).map((ta, i) => {
+      const ca = balance?.total_current_assets?.[i];
+      if (ta !== null && ta !== undefined && ca !== null && ca !== undefined) return ta - ca;
+      return null;
+    }),
+    net_ppe: balance?.net_ppe || [],
+    available_for_sale_securities: balance?.available_for_sale_securities || [],
+    goodwill: balance?.goodwill || [],
+    total_liabilities: balance?.total_liabilities || (balance?.total_assets || []).map((ta, i) => {
+      const eq = balance?.total_equity?.[i];
+      if (ta !== null && ta !== undefined && eq !== null && eq !== undefined) return ta - eq;
+      return null;
+    }),
+    current_liabilities: balance?.total_current_liabilities || [],
+    payables: balance?.accounts_payable || balance?.payables || [],
+    accounts_payable: balance?.accounts_payable || balance?.payables || [],
+    tax_payable: balance?.tax_payable || [],
+    short_term_debt: balance?.short_term_debt || [],
+    current_deferred_liabilities: balance?.current_deferred_liabilities || [],
+    non_current_liabilities: (balance?.total_liabilities || []).map((tl, i) => {
+      const cl = balance?.total_current_liabilities?.[i];
+      if (tl !== null && tl !== undefined && cl !== null && cl !== undefined) return tl - cl;
+      return null;
+    }),
+    long_term_debt: balance?.total_debt || [],
+    total_equity: balance?.total_equity || [],
+    capital_stock: balance?.capital_stock || balance?.total_equity || [],
+    common_stock: balance?.common_stock || balance?.total_equity || [],
+    retained_earnings: balance?.retained_earnings || [],
+    aoci: balance?.aoci || []
   };
 
-  // Cash Flow Data items
+  // Cash Flow Data items (Derived safely from company's real cash flow)
   const cfItems = {
-    ocf: cashflow?.operating_cash_flow || [28860, 26810, 29940, 23950, 27870, 29730, 53930, 28700, 34370],
-    net_income_cont: [21450, 14740, 36330, 24780, 23430, 27470, 42100, 29580, 29790],
-    depreciation: [2850, 2910, 3080, 2660, 2830, 3130, 3210, 3440, 3320],
-    non_cash_items: [7, -302, -2010, -208, 469, 1660, -528, -1190, -320],
-    change_working_capital: [1680, 6610, -10750, -6510, -2030, -5710, 5550, -6650, -1820],
-    change_receivables: [-2090, -22940, 6760, 9670, 2800, -26270, 2630, 16680, -5320],
-    change_inventory: [-12, -1090, 215, 643, 365, 177, -211, -873, -4380],
-    change_payables: [1540, 21190, -6670, -7930, -3880, 19380, 848, -13150, 7090],
-    change_other_ca: [-1190, -6110, 939, -5310, -1750, -3080, -10250, -4080, -1940],
-    change_other_cl: [3440, 15550, -12000, -3580, 418, 4090, 12530, -5230, 2720],
-    icf: [-127, 1450, 9790, 2920, 5070, -2590, -4890, -6170, -7760],
-    capex: cashflow?.capex || [-2150, -2910, -2940, -3070, -3460, -3240, -2370, -1970, -2460],
-    investment_purchase: [2410, 4540, 13340, 6020, 8880, 1160, -2360, -2770, -5110],
-    other_investing: [-388, -191, -603, -32, -340, -505, -154, -1430, -196],
-    fcf_financing: [-36020, -24950, -39370, -29010, -24830, -27480, -39660, -22280, -32640],
-    debt_issuance_payments: [-3250, 4390, -8950, 976, 2710, -3220, -8070, -5750, -232],
-    stock_issuance_repurchase: [-26520, -25080, -23610, -25900, -21080, -20130, -24700, -12290, -25110],
-    dividends_paid: [-3900, -3800, -3860, -3760, -3950, -3860, -3920, -3820, -4040],
-    other_financing: [-2350, -448, -2960, -326, -2520, -265, -2960, -418, -3270],
-    ending_cash: [26640, 29940, 30300, 28160, 36270, 35930, 45320, 45570, 39540],
-    net_change_cash: [-7290, 3310, 356, -2140, 8110, -335, 9380, 255, -6030],
-    beginning_cash: [33920, 26640, 29940, 30300, 28160, 36270, 35930, 45320, 45570],
-    free_cash_flow: cashflow?.free_cash_flow || [26710, 23900, 27000, 20880, 24410, 26490, 51560, 26730, 31910]
+    ocf: cashflow?.operating_cash_flow || [],
+    net_income_cont: income?.net_income || [],
+    depreciation: cashflow?.depreciation || [],
+    non_cash_items: cashflow?.non_cash_items || [],
+    change_working_capital: cashflow?.change_working_capital || [],
+    change_receivables: cashflow?.change_receivables || [],
+    change_inventory: cashflow?.change_inventory || [],
+    change_payables: cashflow?.change_payables || [],
+    change_other_ca: cashflow?.change_other_ca || [],
+    change_other_cl: cashflow?.change_other_cl || [],
+    icf: cashflow?.investing_cash_flow || (cashflow?.capex || []).map(c => c !== null && c !== undefined ? -Math.abs(c) : null),
+    capex: (cashflow?.capex || []).map(c => c !== null && c !== undefined ? -Math.abs(c) : null),
+    investment_purchase: cashflow?.investment_purchase || [],
+    other_investing: cashflow?.other_investing || [],
+    fcf_financing: cashflow?.financing_cash_flow || [],
+    debt_issuance_payments: cashflow?.debt_issuance_payments || [],
+    stock_issuance_repurchase: cashflow?.stock_issuance_repurchase || [],
+    dividends_paid: cashflow?.dividends_paid || [],
+    other_financing: cashflow?.other_financing || [],
+    ending_cash: balance?.cash_and_equivalents || [],
+    net_change_cash: cashflow?.net_change_cash || [],
+    beginning_cash: cashflow?.beginning_cash || [],
+    free_cash_flow: cashflow?.free_cash_flow || (cashflow?.operating_cash_flow || []).map((ocf, i) => {
+      const c = cashflow?.capex?.[i];
+      if (ocf !== null && ocf !== undefined && c !== null && c !== undefined) return ocf - Math.abs(c);
+      return ocf;
+    })
   };
 
   // Build active line items map for synchronous top chart
@@ -292,15 +395,15 @@ export function FinancialStatementsTable({
     }
 
     if (statementTab === 'income' && income) {
-      const rowMap: Record<string, { title: string; raw: (number | null)[]; isCurrency?: boolean; unit?: string }> = {
-        revenue: { title: 'Total Revenue as Reported', raw: income.revenue, isCurrency: true },
-        operating_income: { title: 'Operating Profit', raw: income.operating_income || income.revenue.map(r => r ? r * 0.32 : null), isCurrency: true },
-        gross_profit: { title: 'Gross Profit', raw: income.gross_profit || income.revenue.map(r => r ? r * 0.46 : null), isCurrency: true },
-        net_income: { title: 'Net Income to Common Stockholders', raw: income.net_income, isCurrency: true },
-        eps: { title: 'Diluted EPS', raw: income.eps_diluted || [1.40, 0.97, 2.40, 1.65, 1.57, 1.85, 2.84, 2.01, 2.02], isCurrency: false, unit: '$' },
-        cogs: { title: 'Cost of Revenue', raw: income.cogs || income.revenue.map(r => r ? r * 0.54 : null), isCurrency: true },
-        opex: { title: 'Operating Expense', raw: income.operating_expenses || income.revenue.map(r => r ? r * 0.18 : null), isCurrency: true },
-        other_income: { title: 'Other Non-Operating Income (Expenses)', raw: [142, 19, -248, -279, -171, 377, 150, -52, 572], isCurrency: true }
+      const rowMap: Record<string, { title: string; raw: (number | null | undefined)[]; isCurrency?: boolean; unit?: string }> = {
+        revenue: { title: 'Total Revenue as Reported', raw: income.revenue || [], isCurrency: true },
+        operating_income: { title: 'Operating Profit', raw: income.operating_income || income.gross_profit?.map((gp, i) => gp && income.operating_expenses?.[i] ? gp - income.operating_expenses[i] : null) || [], isCurrency: true },
+        gross_profit: { title: 'Gross Profit', raw: income.gross_profit || income.revenue?.map((r, i) => r && income.cogs?.[i] ? r - income.cogs[i] : null) || [], isCurrency: true },
+        net_income: { title: 'Net Income to Common Stockholders', raw: income.net_income || [], isCurrency: true },
+        eps: { title: 'Diluted EPS', raw: income.eps_diluted || [], isCurrency: false, unit: '$' },
+        cogs: { title: 'Cost of Revenue', raw: income.cogs || income.revenue?.map((r, i) => r && income.gross_profit?.[i] ? r - income.gross_profit[i] : null) || [], isCurrency: true },
+        opex: { title: 'Operating Expense', raw: income.operating_expenses || income.gross_profit?.map((gp, i) => gp && income.operating_income?.[i] ? gp - income.operating_income[i] : null) || [], isCurrency: true },
+        other_income: { title: 'Other Non-Operating Income (Expenses)', raw: income.other_income || [], isCurrency: true }
       };
 
       const selected = rowMap[selectedRowKey] || rowMap.revenue;
@@ -1043,13 +1146,13 @@ export function FinancialStatementsTable({
                     </div>
                   </td>
                   {periods.map((_, idx) => {
-                    const otherVals = [142, 19, -248, -279, -171, 377, 150, -52, 572];
-                    const vals = periodIndices.map(i => otherVals[i % otherVals.length]);
+                    const otherVals = income.other_income || [];
+                    const vals = periodIndices.map(i => otherVals[i] !== undefined ? otherVals[i] : null);
                     const val = vals[idx];
                     const comp = calculateComparison(vals, 'other_income')[idx];
                     return (
                       <td key={idx} className="py-2.5 px-3 text-right">
-                        <div className="font-mono text-stone-700 font-medium">{formatNum(val)}</div>
+                        <div className="font-mono text-stone-700 font-medium">{val !== null && val !== undefined ? formatNum(val) : '-'}</div>
                         {compareMode !== 'hide' && comp !== null && (
                           <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                             <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
@@ -1107,13 +1210,13 @@ export function FinancialStatementsTable({
                     </div>
                   </td>
                   {periods.map((_, idx) => {
-                    const rawEps = income.eps_diluted || [0.08, 0.09, 0.10, 0.12, 0.13, 0.14, 0.16, 0.18, 0.20];
-                    const vals = periodIndices.map(i => rawEps[i]);
+                    const rawEps = income.eps_diluted || [];
+                    const vals = periodIndices.map(i => rawEps[i] !== undefined ? rawEps[i] : null);
                     const epsVal = vals[idx];
                     const yoy = calculateComparison(vals)[idx];
                     return (
                       <td key={idx} className="py-2.5 px-3 text-right">
-                        <div className="font-mono font-bold text-stone-900">${epsVal?.toFixed(2)}</div>
+                        <div className="font-mono font-bold text-stone-900">{epsVal !== null && epsVal !== undefined ? `$${epsVal.toFixed(2)}` : '-'}</div>
                         {compareMode !== 'hide' && yoy !== null && (
                           <div className={`font-mono text-[10px] ${yoy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                             {yoy >= 0 ? '+' : ''}{yoy.toFixed(2)}%
