@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, HelpCircle, Award, PieChart, CheckCircle2, ShieldCheck, Scale, Zap } from 'lucide-react';
+import { X, Award, PieChart, CheckCircle2, ShieldCheck, Scale, Zap } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;

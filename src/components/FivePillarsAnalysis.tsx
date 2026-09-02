@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   TrendingUp, Percent, ShieldCheck, DollarSign, Users,
   Sparkles, CheckCircle2, AlertTriangle, ArrowUpRight, ArrowDownRight,
-  HelpCircle, Layers, Award, Scale, BarChart3, Check, SlidersHorizontal, Info, Lightbulb
+  Layers, Award, Scale, BarChart3, Check, SlidersHorizontal, Info, Lightbulb
 } from 'lucide-react';
 import { FivePillarsData, PeerBenchmarkRow } from '../types';
 

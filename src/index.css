@@ -137,38 +137,90 @@
 
   @media print {
     @page {
-      size: A4;
-      margin: 12mm 10mm 12mm 10mm;
+      size: A4 portrait;
+      margin: 10mm;
+    }
+
+    *, *::before, *::after {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      text-shadow: none !important;
     }
 
     html,
     body,
     #root,
     #report-scroll-container,
-    #report-content {
+    #report-content,
+    .report-cute-font {
       height: auto !important;
       min-height: 0 !important;
       max-height: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
       overflow: visible !important;
+      overflow-x: visible !important;
+      overflow-y: visible !important;
       position: static !important;
+      display: block !important;
+      float: none !important;
       background: #ffffff !important;
       background-color: #ffffff !important;
       color: #1c1917 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+      margin: 0 !important;
+      padding: 0 !important;
     }
 
-    /* Prevent awkward page cuts in cards and tables */
+    /* Enable natural multi-page flow for large cards, tables and containers */
     .bg-white,
     .bg-stone-50,
+    .bg-\[\#F6F4F0\],
     .rounded-2xl,
     .rounded-3xl,
     table,
     tbody,
+    div {
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+
+    /* Prevent awkward breaks inside specific atomic rows & headers */
     tr,
-    .grid > div {
+    thead,
+    th,
+    h1, h2, h3, h4,
+    .avoid-page-break {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
+    }
+
+    /* Ensure tables and charts expand to full printed width without horizontal clipping */
+    .overflow-x-auto,
+    .overflow-y-auto,
+    .overflow-hidden {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+
+    table {
+      width: 100% !important;
+      min-width: 100% !important;
+      table-layout: auto !important;
+    }
+
+    /* Sticky headers should be static in print */
+    .sticky,
+    .fixed {
+      position: static !important;
+    }
+
+    /* Recharts charts sizing during print */
+    .recharts-responsive-container,
+    .recharts-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: visible !important;
     }
 
     /* Force all elements to full opacity and reset transforms */

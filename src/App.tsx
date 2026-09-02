@@ -545,8 +545,8 @@ export default function App() {
 
   if (isReportOpen && allReports.length > 0) {
     return (
-      <div id="report-scroll-container" className="w-full h-[100dvh] overflow-y-auto bg-[#F6F4F0] text-stone-900 scrollbar-hide print:h-auto print:overflow-visible print:block">
-        <div className="flex flex-col min-h-full">
+      <div id="report-scroll-container" className="w-full h-[100dvh] overflow-y-auto bg-[#F6F4F0] text-stone-900 scrollbar-hide print:h-auto print:overflow-visible print:block print:bg-white">
+        <div className="flex flex-col min-h-full print:min-h-0 print:block print:h-auto">
           {allReports.map((report, idx) => (
              <ReportTemplate 
                key={idx}

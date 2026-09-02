@@ -88,9 +88,8 @@ const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number |
         <span className="text-3xl font-bold font-['Nunito',sans-serif] tabular-nums group-hover:scale-105 transition-transform" style={{ color: strokeColor }}>
           {score || '-'}
         </span>
-        <span className="text-[10px] text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif] flex items-center gap-0.5">
+        <span className="text-[10px] text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif]">
           {isThai ? 'เต็ม 100' : '/ 100'}
-          <HelpCircle className="w-2.5 h-2.5 text-stone-400" />
         </span>
       </div>
     </div>
@@ -181,18 +180,13 @@ const IndicatorVisualizer = ({ type, text, isThai }: { type: 'RSI' | 'MACD', tex
    return null;
 };
 
-const AnalysisCard = ({ title, action, subtext, children, className = "", titleClassName = "text-stone-900", tooltip }: any) => (
+const AnalysisCard = ({ title, action, subtext, children, className = "", titleClassName = "text-stone-900" }: any) => (
   <div 
     className={`bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm border border-stone-200 flex flex-col ${className}`}
   >
     <div className="flex justify-between items-center mb-2 gap-2">
       <div className="flex items-center gap-2">
         <h3 className={`text-lg md:text-xl font-bold font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight ${titleClassName}`}>{title}</h3>
-        {tooltip && (
-          <span className="text-stone-400 hover:text-stone-600 cursor-help" title={tooltip}>
-            <HelpCircle className="w-4 h-4" />
-          </span>
-        )}
       </div>
       {action && <div>{action}</div>}
     </div>
@@ -405,7 +399,7 @@ export default function ReportTemplate({
         </div>
       )}
 
-      <div id="report-content" className="flex-1 py-4 sm:py-8 px-2.5 sm:px-6 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-6 md:gap-8 bg-[#F6F4F0]">
+      <div id="report-content" className="flex-1 py-4 sm:py-8 px-2.5 sm:px-6 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-6 md:gap-8 bg-[#F6F4F0] print:max-w-full print:p-0 print:gap-6 print:bg-white">
         
         <div className="bg-stone-100/90 border border-stone-200 rounded-2xl p-3 sm:p-4 text-xs text-stone-600 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">

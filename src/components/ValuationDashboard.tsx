@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Sparkles, TrendingUp, TrendingDown, Scale, HelpCircle, 
+  Sparkles, TrendingUp, TrendingDown, Scale, 
   Info, BarChart3, AlertCircle, ArrowUpRight, ArrowDownRight, 
   ChevronDown, Layers, Target, PieChart as PieIcon, ShieldAlert 
 } from 'lucide-react';

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sliders, ShieldCheck, ShieldAlert, Sparkles, TrendingUp, 
-  TrendingDown, ArrowRight, HelpCircle, ChevronDown, ChevronUp, AlertTriangle, Calculator, Scale
+  TrendingDown, ArrowRight, ChevronDown, ChevronUp, AlertTriangle, Calculator, Scale
 } from 'lucide-react';
 import { IntrinsicValueData } from '../types';
 

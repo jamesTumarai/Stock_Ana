@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { 
-  Gauge, TrendingUp, TrendingDown, Scale, HelpCircle, 
+  Gauge, TrendingUp, TrendingDown, Scale, 
   Info, BarChart3, AlertCircle, ArrowUpRight 
 } from 'lucide-react';
 import { ValuationRatioItem, ValuationPercentileChart } from '../types';

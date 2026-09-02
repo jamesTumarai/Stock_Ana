@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Table, AlertTriangle, TrendingUp, TrendingDown, Minus,
-  HelpCircle, ChevronDown, ChevronRight, Layers, DollarSign, ArrowRight,
+  ChevronDown, ChevronRight, Layers, DollarSign, ArrowRight,
   BarChart3, Activity, PieChart, Shield, Check, SlidersHorizontal, Sparkles, Lightbulb, Info
 } from 'lucide-react';
 import {
@@ -1323,7 +1323,6 @@ export function FinancialStatementsTable({
                 <div className="lg:col-span-7 flex flex-col gap-3">
                   <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200/90 shadow-2xs flex flex-col gap-2.5">
                     <div className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <HelpCircle className="w-3.5 h-3.5 text-stone-400" />
                       {isThai ? 'ความหมาย & การตีความตัวเลขนี้ (What it means & Insight)' : 'Definition & Interpretation'}
                     </div>
                     <p className="text-xs text-stone-600 font-sans leading-relaxed">

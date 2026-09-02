@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Users, TrendingUp, TrendingDown, HelpCircle, Layers } from 'lucide-react';
+import { Users, TrendingUp, TrendingDown, Layers } from 'lucide-react';
 import { PeerComparisonData, PeerCompanyItem } from '../types';
 
 interface Props {
