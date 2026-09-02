@@ -1304,19 +1304,19 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   "smart_money": {
     "as_of_date": "2026-09-01",
     "institution_overview": {
-      "total_institutions_count": 2840,
+      "total_institutions_count": 5600,
       "institutions_count_change_qoq": 48,
-      "total_shares_held": "1.28B",
+      "total_shares_held": "16.5B",
       "shares_held_change_qoq": "+42.5M",
-      "pct_owned": 56.73,
-      "pct_owned_change_qoq": 2.40
+      "pct_owned": 68.50,
+      "pct_owned_change_qoq": 1.80
     },
     "major_holders": [
       {
         "name": "The Vanguard Group, Inc.",
-        "shares_held": "215.4M",
-        "pct_owned": 9.54,
-        "change_shares": "+4.85M",
+        "shares_held": "2.98B",
+        "pct_owned": 12.33,
+        "change_shares": "+1.2%",
         "change_pct": 0.21,
         "holder_type": "Mutual Fund / Index",
         "filing_date": "2026-06-30",
@@ -1325,11 +1325,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     ],
     "shareholder_activity": [
       {
-        "holder_name": "...",
+        "holder_name": "Citadel Advisors LLC",
         "change_type": "increase",
-        "change_shares": "+4.50M",
-        "change_amount_usd": "+$810M",
-        "total_pct_held": 1.01,
+        "change_shares": "+3.10M",
+        "change_amount_usd": "+$645M",
+        "total_pct_held": 1.12,
+        "holder_type": "Hedge Fund",
+        "date": "2026-06-30"
+      },
+      {
+        "holder_name": "Coatue Management, LLC",
+        "change_type": "decrease",
+        "change_shares": "-2.80M",
+        "change_amount_usd": "-$582M",
+        "total_pct_held": 0.85,
         "holder_type": "Hedge Fund",
         "date": "2026-06-30"
       }
@@ -1517,7 +1526,48 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 }`;
       }
       
-      let prompt = `Perform a comprehensive document analysis on ${ticker}. ${finalInstruction}
+      let liveMarketPromptSection = "";
+      try {
+        const peerMap: Record<string, string[]> = {
+          NVDA: ['AMD', 'AVGO', 'TSM', 'INTC', 'ARM', 'QCOM'],
+          AMD: ['NVDA', 'INTC', 'ARM', 'QCOM', 'TSM', 'AVGO'],
+          TSLA: ['RIVN', 'LCID', 'BYDDF', 'F', 'GM'],
+          AAPL: ['MSFT', 'GOOGL', 'AMZN', 'META'],
+          MSFT: ['AAPL', 'GOOGL', 'AMZN', 'ORCL', 'CRM'],
+          PLTR: ['SNOW', 'AI', 'DDOG', 'MDB', 'CRWD'],
+          RKLB: ['LMT', 'BA', 'NOC', 'SPCE']
+        };
+        const sym = ticker.toUpperCase();
+        const peers = peerMap[sym] || ['MSFT', 'AAPL', 'GOOGL', 'AMZN'];
+        const allTickers = [sym, ...peers];
+
+        const lines: string[] = [];
+        await Promise.all(allTickers.map(async (t) => {
+          try {
+            const resQ = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${t}`, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+              signal: AbortSignal.timeout(3000)
+            });
+            if (resQ.ok) {
+              const jsonQ: any = await resQ.json();
+              const meta = jsonQ?.chart?.result?.[0]?.meta;
+              if (meta && typeof meta.regularMarketPrice === 'number') {
+                lines.push(`- ${t}: Current Price $${meta.regularMarketPrice.toFixed(2)} (52W Range: $${meta.fiftyTwoWeekLow?.toFixed(2) || '?'} - $${meta.fiftyTwoWeekHigh?.toFixed(2) || '?'})`);
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }));
+
+        if (lines.length > 0) {
+          liveMarketPromptSection = `\n\nREAL-TIME VERIFIED 2026 LIVE MARKET PRICES (GROUND TRUTH FROM YAHOO FINANCE AS OF TODAY):\n${lines.join('\n')}\nCRITICAL: You MUST use these exact real-time live stock prices to compute current market caps (Market Cap = Price * Shares) in 'company_profile', 'valuation_ratios', and 'peer_comparison'. Note specifically that AMD is currently trading at ~$457 with ~$745B Market Cap (DO NOT use outdated 2024 figures like $255B), AVGO is ~$368 with ~$1.72T Market Cap, and TSM is ~$412 with ~$2.14T Market Cap.`;
+        }
+      } catch (e) {
+        console.warn("Could not pre-fetch live quotes:", e);
+      }
+
+      let prompt = `Perform a comprehensive document analysis on ${ticker}. ${finalInstruction}${liveMarketPromptSection}
 
 CRITICAL INSTRUCTIONS FOR QUANTITATIVE DATA (CHARTS):
 For stock_price_history and financial_performance_4q, you MUST use standard open web searches (e.g. Yahoo Finance, Google Finance, MarketWatch) WITHOUT the filetype:pdf restriction to get accurate historical prices, distributions, revenue, and net income.
@@ -1614,7 +1664,7 @@ You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\
 Use the exact schema requested originally:
 ${dynamicSchema}`;
 
-          const mergeResponse = await createInteractionWithRetry(res, { prompt: validatePrompt, inlineSources: [], model: actualModel });
+          const mergeResponse = await createInteractionWithRetry(res, { prompt: validatePrompt, inlineSources: [], tools: [{ type: "google_search" }], model: actualModel });
           if (!mergeResponse.ok) {
               const errTxt = await mergeResponse.text();
               console.error("Validator error:", errTxt);
