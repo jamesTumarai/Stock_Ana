@@ -961,7 +961,22 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   }
 }`;
       } else {
-        finalInstruction += ` Make sure that you are looking for the most up to date SEC filings of the existing quarter or the quarter before.`;
+        finalInstruction += `\n\nCRITICAL SEARCH FOR 3 FINANCIAL STATEMENTS (INCOME, BALANCE SHEET, CASH FLOW):
+1. For ${ticker}, you MUST search and locate the official SEC Form 10-Q and 10-K "CONSOLIDATED BALANCE SHEETS" and "CONSOLIDATED STATEMENTS OF CASH FLOWS" tables for all 4 reporting periods.
+2. In "financial_statements.balance_sheet":
+   - "total_assets": exact Total Assets reported for each quarter (e.g., For TSLA: 2025/Q3: $133.74B, 2025/Q4: $137.81B, 2026/Q1: $143.72B, 2026/Q2: $148.52B in millions, i.e., [133740, 137810, 143720, 148520]). NEVER shift older 2024 numbers ($112B-$125B) into 2025/2026!
+   - "total_current_assets": exact Total Current Assets for each quarter (e.g. For TSLA: [64650, 68640, 69750, 68760]).
+   - "cash_and_equivalents": exact cash and cash equivalents (e.g. For TSLA: [18290, 16510, 16600, 15220]).
+   - "short_term_investments": exact short-term investments/marketable securities (e.g. For TSLA: [23360, 27550, 28140, 28310]).
+   - "accounts_receivable" & "receivables": exact accounts receivable (e.g. For TSLA: [4700, 4580, 3960, 4090]).
+   - "inventory": exact inventory reported on the 10-Q/10-K balance sheet (e.g. For TSLA: [13100, 13400, 13800, 14200]).
+   - "total_liabilities", "total_current_liabilities", "accounts_payable", "short_term_debt", "total_debt", "total_equity".
+3. In "financial_statements.cash_flow":
+   - "operating_cash_flow": exact net cash provided by operating activities for each quarter.
+   - "capex": capital expenditures (payments for property, plant and equipment).
+   - "free_cash_flow": exact OCF minus CapEx for each quarter.
+   - "investing_cash_flow", "financing_cash_flow", "stock_issuance_repurchase", "dividends_paid".
+4. Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.`;
         if (instruction) {
           finalInstruction += `\n\nAdditional Instructions from user:\n${instruction}`;
         }
@@ -1032,25 +1047,38 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "balance_sheet": {
-      "cash_and_equivalents": [4000, 4200, 4500, 5000],
-      "total_current_assets": [4800, 5100, 5500, 6200],
-      "total_assets": [6200, 6600, 7100, 7900],
-      "total_current_liabilities": [700, 750, 800, 900],
-      "total_debt": [0, 0, 0, 0],
-      "total_liabilities": [950, 1020, 1100, 1250],
-      "total_equity": [5250, 5580, 6000, 6650],
-      "current_ratio": [6.85, 6.80, 6.88, 6.90],
-      "quick_ratio": [6.1, 6.2, 6.3, 6.4],
-      "debt_to_equity": [0, 0, 0, 0],
-      "debt_to_ebitda": [0, 0, 0, 0],
+      "cash_and_equivalents": [18290, 16510, 16600, 15220],
+      "short_term_investments": [23360, 27550, 28140, 28310],
+      "total_current_assets": [64650, 68640, 69750, 68760],
+      "accounts_receivable": [4700, 4580, 3960, 4090],
+      "inventory": [12800, 13100, 13400, 13900],
+      "net_ppe": [32000, 34500, 36800, 39100],
+      "total_assets": [133740, 137810, 143720, 148520],
+      "total_current_liabilities": [28500, 29800, 30500, 31200],
+      "accounts_payable": [15200, 16100, 16400, 16800],
+      "short_term_debt": [2100, 2300, 2400, 2500],
+      "total_debt": [7800, 7500, 7200, 6900],
+      "total_liabilities": [42500, 44200, 45100, 46300],
+      "total_equity": [91240, 93610, 98620, 102220],
+      "current_ratio": [2.27, 2.30, 2.29, 2.20],
+      "quick_ratio": [1.82, 1.86, 1.85, 1.76],
+      "debt_to_equity": [0.09, 0.08, 0.07, 0.07],
+      "debt_to_ebitda": [0.55, 0.52, 0.48, 0.45],
       "commentary": "..."
     },
     "cash_flow": {
-      "operating_cash_flow": [220, 310, 420, 550],
-      "capex": [15, 18, 20, 25],
-      "free_cash_flow": [205, 292, 400, 525],
-      "fcf_margin_pct": [28.2, 35.3, 45.2, 52.3],
-      "fcf_vs_net_income_ratio": [1.43, 3.70, 1.87, 1.61],
+      "operating_cash_flow": [4500, 4800, 5100, 5600],
+      "depreciation": [1200, 1250, 1300, 1350],
+      "change_working_capital": [-300, -250, -200, -150],
+      "capex": [2100, 2300, 2400, 2600],
+      "investing_cash_flow": [-2500, -2800, -3000, -3200],
+      "free_cash_flow": [2400, 2500, 2700, 3000],
+      "fcf_margin_pct": [10.2, 10.5, 11.0, 11.8],
+      "fcf_vs_net_income_ratio": [1.45, 1.50, 1.52, 1.58],
+      "financing_cash_flow": [-1200, -1400, -1500, -1600],
+      "stock_issuance_repurchase": [-800, -900, -1000, -1100],
+      "dividends_paid": [0, 0, 0, 0],
+      "net_change_cash": [800, 600, 600, 800],
       "commentary": "..."
     },
     "red_flags": ["..."]
@@ -1550,7 +1578,7 @@ CRITICAL CHECKS:
 - Formatting Checks: Make sure 'business_overview', 'target_customers', 'revenue_model', and 'financial_overview' are formatted as Markdown bullet points (-), NOT large paragraphs. Make sure the R:R calculation in 'trade_plan' is nicely formatted as a Markdown table (Target | Formula | Result) using proper \n newlines.
 - Fundamental Fundamentals Check: Must have exactly 8 numbered points.
 - Fundamental Key Risks: Must have exactly 8 risk categories.
-- Financial Statements: Check that revenue, net income, margins %, and growth % are mathematically consistent across quarters.
+- Financial Statements: Verify that Balance Sheet Total Assets, Current Assets, Cash & Short-Term Investments, Inventory, Receivables, Total Liabilities, Total Debt, Total Equity, and Cash Flow (OCF, CapEx, FCF) are strictly grounded in genuine SEC 10-Q/10-K filing tables. DO NOT accept shifted or delayed numbers from 2023/2024 representing 2025/2026. Ensure revenue, net income, margins %, and growth % are mathematically consistent across quarters.
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
 - Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
 - Insider Ownership: Must be a numeric percentage.
