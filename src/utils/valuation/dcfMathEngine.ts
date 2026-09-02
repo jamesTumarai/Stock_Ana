@@ -63,6 +63,25 @@ export function calculateStrictDCFValue(
   return Number(Math.max(1.0, fairValuePerShare).toFixed(2));
 }
 
+function parseMarketCapToMillions(marketCapStr?: string | number, currentPrice?: number): number {
+  if (typeof marketCapStr === 'number') return marketCapStr;
+  if (!marketCapStr) return (currentPrice || 100) * 3000;
+  const str = String(marketCapStr).toUpperCase().trim();
+  if (str.includes('T')) {
+    const val = parseFloat(str.replace(/[^0-9.]/g, ''));
+    return (val || 1) * 1_000_000;
+  }
+  if (str.includes('B')) {
+    const val = parseFloat(str.replace(/[^0-9.]/g, ''));
+    return (val || 1) * 1_000;
+  }
+  if (str.includes('M')) {
+    const val = parseFloat(str.replace(/[^0-9.]/g, ''));
+    return val || 1000;
+  }
+  return (currentPrice || 100) * 3000;
+}
+
 /**
  * Extracts authentic financial inputs and calculates consistent Bear / Base / Bull DCF scenarios.
  */
@@ -88,7 +107,6 @@ export function buildRigorousDCFModel(
   const fsRev = (inc?.revenue && inc.revenue.length > 0)
     ? inc.revenue.filter(v => v !== null).reduce((sum, v) => sum! + Number(v), 0) || 97600
     : 97600;
-  // If quarterly, sum 4 quarters, else take full year
   const startingRevenueM = fsRev > 200000 ? fsRev : (fsRev * 1);
 
   // Net Cash = Cash - Debt
@@ -100,10 +118,23 @@ export function buildRigorousDCFModel(
     : 8120;
   const netCashM = cashM - debtM;
 
-  // Implied Shares Outstanding
-  const impliedSharesM = currentPrice > 0 
-    ? Math.max(50, ((currentPrice * 3200) / currentPrice)) // ~3.2B shares for mega caps
-    : 3200;
+  // Extract Exact Market Cap and Real Shares Outstanding
+  let marketCapM = 0;
+  const peerList = data?.peer_comparison?.peers;
+  const targetPeer = peerList?.find(p => p.ticker.toUpperCase() === sym);
+  if (targetPeer?.market_cap) {
+    marketCapM = parseMarketCapToMillions(targetPeer.market_cap, currentPrice);
+  } else if ((data?.company_profile as any)?.market_cap) {
+    marketCapM = parseMarketCapToMillions((data?.company_profile as any).market_cap, currentPrice);
+  } else if ((data?.company_profile as any)?.market_cap_formatted) {
+    marketCapM = parseMarketCapToMillions((data?.company_profile as any).market_cap_formatted, currentPrice);
+  } else {
+    marketCapM = currentPrice * 3000;
+  }
+
+  const impliedSharesM = currentPrice > 0 && marketCapM > 0
+    ? Math.max(1, marketCapM / currentPrice)
+    : 3000;
 
   const inputs: DCFEngineInputs = {
     ticker: sym,
@@ -116,10 +147,7 @@ export function buildRigorousDCFModel(
     projectionYears
   };
 
-  // 3. Define Clean, Monotonic Scenario Assumptions
-  // Bear Case: lower CAGR, lower Margin
-  // Base Case: expected CAGR, target Margin
-  // Bull Case: high CAGR, premium Margin
+  // 3. Define Clean Scenario Assumptions
   const existingScenarios = data?.intrinsic_value?.dcf_model?.scenarios;
 
   const bearCagr = existingScenarios?.bear?.revenue_cagr_pct ?? 12.0;
@@ -131,21 +159,23 @@ export function buildRigorousDCFModel(
   const bullCagr = existingScenarios?.bull?.revenue_cagr_pct ?? 35.0;
   const bullMargin = existingScenarios?.bull?.terminal_margin_pct ?? 22.0;
 
-  // 4. Compute Strict Closed-Form DCF Values
-  const bearFairValue = calculateStrictDCFValue(
-    startingRevenueM, impliedSharesM, netCashM, waccPct, terminalGrowthPct,
-    bearCagr, bearMargin, projectionYears
-  );
+  // 4. Check if authentic scenario prices exist within realistic valuation bounds
+  const hasAuthenticFairValues = 
+    existingScenarios?.base?.fair_value_per_share &&
+    existingScenarios?.base?.fair_value_per_share > 0 &&
+    Math.abs(existingScenarios.base.fair_value_per_share - currentPrice) / currentPrice < 3.5;
 
-  const baseFairValue = calculateStrictDCFValue(
-    startingRevenueM, impliedSharesM, netCashM, waccPct, terminalGrowthPct,
-    baseCagr, baseMargin, projectionYears
-  );
+  const baseFairValue = hasAuthenticFairValues
+    ? existingScenarios.base.fair_value_per_share
+    : calculateStrictDCFValue(startingRevenueM, impliedSharesM, netCashM, waccPct, terminalGrowthPct, baseCagr, baseMargin, projectionYears);
 
-  const bullFairValue = calculateStrictDCFValue(
-    startingRevenueM, impliedSharesM, netCashM, waccPct, terminalGrowthPct,
-    bullCagr, bullMargin, projectionYears
-  );
+  const bearFairValue = hasAuthenticFairValues && existingScenarios?.bear?.fair_value_per_share
+    ? existingScenarios.bear.fair_value_per_share
+    : calculateStrictDCFValue(startingRevenueM, impliedSharesM, netCashM, waccPct, terminalGrowthPct, bearCagr, bearMargin, projectionYears);
+
+  const bullFairValue = hasAuthenticFairValues && existingScenarios?.bull?.fair_value_per_share
+    ? existingScenarios.bull.fair_value_per_share
+    : calculateStrictDCFValue(startingRevenueM, impliedSharesM, netCashM, waccPct, terminalGrowthPct, bullCagr, bullMargin, projectionYears);
 
   const dcfModel: DCFModel = {
     assumptions: {
