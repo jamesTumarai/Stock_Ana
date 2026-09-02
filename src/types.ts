@@ -676,6 +676,7 @@ export interface CompanyProfileData {
   description?: string;
   beta?: number;
   stock_price?: number;
+  shares_outstanding?: number | string;
   currency?: string;
 }
 

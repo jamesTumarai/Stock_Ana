@@ -445,9 +445,11 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
           - ระวังอคติจากฝั่งผู้บริหาร (management bias) 
           - ใช้ตัวเลขล่าสุดเท่าที่หาได้ ระบุแหล่งที่มาและช่วงเวลา (ไตรมาส/ปี) กำกับตัวเลขสำคัญ
           - ข้อมูลราคาหุ้น, Market Cap, Trailing P/E (TTM), Forward P/E, EV/EBITDA, 52-Week Range ต้องค้นหาและดึงข้อมูลสดของวันนี้ (Live Real-Time Data จาก Yahoo Finance/Google Finance) มาใช้จริงเสมอ ห้ามใช้ตัวเลขตัวอย่างใน Schema หรือคาดเดาจากข้อมูลเก่าในอดีต
+          - ข้อมูล smart_money (13F): total_shares_held ต้องสอดคล้องกับ (shares_outstanding * pct_owned / 100) เช่น สำหรับ NVDA (~24.15B หุ้น, สถาบันถือ ~68.5%) จะต้องได้ ~16.5B หุ้น (ห้ามใช้ 1.28B เด็ดขาด), จำนวนสถาบัน total_institutions_count ต้องตรงกับข้อมูลจริงของหุ้นนั้น (เช่น NVDA ~5,600 แห่ง), ใน major_holders[].shares_held ต้องระบุเป็นจำนวนหุ้น (เช่น "2.98B" หรือ "230M") ห้ามใส่เครื่องหมาย % ซ้ำในช่องจำนวนหุ้น, และ shareholder_activity ต้องใส่ข้อมูลการปรับพอร์ต 13F ทั้งฝั่งซื้อเพิ่ม (increase) และขายลด (decrease) เสมอ ห้ามปล่อยว่าง
           - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุน`;
         } else {
           finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English. Please follow the structure covering both Fundamental and Technical aspects completely.
+          - For smart_money (13F): total_shares_held MUST equal (shares_outstanding * pct_owned / 100) (e.g. for NVDA ~24.15B shares, ~68.5% institutional ownership = ~16.5B shares, NOT 1.28B). total_institutions_count must reflect true 13F filers (~5,600 for NVDA). major_holders[].shares_held MUST be in shares (e.g. "2.98B"), NEVER a percent string. shareholder_activity MUST contain both increase and decrease 13F rows.
           - Technical Analysis MUST rely ONLY on price, volume, and technical indicators. NEVER include or reference fundamental data (e.g., 10-K, 10-Q, annual reports, business models, moats, or credit risks) in the technical analysis section.`;
         }
         
@@ -712,19 +714,19 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   "smart_money": {
     "as_of_date": "2026-09-01",
     "institution_overview": {
-      "total_institutions_count": 2840,
+      "total_institutions_count": 5600,
       "institutions_count_change_qoq": 48,
-      "total_shares_held": "1.28B",
+      "total_shares_held": "16.5B",
       "shares_held_change_qoq": "+42.5M",
-      "pct_owned": 56.73,
-      "pct_owned_change_qoq": 2.40
+      "pct_owned": 68.50,
+      "pct_owned_change_qoq": 1.80
     },
     "major_holders": [
       {
         "name": "The Vanguard Group, Inc.",
-        "shares_held": "215.4M",
-        "pct_owned": 9.54,
-        "change_shares": "+4.85M",
+        "shares_held": "2.98B",
+        "pct_owned": 12.33,
+        "change_shares": "+1.2%",
         "change_pct": 0.21,
         "holder_type": "Mutual Fund / Index",
         "filing_date": "2026-06-30",
@@ -733,11 +735,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     ],
     "shareholder_activity": [
       {
-        "holder_name": "...",
+        "holder_name": "Citadel Advisors LLC",
         "change_type": "increase",
-        "change_shares": "+4.50M",
-        "change_amount_usd": "+$810M",
-        "total_pct_held": 1.01,
+        "change_shares": "+3.10M",
+        "change_amount_usd": "+$645M",
+        "total_pct_held": 1.12,
+        "holder_type": "Hedge Fund",
+        "date": "2026-06-30"
+      },
+      {
+        "holder_name": "Coatue Management, LLC",
+        "change_type": "decrease",
+        "change_shares": "-2.80M",
+        "change_amount_usd": "-$582M",
+        "total_pct_held": 0.85,
         "holder_type": "Hedge Fund",
         "date": "2026-06-30"
       }
