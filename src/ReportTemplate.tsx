@@ -59,48 +59,49 @@ const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number |
   return (
     <div 
       onClick={onOpenMethodology}
-      className="relative flex items-center justify-center my-1 cursor-pointer group"
+      className="flex flex-col items-center justify-center my-1 cursor-pointer group w-full"
       title={isThai ? 'คลิกเพื่อดูวิธีคำนวณคะแนน' : 'Click to view scoring methodology'}
     >
-      <svg className="w-28 h-28 transform -rotate-90">
-        <circle
-          cx="56"
-          cy="56"
-          r={radius}
-          stroke="#e7e5e4"
-          strokeWidth={strokeWidth}
-          fill="transparent"
-        />
-        <circle
-          cx="56"
-          cy="56"
-          r={radius}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          fill="transparent"
-          className="transition-all duration-1000 ease-out"
-          style={{ filter: `drop-shadow(0 0 6px ${glowColor})` }}
-        />
-      </svg>
-      <div className="absolute flex flex-col items-center justify-center">
-        <span className="text-3xl font-bold font-['Nunito',sans-serif] tabular-nums group-hover:scale-105 transition-transform" style={{ color: strokeColor }}>
-          {score || '-'}
-        </span>
-        <span className="text-[10px] text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif]">
-          {isThai ? 'เต็ม 100' : '/ 100'}
-        </span>
-      </div>
-      <div className="flex flex-col items-center mt-1">
-        <div className="flex items-center justify-center gap-1.5 text-[10px] text-stone-500 font-sans">
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>{isThai ? '<50 ต่ำ' : '<50 Low'}</span>
-          <span className="text-stone-300">•</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{isThai ? '50-69 กลาง' : '50-69 Med'}</span>
-          <span className="text-stone-300">•</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>{isThai ? '70+ สูง' : '70+ High'}</span>
+      <div className="relative flex items-center justify-center w-28 h-28">
+        <svg className="w-28 h-28 transform -rotate-90">
+          <circle
+            cx="56"
+            cy="56"
+            r={radius}
+            stroke="#e7e5e4"
+            strokeWidth={strokeWidth}
+            fill="transparent"
+          />
+          <circle
+            cx="56"
+            cy="56"
+            r={radius}
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            fill="transparent"
+            className="transition-all duration-1000 ease-out"
+            style={{ filter: `drop-shadow(0 0 6px ${glowColor})` }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-3xl font-bold font-['Nunito',sans-serif] tabular-nums group-hover:scale-105 transition-transform" style={{ color: strokeColor }}>
+            {score || '-'}
+          </span>
+          <span className="text-[10px] text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif]">
+            {isThai ? 'เต็ม 100' : '/ 100'}
+          </span>
         </div>
+      </div>
+
+      <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-stone-500 font-sans">
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>{isThai ? '<50 ต่ำ' : '<50 Low'}</span>
+        <span className="text-stone-300">•</span>
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{isThai ? '50-69 กลาง' : '50-69 Med'}</span>
+        <span className="text-stone-300">•</span>
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>{isThai ? '70+ สูง' : '70+ High'}</span>
       </div>
     </div>
   );
