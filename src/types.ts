@@ -292,6 +292,8 @@ export interface PeerCompanyItem {
   gross_margin_pct?: number | null;
   net_margin_pct?: number | null;
   ev_ebitda?: number | null;
+  status_label_th?: string;
+  status_label_en?: string;
 }
 
 export interface PeerComparisonData {

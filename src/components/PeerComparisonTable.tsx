@@ -58,11 +58,13 @@ export function PeerComparisonTable({
               <th className="py-3 px-3 text-right font-mono min-w-[100px]">{isThai ? 'Gross Margin' : 'Gross Margin'}</th>
               <th className="py-3 px-3 text-right font-mono min-w-[100px]">{isThai ? 'Net Margin' : 'Net Margin'}</th>
               <th className="py-3 px-3 text-right font-mono min-w-[90px]">EV/EBITDA</th>
+              <th className="py-3 px-4 font-sans text-left min-w-[170px]">{isThai ? 'การประเมินสถานะ' : 'Status Assessment'}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100 font-mono text-xs sm:text-sm">
             {peers.map((peer, idx) => {
               const isTarget = peer.ticker.toUpperCase() === targetTicker.toUpperCase();
+              const statusLabel = isThai ? (peer.status_label_th || 'ระดับมาตรฐาน') : (peer.status_label_en || 'Standard peer');
               return (
                 <tr 
                   key={idx} 
@@ -107,6 +109,15 @@ export function PeerComparisonTable({
                   </td>
                   <td className="py-3 px-3 text-right text-stone-800">
                     {peer.ev_ebitda !== null && peer.ev_ebitda !== undefined ? `${peer.ev_ebitda}x` : 'N/A'}
+                  </td>
+                  <td className="py-3 px-4 font-sans text-xs text-stone-700">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${
+                      isTarget 
+                        ? 'bg-emerald-50 text-[#0b5a4b] border-emerald-200' 
+                        : 'bg-stone-50 text-stone-700 border-stone-200'
+                    }`}>
+                      {statusLabel}
+                    </span>
                   </td>
                 </tr>
               );

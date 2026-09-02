@@ -7,6 +7,7 @@ import {
   Printer, Sparkles, HelpCircle, DollarSign, Layers, ShieldCheck, Clock, ArrowRight, Target 
 } from 'lucide-react';
 import { ReportData } from './types';
+import { harmonizeReportData, extractCleanRsi } from './utils/metricsHarmonizer';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 import { FinancialStatementsTable } from './components/FinancialStatementsTable';
@@ -145,36 +146,43 @@ const TrackRecordBadge = ({ ticker, currentPrice, historyReports = [], isThai }:
 const IndicatorVisualizer = ({ type, text, isThai }: { type: 'RSI' | 'MACD', text: string, isThai: boolean }) => {
    if (!text) return null;
    
-   let match = null;
    if (type === 'RSI') {
-      const cleanText = text.replace(/RSI\s*(?:\(\s*14\s*\)|14\s*วัน)/gi, 'RSI');
-      match = cleanText.match(/RSI.*?(\d+(\.\d+)?)/i);
-      if (!match) {
-          const numbers = Array.from(cleanText.matchAll(/(-?\d+(\.\d+)?)/g));
-          if (numbers.length > 0) match = numbers[0];
-      }
+      const rsi = extractCleanRsi(text);
+      if (!rsi) return null;
+      
+      const isOverbought = rsi.value >= 70;
+      const isOversold = rsi.value <= 30;
+      const color = isOverbought 
+        ? 'text-red-600 bg-red-50 border-red-200' 
+        : isOversold 
+        ? 'text-[#0b5a4b] bg-emerald-50 border-emerald-200' 
+        : 'text-stone-700 bg-stone-100 border-stone-200';
+      
+      return (
+         <div className="flex items-center gap-2 mb-3">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${color}`}>
+               RSI: {rsi.value.toFixed(1)} ({isThai ? rsi.statusTh : rsi.statusEn})
+            </span>
+         </div>
+      );
    } else if (type === 'MACD') {
-      const cleanText = text.replace(/MACD\s*\(\s*12\s*,\s*26\s*(?:,\s*9\s*)?\)/gi, 'MACD');
-      match = cleanText.match(/MACD.*?(-?\d+(\.\d+)?)/i);
-      if (!match) {
-          const numbers = Array.from(cleanText.matchAll(/(-?\d+(\.\d+)?)/g)).filter(m => !['12', '26', '9'].includes(m[1]));
-          if (numbers.length > 0) match = numbers[0];
-      }
-   }
-
-   if (match && match[1]) {
-      const val = parseFloat(match[1]);
-      if (type === 'RSI') {
-         const isOverbought = val >= 70;
-         const isOversold = val <= 30;
-         const color = isOverbought ? 'text-red-600 bg-red-50 border-red-200' : isOversold ? 'text-[#0b5a4b] bg-emerald-50 border-emerald-200' : 'text-stone-700 bg-stone-100 border-stone-200';
-         return (
+      const cleanText = text
+        .replace(/MACD\s*\(\s*12\s*,\s*26(?:\s*,\s*9)?\s*\)/gi, 'MACD')
+        .replace(/\b(?:12|26|9)\b/g, '');
+      const match = cleanText.match(/MACD\s*(?:is|at|=|:|อยู่ที่|คือ|เท่ากับ|ระดับ)?\s*(-?[0-9]+(?:\.[0-9]+)?)/i);
+      if (match && match[1]) {
+        const val = parseFloat(match[1]);
+        if (!isNaN(val)) {
+          const isBull = val > 0;
+          const color = isBull ? 'text-[#0b5a4b] bg-emerald-50 border-emerald-200' : 'text-red-600 bg-red-50 border-red-200';
+          return (
             <div className="flex items-center gap-2 mb-3">
-               <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${color}`}>
-                  RSI: {val.toFixed(1)} {isOverbought ? (isThai ? '(ซื้อมากเกินไป)' : '(Overbought)') : isOversold ? (isThai ? '(ขายมากเกินไป)' : '(Oversold)') : (isThai ? '(โซนปกติ)' : '(Neutral)')}
-               </span>
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${color}`}>
+                MACD: {val.toFixed(2)} ({isBull ? (isThai ? 'โซนบวก / ขาขึ้น' : 'Bullish') : (isThai ? 'โซนลบ / ขาลง' : 'Bearish')})
+              </span>
             </div>
-         );
+          );
+        }
       }
    }
    return null;
@@ -253,7 +261,7 @@ const KeyLevelsVisualizer = ({ currentPrice, support, resistance, isThai }: { cu
 };
 
 export default function ReportTemplate({ 
-  data, 
+  data: rawData, 
   ticker, 
   onClose, 
   durationSecs = 0, 
@@ -265,6 +273,7 @@ export default function ReportTemplate({
   historyReports = [] 
 }: Props) {
   const isThai = language === 'Thai';
+  const data = React.useMemo(() => harmonizeReportData(rawData, ticker), [rawData, ticker]);
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
   const findings = data.findings || [];
   const reportDate = data.as_of_date || new Date().toISOString().split('T')[0];
@@ -842,10 +851,26 @@ export default function ReportTemplate({
         {/* SECTION 8: TECHNICAL ANALYSIS & TRADE PLAN */}
         {data.technical_analysis && (
           <div id="section-technical" className="flex flex-col gap-6 scroll-mt-14">
-            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 flex items-center gap-2">
-              <TrendingUp className="w-6 h-6 text-stone-900" />
-              <span>{isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}</span>
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-200 pb-2 gap-2">
+              <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 text-stone-900" />
+                <span>{isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}</span>
+              </h2>
+              {data.technical_analysis.signal_summary?.status && (
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="text-xs text-stone-500 font-semibold">{isThai ? 'สัญญาณหลัก:' : 'Primary Signal:'}</span>
+                  <span className={`px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider font-mono shadow-xs ${
+                    data.technical_analysis.signal_summary.status.toLowerCase().includes('buy')
+                      ? 'bg-[#0b5a4b] text-white'
+                      : data.technical_analysis.signal_summary.status.toLowerCase().includes('sell') || data.technical_analysis.signal_summary.status.toLowerCase().includes('avoid')
+                      ? 'bg-red-600 text-white'
+                      : 'bg-amber-600 text-white'
+                  }`}>
+                    {data.technical_analysis.signal_summary.status}
+                  </span>
+                </div>
+              )}
+            </div>
             
             <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 text-sm text-yellow-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
