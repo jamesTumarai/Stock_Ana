@@ -93,6 +93,15 @@ const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number |
           {isThai ? 'เต็ม 100' : '/ 100'}
         </span>
       </div>
+      <div className="flex flex-col items-center mt-1">
+        <div className="flex items-center justify-center gap-1.5 text-[10px] text-stone-500 font-sans">
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>{isThai ? '<50 ต่ำ' : '<50 Low'}</span>
+          <span className="text-stone-300">•</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{isThai ? '50-69 กลาง' : '50-69 Med'}</span>
+          <span className="text-stone-300">•</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>{isThai ? '70+ สูง' : '70+ High'}</span>
+        </div>
+      </div>
     </div>
   );
 };
@@ -643,7 +652,7 @@ export default function ReportTemplate({
             </AnalysisCard>
 
             {data.comprehensive_analysis.beginner_summary && (
-              <AnalysisCard title={isThai ? "สรุปสำหรับมือใหม่ (Beginner Summary)" : "Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
+              <AnalysisCard title={isThai ? "สรุปปัจจัยพื้นฐานสำหรับมือใหม่ (Fundamental Beginner Summary)" : "Fundamental Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
                 <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{data.comprehensive_analysis.beginner_summary.business_type_simple || ''}</Markdown></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                   <div>
@@ -706,7 +715,7 @@ export default function ReportTemplate({
             )}
 
             {data.comprehensive_analysis.final_verdict_summary && (
-              <AnalysisCard title={isThai ? "บทสรุปสุดท้าย (Final Verdict)" : "Final Verdict Summary"}>
+              <AnalysisCard title={isThai ? "บทสรุปการประเมินมูลค่า & พื้นฐาน (Fundamental & Valuation Verdict)" : "Fundamental & Valuation Verdict"}>
                  <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "น่าศึกษาต่อไหม:" : "Worth Studying Further?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.comprehensive_analysis.final_verdict_summary.worth_further_study || '')}</Markdown></div></div>
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "พื้นฐานดีจริงไหม:" : "Strong Fundamentals?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.comprehensive_analysis.final_verdict_summary.strong_fundamentals || '')}</Markdown></div></div>
@@ -1033,7 +1042,7 @@ export default function ReportTemplate({
             </div>
 
             {data.technical_analysis.beginner_summary && (
-              <AnalysisCard title={isThai ? "สรุปสำหรับมือใหม่ (Beginner Summary)" : "Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
+              <AnalysisCard title={isThai ? "สรุปกลยุทธ์ & จังหวะเทรดสำหรับมือใหม่ (Technical & Trading Setup Summary)" : "Technical & Trading Setup Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
                 <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{data.technical_analysis.beginner_summary.technical_overview || ''}</Markdown></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
                   <div>
@@ -1141,7 +1150,7 @@ export default function ReportTemplate({
             )}
 
             {data.technical_analysis.final_verdict_summary && (
-              <AnalysisCard title={isThai ? "บทสรุปสุดท้าย (Final Verdict)" : "Final Verdict Summary"}>
+              <AnalysisCard title={isThai ? "บทสรุปแผนการเทรด & กลยุทธ์เทคนิคอล (Technical Execution Verdict)" : "Technical Execution Verdict"}>
                  <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "จังหวะน่าเข้าไหม:" : "Good Timing?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.technical_analysis.final_verdict_summary.is_good_timing || '')}</Markdown></div></div>
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "ถ้ารอ ต้องรออะไร:" : "What to wait for?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.technical_analysis.final_verdict_summary.what_to_wait_for || '')}</Markdown></div></div>

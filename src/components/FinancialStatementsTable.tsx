@@ -144,42 +144,23 @@ export function FinancialStatementsTable({
       return values.map((_, idx) => yoy[idx] !== undefined && yoy[idx] !== null ? Number(yoy[idx]) : null);
     }
 
-    // 3. For 4-quarter datasets: calculate YoY percentage change for each quarter
-    const revYoY = data.income_statement?.yoy_revenue_growth_pct;
-    const baseRevGrowth = (revYoY && revYoY.length > 0) ? Number(revYoY[revYoY.length - 1] || 0) : 0;
-
-    const ratioKeys = [
-      'gross_margin', 'net_margin', 'operating_margin', 'ebit_margin', 'ebitda_margin',
-      'tax_rate', 'current_ratio', 'quick_ratio', 'debt_to_equity', 'equity_ratio',
-      'debt_to_asset', 'roe', 'roa', 'roic', 'fcf_to_sales', 'fcf_to_net_income'
-    ];
-
+    // 3. For quarter-by-quarter datasets: calculate percentage change for each quarter based on this specific line item
     return values.map((val, idx) => {
       if (val === null || val === undefined) return null;
 
-      // When prior quarter exists, calculate delta
+      // When prior quarter exists, calculate authentic delta for this exact line item
       if (idx > 0 && values[idx - 1] !== null && values[idx - 1] !== undefined && values[idx - 1] !== 0) {
         const prev = values[idx - 1]!;
-        const qoqGrowth = ((val - prev) / Math.abs(prev)) * 100;
-        
-        // For level variables (Revenue, Profit, Assets, Cash, Debt): blend with revenue growth pace
-        if (metricKey && !ratioKeys.includes(metricKey)) {
-          const quarterReportedYoY = (revYoY && revYoY[idx] !== undefined && revYoY[idx] !== null) ? Number(revYoY[idx]) : baseRevGrowth;
-          return Number((quarterReportedYoY + (qoqGrowth * 0.15)).toFixed(2));
-        }
-        
-        // For margins and financial ratios: percentage change vs previous quarter baseline
-        return Number(qoqGrowth.toFixed(2));
+        const delta = ((val - prev) / Math.abs(prev)) * 100;
+        return Number(delta.toFixed(2));
       }
 
-      // First point (idx = 0):
-      if (metricKey && !ratioKeys.includes(metricKey)) {
-        const quarterReportedYoY = (revYoY && revYoY[0] !== undefined && revYoY[0] !== null) ? Number(revYoY[0]) : baseRevGrowth;
-        return Number(quarterReportedYoY.toFixed(2));
+      // First point (idx = 0): No prior baseline quarter exists in this window
+      if (metricKey === 'revenue' && data.income_statement?.yoy_revenue_growth_pct?.[0] !== undefined) {
+        return Number(data.income_statement.yoy_revenue_growth_pct[0]);
       }
 
-      // Initial anchor for ratios
-      return 0.0;
+      return null;
     });
   };
 

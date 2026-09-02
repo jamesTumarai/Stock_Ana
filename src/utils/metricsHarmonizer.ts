@@ -133,10 +133,17 @@ export function extractCleanRsi(text?: string): { value: number; statusTh: strin
  */
 export function evaluatePeerStatus(peer: PeerCompanyItem, isTarget: boolean): { labelTh: string; labelEn: string } {
   const fwdPe = peer.pe_forward || peer.pe_trailing;
+  const trailingPe = peer.pe_trailing || 0;
   const growth = peer.revenue_growth_yoy_pct || 0;
   const netMargin = peer.net_margin_pct || 0;
 
   if (isTarget) {
+    if (trailingPe > 150 || (fwdPe && fwdPe > 120)) {
+      return { labelTh: 'Valuation พรีเมียมสูงมาก (High Growth Expectation)', labelEn: 'Significant High Valuation Premium' };
+    }
+    if (trailingPe > 70 || (fwdPe && fwdPe > 60)) {
+      return { labelTh: 'พรีเมียมสูงตามความคาดหวังตลาด', labelEn: 'Elevated Valuation Premium' };
+    }
     if (growth >= 30 && netMargin >= 40) {
       return { labelTh: 'พรีเมียมตามคุณภาพ & การเติบโตสูง', labelEn: 'Premium Quality & Hyper Growth' };
     }
@@ -149,34 +156,45 @@ export function evaluatePeerStatus(peer: PeerCompanyItem, isTarget: boolean): { 
     return { labelTh: 'หุ้นหลักที่วิเคราะห์', labelEn: 'Target Stock' };
   }
 
-  if (fwdPe && fwdPe < 25 && growth >= 15) {
-    return { labelTh: 'ถูกกว่ากลุ่มเมื่อเทียบการเติบโต', labelEn: 'Undervalued relative to growth' };
+  if (peer.pe_trailing && peer.pe_trailing < 15) {
+    return { labelTh: 'มูลค่าต่ำกว่ากลุ่ม (Value Play)', labelEn: 'Lower Valuation (Value Play)' };
   }
-  if (growth > 30) {
-    return { labelTh: 'เติบโตสูงเป็นผู้นำกลุ่ม', labelEn: 'Top-tier growth leader' };
+  if (peer.revenue_growth_yoy_pct && peer.revenue_growth_yoy_pct < 10) {
+    return { labelTh: 'เติบโตต่ำกว่าค่าเฉลี่ยกลุ่ม', labelEn: 'Below Sector Growth' };
   }
-  if (netMargin > 45) {
-    return { labelTh: 'อัตรากำไรสุทธิสูงพิเศษ', labelEn: 'High margin efficiency' };
-  }
-  if (growth < 10) {
-    return { labelTh: 'เติบโตต่ำกว่าค่าเฉลี่ยกลุ่ม', labelEn: 'Below-average growth' };
-  }
-  if (fwdPe && fwdPe > 50) {
-    return { labelTh: 'ระดับราคาเทรดด้วยพรีเมียมสูง', labelEn: 'High valuation premium' };
-  }
-
-  return { labelTh: 'สถานะระดับกลางของกลุ่ม', labelEn: 'Peer median range' };
+  return { labelTh: 'คู่แข่งในอุตสาหกรรม', labelEn: 'Industry Peer' };
 }
 
 /**
- * Harmonizes and validates all report sections against the single source of truth.
+ * Harmonizes all interconnected sub-sections of a report against ground truth metrics.
  */
-export function harmonizeReportData(data: ReportData, ticker?: string): ReportData {
+export function harmonizeReportMetrics(data?: ReportData, ticker?: string): ReportData | undefined {
+  return harmonizeReportMetricsInternal(data, ticker);
+}
+
+export const harmonizeReportData = (data?: ReportData, ticker?: string): ReportData => {
+  return (harmonizeReportMetricsInternal(data, ticker) || data) as ReportData;
+};
+
+export function harmonizeReportMetricsInternal(data?: ReportData, ticker?: string): ReportData | undefined {
   if (!data) return data;
 
   const targetTicker = (ticker || data.ticker || 'STOCK').toUpperCase();
   const metrics = extractGroundTruthMetrics(data);
   const result: ReportData = JSON.parse(JSON.stringify(data));
+
+  // Find single-source-of-truth live valuation multiples
+  const peRatioItem = result.valuation_ratios?.find(r => r.name.includes('P/E') && !r.name.includes('Forward') && !r.name.includes('PEG'));
+  const fwdPeRatioItem = result.valuation_ratios?.find(r => r.name.toLowerCase().includes('forward') || r.name.toLowerCase().includes('fwd'));
+  const evEbitdaItem = result.valuation_ratios?.find(r => r.name.includes('EV/EBITDA') || r.name.includes('EV / EBITDA'));
+  const pegItem = result.valuation_ratios?.find(r => r.name.includes('PEG'));
+  const pfcfItem = result.valuation_ratios?.find(r => r.name.includes('P/FCF') || r.name.includes('Price to Free Cash Flow'));
+
+  const liveTrailingPe = peRatioItem?.value || (result.peer_comparison?.peers?.find(p => p.ticker.toUpperCase() === targetTicker)?.pe_trailing) || null;
+  const liveFwdPe = fwdPeRatioItem?.value || (result.peer_comparison?.peers?.find(p => p.ticker.toUpperCase() === targetTicker)?.pe_forward) || null;
+  const liveEvEbitda = evEbitdaItem?.value || (result.peer_comparison?.peers?.find(p => p.ticker.toUpperCase() === targetTicker)?.ev_ebitda) || null;
+  const livePeg = pegItem?.value || (liveTrailingPe ? roundTo(liveTrailingPe / 25, 2) : null);
+  const livePfcf = pfcfItem?.value || null;
 
   // 1. Harmonize Five Pillars
   if (result.five_pillars) {
@@ -212,6 +230,44 @@ export function harmonizeReportData(data: ReportData, ticker?: string): ReportDa
         result.five_pillars.balance_sheet.is_net_cash = netCash >= 0;
       }
     }
+
+    if (result.five_pillars.yields) {
+      if (liveTrailingPe) {
+        result.five_pillars.yields.pe_multiple = liveTrailingPe;
+        result.five_pillars.yields.earnings_yield_pct = roundTo(100 / liveTrailingPe, 2) || 0.3;
+      }
+      if (livePfcf) {
+        result.five_pillars.yields.pfcf_multiple = livePfcf;
+        result.five_pillars.yields.fcf_yield_pct = roundTo(100 / livePfcf, 2) || 0.8;
+      }
+    }
+
+    if (result.five_pillars.growth) {
+      if (livePeg) {
+        result.five_pillars.growth.peg_ratio = livePeg;
+      }
+    }
+
+    if (result.five_pillars.peer_matrix && Array.isArray(result.five_pillars.peer_matrix)) {
+      result.five_pillars.peer_matrix = result.five_pillars.peer_matrix.map(row => {
+        const copy = { ...row };
+        const name = (row.metric_name || '').toLowerCase();
+        if (name.includes('p/e (ttm)') || (name.includes('p/e') && !name.includes('forward') && !name.includes('peg'))) {
+          if (liveTrailingPe) copy.target_value = `${liveTrailingPe}x`;
+        } else if (name.includes('forward p/e') || name.includes('fwd p/e')) {
+          if (liveFwdPe) copy.target_value = `${liveFwdPe}x`;
+        } else if (name.includes('peg')) {
+          if (livePeg) copy.target_value = `${livePeg}x`;
+        } else if (name.includes('ev / ebitda') || name.includes('ev/ebitda')) {
+          if (liveEvEbitda) copy.target_value = `${liveEvEbitda}x`;
+        } else if (name.includes('gross margin')) {
+          if (metrics.grossMarginPct !== null && metrics.grossMarginPct !== undefined) copy.target_value = `${metrics.grossMarginPct}%`;
+        } else if (name.includes('net margin')) {
+          if (metrics.netMarginPct !== null && metrics.netMarginPct !== undefined) copy.target_value = `${metrics.netMarginPct}%`;
+        }
+        return copy;
+      });
+    }
   }
 
   // 2. Harmonize Peer Comparison
@@ -227,9 +283,8 @@ export function harmonizeReportData(data: ReportData, ticker?: string): ReportDa
         if (metrics.grossMarginPct !== null && metrics.grossMarginPct !== undefined) {
           copy.gross_margin_pct = metrics.grossMarginPct;
         }
-        const peRatioItem = result.valuation_ratios?.find(r => r.name.includes('P/E') && !r.name.includes('Forward') && !r.name.includes('PEG'));
-        if (peRatioItem && peRatioItem.value !== null && peRatioItem.value !== undefined) {
-          copy.pe_trailing = peRatioItem.value;
+        if (liveTrailingPe) {
+          copy.pe_trailing = liveTrailingPe;
         }
       }
 

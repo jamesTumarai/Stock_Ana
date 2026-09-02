@@ -24,7 +24,27 @@ export function getFinancialAiInsight(
   unit: string = '',
   isThai: boolean = true
 ): FinancialAiInsight {
-  const valStr = latestValue !== null && latestValue !== undefined ? `${latestValue}${unit}` : '-';
+  let formattedVal = '-';
+  if (latestValue !== null && latestValue !== undefined) {
+    if (typeof latestValue === 'number') {
+      if (unit === '$' || unit === 'USD' || unit === '$M' || unit === 'M') {
+        if (Math.abs(latestValue) >= 1000) {
+          formattedVal = `$${(latestValue / 1000).toFixed(2)}B`;
+        } else {
+          formattedVal = `$${latestValue.toLocaleString()}M`;
+        }
+      } else if (unit === '%') {
+        formattedVal = `${latestValue.toFixed(1)}%`;
+      } else if (unit === 'x') {
+        formattedVal = `${latestValue.toFixed(2)}x`;
+      } else {
+        formattedVal = `${latestValue.toLocaleString()}${unit ? ' ' + unit : ''}`;
+      }
+    } else {
+      formattedVal = `${latestValue}${unit}`;
+    }
+  }
+  const valStr = formattedVal;
 
   // 1. Profitability Metrics
   if (key === 'net_margin') {

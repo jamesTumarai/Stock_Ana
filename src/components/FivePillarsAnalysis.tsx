@@ -20,60 +20,60 @@ export function FivePillarsAnalysis({
 }: Props) {
   const [activePillarTab, setActivePillarTab] = useState<'all' | 'growth' | 'profit' | 'solvency' | 'yield' | 'peer'>('all');
 
-  // Fallback / default data
+  // Fallback / default data safely derived from active data
   const growth = data?.growth || {
-    revenue_growth_yoy_pct: 28.5,
-    revenue_cagr_3yr_pct: 24.8,
-    revenue_cagr_5yr_pct: 22.1,
-    eps_growth_yoy_pct: 38.2,
-    eps_cagr_3yr_pct: 35.4,
-    fcf_growth_yoy_pct: 42.5,
-    peg_ratio: 0.97,
-    peg_interpretation: 'PEG < 1.0x สะท้อนสภาวะ GARP (Growth at a Reasonable Price) มูลค่าเหมาะสมเมื่อเทียบกับการเติบโตของกำไร'
+    revenue_growth_yoy_pct: 20.0,
+    revenue_cagr_3yr_pct: 18.5,
+    revenue_cagr_5yr_pct: 16.0,
+    eps_growth_yoy_pct: 25.0,
+    eps_cagr_3yr_pct: 22.0,
+    fcf_growth_yoy_pct: 20.0,
+    peg_ratio: 1.5,
+    peg_interpretation: isThai ? 'ประเมินความคุ้มค่าของการเติบโตเทียบกับราคา (PEG Ratio)' : 'PEG Ratio Valuation'
   };
 
   const profit = data?.profitability || {
-    roic_pct: 28.4,
-    roe_pct: 32.6,
-    gross_margin_pct: 82.4,
-    operating_margin_pct: 39.1,
-    net_margin_pct: 32.8,
-    fcf_margin_pct: 35.6,
-    capital_efficiency_verdict: 'ROIC สูงกว่า WACC ถึง 2.7 เท่า บริษัทสร้างผลตอบแทนจากเงินลงทุน (Capital Compounding) ได้อย่างยอดเยี่ยม'
+    roic_pct: 18.5,
+    roe_pct: 20.0,
+    gross_margin_pct: 25.0,
+    operating_margin_pct: 12.0,
+    net_margin_pct: 8.5,
+    fcf_margin_pct: 10.0,
+    capital_efficiency_verdict: isThai ? 'ประสิทธิภาพการสร้างผลตอบแทนจากเงินลงทุน (Capital Efficiency)' : 'Capital Compounding & Efficiency'
   };
 
   const balance = data?.balance_sheet || {
-    total_cash_and_investments_b: 6.85,
-    total_debt_b: 0.25,
-    net_cash_or_debt_b: 6.60,
+    total_cash_and_investments_b: 10.0,
+    total_debt_b: 2.0,
+    net_cash_or_debt_b: 8.0,
     is_net_cash: true,
-    debt_to_equity: 0.04,
-    net_debt_to_ebitda: -3.40,
-    interest_coverage: 142.5,
-    solvency_score_label: 'Fortress Balance Sheet (หนี้สินต่ำมาก มีเงินสดสุทธิ $6.6B)'
+    debt_to_equity: 0.2,
+    net_debt_to_ebitda: -1.5,
+    interest_coverage: 25.0,
+    solvency_score_label: isThai ? 'โครงสร้างงบดุลและสภาพคล่องทางการเงิน' : 'Balance Sheet Solvency & Liquidity'
   };
 
   const yields = data?.yields || {
-    pe_multiple: 37.0,
-    earnings_yield_pct: 2.70,
-    pfcf_multiple: 24.1,
-    fcf_yield_pct: 4.15,
+    pe_multiple: 25.0,
+    earnings_yield_pct: 4.0,
+    pfcf_multiple: 20.0,
+    fcf_yield_pct: 5.0,
     dividend_yield_pct: 0.0,
     treasury_10yr_yield_pct: 4.25,
-    yield_spread_vs_treasury: -0.10,
-    yield_interpretation: 'FCF Yield อยู่ที่ 4.15% ใกล้เคียงพันธบัตร 10 ปี (4.25%) แต่ได้การเติบโตของกระแสเงินสดกว่า 40% ต่อปีพ่วงด้วย'
+    yield_spread_vs_treasury: 0.75,
+    yield_interpretation: isThai ? 'อัตราผลตอบแทนกระแสเงินสดและกำไรเทียบกับผลตอบแทนพันธบัตร' : 'Cash Flow & Earnings Yield vs Treasury'
   };
 
   const peerMatrix: PeerBenchmarkRow[] = data?.peer_matrix || [
-    { metric_name: 'P/E (TTM)', metric_name_th: 'ค่า P/E ย้อนหลัง', target_value: '37.0x', sector_median: '25.4x', direct_peer_value: '42.5x', status: 'premium', status_label_th: 'พรีเมียมตามการเติบโต' },
-    { metric_name: 'Forward P/E', metric_name_th: 'ค่า Forward P/E', target_value: '26.8x', sector_median: '22.1x', direct_peer_value: '33.2x', status: 'better', status_label_th: 'สมเหตุสมผลล่วงหน้า' },
-    { metric_name: 'PEG Ratio', metric_name_th: 'ค่า PEG Ratio', target_value: '0.97x', sector_median: '1.45x', direct_peer_value: '1.35x', status: 'better', status_label_th: 'ถูกกว่ากลุ่มเมื่อเทียบการเติบโต' },
-    { metric_name: 'EV / EBITDA', metric_name_th: 'ค่า EV / EBITDA', target_value: '24.2x', sector_median: '18.6x', direct_peer_value: '29.0x', status: 'neutral', status_label_th: 'อยู่ในกรอบคู่แข่งชั้นนำ' },
-    { metric_name: 'FCF Yield (%)', metric_name_th: 'อัตราผลตอบแทนกระแสเงินสด', target_value: '4.15%', sector_median: '2.80%', direct_peer_value: '2.10%', status: 'better', status_label_th: 'FCF Yield สูงกว่าค่าเฉลี่ย' },
-    { metric_name: 'ROIC (%)', metric_name_th: 'ผลตอบแทนเงินลงทุน (ROIC)', target_value: '28.4%', sector_median: '12.5%', direct_peer_value: '14.2%', status: 'better', status_label_th: 'ประสิทธิภาพเงินทุนระดับท็อป' },
-    { metric_name: 'Revenue Growth YoY (%)', metric_name_th: 'รายได้เติบโต YoY', target_value: '+28.5%', sector_median: '+14.2%', direct_peer_value: '+22.0%', status: 'better', status_label_th: 'เติบโตเร็วกว่า Sector 2 เท่า' },
-    { metric_name: 'Net Margin (%)', metric_name_th: 'อัตรากำไรสุทธิ', target_value: '32.8%', sector_median: '16.4%', direct_peer_value: '18.5%', status: 'better', status_label_th: 'ความสามารถทำกำไรสูงเป็น 2 เท่า' },
-    { metric_name: 'Net Debt / EBITDA', metric_name_th: 'หนี้สินสุทธิต่อ EBITDA', target_value: '-3.4x (Net Cash)', sector_median: '+1.8x', direct_peer_value: '-1.2x', status: 'better', status_label_th: 'งบดุลไร้ความเสี่ยงหนี้สิน' }
+    { metric_name: 'P/E (TTM)', metric_name_th: 'ค่า P/E ย้อนหลัง', target_value: `${yields.pe_multiple}x`, sector_median: '25.0x', direct_peer_value: '28.0x', status: 'neutral', status_label_th: 'พรีเมียมตามการเติบโต' },
+    { metric_name: 'Forward P/E', metric_name_th: 'ค่า Forward P/E', target_value: `${(yields.pe_multiple * 0.8).toFixed(1)}x`, sector_median: '22.0x', direct_peer_value: '24.0x', status: 'better', status_label_th: 'สมเหตุสมผลล่วงหน้า' },
+    { metric_name: 'PEG Ratio', metric_name_th: 'ค่า PEG Ratio', target_value: `${growth.peg_ratio}x`, sector_median: '1.50x', direct_peer_value: '1.40x', status: 'better', status_label_th: 'อัตราส่วนราคาต่อการเติบโต' },
+    { metric_name: 'EV / EBITDA', metric_name_th: 'ค่า EV / EBITDA', target_value: '18.5x', sector_median: '16.0x', direct_peer_value: '20.0x', status: 'neutral', status_label_th: 'อยู่ในกรอบคู่แข่งชั้นนำ' },
+    { metric_name: 'FCF Yield (%)', metric_name_th: 'อัตราผลตอบแทนกระแสเงินสด', target_value: `${yields.fcf_yield_pct}%`, sector_median: '3.50%', direct_peer_value: '3.00%', status: 'better', status_label_th: 'ผลตอบแทนกระแสเงินสด' },
+    { metric_name: 'ROIC (%)', metric_name_th: 'ผลตอบแทนเงินลงทุน (ROIC)', target_value: `${profit.roic_pct}%`, sector_median: '12.0%', direct_peer_value: '14.0%', status: 'better', status_label_th: 'ประสิทธิภาพเงินทุน' },
+    { metric_name: 'Revenue Growth YoY (%)', metric_name_th: 'รายได้เติบโต YoY', target_value: `+${growth.revenue_growth_yoy_pct}%`, sector_median: '+12.0%', direct_peer_value: '+15.0%', status: 'better', status_label_th: 'อัตราเติบโตรายได้' },
+    { metric_name: 'Net Margin (%)', metric_name_th: 'อัตรากำไรสุทธิ', target_value: `${profit.net_margin_pct}%`, sector_median: '10.0%', direct_peer_value: '12.0%', status: 'better', status_label_th: 'ความสามารถทำกำไร' },
+    { metric_name: 'Net Debt / EBITDA', metric_name_th: 'หนี้สินสุทธิต่อ EBITDA', target_value: `${balance.net_debt_to_ebitda}x`, sector_median: '+1.5x', direct_peer_value: '+0.5x', status: 'better', status_label_th: 'โครงสร้างหนี้สิน' }
   ];
 
   return (
