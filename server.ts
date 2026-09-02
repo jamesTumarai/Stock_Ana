@@ -222,7 +222,13 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 3. 100% REAL DATA & ZERO HALLUCINATIONS: Every single metric, revenue number, margin percentage, cash flow, debt level, institutional holder name, and insider transaction MUST come from verified, authentic public records (SEC Form 10-K, 10-Q, 8-K, Form 4, 13F filings, and official investor relations).
 4. EXHAUST ALL SEARCH EFFORTS: You MUST execute multiple thorough web searches to locate authentic figures for all required fields.
 5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.
-6. PEER BENCHMARK REAL-TIME GROUNDING: For all peer companies listed in "peer_comparison" (e.g., AMD, INTC, AVGO, TSM, MSFT, ORCL, etc.), you MUST perform live web searches to fetch their LIVE current Market Cap and P/E ratios as of TODAY (${todayISO}). NEVER rely on static memory or outdated pre-training knowledge which severely underestimates companies that surged recently (e.g., AMD market cap is ~$750B–$770B in 2026, NOT $280B–$295B).`;
+6. PEER BENCHMARK REAL-TIME GROUNDING: For all peer companies listed in "peer_comparison" (e.g., AMD, INTC, AVGO, TSM, MSFT, ORCL, etc.), you MUST perform live web searches to fetch their LIVE current Market Cap and P/E ratios as of TODAY (${todayISO}). NEVER rely on static memory or outdated pre-training knowledge which severely underestimates companies that surged recently (e.g., AMD market cap is ~$750B–$770B in 2026, NOT $280B–$295B).
+7. AUTHENTIC 3 FINANCIAL STATEMENTS (INCOME, BALANCE SHEET, CASH FLOW):
+   - In "financial_statements", do NOT stop at searching only headline revenue and EPS. You MUST execute dedicated web searches for the company's official SEC Form 10-Q and 10-K "CONSOLIDATED BALANCE SHEETS" and "CONSOLIDATED STATEMENTS OF CASH FLOWS" across all 4 reporting periods.
+   - For Balance Sheet: Extract the exact verified figures for "total_assets", "total_current_assets", "cash_and_equivalents", "short_term_investments", "accounts_receivable", "inventory", "net_ppe", "total_liabilities", "total_current_liabilities", "accounts_payable", "short_term_debt", "total_debt", and "total_equity".
+   - For Cash Flow: Extract "operating_cash_flow", "depreciation", "capex", "free_cash_flow" (OCF - CapEx), "investing_cash_flow", "financing_cash_flow", "stock_issuance_repurchase", and "dividends_paid".
+   - NEVER guess, fabricate, or shift older 2023/2024 Balance Sheet numbers into 2025/2026 (e.g. for TSLA, Total Assets in 2025/Q3 is ~$133.74B and 2026/Q2 is ~$148.52B, NOT $119B–$125B from 2024). Every quarter's Balance Sheet and Cash Flow MUST match the SEC filing table for that exact period.
+   - Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.`;
       
       let dynamicSchema = ``;
       
@@ -460,25 +466,38 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "balance_sheet": {
-      "cash_and_equivalents": [4000, 4200, 4500, 5000],
-      "total_current_assets": [4800, 5100, 5500, 6200],
-      "total_assets": [6200, 6600, 7100, 7900],
-      "total_current_liabilities": [700, 750, 800, 900],
-      "total_debt": [0, 0, 0, 0],
-      "total_liabilities": [950, 1020, 1100, 1250],
-      "total_equity": [5250, 5580, 6000, 6650],
-      "current_ratio": [6.85, 6.80, 6.88, 6.90],
-      "quick_ratio": [6.1, 6.2, 6.3, 6.4],
-      "debt_to_equity": [0, 0, 0, 0],
-      "debt_to_ebitda": [0, 0, 0, 0],
+      "cash_and_equivalents": [18290, 16510, 16600, 15220],
+      "short_term_investments": [23360, 27550, 28140, 28310],
+      "total_current_assets": [64650, 68640, 69750, 68760],
+      "accounts_receivable": [4700, 4580, 3960, 4090],
+      "inventory": [12800, 13100, 13400, 13900],
+      "net_ppe": [32000, 34500, 36800, 39100],
+      "total_assets": [133740, 137810, 143720, 148520],
+      "total_current_liabilities": [28500, 29800, 30500, 31200],
+      "accounts_payable": [15200, 16100, 16400, 16800],
+      "short_term_debt": [2100, 2300, 2400, 2500],
+      "total_debt": [7800, 7500, 7200, 6900],
+      "total_liabilities": [42500, 44200, 45100, 46300],
+      "total_equity": [91240, 93610, 98620, 102220],
+      "current_ratio": [2.27, 2.30, 2.29, 2.20],
+      "quick_ratio": [1.82, 1.86, 1.85, 1.76],
+      "debt_to_equity": [0.09, 0.08, 0.07, 0.07],
+      "debt_to_ebitda": [0.55, 0.52, 0.48, 0.45],
       "commentary": "..."
     },
     "cash_flow": {
-      "operating_cash_flow": [220, 310, 420, 550],
-      "capex": [15, 18, 20, 25],
-      "free_cash_flow": [205, 292, 400, 525],
-      "fcf_margin_pct": [28.2, 35.3, 45.2, 52.3],
-      "fcf_vs_net_income_ratio": [1.43, 3.70, 1.87, 1.61],
+      "operating_cash_flow": [4500, 4800, 5100, 5600],
+      "depreciation": [1200, 1250, 1300, 1350],
+      "change_working_capital": [-300, -250, -200, -150],
+      "capex": [2100, 2300, 2400, 2600],
+      "investing_cash_flow": [-2500, -2800, -3000, -3200],
+      "free_cash_flow": [2400, 2500, 2700, 3000],
+      "fcf_margin_pct": [10.2, 10.5, 11.0, 11.8],
+      "fcf_vs_net_income_ratio": [1.45, 1.50, 1.52, 1.58],
+      "financing_cash_flow": [-1200, -1400, -1500, -1600],
+      "stock_issuance_repurchase": [-800, -900, -1000, -1100],
+      "dividends_paid": [0, 0, 0, 0],
+      "net_change_cash": [800, 600, 600, 800],
       "commentary": "..."
     },
     "red_flags": ["..."]
