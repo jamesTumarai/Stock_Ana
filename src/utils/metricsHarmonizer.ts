@@ -227,6 +227,10 @@ export function harmonizeReportData(data: ReportData, ticker?: string): ReportDa
         if (metrics.grossMarginPct !== null && metrics.grossMarginPct !== undefined) {
           copy.gross_margin_pct = metrics.grossMarginPct;
         }
+        const peRatioItem = result.valuation_ratios?.find(r => r.name.includes('P/E') && !r.name.includes('Forward') && !r.name.includes('PEG'));
+        if (peRatioItem && peRatioItem.value !== null && peRatioItem.value !== undefined) {
+          copy.pe_trailing = peRatioItem.value;
+        }
       }
 
       const status = evaluatePeerStatus(copy, isTarget);
