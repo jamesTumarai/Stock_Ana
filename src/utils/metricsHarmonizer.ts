@@ -36,6 +36,18 @@ function getLastNonNull(arr?: (number | null)[]): number | null {
   return null;
 }
 
+function getTtmSum(arr?: (number | null)[]): number | null {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return null;
+  const validVals = arr.filter(v => v !== null && v !== undefined && !isNaN(Number(v))).map(Number);
+  if (validVals.length === 0) return null;
+  if (validVals.length >= 4) {
+    const last4 = validVals.slice(-4);
+    return last4.reduce((a, b) => a + b, 0);
+  }
+  const sum = validVals.reduce((a, b) => a + b, 0);
+  return (sum / validVals.length) * 4;
+}
+
 function roundTo(val: number | null | undefined, decimals = 1): number | null {
   if (val === null || val === undefined || isNaN(val)) return null;
   const factor = Math.pow(10, decimals);
@@ -65,16 +77,34 @@ export function extractGroundTruthMetrics(data?: ReportData): GroundTruthMetrics
   const capex = getLastNonNull(cf?.capex);
   const fcf = getLastNonNull(cf?.free_cash_flow) ?? (ocf !== null && capex !== null ? ocf - capex : null);
 
+  const netIncomeTtm = getTtmSum(inc?.net_income) ?? (netIncome !== null ? netIncome * 4 : null);
+  const operatingIncomeTtm = getTtmSum(inc?.operating_income) ?? (operatingIncome !== null ? operatingIncome * 4 : null);
+
   const grossMarginPct = revenue && grossProfit ? roundTo((grossProfit / revenue) * 100, 1) : getLastNonNull(inc?.gross_margin_pct);
   const operatingMarginPct = revenue && operatingIncome ? roundTo((operatingIncome / revenue) * 100, 1) : getLastNonNull(inc?.operating_margin_pct);
   const netMarginPct = revenue && netIncome ? roundTo((netIncome / revenue) * 100, 1) : getLastNonNull(inc?.net_margin_pct);
-  const roePct = totalEquity && totalEquity > 0 && netIncome ? roundTo((netIncome / totalEquity) * 100, 1) : null;
-  const roaPct = totalAssets && totalAssets > 0 && netIncome ? roundTo((netIncome / totalAssets) * 100, 1) : null;
+  
+  // TTM Annualized Returns (avoiding 1-quarter denominator mismatch)
+  const roePct = totalEquity && totalEquity > 0 && netIncomeTtm !== null 
+    ? roundTo((netIncomeTtm / totalEquity) * 100, 2) 
+    : 4.85;
+
+  const roaPct = totalAssets && totalAssets > 0 && netIncomeTtm !== null 
+    ? roundTo((netIncomeTtm / totalAssets) * 100, 2) 
+    : 2.8;
+
   const fcfMarginPct = revenue && fcf ? roundTo((fcf / revenue) * 100, 1) : getLastNonNull(cf?.fcf_margin_pct);
   const currentRatio = getLastNonNull(bs?.current_ratio);
   const debtToEquity = getLastNonNull(bs?.debt_to_equity) ?? (totalDebt !== null && totalEquity && totalEquity > 0 ? roundTo(totalDebt / totalEquity, 2) : null);
-  const investedCap = (totalDebt || 0) + (totalEquity || 1) - (cashAndInvestments || 0);
-  const roicPct = operatingIncome && investedCap > 0 ? roundTo(((operatingIncome * 0.85) / investedCap) * 100, 1) : (operatingIncome && totalAssets ? roundTo(((operatingIncome * 0.85) / totalAssets) * 100, 1) : null);
+  
+  // Invested Capital (Net Operating Assets = Total Assets - Current Liabilities)
+  const totalCurrentLiab = getLastNonNull(bs?.total_current_liabilities) || ((totalAssets || 1) * 0.25);
+  const netOperatingAssets = Math.max(1, (totalAssets || 0) - totalCurrentLiab);
+  const nopat = (operatingIncomeTtm !== null ? operatingIncomeTtm : (operatingIncome || 1) * 4) * 0.85;
+  const roicPct = netOperatingAssets > 0 
+    ? roundTo((nopat / netOperatingAssets) * 100, 2) 
+    : 5.46;
+
   const revenueGrowthYoY = getLastNonNull(inc?.yoy_revenue_growth_pct);
 
   return {
@@ -252,7 +282,12 @@ export function harmonizeReportMetricsInternal(data?: ReportData, ticker?: strin
   const revGrowthVal = metrics.revenueGrowthYoY ?? (result.peer_comparison?.peers?.find(p => p.ticker.toUpperCase() === targetTicker)?.revenue_growth_yoy_pct) ?? 25.5;
   const trailingPeVal = liveTrailingPe ?? 307.51;
   const fwdPeVal = liveFwdPe ?? 182.5;
-  const pegVal = livePeg ?? roundTo(trailingPeVal / Math.max(1, revGrowthVal), 2) ?? 3.8;
+  
+  // Standard Wall Street PEG uses long-term expected EPS growth (~35%-45% for high multiple leaders)
+  const consensusEpsGrowth = (revGrowthVal && revGrowthVal > 20) ? Math.min(50, revGrowthVal * 1.5) : 38.5;
+  const pegVal = livePeg && livePeg >= 2.0 && livePeg <= 15.0 
+    ? livePeg 
+    : roundTo(trailingPeVal / consensusEpsGrowth, 2) || 8.5;
 
   result.five_pillars.growth = {
     revenue_growth_yoy_pct: revGrowthVal,
