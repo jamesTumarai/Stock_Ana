@@ -49,10 +49,18 @@ export function IntrinsicValueEngine({
 
   const [showSimulator, setShowSimulator] = useState(false);
   
-  // Interactive Simulator state
-  const [simWacc, setSimWacc] = useState(dcf.assumptions.wacc_pct || coc?.wacc_pct || 11.8);
-  const [simGrowth, setSimGrowth] = useState(dcf.assumptions.terminal_growth_pct || 3.5);
+  // Single Source of Truth: Region-aware CAPM WACC derived from stock Beta
+  const effectiveWacc = coc?.wacc_pct || dcf.assumptions.wacc_pct || 11.5;
+  const effectiveGrowth = dcf.assumptions.terminal_growth_pct || 3.5;
+  const [simWacc, setSimWacc] = useState(effectiveWacc);
+  const [simGrowth, setSimGrowth] = useState(effectiveGrowth);
   const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct || 22);
+
+  React.useEffect(() => {
+    setSimWacc(coc?.wacc_pct || dcf.assumptions.wacc_pct || 11.5);
+    setSimGrowth(dcf.assumptions.terminal_growth_pct || 3.5);
+    setSimCagr(base.revenue_cagr_pct || 22);
+  }, [coc?.wacc_pct, dcf.assumptions.wacc_pct, dcf.assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
 
   // Exact closed-form live DCF calculation based on user adjustments
   const recalculatedBaseFairValue = useMemo(() => {
@@ -137,9 +145,9 @@ export function IntrinsicValueEngine({
             <Calculator className="w-3.5 h-3.5 text-[#0b5a4b]" />
             <span><strong>{isThai ? 'แบบจำลอง:' : 'Model:'}</strong> {modelSelector?.model_name_th || '3-Stage DCF (FCFE/FCFF)'}</span>
             <span className="text-stone-300">•</span>
-            <span><strong>WACC:</strong> {dcf.assumptions.wacc_pct || coc?.wacc_pct || 9.2}%</span>
+            <span><strong>WACC:</strong> {effectiveWacc.toFixed(1)}%</span>
             <span className="text-stone-300">•</span>
-            <span><strong>Terminal g:</strong> {dcf.assumptions.terminal_growth_pct || 3.5}%</span>
+            <span><strong>Terminal g:</strong> {effectiveGrowth.toFixed(1)}%</span>
           </div>
           <div className="text-[11px] text-stone-500 font-sans">
             <span>{isThai ? 'คำนวณล่าสุดเมื่อ:' : 'Model Date:'} <strong className="font-mono text-stone-800">{data.as_of_date || new Date().toISOString().split('T')[0]}</strong></span>
@@ -370,10 +378,10 @@ export function IntrinsicValueEngine({
             {/* 3 Pills at bottom */}
             <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-stone-100 text-[11px] font-mono text-stone-600 flex-wrap">
               <span className="bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-200/80">
-                WACC ปัจจุบัน: <strong className="text-stone-900">{dcf.assumptions.wacc_pct || 9.2}%</strong>
+                WACC ปัจจุบัน: <strong className="text-stone-900">{effectiveWacc.toFixed(1)}%</strong>
               </span>
               <span className="bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-200/80">
-                Terminal Growth: <strong className="text-stone-900">{dcf.assumptions.terminal_growth_pct || 3.5}%</strong>
+                Terminal Growth: <strong className="text-stone-900">{effectiveGrowth.toFixed(1)}%</strong>
               </span>
               <span className="bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-200/80 text-emerald-800 font-bold">
                 {dcf.assumptions.projection_years || 5}-Yr Projection
@@ -400,8 +408,8 @@ export function IntrinsicValueEngine({
               <button
                 type="button"
                 onClick={() => {
-                  setSimWacc(dcf.assumptions.wacc_pct || coc?.wacc_pct || 9.2);
-                  setSimGrowth(dcf.assumptions.terminal_growth_pct || 3.5);
+                  setSimWacc(effectiveWacc);
+                  setSimGrowth(effectiveGrowth);
                   setSimCagr(base.revenue_cagr_pct || 22);
                 }}
                 className="text-xs text-stone-500 hover:text-stone-800 underline cursor-pointer"
@@ -478,7 +486,7 @@ export function IntrinsicValueEngine({
                 <input 
                   type="range" 
                   min="4.0" 
-                  max="16.0" 
+                  max={Math.max(18.0, Number((effectiveWacc + 4.0).toFixed(1)))} 
                   step="0.1"
                   value={simWacc}
                   onChange={(e) => setSimWacc(parseFloat(e.target.value))}
@@ -486,8 +494,8 @@ export function IntrinsicValueEngine({
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
                   <span>4.0%</span>
-                  <span>{(dcf.assumptions.wacc_pct || 9.2).toFixed(1)}% (Base)</span>
-                  <span>16.0%</span>
+                  <span>{effectiveWacc.toFixed(1)}% (Base)</span>
+                  <span>{Math.max(18.0, Number((effectiveWacc + 4.0).toFixed(1))).toFixed(1)}%</span>
                 </div>
               </div>
 

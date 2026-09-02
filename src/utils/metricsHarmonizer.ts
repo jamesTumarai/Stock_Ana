@@ -285,10 +285,10 @@ export function harmonizeReportMetricsInternal(data?: ReportData, ticker?: strin
   const fwdPeVal = liveFwdPe ?? 182.5;
   
   // Standard Wall Street PEG uses long-term expected EPS growth (~35%-45% for high multiple leaders)
-  const consensusEpsGrowth = (revGrowthVal && revGrowthVal > 20) ? Math.min(50, revGrowthVal * 1.5) : 38.5;
-  const pegVal = livePeg && livePeg >= 2.0 && livePeg <= 15.0 
+  // Accept authentic livePeg if available (e.g. 0.36x for NVDA, 7.5x for TSLA)
+  const pegVal = livePeg && livePeg > 0 && livePeg <= 25.0 
     ? livePeg 
-    : roundTo(trailingPeVal / consensusEpsGrowth, 2) || 8.5;
+    : roundTo(trailingPeVal / Math.max(1, revGrowthVal), 2) || 1.2;
 
   result.five_pillars.growth = {
     revenue_growth_yoy_pct: revGrowthVal,

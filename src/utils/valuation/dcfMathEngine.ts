@@ -94,12 +94,11 @@ export function buildRigorousDCFModel(
   const sym = (ticker || data?.ticker || 'STOCK').toUpperCase();
   const currentPrice = data?.intrinsic_value?.current_price || data?.company_profile?.stock_price || 100;
   
-  // 1. Calculate Real Region-Aware WACC
+  // 1. Calculate Real Region-Aware WACC: strictly enforce CAPM WACC as Single Source of Truth!
   const coc = calculateRegionAwareCostOfCapital(data, sym);
-  const existingAssumptions = data?.intrinsic_value?.dcf_model?.assumptions;
-  const waccPct = userWacc ?? existingAssumptions?.wacc_pct ?? (coc.wacc_pct >= 9.0 ? coc.wacc_pct : 11.5);
-  const terminalGrowthPct = userGrowth ?? existingAssumptions?.terminal_growth_pct ?? 3.5;
-  const projectionYears = existingAssumptions?.projection_years ?? 5;
+  const waccPct = userWacc ?? coc.wacc_pct;
+  const terminalGrowthPct = userGrowth ?? data?.intrinsic_value?.dcf_model?.assumptions?.terminal_growth_pct ?? 3.5;
+  const projectionYears = data?.intrinsic_value?.dcf_model?.assumptions?.projection_years ?? 5;
 
   // 2. Extract Starting Financials from 10-K / 10-Q statements
   const inc = data?.financial_statements?.income_statement;

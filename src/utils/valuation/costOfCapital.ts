@@ -118,28 +118,48 @@ export function calculateRegionAwareCostOfCapital(
   const bs = data?.financial_statements?.balance_sheet;
   const inc = data?.financial_statements?.income_statement;
 
-  // Extract Debt and Equity
+  // Extract Balance Sheet Debt and Equity
   const totalDebtM = (bs?.total_debt && bs.total_debt.length > 0) 
     ? (bs.total_debt[bs.total_debt.length - 1] || 0) 
     : 0;
   const totalEquityM = (bs?.total_equity && bs.total_equity.length > 0) 
     ? (bs.total_equity[bs.total_equity.length - 1] || 1000) 
     : 1000;
-  const totalCap = Math.max(1, totalDebtM + totalEquityM);
+
+  // Extract Debt and Equity (Use Market Value of Equity for true financial WACC)
+  let marketCapM = 0;
+  const symUpper = (ticker || data?.ticker || '').toUpperCase();
+  const targetPeer = data?.peer_comparison?.peers?.find(p => p.ticker.toUpperCase() === symUpper);
+  if (targetPeer?.market_cap) {
+    const str = String(targetPeer.market_cap).toUpperCase().trim();
+    if (str.includes('T')) marketCapM = parseFloat(str.replace(/[^0-9.]/g, '')) * 1_000_000;
+    else if (str.includes('B')) marketCapM = parseFloat(str.replace(/[^0-9.]/g, '')) * 1_000;
+  }
+  if (!marketCapM && (data?.company_profile as any)?.market_cap) {
+    const str = String((data?.company_profile as any).market_cap).toUpperCase().trim();
+    if (str.includes('T')) marketCapM = parseFloat(str.replace(/[^0-9.]/g, '')) * 1_000_000;
+    else if (str.includes('B')) marketCapM = parseFloat(str.replace(/[^0-9.]/g, '')) * 1_000;
+  }
+
+  const equityValM = marketCapM > 0 ? marketCapM : totalEquityM;
+  const totalCap = Math.max(1, totalDebtM + equityValM);
   const weightDebt = totalDebtM / totalCap;
-  const weightEquity = totalEquityM / totalCap;
+  const weightEquity = equityValM / totalCap;
 
   // Beta: extract from profile, user override, or default to verified stock/sector beta
   let detectedBeta = userBeta ?? (data?.company_profile?.beta || (data?.key_indicators?.beta as number));
-  if (!detectedBeta) {
-    const symUpper = (ticker || data?.ticker || '').toUpperCase();
-    if (symUpper === 'TSLA') detectedBeta = 1.83;
-    else if (symUpper === 'NVDA') detectedBeta = 1.75;
-    else if (symUpper === 'PLTR') detectedBeta = 1.65;
+  if (!detectedBeta || detectedBeta <= 0.3) {
+    if (symUpper === 'NVDA') detectedBeta = 2.22;
+    else if (symUpper === 'TSLA') detectedBeta = 1.83;
+    else if (symUpper === 'PLTR') detectedBeta = 1.75;
     else if (symUpper === 'COIN') detectedBeta = 2.40;
     else if (symUpper === 'RIVN') detectedBeta = 2.10;
     else if (symUpper === 'SOFI') detectedBeta = 1.95;
+    else if (symUpper === 'RKLB') detectedBeta = 2.15;
     else if (symUpper === 'AMD') detectedBeta = 1.68;
+    else if (symUpper === 'AVGO') detectedBeta = 1.30;
+    else if (symUpper === 'INTC') detectedBeta = 1.10;
+    else if (symUpper === 'LMT') detectedBeta = 0.65;
     else detectedBeta = 1.20;
   }
   const beta = detectedBeta;

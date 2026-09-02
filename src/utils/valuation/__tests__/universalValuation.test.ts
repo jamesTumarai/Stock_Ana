@@ -96,7 +96,7 @@ console.log('🚀 Running Universal Valuation Engine Test Suite...');
     intrinsic_value: {
       current_price: 100,
       dcf_model: {
-        assumptions: { wacc_pct: 7.0, terminal_growth_pct: 8.5, projection_years: 5 },
+        assumptions: { wacc_pct: 7.0, terminal_growth_pct: 12.0, projection_years: 5 },
         scenarios: {
           bear: { revenue_cagr_pct: 10, terminal_margin_pct: 10, fair_value_per_share: 80, key_assumption_note: '' },
           base: { revenue_cagr_pct: 20, terminal_margin_pct: 15, fair_value_per_share: 100, key_assumption_note: '' },
