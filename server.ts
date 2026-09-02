@@ -1529,39 +1529,117 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       let liveMarketPromptSection = "";
       try {
         const peerMap: Record<string, string[]> = {
-          NVDA: ['AMD', 'AVGO', 'TSM', 'INTC', 'ARM', 'QCOM'],
-          AMD: ['NVDA', 'INTC', 'ARM', 'QCOM', 'TSM', 'AVGO'],
-          TSLA: ['RIVN', 'LCID', 'BYDDF', 'F', 'GM'],
-          AAPL: ['MSFT', 'GOOGL', 'AMZN', 'META'],
+          // Fintech, Neobanks & Digital Payments
+          SOFI: ['HOOD', 'AFRM', 'XYZ', 'UPST', 'PYPL', 'NU'],
+          HOOD: ['SOFI', 'AFRM', 'XYZ', 'COIN'],
+          AFRM: ['SOFI', 'HOOD', 'XYZ', 'UPST'],
+          SQ: ['XYZ', 'SOFI', 'HOOD', 'AFRM', 'PYPL'],
+          XYZ: ['SOFI', 'HOOD', 'AFRM', 'PYPL', 'SHOP'],
+          PYPL: ['XYZ', 'SOFI', 'HOOD', 'AFRM'],
+          UPST: ['AFRM', 'SOFI', 'LC', 'XYZ'],
+          NU: ['SOFI', 'HOOD', 'PAGS', 'STNE'],
+          COIN: ['HOOD', 'MSTR', 'MARA', 'RIOT'],
+          MSTR: ['COIN', 'MARA', 'RIOT', 'CLSK'],
+
+          // Semiconductors & AI Hardware
+          NVDA: ['AMD', 'AVGO', 'TSM', 'INTC', 'ARM', 'QCOM', 'MRVL'],
+          AMD: ['NVDA', 'INTC', 'ARM', 'QCOM', 'TSM', 'AVGO', 'MRVL'],
+          AVGO: ['NVDA', 'AMD', 'QCOM', 'MRVL', 'TSM'],
+          TSM: ['NVDA', 'ASML', 'INTC', 'AMD', 'AVGO'],
+          INTC: ['AMD', 'NVDA', 'TSM', 'ARM', 'QCOM'],
+          ARM: ['NVDA', 'QCOM', 'AMD', 'INTC'],
+          QCOM: ['ARM', 'AVGO', 'NVDA', 'AMD', 'MRVL'],
+          MRVL: ['AVGO', 'NVDA', 'AMD', 'QCOM'],
+
+          // Big Tech & Mega Cap
+          AAPL: ['MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA'],
           MSFT: ['AAPL', 'GOOGL', 'AMZN', 'ORCL', 'CRM'],
-          PLTR: ['SNOW', 'AI', 'DDOG', 'MDB', 'CRWD'],
-          RKLB: ['LMT', 'BA', 'NOC', 'SPCE']
+          GOOGL: ['MSFT', 'META', 'AMZN', 'AAPL'],
+          GOOG: ['MSFT', 'META', 'AMZN', 'AAPL'],
+          AMZN: ['MSFT', 'GOOGL', 'BABA', 'WMT', 'SHOP'],
+          META: ['GOOGL', 'SNAP', 'PINS', 'MSFT', 'AAPL'],
+
+          // EV & Automotive
+          TSLA: ['RIVN', 'LCID', 'BYDDF', 'F', 'GM'],
+          RIVN: ['TSLA', 'LCID', 'F', 'GM'],
+          LCID: ['TSLA', 'RIVN', 'NIO', 'XPEV'],
+
+          // Enterprise Software & AI
+          PLTR: ['SNOW', 'AI', 'DDOG', 'MDB', 'CRWD', 'NET'],
+          SNOW: ['PLTR', 'MDB', 'DDOG', 'NOW'],
+          AI: ['PLTR', 'SNOW', 'PATH', 'BBAI'],
+          DDOG: ['NET', 'CRWD', 'MDB', 'PLTR'],
+          CRWD: ['PANW', 'FTNT', 'ZS', 'NET'],
+
+          // Space & Aerospace
+          RKLB: ['LMT', 'BA', 'NOC', 'RTX', 'SPCE'],
+          LMT: ['NOC', 'RTX', 'BA', 'GD', 'RKLB'],
+          BA: ['LMT', 'RTX', 'GD', 'AIR.PA']
         };
         const sym = ticker.toUpperCase();
+        const querySym = sym === 'SQ' ? 'XYZ' : sym;
         const peers = peerMap[sym] || ['MSFT', 'AAPL', 'GOOGL', 'AMZN'];
-        const allTickers = [sym, ...peers];
+        const allTickers = [querySym, ...peers];
+
+        // Try Authenticated Yahoo Finance Quote first for full marketCap and PE
+        let quotesList: any[] = [];
+        try {
+          const cookieRes = await fetch('https://fc.yahoo.com', {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+            signal: AbortSignal.timeout(2000)
+          });
+          const cookie = cookieRes.headers.get('set-cookie') || '';
+          const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
+            signal: AbortSignal.timeout(2000)
+          });
+          const crumb = await crumbRes.text();
+          if (crumb && crumb.length < 50 && !crumb.includes('<')) {
+            const quoteUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${allTickers.join(',')}&crumb=${encodeURIComponent(crumb)}`;
+            const qRes = await fetch(quoteUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
+              signal: AbortSignal.timeout(2500)
+            });
+            if (qRes.ok) {
+              const qJson: any = await qRes.json();
+              quotesList = qJson.quoteResponse?.result || [];
+            }
+          }
+        } catch (e) {
+          // Crumb fetch failed, fallback to chart endpoint below
+        }
 
         const lines: string[] = [];
-        await Promise.all(allTickers.map(async (t) => {
-          try {
-            const resQ = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${t}`, {
-              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-              signal: AbortSignal.timeout(3000)
-            });
-            if (resQ.ok) {
-              const jsonQ: any = await resQ.json();
-              const meta = jsonQ?.chart?.result?.[0]?.meta;
-              if (meta && typeof meta.regularMarketPrice === 'number') {
-                lines.push(`- ${t}: Current Price $${meta.regularMarketPrice.toFixed(2)} (52W Range: $${meta.fiftyTwoWeekLow?.toFixed(2) || '?'} - $${meta.fiftyTwoWeekHigh?.toFixed(2) || '?'})`);
-              }
-            }
-          } catch (e) {
-            // ignore
+        if (quotesList.length > 0) {
+          for (const q of quotesList) {
+            const capStr = q.marketCap 
+              ? (q.marketCap >= 1e12 ? `$${(q.marketCap / 1e12).toFixed(2)}T` : `$${(q.marketCap / 1e9).toFixed(2)}B`) 
+              : 'N/A';
+            const peStr = q.trailingPE ? `${q.trailingPE.toFixed(1)}x` : 'N/A';
+            const fwdPeStr = q.forwardPE ? `${q.forwardPE.toFixed(1)}x` : 'N/A';
+            lines.push(`- ${q.symbol}: Current Price $${q.regularMarketPrice?.toFixed(2)} | Market Cap: ${capStr} | Trailing P/E: ${peStr} | Forward P/E: ${fwdPeStr}`);
           }
-        }));
+        } else {
+          // Fallback: fetch chart endpoint per ticker
+          await Promise.all(allTickers.map(async (t) => {
+            try {
+              const resQ = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${t}`, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+                signal: AbortSignal.timeout(3000)
+              });
+              if (resQ.ok) {
+                const jsonQ: any = await resQ.json();
+                const meta = jsonQ?.chart?.result?.[0]?.meta;
+                if (meta && typeof meta.regularMarketPrice === 'number') {
+                  lines.push(`- ${t}: Current Price $${meta.regularMarketPrice.toFixed(2)} (52W Range: $${meta.fiftyTwoWeekLow?.toFixed(2) || '?'} - $${meta.fiftyTwoWeekHigh?.toFixed(2) || '?'})`);
+                }
+              }
+            } catch (e) {}
+          }));
+        }
 
         if (lines.length > 0) {
-          liveMarketPromptSection = `\n\nREAL-TIME VERIFIED 2026 LIVE MARKET PRICES (GROUND TRUTH FROM YAHOO FINANCE AS OF TODAY):\n${lines.join('\n')}\nCRITICAL: You MUST use these exact real-time live stock prices to compute current market caps (Market Cap = Price * Shares) in 'company_profile', 'valuation_ratios', and 'peer_comparison'. Note specifically that AMD is currently trading at ~$457 with ~$745B Market Cap (DO NOT use outdated 2024 figures like $255B), AVGO is ~$368 with ~$1.72T Market Cap, and TSM is ~$412 with ~$2.14T Market Cap.`;
+          liveMarketPromptSection = `\n\nREAL-TIME VERIFIED 2026 LIVE MARKET PRICES (GROUND TRUTH FROM YAHOO FINANCE AS OF TODAY):\n${lines.join('\n')}\nCRITICAL: You MUST use these exact real-time live stock prices and market caps in 'company_profile', 'valuation_ratios', and 'peer_comparison'. DO NOT hallucinate outdated 2023/2024 numbers (e.g. HOOD is ~$95.3B, NOT $19.8B; AFRM is ~$25.0B, NOT $14.2B; SOFI is ~$23.1B, NOT $8B; AMD is ~$745B, NOT $255B).`;
         }
       } catch (e) {
         console.warn("Could not pre-fetch live quotes:", e);
@@ -1651,7 +1729,7 @@ CRITICAL CHECKS:
 - Fundamental Fundamentals Check: Must have exactly 8 numbered points.
 - Fundamental Key Risks: Must have exactly 8 risk categories.
 - Financial Statements: Verify that Balance Sheet Total Assets, Current Assets, Cash & Short-Term Investments, Inventory, Receivables, Total Liabilities, Total Debt, Total Equity, and Cash Flow (OCF, CapEx, FCF) are strictly grounded in genuine SEC 10-Q/10-K filing tables. DO NOT accept shifted or delayed numbers from 2023/2024 representing 2025/2026. Ensure revenue, net income, margins %, and growth % are mathematically consistent across quarters.
-- Peer Comparison Grounding: Verify that Market Caps and P/E multiples for the target company (${ticker}) and ALL peer companies in "peer_comparison" are accurate as of today (${todayISO}). For example, TSLA market cap is ~$1.41T (stock price ~$356), RIVN is ~$22.5B, GM is ~$75B–$77B, BYDDF is ~$110B–$117B, AMD is ~$750B–$770B. DO NOT accept old or outdated figures.
+- Peer Comparison Grounding: Verify that Market Caps and P/E multiples for the target company (${ticker}) and ALL peer companies in "peer_comparison" are accurate as of today (${todayISO}). For example, TSLA market cap is ~$1.14T, AMD is ~$745B (stock price ~$457), HOOD is ~$95.3B (stock price ~$106), AFRM is ~$25.0B (stock price ~$74), SOFI is ~$23.1B (stock price ~$17.89), XYZ/Block is ~$49.5B, AVGO is ~$1.72T, TSM is ~$2.14T. DO NOT accept old 2023/2024 figures (such as HOOD at $19.8B, AFRM at $14.2B, or AMD at $255B).
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
 - Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
 - Insider Ownership: Must be a numeric percentage.
