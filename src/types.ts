@@ -190,6 +190,16 @@ export interface DCFModel {
     cost_of_equity_pct?: number;
     stages_count?: number;
   };
+  inputs?: {
+    ticker: string;
+    currentPrice: number;
+    startingRevenueM: number;
+    sharesOutstandingM: number;
+    netCashM: number;
+    waccPct: number;
+    terminalGrowthPct: number;
+    projectionYears: number;
+  };
   scenarios: {
     bear: DCFScenario;
     base: DCFScenario;

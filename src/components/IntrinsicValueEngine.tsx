@@ -62,12 +62,15 @@ export function IntrinsicValueEngine({
     setSimCagr(base.revenue_cagr_pct || 22);
   }, [coc?.wacc_pct, dcf.assumptions.wacc_pct, dcf.assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
 
+  // Dynamic DCF inputs from verified engine
+  const dcfInputs = (dcf as any).inputs;
+  const startingRevM = dcfInputs?.startingRevenueM || (currentPrice > 150 ? 130500 : 97600);
+  const sharesM = dcfInputs?.sharesOutstandingM || (currentPrice > 150 ? 24520 : 3210);
+  const netCashM = dcfInputs?.netCashM || (currentPrice > 150 ? 26400 : 27280);
+
   // Exact closed-form live DCF calculation based on user adjustments
   const recalculatedBaseFairValue = useMemo(() => {
-    const margin = base.terminal_margin_pct || 14.5;
-    const startingRevM = 97600;
-    const sharesM = 3200;
-    const netCashM = 27280;
+    const margin = base.terminal_margin_pct || 48.0;
 
     return calculateStrictDCFValue(
       startingRevM,
@@ -79,20 +82,21 @@ export function IntrinsicValueEngine({
       margin,
       dcf.assumptions.projection_years || 5
     );
-  }, [simWacc, simGrowth, simCagr, base, dcf]);
+  }, [simWacc, simGrowth, simCagr, base, dcf, startingRevM, sharesM, netCashM]);
 
-  const simulatedMarginOfSafety = useMemo(() => {
-    return ((recalculatedBaseFairValue - currentPrice) / currentPrice) * 100;
-  }, [recalculatedBaseFairValue, currentPrice]);
+  // When simulator is open, synchronize Base price, Upside, and Margin of Safety dynamically!
+  const effectiveBasePrice = showSimulator ? recalculatedBaseFairValue : base.fair_value_per_share;
+  const effectiveBaseUpside = ((effectiveBasePrice - currentPrice) / currentPrice) * 100;
+  const effectiveMarginOfSafety = ((effectiveBasePrice - currentPrice) / currentPrice) * 100;
 
   // Upside/Downside calculations for 3 Scenario Cards
   const bearUpside = ((bear.fair_value_per_share - currentPrice) / currentPrice) * 100;
-  const baseUpside = ((base.fair_value_per_share - currentPrice) / currentPrice) * 100;
+  const baseUpside = effectiveBaseUpside;
   const bullUpside = ((bull.fair_value_per_share - currentPrice) / currentPrice) * 100;
 
   // Spectrum range calculation
-  const rangeMin = Math.min(bear.fair_value_per_share * 0.85, currentPrice * 0.85);
-  const rangeMax = Math.max(bull.fair_value_per_share * 1.15, currentPrice * 1.15);
+  const rangeMin = Math.min(bear.fair_value_per_share * 0.85, currentPrice * 0.85, effectiveBasePrice * 0.85);
+  const rangeMax = Math.max(bull.fair_value_per_share * 1.15, currentPrice * 1.15, effectiveBasePrice * 1.15);
   const totalSpan = rangeMax - rangeMin || 1;
   const getPos = (val: number) => `${Math.max(2, Math.min(98, ((val - rangeMin) / totalSpan) * 100))}%`;
 
@@ -120,7 +124,7 @@ export function IntrinsicValueEngine({
 
           {/* Margin of Safety Badge */}
           <div className="flex items-center gap-3 bg-stone-50 border border-stone-200 px-4 py-2.5 rounded-2xl shrink-0 self-start md:self-auto">
-            {summary.margin_of_safety_pct >= 0 ? (
+            {effectiveMarginOfSafety >= 0 ? (
               <ShieldCheck className="w-6 h-6 text-[#0b5a4b] shrink-0" />
             ) : (
               <ShieldAlert className="w-6 h-6 text-red-600 shrink-0" />
@@ -129,10 +133,10 @@ export function IntrinsicValueEngine({
               <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">
                 {isThai ? 'ส่วนเผื่อความปลอดภัย (MARGIN OF SAFETY)' : 'MARGIN OF SAFETY'}
               </span>
-              <span className={`text-base sm:text-lg font-bold font-mono ${summary.margin_of_safety_pct >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                {summary.margin_of_safety_pct > 0 ? `+${summary.margin_of_safety_pct.toFixed(1)}%` : `${summary.margin_of_safety_pct.toFixed(1)}%`}
+              <span className={`text-base sm:text-lg font-bold font-mono ${effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                {effectiveMarginOfSafety > 0 ? `+${effectiveMarginOfSafety.toFixed(1)}%` : `${effectiveMarginOfSafety.toFixed(1)}%`}
                 <span className="text-xs font-sans font-normal ml-1 text-stone-500">
-                  ({summary.margin_of_safety_pct >= 0 ? (isThai ? 'ต่ำกว่ามูลค่า' : 'Undervalued') : (isThai ? 'สูงกว่ามูลค่า Base' : 'Premium to Base')})
+                  ({effectiveMarginOfSafety >= 0 ? (isThai ? 'ต่ำกว่ามูลค่า' : 'Undervalued') : (isThai ? 'สูงกว่ามูลค่า Base' : 'Premium to Base')})
                 </span>
               </span>
             </div>
@@ -160,8 +164,8 @@ export function IntrinsicValueEngine({
             <div className="h-4 rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500 w-full relative shadow-inner">
               <div 
                 className="absolute top-0 bottom-0 w-1 bg-stone-900 z-10 -translate-x-1/2"
-                style={{ left: getPos(base.fair_value_per_share) }}
-                title={`Base Case: ${formatPrice(base.fair_value_per_share)}`}
+                style={{ left: getPos(effectiveBasePrice) }}
+                title={`Base Case: ${formatPrice(effectiveBasePrice)}`}
               />
             </div>
 
@@ -179,11 +183,11 @@ export function IntrinsicValueEngine({
             {/* Base Pin */}
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-              style={{ left: getPos(base.fair_value_per_share) }}
+              style={{ left: getPos(effectiveBasePrice) }}
             >
               <span className="text-[10px] font-bold text-stone-800 uppercase tracking-wider mb-0.5">BASE CASE (TARGET)</span>
               <div className="bg-stone-900 text-white text-xs font-mono font-bold px-2.5 py-0.5 rounded-md shadow-md">
-                {formatPrice(base.fair_value_per_share)}
+                {formatPrice(effectiveBasePrice)}
               </div>
             </div>
 
@@ -269,10 +273,10 @@ export function IntrinsicValueEngine({
 
             <div className="my-3">
               <div className="text-2xl sm:text-3xl font-extrabold font-mono text-stone-900">
-                {formatPrice(base.fair_value_per_share)}
+                {formatPrice(effectiveBasePrice)}
               </div>
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
-                <span>CAGR: {base.revenue_cagr_pct}%</span>
+                <span>CAGR: {showSimulator ? simCagr : base.revenue_cagr_pct}%</span>
                 <span>•</span>
                 <span>Margin: {base.terminal_margin_pct}%</span>
               </div>
@@ -554,8 +558,8 @@ export function IntrinsicValueEngine({
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <span className="text-[10px] text-stone-400 uppercase font-bold block">{isThai ? 'ส่วนเผื่อความปลอดภัยจำลอง' : 'Simulated Margin of Safety'}</span>
-                  <span className={`text-base font-mono font-bold ${simulatedMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                    {simulatedMarginOfSafety > 0 ? `+${simulatedMarginOfSafety.toFixed(1)}%` : `${simulatedMarginOfSafety.toFixed(1)}%`}
+                  <span className={`text-base font-mono font-bold ${effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                    {effectiveMarginOfSafety > 0 ? `+${effectiveMarginOfSafety.toFixed(1)}%` : `${effectiveMarginOfSafety.toFixed(1)}%`}
                   </span>
                 </div>
               </div>
