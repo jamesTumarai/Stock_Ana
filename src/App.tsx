@@ -8,6 +8,7 @@ import { CrossfadeVideo } from './components/CrossfadeVideo';
 import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 import { MotionIntro } from './components/MotionIntro';
 import { UserAvatar } from './components/UserAvatar';
@@ -549,19 +550,20 @@ export default function App() {
       <div id="report-scroll-container" className="w-full h-[100dvh] overflow-y-auto bg-[#F6F4F0] text-stone-900 scrollbar-hide print:h-auto print:overflow-visible print:block print:bg-white">
         <div className="flex flex-col min-h-full print:min-h-0 print:block print:h-auto">
           {allReports.map((report, idx) => (
-             <ReportTemplate 
-               key={idx}
-               data={report} 
-               ticker={ticker} 
-               onClose={handleCloseReport}
-               durationSecs={idx === allReports.length - 1 ? durationSecs : undefined}
-               toolRuns={idx === allReports.length - 1 ? toolRuns : undefined}
-               tokenCount={idx === allReports.length - 1 ? tokenCount : undefined}
-               documentCount={report.findings?.length || 0}
-               historyReports={historyReports}
-               language={selectedLanguage}
-               hideHeader={idx > 0}
-             />
+             <ErrorBoundary key={idx} name={`ReportTemplate-${report.ticker || ticker || idx}`} onReset={handleCloseReport}>
+               <ReportTemplate 
+                 data={report} 
+                 ticker={report.ticker || ticker} 
+                 onClose={handleCloseReport}
+                 durationSecs={idx === allReports.length - 1 ? durationSecs : undefined}
+                 toolRuns={idx === allReports.length - 1 ? toolRuns : undefined}
+                 tokenCount={idx === allReports.length - 1 ? tokenCount : undefined}
+                 documentCount={report.findings?.length || 0}
+                 historyReports={historyReports}
+                 language={selectedLanguage}
+                 hideHeader={idx > 0}
+               />
+             </ErrorBoundary>
           ))}
         </div>
       </div>

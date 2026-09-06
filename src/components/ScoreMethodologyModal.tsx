@@ -1,27 +1,30 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Award, PieChart, CheckCircle2, ShieldCheck, Scale, Zap } from 'lucide-react';
+import { ConvictionBreakdown } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   isThai: boolean;
   convictionScore?: number | string;
+  convictionBreakdown?: ConvictionBreakdown;
 }
 
 export function ScoreMethodologyModal({ 
   isOpen, 
   onClose, 
   isThai, 
-  convictionScore 
+  convictionScore,
+  convictionBreakdown
 }: Props) {
   if (!isOpen) return null;
 
   const weights = [
-    { nameEn: 'Revenue & Earnings Growth', nameTh: 'การเติบโตของรายได้และกำไร', weight: 30, color: 'bg-emerald-500', descTh: 'วัดอัตราการเติบโต YoY, การขยายตัวของกำไร และความสม่ำเสมอของ Guidance' },
-    { nameEn: 'Financial Health & Cash Flow', nameTh: 'ความแข็งแรงทางการเงิน & กระแสเงินสด', weight: 30, color: 'bg-blue-500', descTh: 'ประเมิน FCF conversion, สภาพคล่อง, ภาระหนี้สิน (D/E ratio) และคุณภาพกำไร' },
-    { nameEn: 'Valuation & Margin of Safety', nameTh: 'ระดับราคา & ส่วนเผื่อความปลอดภัย', weight: 20, color: 'bg-amber-500', descTh: 'เทียบ Trailing/Forward P/E, EV/EBITDA กับคู่แข่ง และผลต่างราคาเหมาะสมจาก DCF' },
-    { nameEn: 'Moat, Management & Competitive Risk', nameTh: 'ความได้เปรียบในการแข่งขัน & ความเสี่ยง', weight: 20, color: 'bg-purple-500', descTh: 'ความแข็งแกร่งของ Moat, ความน่าเชื่อถือของผู้บริหาร และการบริหารความเสี่ยง 8 ด้าน' },
+    { key: 'growth' as const, nameEn: 'Revenue & Earnings Growth', nameTh: 'การเติบโตของรายได้และกำไร', weight: 30, color: 'bg-emerald-500', descTh: 'วัดอัตราการเติบโต YoY, การขยายตัวของกำไร และความสม่ำเสมอของ Guidance' },
+    { key: 'financial_health' as const, nameEn: 'Financial Health & Cash Flow', nameTh: 'ความแข็งแรงทางการเงิน & กระแสเงินสด', weight: 30, color: 'bg-blue-500', descTh: 'ประเมิน FCF conversion, สภาพคล่อง, ภาระหนี้สิน (D/E ratio) และคุณภาพกำไร' },
+    { key: 'valuation' as const, nameEn: 'Valuation & Margin of Safety', nameTh: 'ระดับราคา & ส่วนเผื่อความปลอดภัย', weight: 20, color: 'bg-amber-500', descTh: 'เทียบ Trailing/Forward P/E, EV/EBITDA กับคู่แข่ง และผลต่างราคาเหมาะสมจาก DCF' },
+    { key: 'moat_and_risk' as const, nameEn: 'Moat, Management & Competitive Risk', nameTh: 'ความได้เปรียบในการแข่งขัน & ความเสี่ยง', weight: 20, color: 'bg-purple-500', descTh: 'ความแข็งแกร่งของ Moat, ความน่าเชื่อถือของผู้บริหาร และการบริหารความเสี่ยง 8 ด้าน' },
   ];
 
   return (
@@ -52,7 +55,7 @@ export function ScoreMethodologyModal({
                 {isThai ? 'วิธีคิดคะแนนความเชื่อมั่น (Conviction Score)' : 'Conviction Scoring Methodology'}
               </h3>
               <p className="text-xs text-stone-500">
-                {isThai ? 'น้ำหนักการถ่วงคะแนนเชิงปริมาณและคุณภาพ' : 'Weighted mathematical & qualitative scoring formula'}
+                {isThai ? 'คำนวณผ่าน Deterministic Multi-Pillar Scoring Engine จากงบจริง' : 'Mathematically computed from verified financial statements & valuation'}
               </p>
             </div>
           </div>
@@ -65,7 +68,7 @@ export function ScoreMethodologyModal({
                   {isThai ? 'คะแนนที่ได้ในรายงานนี้' : 'Current Report Conviction Score'}
                 </span>
                 <span className="text-xs text-stone-600">
-                  {isThai ? 'คำนวณแบบพลวัตจากงบการเงินและเอกสาร SEC ล่าสุด' : 'Dynamically evaluated from latest SEC filings'}
+                  {isThai ? 'คำนวณเชิงตัวเลขจาก 4 เสาหลัก ไม่ผันผวนตามการสุ่ม' : 'Fixed mathematical score based on 4 pillars'}
                 </span>
               </div>
               <div className="text-3xl font-extrabold font-mono text-[#0b5a4b]">
@@ -76,25 +79,55 @@ export function ScoreMethodologyModal({
 
           {/* Weighting Breakdown */}
           <div className="flex flex-col gap-3">
-            <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider">
-              {isThai ? 'สัดส่วนน้ำหนัก 4 เสาหลัก (Weight Distribution)' : 'Scoring Pillar Weights'}
-            </h4>
+            <div className="flex justify-between items-center">
+              <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider">
+                {isThai ? 'สัดส่วนคะแนน 4 เสาหลัก (Pillar Breakdown)' : 'Scoring Pillar Breakdown'}
+              </h4>
+              {convictionBreakdown && (
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {isThai ? 'คำนวณจากงบจริง' : 'Grounded in SEC Filings'}
+                </span>
+              )}
+            </div>
             
             <div className="space-y-3">
-              {weights.map((w, idx) => (
-                <div key={idx} className="bg-stone-50/80 p-3 rounded-xl border border-stone-100 flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center text-sm font-semibold text-stone-900">
-                    <span>{isThai ? w.nameTh : w.nameEn}</span>
-                    <span className="font-mono text-[#0b5a4b] font-bold">{w.weight}%</span>
+              {weights.map((w, idx) => {
+                const pillarData = convictionBreakdown ? convictionBreakdown[w.key] : null;
+                const earnedScore = pillarData ? pillarData.score : null;
+                const fillPct = pillarData ? Math.min(100, Math.round((pillarData.score / w.weight) * 100)) : w.weight;
+                const reasonText = pillarData ? (isThai ? pillarData.reasonTh : pillarData.reasonEn) : null;
+
+                return (
+                  <div key={idx} className="bg-stone-50/80 p-3.5 rounded-xl border border-stone-100 flex flex-col gap-2">
+                    <div className="flex justify-between items-center text-sm font-semibold text-stone-900">
+                      <span>{isThai ? w.nameTh : w.nameEn}</span>
+                      <span className="font-mono text-[#0b5a4b] font-bold">
+                        {earnedScore !== null ? (
+                          <>
+                            {earnedScore} <span className="text-xs text-stone-400 font-normal">/ {w.weight} pts</span>
+                          </>
+                        ) : (
+                          `${w.weight}%`
+                        )}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-stone-200 rounded-full overflow-hidden">
+                      <div className={`h-full ${w.color} transition-all duration-500`} style={{ width: `${fillPct}%` }} />
+                    </div>
+
+                    {reasonText ? (
+                      <div className="text-[11px] text-stone-700 bg-white/80 border border-stone-200/60 rounded-lg px-2.5 py-1.5 font-sans leading-relaxed flex items-start gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#0b5a4b] shrink-0 mt-0.5" />
+                        <span>{reasonText}</span>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-stone-500 leading-relaxed font-sans mt-0.5">
+                        {isThai ? w.descTh : w.nameEn}
+                      </p>
+                    )}
                   </div>
-                  <div className="h-1.5 w-full bg-stone-200 rounded-full overflow-hidden">
-                    <div className={`h-full ${w.color}`} style={{ width: `${w.weight}%` }} />
-                  </div>
-                  <p className="text-[11px] text-stone-500 leading-relaxed font-sans mt-0.5">
-                    {isThai ? w.descTh : w.nameEn}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

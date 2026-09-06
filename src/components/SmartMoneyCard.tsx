@@ -469,7 +469,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
           {/* Dual Donut Charts with Side-by-Side Legends */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Donut 1: Major Holders Breakdown */}
-            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col">
+            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col avoid-page-break">
               <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <PieIcon className="w-3.5 h-3.5 text-[#0b5a4b]" />
                 <span>{isThai ? 'สัดส่วนผู้ถือหุ้นสถาบัน (Major Holders)' : 'Major Holders'}</span>
@@ -478,7 +478,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3">
                 {/* Donut with Center Highlight Box */}
                 <div className="relative h-48 w-full flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={192} minHeight={192}>
                     <PieChart>
                       <Pie
                         data={topHoldersChartData}
@@ -488,6 +488,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                         outerRadius={75}
                         paddingAngle={2}
                         dataKey="value"
+                        isAnimationActive={false}
                         onMouseEnter={(_, index) => setActiveHolderIndex(index)}
                       >
                         {topHoldersChartData.map((_, index) => (
@@ -547,7 +548,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
             </div>
 
             {/* Donut 2: Holder Type Breakdown */}
-            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col">
+            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col avoid-page-break">
               <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-blue-600" />
                 <span>{isThai ? 'สัดส่วนประเภทผู้ลงทุน (Holder Types)' : 'Type'}</span>
@@ -556,7 +557,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3">
                 {/* Donut with Center Highlight Box */}
                 <div className="relative h-48 w-full flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={192} minHeight={192}>
                     <PieChart>
                       <Pie
                         data={typeChartData}
@@ -567,6 +568,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                         paddingAngle={2}
                         dataKey="pct"
                         nameKey="type"
+                        isAnimationActive={false}
                         onMouseEnter={(_, index) => setActiveTypeIndex(index)}
                       >
                         {typeChartData.map((_, index) => (
@@ -750,7 +752,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
             </div>
 
             <div className="h-64 w-full mt-2">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={256} minHeight={256}>
                 <LineChart data={quarterlyHistory} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0eee9" />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#78716c' }} />
@@ -791,8 +793,8 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                     height={30} 
                     formatter={(value) => value === 'stock_price' ? (isThai ? '— ราคาหุ้น ($)' : '— Price ($)') : (isThai ? '— สถาบันถือครอง (%)' : '— % Owned')} 
                   />
-                  <Line yAxisId="left" type="monotone" dataKey="stock_price" stroke="#334155" strokeWidth={2.5} dot={{ r: 4, fill: '#334155' }} activeDot={{ r: 6 }} name="stock_price" />
-                  <Line yAxisId="right" type="monotone" dataKey="pct_owned" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 4, fill: '#0b5a4b' }} activeDot={{ r: 6 }} name="pct_owned" />
+                  <Line yAxisId="left" type="monotone" dataKey="stock_price" stroke="#334155" strokeWidth={2.5} dot={{ r: 4, fill: '#334155' }} activeDot={{ r: 6 }} name="stock_price" isAnimationActive={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="pct_owned" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 4, fill: '#0b5a4b' }} activeDot={{ r: 6 }} name="pct_owned" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

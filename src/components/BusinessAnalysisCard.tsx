@@ -174,7 +174,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
         <div className="flex flex-col gap-5">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Donut 1: By Business Segment */}
-            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col">
+            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col avoid-page-break">
               <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5 text-[#0b5a4b]" />
                 <span>{isThai ? 'สัดส่วนตามสายธุรกิจ (Business / Product Lines)' : 'Business Segments'}</span>
@@ -183,7 +183,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3">
                 {/* Donut with Center Highlight Box */}
                 <div className="relative h-48 w-full flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={192} minHeight={192}>
                     <PieChart>
                       <Pie
                         data={byBusiness}
@@ -194,6 +194,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                         paddingAngle={2}
                         dataKey="ratio_pct"
                         nameKey="name"
+                        isAnimationActive={false}
                         onMouseEnter={(_, index) => setActiveBizIndex(index)}
                       >
                         {byBusiness.map((_, index) => (
@@ -259,7 +260,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
             </div>
 
             {/* Donut 2: By Region Segment */}
-            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col">
+            <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200/80 flex flex-col avoid-page-break">
               <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5 text-blue-600" />
                 <span>{isThai ? 'สัดส่วนตามภูมิภาค (Geographic / Regional)' : 'Regional Markets'}</span>
@@ -268,7 +269,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3">
                 {/* Donut with Center Highlight Box */}
                 <div className="relative h-48 w-full flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={192} minHeight={192}>
                     <PieChart>
                       <Pie
                         data={byRegion}
@@ -279,6 +280,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                         paddingAngle={2}
                         dataKey="ratio_pct"
                         nameKey="name"
+                        isAnimationActive={false}
                         onMouseEnter={(_, index) => setActiveRegIndex(index)}
                       >
                         {byRegion.map((_, index) => (
@@ -424,7 +426,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
             </h4>
 
             <div className="h-64 w-full mt-2">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={256} minHeight={256}>
                 <LineChart data={efficiency} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0eee9" />
                   <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#78716c' }} />
@@ -467,9 +469,9 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       (isThai ? '— กำไรสุทธิต่อคน' : '— Net Income/Emp')
                     }
                   />
-                  <Line type="monotone" dataKey="revenue_per_employee_k_usd" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 4, fill: '#0b5a4b' }} activeDot={{ r: 6 }} name="revenue_per_employee_k_usd" />
-                  <Line type="monotone" dataKey="operating_profit_per_employee_k_usd" stroke="#d97706" strokeWidth={2.5} dot={{ r: 4, fill: '#d97706' }} activeDot={{ r: 6 }} name="operating_profit_per_employee_k_usd" />
-                  <Line type="monotone" dataKey="net_income_per_employee_k_usd" stroke="#334155" strokeWidth={2.5} dot={{ r: 4, fill: '#334155' }} activeDot={{ r: 6 }} name="net_income_per_employee_k_usd" />
+                  <Line type="monotone" dataKey="revenue_per_employee_k_usd" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 4, fill: '#0b5a4b' }} activeDot={{ r: 6 }} name="revenue_per_employee_k_usd" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="operating_profit_per_employee_k_usd" stroke="#d97706" strokeWidth={2.5} dot={{ r: 4, fill: '#d97706' }} activeDot={{ r: 6 }} name="operating_profit_per_employee_k_usd" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="net_income_per_employee_k_usd" stroke="#334155" strokeWidth={2.5} dot={{ r: 4, fill: '#334155' }} activeDot={{ r: 6 }} name="net_income_per_employee_k_usd" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

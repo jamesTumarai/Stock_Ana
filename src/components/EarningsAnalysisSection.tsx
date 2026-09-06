@@ -250,7 +250,7 @@ export function EarningsAnalysisSection({
         {/* Recharts Bar Chart */}
         {chartData.length > 0 ? (
           <div className="h-72 w-full mt-2">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={288} minHeight={288}>
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0efed" />
                 <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dy={10} />
@@ -292,13 +292,13 @@ export function EarningsAnalysisSection({
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '15px' }} />
                 {metricTab === 'eps' ? (
                   <>
-                    <Bar dataKey="eps_estimate" name={isThai ? "EPS คาดการณ์" : "EPS Estimate"} fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={28} />
-                    <Bar dataKey="eps_actual" name={isThai ? "EPS ตัวเลขจริง" : "EPS Actual"} fill="#0b5a4b" radius={[4, 4, 0, 0]} barSize={28} />
+                    <Bar dataKey="eps_estimate" name={isThai ? "EPS คาดการณ์" : "EPS Estimate"} fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={28} isAnimationActive={false} />
+                    <Bar dataKey="eps_actual" name={isThai ? "EPS ตัวเลขจริง" : "EPS Actual"} fill="#0b5a4b" radius={[4, 4, 0, 0]} barSize={28} isAnimationActive={false} />
                   </>
                 ) : (
                   <>
-                    <Bar dataKey="revenue_estimate_musd" name={isThai ? "รายได้คาดการณ์" : "Revenue Estimate"} fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={28} />
-                    <Bar dataKey="revenue_actual_musd" name={isThai ? "รายได้จริง" : "Revenue Actual"} fill="#0b5a4b" radius={[4, 4, 0, 0]} barSize={28} />
+                    <Bar dataKey="revenue_estimate_musd" name={isThai ? "รายได้คาดการณ์" : "Revenue Estimate"} fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={28} isAnimationActive={false} />
+                    <Bar dataKey="revenue_actual_musd" name={isThai ? "รายได้จริง" : "Revenue Actual"} fill="#0b5a4b" radius={[4, 4, 0, 0]} barSize={28} isAnimationActive={false} />
                   </>
                 )}
               </BarChart>

@@ -30,13 +30,18 @@ function loadAgentFiles(dir: string, basePath: string): Array<{type: string, con
 
 async function createInteractionWithRetry(res: any, opts: any) {
   let attempt = 0;
-  while (attempt < 3) {
-    const response = await createInteraction(opts);
+  let currentOpts = { ...opts };
+  const fallbackModel = 'gemini-3.7-flash';
+
+  while (attempt < 4) {
+    const response = await createInteraction(currentOpts);
     if (response.ok) return response;
-    
-    if (response.status === 429) {
-      const errTxt = await response.text();
-      let retryInSecs = 40;
+
+    const status = response.status;
+    const errTxt = await response.text();
+
+    if (status === 429) {
+      let retryInSecs = 30;
       const match = errTxt.match(/Please retry in ([\d\.]+)s/);
       if (match && match[1]) {
         retryInSecs = Math.ceil(parseFloat(match[1])) + 1;
@@ -49,13 +54,33 @@ async function createInteractionWithRetry(res: any, opts: any) {
       
       await new Promise(r => setTimeout(r, retryInSecs * 1000));
       attempt++;
+    } else if (
+      status === 503 ||
+      status === 500 ||
+      status === 502 ||
+      errTxt.toLowerCase().includes('unreachable') ||
+      errTxt.toLowerCase().includes('high demand') ||
+      errTxt.toLowerCase().includes('unavailable')
+    ) {
+      console.warn(`[Model ${currentOpts.model || '3.8'} unavailable (status: ${status})]: ${errTxt.slice(0, 100)}. Retrying attempt ${attempt + 1}...`);
+      if (res) {
+        res.write(`data: ${JSON.stringify({ type: 'thinking', text: `โมเดล ${currentOpts.model || 'Gemini 3.8'} มีผู้ใช้งานหนาแน่นชั่วคราว กำลังเชื่อมต่อซ้ำอัตโนมัติ...` })}\n\n`);
+      }
+
+      await new Promise(r => setTimeout(r, 2500));
+
+      // On attempt >= 2, if 3.8 is still busy, fallback to 3.7
+      if (attempt >= 1 && currentOpts.model === 'gemini-3.8-flash') {
+        console.warn(`[Model Fallback] Switching from gemini-3.8-flash to ${fallbackModel}`);
+        currentOpts.model = fallbackModel;
+      }
+      attempt++;
     } else {
-      // Re-construct the response so the caller can read .text()
-      const errTxt = await response.text();
+      // Return response so caller can inspect
       return new Response(errTxt, { status: response.status, statusText: response.statusText, headers: response.headers });
     }
   }
-  return await createInteraction(opts);
+  return await createInteraction(currentOpts);
 }
 
 
@@ -148,6 +173,158 @@ async function startServer() {
   });
 
 
+  // In-memory cache for Live AI Financial Analyst row insights
+  const metricInsightCache = new Map<string, any>();
+
+  app.post("/api/analyze-metric", async (req, res) => {
+    try {
+      const {
+        ticker = 'TSLA',
+        companyName = 'Tesla, Inc.',
+        metricKey,
+        metricName,
+        periods = [],
+        historyValues = [],
+        yoyPcts = [],
+        unit = '',
+        isCurrency = false,
+        context = {},
+        redFlags = [],
+        isThai = true,
+        model = 'gemini-3.8-flash'
+      } = req.body;
+
+      if (!metricKey || !metricName) {
+        return res.status(400).json({ error: "Missing metricKey or metricName" });
+      }
+
+      // Cache lookup key
+      const cacheKey = `${ticker}_${metricKey}_${(historyValues || []).join(',')}_${isThai ? 'th' : 'en'}_${model}`;
+      if (metricInsightCache.has(cacheKey)) {
+        const cached = metricInsightCache.get(cacheKey);
+        if (cached && (!cached.what_is_it_th || cached.what_is_it_th.trim() === '')) {
+          metricInsightCache.delete(cacheKey);
+        } else {
+          return res.json({ success: true, cached: true, insight: cached });
+        }
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "GEMINI_API_KEY not configured on server" });
+      }
+
+      // Format periods and history values
+      const historySummary = (periods || []).map((p: string, idx: number) => {
+        const val = historyValues[idx];
+        const yoy = yoyPcts[idx];
+        if (val === null || val === undefined) return `${p}: -`;
+        let valStr = '';
+        if (isCurrency || unit === '$' || unit === 'M') {
+          const abs = Math.abs(val);
+          const sign = val < 0 ? '-' : '';
+          valStr = abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(2)}B` : `${sign}$${abs.toFixed(2)}M`;
+        } else if (unit === '%') {
+          valStr = `${val.toFixed(1)}%`;
+        } else {
+          valStr = `${val}${unit ? ' ' + unit : ''}`;
+        }
+        const yoyStr = yoy !== null && yoy !== undefined ? ` (${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% YoY)` : '';
+        return `${p}: ${valStr}${yoyStr}`;
+      }).join(', ');
+
+      const contextSummary = Object.entries(context || {})
+        .filter(([_, v]) => Array.isArray(v) && v.length > 0)
+        .map(([k, v]) => `${k}: ${(v as any[]).slice(-4).join(', ')}`)
+        .join('\n');
+
+      const redFlagsSummary = (redFlags || []).slice(0, 3).join('; ');
+
+      const prompt = `You are an elite Senior Wall Street Equity Research Analyst (CFA Charterholder) known for rigorous, quantitative financial statement dissection.
+Analyze the following financial statement metric for **${companyName} (${ticker})**:
+
+- Metric: ${metricName} (Key: ${metricKey})
+- Historical Sequence across recent periods: ${historySummary}
+${contextSummary ? `- Wider Financial Statement Context (recent 4 quarters in $M):\n${contextSummary}` : ''}
+${redFlagsSummary ? `- Related Red Flags from 10-K/10-Q filings: ${redFlagsSummary}` : ''}
+
+CRITICAL INSTITUTIONAL ANALYSIS RULES:
+1. STRICT DATA FIDELITY: Never produce generic canned praise (e.g. do NOT say 'ยอดเยี่ยม' or 'ลงทุนเพื่ออนาคต' if CapEx surged > 100% causing FCF to turn negative, or if EBIT contracted by > 50% from price wars).
+2. CROSS-STATEMENT SYNTHESIS: Connect this line item directly to the rest of the financial statements (e.g. explain how a massive CapEx outflow of -$5.79B in investing cash flow outpaced operating cash flow of ~$4.7B, plunging Free Cash Flow into negative -$1.09B; or how SG&A overhead and price cuts caused operating de-leverage).
+3. CAUSALITY & DRIVERS: Ground the explanation in ${companyName}'s actual business operations (e.g. for Tesla: AI training clusters / Cortex compute, Gigafactory tooling, Robotaxi/FSD development, EV price competition, energy storage margins).
+4. PROFESSIONAL TONE: ${isThai ? 'ตอบเป็นภาษาไทยระดับนักวิเคราะห์การเงินสถาบัน (IB/Equity Research) ชัดเจน กระชับ ตรงประเด็น' : 'Respond in professional Wall Street Equity Research English.'}
+
+OUTPUT FORMAT:
+Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matching this schema:
+{
+  "status": "warning" | "neutral" | "good" | "excellent",
+  "status_label_th": "สรุปสถานะสั้นๆ 3-7 คำ (เช่น 'CapEx เร่งตัวฉุด FCF ติดลบ' หรือ 'Operating De-leverage')",
+  "status_label_en": "Short status label 3-7 words (e.g. 'CapEx Surge Drives FCF Negative')",
+  "what_is_it_th": "คำจำกัดความ/ความหมายของบรรทัดนี้ในงบการเงิน 1 ประโยคชัดเจนและเข้าใจง่าย (เช่น 'มูลค่ายอดขายรวมสุทธิจากการส่งมอบสินค้าและบริการทั้งหมดของบริษัทในรอบระยะเวลา')",
+  "what_is_it_en": "Clear 1-sentence definition of this financial statement line item",
+  "interpretation_th": "วิเคราะห์เชิงลึก 2-4 ประโยค ระบุตัวเลขจริง ชี้สาเหตุต้นตอ และผลกระทบข้ามงบการเงิน (เช่น OCF, FCF, Margin)",
+  "interpretation_en": "In-depth 2-4 sentence analysis citing actual figures and cross-statement impact",
+  "pros_th": ["ข้อดีหรือผลเชิงบวกที่เป็นจริง 2 ข้อ"],
+  "pros_en": ["Realistic positive aspects 2 bullets"],
+  "benchmark_th": "เกณฑ์มาตรฐานหรือมุมมองเปรียบเทียบในอุตสาหกรรม/กลุ่มคู่แข่ง",
+  "benchmark_en": "Industry benchmark context",
+  "watchouts_th": "จุดเฝ้าระวังและความเสี่ยงทางการเงินที่ต้องจับตาอย่างใกล้ชิด",
+  "watchouts_en": "Key financial risks and watch items"
+}`;
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const candidateModels = [
+        model || 'gemini-3.8-flash',
+        'gemini-3.8-flash',
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3-flash-preview',
+        'gemini-3.7-flash',
+        'gemini-3.6-flash'
+      ].filter((m, idx, self) => self.indexOf(m) === idx);
+
+      let geminiRes: any = null;
+      let usedModel = 'gemini-3.5-flash';
+      let lastErr: any = null;
+
+      for (const m of candidateModels) {
+        try {
+          geminiRes = await ai.models.generateContent({
+            model: m,
+            contents: prompt
+          });
+          usedModel = m;
+          break;
+        } catch (e: any) {
+          console.warn(`[analyze-metric] Model ${m} unavailable (${e.status || e.message?.slice(0, 100)}), trying fallback...`);
+          lastErr = e;
+        }
+      }
+
+      if (!geminiRes) {
+        throw lastErr || new Error("All Gemini models unavailable");
+      }
+
+      const responseText = geminiRes.text || '';
+      const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, responseText.trim()];
+      const cleanJson = jsonMatch[1] || responseText.trim();
+      const parsedInsight = JSON.parse(cleanJson);
+      parsedInsight.model = usedModel;
+
+      if (!parsedInsight.what_is_it_th || parsedInsight.what_is_it_th.trim() === '') {
+        parsedInsight.what_is_it_th = `ตัวเลขทางการเงินแสดงมูลค่าหรืออัตราส่วนของ ${metricName} ตามมาตรฐานการจัดทำงบการเงินสากล`;
+      }
+      if (!parsedInsight.what_is_it_en || parsedInsight.what_is_it_en.trim() === '') {
+        parsedInsight.what_is_it_en = `Standard financial statement metric representing ${metricName}`;
+      }
+
+      metricInsightCache.set(cacheKey, parsedInsight);
+      return res.json({ success: true, cached: false, insight: parsedInsight, model: usedModel });
+    } catch (err: any) {
+      console.error("[analyze-metric] Error:", err?.message || err);
+      return res.status(500).json({ error: err.message || "Failed to analyze metric" });
+    }
+  });
+
   app.post("/api/upload_artifact", express.raw({ type: '*/*', limit: '50mb' }), (req, res) => {
     try {
         const fileName = req.query.name || 'podcast_briefing.wav';
@@ -195,6 +372,189 @@ async function startServer() {
     res.download(latestFile);
   });
 
+  app.get("/api/live-quotes", async (req, res) => {
+    try {
+      const symbolsParam = (req.query.symbols as string) || (req.query.tickers as string) || '';
+      if (!symbolsParam) {
+        return res.status(400).json({ error: "Missing 'symbols' query parameter" });
+      }
+
+      const rawSymbols = symbolsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+      if (rawSymbols.length === 0) {
+        return res.status(400).json({ error: "No valid symbols provided" });
+      }
+
+      const mappedSymbols = rawSymbols.map(s => (s === 'SQ' ? 'XYZ' : s));
+      const quotes: Record<string, any> = {};
+
+      // 1. Try Authenticated Yahoo Finance Quote (multi-symbol)
+      let cookie = '';
+      let crumb = '';
+      try {
+        const cRes = await fetch('https://fc.yahoo.com', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          signal: AbortSignal.timeout(3500)
+        });
+        cookie = cRes.headers.get('set-cookie') || '';
+        const crRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
+          signal: AbortSignal.timeout(3500)
+        });
+        crumb = await crRes.text();
+        if (crumb && crumb.length < 50 && !crumb.includes('<')) {
+          const quoteUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${mappedSymbols.join(',')}&crumb=${encodeURIComponent(crumb)}`;
+          const qRes = await fetch(quoteUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
+            signal: AbortSignal.timeout(4000)
+          });
+          if (qRes.ok) {
+            const qJson: any = await qRes.json();
+            const list = qJson?.quoteResponse?.result || [];
+            for (const q of list) {
+              const sym = q.symbol?.toUpperCase();
+              if (sym) {
+                const capNum = q.marketCap || null;
+                const capStr = capNum
+                  ? (capNum >= 1e12 ? `$${(capNum / 1e12).toFixed(2)}T` : (capNum >= 1e9 ? `$${(capNum / 1e9).toFixed(2)}B` : `$${(capNum / 1e6).toFixed(1)}M`))
+                  : null;
+                quotes[sym] = {
+                  symbol: sym,
+                  price: q.regularMarketPrice ?? null,
+                  changePercent: q.regularMarketChangePercent ?? null,
+                  change: q.regularMarketChange ?? null,
+                  marketCap: capStr,
+                  marketCapRaw: capNum,
+                  trailingPE: q.trailingPE ? Number(q.trailingPE.toFixed(1)) : null,
+                  forwardPE: q.forwardPE ? Number(q.forwardPE.toFixed(1)) : null,
+                  fiftyTwoWeekHigh: q.fiftyTwoWeekHigh ?? null,
+                  fiftyTwoWeekLow: q.fiftyTwoWeekLow ?? null,
+                  volume: q.regularMarketVolume ?? null,
+                  shortName: q.shortName || q.longName || sym
+                };
+              }
+            }
+
+            // 1b. Fetch quoteSummary for complete Valuation Measures (pegRatio, priceToSales, priceToBook, enterpriseToRevenue, enterpriseToEbitda)
+            await Promise.all(mappedSymbols.map(async (s) => {
+              try {
+                const qsUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=defaultKeyStatistics,summaryDetail,financialData,upgradeDowngradeHistory,recommendationTrend&crumb=${encodeURIComponent(crumb)}`;
+                const qsRes = await fetch(qsUrl, {
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
+                  signal: AbortSignal.timeout(4000)
+                });
+                if (qsRes.ok) {
+                  const qsJson: any = await qsRes.json();
+                  const res0 = qsJson?.quoteSummary?.result?.[0];
+                  if (res0) {
+                    const ks = res0.defaultKeyStatistics || {};
+                    const sd = res0.summaryDetail || {};
+                    const fd = res0.financialData || {};
+                    const ugh = res0.upgradeDowngradeHistory || {};
+                    const rt = res0.recommendationTrend || {};
+
+                    if (!quotes[s]) {
+                      quotes[s] = { symbol: s };
+                    }
+
+                    // Key Valuation Measures
+                    if (ks.pegRatio?.raw !== undefined) quotes[s].pegRatio = Number(ks.pegRatio.raw.toFixed(2));
+                    if (sd.priceToSalesTrailing12Months?.raw !== undefined) quotes[s].priceToSales = Number(sd.priceToSalesTrailing12Months.raw.toFixed(2));
+                    const pb = ks.priceToBook?.raw ?? sd.priceToBook?.raw ?? quotes[s].priceToBook;
+                    if (pb !== undefined && pb !== null) quotes[s].priceToBook = Number(pb.toFixed(2));
+                    if (ks.enterpriseToRevenue?.raw !== undefined) quotes[s].enterpriseToRevenue = Number(ks.enterpriseToRevenue.raw.toFixed(2));
+                    if (ks.enterpriseToEbitda?.raw !== undefined) quotes[s].enterpriseToEbitda = Number(ks.enterpriseToEbitda.raw.toFixed(2));
+                    if (ks.enterpriseValue?.raw !== undefined) {
+                      quotes[s].enterpriseValueRaw = ks.enterpriseValue.raw;
+                      const evNum = ks.enterpriseValue.raw;
+                      quotes[s].enterpriseValue = evNum >= 1e12 ? `$${(evNum / 1e12).toFixed(2)}T` : (evNum >= 1e9 ? `$${(evNum / 1e9).toFixed(2)}B` : `$${(evNum / 1e6).toFixed(1)}M`);
+                    }
+
+                    // Multiples refinement
+                    if (quotes[s].trailingPE === null && sd.trailingPE?.raw) quotes[s].trailingPE = Number(sd.trailingPE.raw.toFixed(1));
+                    if (quotes[s].forwardPE === null && (ks.forwardPE?.raw || sd.forwardPE?.raw)) {
+                      quotes[s].forwardPE = Number((ks.forwardPE?.raw || sd.forwardPE?.raw).toFixed(1));
+                    }
+
+                    // Margins and Growth
+                    if (fd.revenueGrowth?.raw !== undefined) quotes[s].revenueGrowthYoY = Number((fd.revenueGrowth.raw * 100).toFixed(1));
+                    if (fd.grossMargins?.raw !== undefined) quotes[s].grossMargin = Number((fd.grossMargins.raw * 100).toFixed(1));
+                    if (fd.profitMargins?.raw !== undefined) quotes[s].netMargin = Number((fd.profitMargins.raw * 100).toFixed(1));
+
+                    // Real Wall Street Consensus & Analyst Ratings
+                    quotes[s].forecast_data = {
+                      financialData: {
+                        targetHighPrice: fd.targetHighPrice?.raw,
+                        targetLowPrice: fd.targetLowPrice?.raw,
+                        targetMeanPrice: fd.targetMeanPrice?.raw,
+                        targetMedianPrice: fd.targetMedianPrice?.raw,
+                        recommendationKey: fd.recommendationKey,
+                        numberOfAnalystOpinions: fd.numberOfAnalystOpinions?.raw,
+                        currentPrice: fd.currentPrice?.raw || quotes[s].price
+                      },
+                      recommendationTrend: rt.trend || [],
+                      upgradeDowngradeHistory: (ugh.history || []).slice(0, 15)
+                    };
+                  }
+                }
+              } catch (err) {
+                // Ignore individual quoteSummary error
+              }
+            }));
+          }
+        }
+      } catch (e) {
+        console.warn("[/api/live-quotes] Yahoo cookie/crumb fetch error:", e);
+      }
+
+      // 2. Fallback to chart endpoint for any missing symbol
+      const missingSymbols = mappedSymbols.filter(s => !quotes[s] || quotes[s].price === null);
+      if (missingSymbols.length > 0) {
+        await Promise.all(missingSymbols.map(async (sym) => {
+          try {
+            const chartRes = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}`, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+              signal: AbortSignal.timeout(3500)
+            });
+            if (chartRes.ok) {
+              const cJson: any = await chartRes.json();
+              const meta = cJson?.chart?.result?.[0]?.meta;
+              if (meta && typeof meta.regularMarketPrice === 'number') {
+                quotes[sym] = {
+                  symbol: sym,
+                  price: meta.regularMarketPrice,
+                  changePercent: meta.regularMarketChangePercent ?? null,
+                  change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.regularMarketPrice),
+                  marketCap: null,
+                  marketCapRaw: null,
+                  trailingPE: null,
+                  forwardPE: null,
+                  fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
+                  fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? null,
+                  volume: meta.regularMarketVolume ?? null,
+                  shortName: meta.shortName || sym
+                };
+              }
+            }
+          } catch (err) {
+            console.warn(`[/api/live-quotes] Fallback chart error for ${sym}:`, err);
+          }
+        }));
+      }
+
+      if (rawSymbols.includes('SQ') && quotes['XYZ']) {
+        quotes['SQ'] = { ...quotes['XYZ'], symbol: 'SQ' };
+      }
+
+      return res.json({
+        quotes,
+        asOf: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error("[/api/live-quotes] Unexpected error:", error);
+      return res.status(500).json({ error: error?.message || "Internal server error" });
+    }
+  });
+
   app.post("/api/analyze", async (req, res) => {
     try {
       const { ticker, instruction, origin, model, language, analysisType, useSelfConsistency } = req.body;
@@ -232,14 +592,62 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
      * For Digital Banking & Fintech (e.g., SOFI): Compare with HOOD (Robinhood), UPST (Upstart), NU (Nu Holdings), AFRM (Affirm).
      * For EV & Clean Energy (e.g., TSLA): Compare with BYDDF (BYD), RIVN (Rivian), GM, LCID.
    - For ${ticker} AND all peer companies listed in "peer_comparison" (e.g., ASTS, RDW, PL, AMD, TSM, BYD, etc.), you MUST execute dedicated live web searches to retrieve their LIVE current stock price, Market Cap, and P/E ratios (Trailing and Forward) as of TODAY (${todayISO}).
-   - For example: TSLA Market Cap is ~$1.41 Trillion (stock price ~$356, NOT $1.14T from past quarters); RKLB Market Cap is ~$37B–$40B (stock price ~$62–$64); ASTS Market Cap is ~$10B–$15B; AMD is ~$750B–$770B.
+   - For example: TSLA Market Cap is ~$1.40 Trillion (stock price ~$353, NOT $1.14T from past quarters); RKLB Market Cap is ~$38B–$41B (stock price ~$62–$64); ASTS Market Cap is ~$24B (stock price ~$62); AMD is ~$745B–$770B; EOSE is ~$1.32B (stock price ~$3.65).
    - NEVER rely on static memory or outdated pre-training knowledge. All Market Caps, P/E multiples, and margins in "peer_comparison" MUST match live financial reality as of TODAY (${todayISO}).
-7. AUTHENTIC 3 FINANCIAL STATEMENTS (INCOME, BALANCE SHEET, CASH FLOW):
-   - In "financial_statements", do NOT stop at searching only headline revenue and EPS. You MUST execute dedicated web searches for the company's official SEC Form 10-Q and 10-K "CONSOLIDATED BALANCE SHEETS" and "CONSOLIDATED STATEMENTS OF CASH FLOWS" across all 4 reporting periods.
-   - For Balance Sheet: Extract the exact verified figures for "total_assets", "total_current_assets", "cash_and_equivalents", "short_term_investments", "accounts_receivable", "inventory", "net_ppe", "total_liabilities", "total_current_liabilities", "accounts_payable", "short_term_debt", "total_debt", and "total_equity".
-   - For Cash Flow: Extract "operating_cash_flow", "depreciation", "capex", "free_cash_flow" (OCF - CapEx), "investing_cash_flow", "financing_cash_flow", "stock_issuance_repurchase", and "dividends_paid".
-   - NEVER guess, fabricate, or shift older 2023/2024 Balance Sheet numbers into 2025/2026 (e.g. for TSLA, Total Assets in 2025/Q3 is ~$133.74B and 2026/Q2 is ~$148.52B, NOT $119B–$125B from 2024). Every quarter's Balance Sheet and Cash Flow MUST match the SEC filing table for that exact period.
-   - Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.`;
+   - STRICT GAAP ACCOUNTING IDENTITIES:
+     * Gross Profit = Revenue - COGS
+     * Operating Income = Gross Profit - Operating Expenses
+     * Total Assets = Total Liabilities + Total Equity
+     * Free Cash Flow = Operating Cash Flow - CapEx
+   - CROSS-SECTION MARGIN & FINANCIAL STATEMENTS CONSISTENCY (อัตรากำไรในงบการเงินต้องตรงกับ Peer Comparison และ Five Pillars ทุกจุด ห้ามขัดแย้งกันเองเด็ดขาด):
+     * The Gross Margin, Operating Margin, and Net Margin reported in the 4th (latest) quarter of "financial_statements" MUST match the target ticker metrics in "peer_comparison" and "five_pillars.profitability".
+     * For Tesla (TSLA): The authentic SEC Form 8-K / 10-Q figures are: Q2 2026 Revenue $28,236M ($28.24B), Gross Profit $4,750M (Gross Margin 16.8%), Operating Income $398M (Operating Margin 1.4%), Net Income $1,114M (Net Margin ~3.95%), EPS $0.32, CapEx $5,790M, Free Cash Flow -$1,090M (deficit). NEVER report inflated Net Income ($3.12B) or Operating Income ($3.84B / 12.75%), as this is nearly 10x higher than reality and causes severe cross-section contradiction!
+     * BANNED HISTORICAL EXTRAPOLATION: NEVER synthesize historical quarters (Q3 2025, Q4 2025, Q1 2026) using artificial fixed linear slope steps from the latest quarter. Every quarter must reflect actual 10-Q/8-K results.
+8. MANDATORY LATEST QUARTER SEC FILINGS IN FINDINGS & VALUATION CONSISTENCY (เอกสารและงบการเงินต้องเป็นไตรมาสล่าสุดเสมอเพื่อให้คำนวณตรงกัน):
+   - PRIMARY CITATION MANDATE: The first document in "findings" (findings[0]) MUST ALWAYS be the latest SEC Form 10-Q (or latest Form 10-K if the company recently completed its fiscal year-end).
+   - In "findings[0]", explicitly label "documentType" with the quarter period (e.g., "Form 10-Q (Q1 2026)" or "Form 10-Q (ไตรมาสล่าสุด)"), provide the exact filing date, and include key insights summarizing the latest balance sheet liquidity (Cash & ST Investments), total debt, dilution/shares outstanding, and revenue performance.
+   - 100% MATHEMATICAL ALIGNMENT (คำนวณตรงกัน): The balance sheet figures (Cash, Short-Term Investments, Total Debt, Diluted Shares Outstanding) from this latest quarter filing MUST directly align with:
+     * The 4th (latest) quarter in "financial_statements"
+     * Enterprise Value calculation (EV = Market Cap + Total Debt - Cash)
+     * DCF Intrinsic Value starting balance sheet (Net Cash = Cash - Debt)
+     * Diluted shares count used for Per Share metrics.
+   - Do NOT cite an old 2023 or 2024 filing as the primary finding when 2025/2026 quarterly filings have been published. Citing outdated documents while calculating against live 2026 market prices causes severe calculation discrepancies (คำนวณไม่ตรงกัน) and is STRICTLY PROHIBITED.
+9. MANDATORY 4 QUARTERS IN EARNINGS ANALYSIS (ประวัติผลประกอบการต้องมีครบ 4 ไตรมาส ห้ามมีอันเดียวเด็ดขาด):
+   - In "earnings_analysis.past_earnings_history", you MUST provide EXACTLY the last 4 completed quarters (e.g., Q3 2025 -> Q4 2025 -> Q1 2026 -> Q2 2026), matching the chronological order of "financial_statements.periods".
+   - NEVER output only 1 single quarter! Outputting only 1 quarter ruins the beat streak chart and will be severely penalized.
+   - For all 4 quarters, provide: "period", "report_date", "eps_estimate", "eps_actual", "eps_surprise_pct", "revenue_estimate_musd", "revenue_actual_musd", "revenue_surprise_pct", "stock_reaction_1d_pct", "guidance_change", and "beat_or_miss".
+10. TESLA (TSLA) AUTONOMY & DCF SCENARIO NARRATIVE GROUNDING (สมมติฐาน DCF ต้องอิงข้อเท็จจริง ไม่เขียนล้าหลัง):
+    - Current Reality: Tesla has ALREADY launched unsupervised commercial Robotaxi operations in Austin (mid-2025) and expanded to Dallas and Houston in 2026.
+    - Bear Case: NEVER write "Robotaxi ล่าช้าไปถึงปี 2028" or "ยังไม่เปิดให้บริการ" because it is already operational. The Bear risk is commercial scaling bottlenecks: "กรณี Robotaxi ขยายสเกลเชิงพาณิชย์ได้ช้ากว่าที่บริษัทเคยประกาศไว้มาก (ยังจำกัดอยู่ในวงแคบไม่กี่พันคันภายในปี 2028 จากข้อจำกัดทางกฎหมายและความปลอดภัย) และการแข่งขันด้านราคา EV ยังคงกดดันอัตรากำไร".
+    - Base Case: Aligns with Elon Musk's Q1 2026 guidance (revenue material in 2027) ➡️ "กรณี Robotaxi เริ่มสร้างกระแสเงินสดที่มีนัยสำคัญใน 10-15 เมืองใหญ่ของสหรัฐฯ ตั้งแต่ปี 2027".
+    - Bull Case: "กรณี Cybercab ผลิตเชิงพาณิชย์เต็มกำลัง และ Optimus เริ่มส่งมอบเชิงอุตสาหกรรมช่วงปลายปี 2027 พร้อม FSD Unsupervised ปลดล็อคทั่วประเทศ" (ถ่วงน้ำหนักความน่าจะเป็นต่ำตาม track record การเลื่อนแผน).
+11. MANDATORY AUTHENTIC SEGMENT REVENUE BREAKDOWN (สัดส่วนรายได้ตามสายธุรกิจและภูมิภาคต้องดึงจาก 10-Q/10-K จริง ห้ามเดาหรือใช้สัดส่วนเก่า):
+     - In "business_analysis.revenue_breakdown.by_business":
+       * You MUST search and extract the authentic segment revenue breakdown from the latest Form 10-Q or 10-K "Product and Service Information" or Segment Footnote table for the latest reported quarter.
+       * For Apple (AAPL): The breakdown MUST report Apple's 5 official segments for the latest quarter (Q3 FY2026 ended June 27, 2026):
+         1) iPhone: ~$54,250M (~49.58% of total revenue)
+         2) Services: ~$30,739M (~28.09% of total revenue)
+         3) Mac: ~$10,350M (~9.46% of total revenue, +28.7% YoY)
+         4) Wearables, Home & Accessories: ~$7,890M (~7.21% of total revenue)
+         5) iPad: ~$6,190M (~5.66% of total revenue)
+         Total Products (Hardware) = $54,250M + $10,350M + $7,890M + $6,190M = $78,680M (~$78.68B), Total Net Sales = $109,419M (~$109.4B).
+         STRICTLY FORBIDDEN to inflate Wearables (e.g. to $14B+ which is holiday Q1) or deflate iPhone (e.g. to $47B)!
+       * For Tesla (TSLA): Automotive, Energy Storage & Generation, Services & Other.
+       * For NVIDIA (NVDA): Data Center, Gaming, Professional Visualization, Automotive, OEM.
+       * For Microsoft (MSFT): Intelligent Cloud, Productivity & Business Processes, More Personal Computing.
+       * For Alphabet (GOOGL): Google Search, YouTube ads, Google Cloud, Google Subscriptions/Devices, Network.
+       - All segment revenue figures must mathematically sum to the Total Reported Revenue, and ratio_pct must sum to 100%.
+12. MANDATORY WALL STREET 12-MONTH CONSENSUS ANCHORING FOR VALUATION SCENARIOS (สมมติฐานและการประเมินมูลค่าต้องอิง Consensus ตลาดข้ามทุก Sector ไม่สลับระหว่าง Base กับ Bull):
+     - DEDICATED REAL-TIME CONSENSUS SEARCH: You MUST execute dedicated web searches (Yahoo Finance, TipRanks, FactSet, Bloomberg, MarketWatch) to retrieve the verified Wall Street 12-month Analyst Price Targets for ${ticker}:
+       * Consensus Target Price (Mean or Median of all covering Wall Street analysts)
+       * High Target Price (Street-High / Bullish outlier target)
+       * Low Target Price (Street-Low / Bearish downside target)
+     - STRICT SCENARIO MAPPING (CRITICAL FOR DETERMINISTIC ACCURACY ACROSS ALL STOCKS & SECTORS):
+       * Base Case ("scenarios.base" & "summary.base_case_fair_value"): MUST ALWAYS be anchored to the Wall Street Mean/Median Consensus Target Price (or the mathematically consistent fundamental DCF baseline). It represents the most probable baseline expectations of institutional consensus. NEVER assign the Street-High outlier (e.g., $28 for SOFI, $160 for PLTR, $105 for HOOD, $275 for NVDA) to the Base Case, as doing so causes erratic swings between runs!
+       * Bull Case ("scenarios.bull" & "summary.fair_value_range_high"): This is the designated home for the Street-High Target (Optimistic / Blue Sky / Best Execution scenario).
+       * Bear Case ("scenarios.bear" & "summary.fair_value_range_low"): This is the designated home for the Street-Low Target (Downside risk / Execution bottleneck scenario).
+     - UNIVERSAL SECTOR COVERAGE: This rule applies unconditionally to all tickers and sectors — Tech, FinTech, Banking, Healthcare, Consumer, Energy, Utilities, Space, and CleanTech.
+     - DCF ASSUMPTIONS ALIGNMENT: Base revenue CAGR ("revenue_cagr_pct") and terminal margins ("terminal_margin_pct") must be realistically aligned with consensus guidance, avoiding arbitrary extremes.`;
       
       let dynamicSchema = ``;
       
@@ -250,37 +658,38 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats. STRICTLY FORBIDDEN to use Japanese, Chinese (e.g., 鏈, 網, 幣), or any other languages. YOU MUST REMOVE ALL CHINESE CHARACTERS. Translate terms like 'zone' to Thai (โซน).
+          finalInstruction += `\n\nCRITICAL MANDATE - NATURAL INVESTOR THAI (ภาษาคนลงทุนจริง ไม่ใช้ภาษาหุ่นยนต์ AI):
+          เขียนบทวิเคราะห์ทางเทคนิคด้วยภาษาไทยที่คนเทรดจริงใช้กัน เป็นธรรมชาติ เข้าใจง่าย กระชับ ตรงประเด็น ห้ามใช้ภาษาแปลเครื่องหรือสำนวน AI ซ้ำซาก (เช่น "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "เป็นสิ่งสำคัญยิ่งยวด")
+          - ศัพท์เทคนิคการเงินที่นักลงทุนคุ้นเคย อนุญาตให้ใช้วงเล็บหรือทับศัพท์ได้ เช่น Buy on Dip, Breakout, Pullback, Stop-Loss, Take Profit, Sideways, Whipsaw, Confluence
+          - STRICTLY FORBIDDEN to use Japanese or Chinese characters.
+          
           Please follow this specific Technical Analysis guideline for the JSON fields in "technical_analysis":
-          1) signal_summary: สรุปสถานะ (Buy/Wait/Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมดจากหัวข้อข้างต้น ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, MACD = ลบ, RSI = กลาง" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน โดยต้องใช้ Markdown bullet points (ขึ้นบรรทัดใหม่แต่ละข้อ) เพื่อให้อ่านง่าย จากนั้นสรุปทิศทางรวม และระบุ Invalidation level)
+          1) signal_summary: สรุปสถานะ (Buy / Wait / Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมด ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, MACD = ลบ, RSI = กลาง" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน โดยต้องใช้ Markdown bullet points ขึ้นบรรทัดใหม่แต่ละข้อเพื่อให้อ่านง่าย จากนั้นสรุปทิศทางรวม และระบุ Invalidation level ระดับราคาที่หากหลุดจะทำให้แผนนี้เสียทรง)
           2) key_levels: current_price (ราคาปัจจุบันเป็นตัวเลข), support 3 ระดับ, resistance 3 ระดับ เป็นตัวเลข (CRITICAL RULE: แต่ละระดับ S/R จะต้องมีระยะห่างจากราคาปัจจุบันอย่างน้อย 1.5 เท่าของค่า ATR (1.5x ATR) เพื่อหลีกเลี่ยง Noise และห่างจากระดับถัดไปอย่างน้อย 1.5x ATR ห้ามระบุระดับที่ใกล้กว่าเกณฑ์นี้อย่างเด็ดขาด ให้ปัดไปหาระดับแนวรับแนวต้านหลักที่ไกลออกไปแทน ห้ามใช้สูตรคำนวณแยก)
-          3) trade_plan: แผนการเทรด โซนเข้า (ระบุราคา ถ้าต่ำกว่าราคาปัจจุบันต้องเป็นการย่อเพื่อซื้อ), stop loss, target 1, target 2, และ Risk/Reward ratio (CRITICAL: ต้องคำนวณ risk/reward ratio แยกกันให้ครบทั้ง 2 Targets คือ R:R สำหรับ Target 1 และ R:R สำหรับ Target 2 โดยใช้สูตร (Target - Entry) / (Entry - Stop-Loss) และแสดงตัวเลขที่ใช้คำนวณกำกับไว้ให้ชัดเจนทั้งสองค่า คุณต้องจัดรูปแบบสูตร R:R ให้เป็น Markdown table (ตาราง) ที่มี 3 คอลัมน์ (Target | Formula | Result) โดยต้องใช้ \n ขึ้นบรรทัดใหม่ให้ถูกต้องตามหลัก Markdown)
-          4) overall_trend: อธิบายภาพรวม
-          5) price_structure: โครงสร้างราคา
-          6) volume_analysis: วิเคราะห์ Volume
+          3) trade_plan: แผนการเทรด โซนเข้า (ระบุราคา ถ้าต่ำกว่าราคาปัจจุบันต้องเป็นการย่อเพื่อซื้อ Buy on Dip), stop loss, target 1, target 2, และ Risk/Reward ratio (CRITICAL: ต้องคำนวณ risk/reward ratio แยกกันให้ครบทั้ง 2 Targets คือ R:R สำหรับ Target 1 และ R:R สำหรับ Target 2 โดยใช้สูตร (Target - Entry) / (Entry - Stop-Loss) และแสดงตัวเลขที่ใช้คำนวณกำกับไว้ให้ชัดเจนทั้งสองค่า จัดรูปแบบสูตร R:R ให้เป็น Markdown table ตารางที่มี 3 คอลัมน์ Target | Formula | Result โดยต้องใช้ \n ขึ้นบรรทัดใหม่ให้ถูกต้องตามหลัก Markdown)
+          4) overall_trend: อธิบายภาพรวมแนวโน้มราคาแบบภาษาคนเทรด
+          5) price_structure: โครงสร้างราคา (เช่น Higher Highs, Higher Lows หรือ Sideways Range)
+          6) volume_analysis: วิเคราะห์ Volume การซื้อขาย สอดคล้องกับทิศทางราคาหรือไม่
           7) trend_indicators: MA, MACD, ADX (สำคัญ: MACD, ADX ต้องระบุเป็นค่าตัวเลขเดียว ณ ปัจจุบัน ห้ามรายงานเป็นช่วงกว้างเด็ดขาด)
           8) momentum_indicators: RSI, Stochastic (สำคัญ: RSI, Stochastic ต้องระบุเป็นค่าตัวเลขเดียว ห้ามเป็นช่วงกว้าง. CRITICAL: คุณต้องระบุชัดเจน 2 เรื่อง: 1. มี Bullish/Bearish Divergence หรือไม่ (ถ้าไม่มีบังคับพิมพ์ "ไม่พบ Divergence") 2. มี Candlestick pattern กลับตัวหรือไม่ (ถ้าไม่มีบังคับพิมพ์ "ไม่พบ Candlestick pattern ที่ชัดเจน"))
           9) volatility_indicators: Bollinger Bands, ATR
           10) chart_patterns: รูปแบบราคา (สำคัญ: ต้องวิเคราะห์ทั้ง Chart Pattern และ Candlestick Pattern เสมอ หากไม่พบรูปแบบที่ชัดเจนให้ระบุว่า "ไม่พบรูปแบบที่ชัดเจน" ห้ามข้ามหรือละเว้นเด็ดขาด)
-          11) relative_strength: เทียบกับตลาด
-          12) technical_risks: ความเสี่ยงเชิงเทคนิคที่ต้องรู้ (ต้องตอบให้ครบ 4 ประเด็นนี้: 1. ความเสี่ยงจากสัญญาณหลอก (false breakout/whipsaw), 2. gap risk (เช่น ข่าว/earnings ถัดไป), 3. ความเสี่ยงจาก volume/liquidity ต่ำ, 4. regime ปัจจุบัน (trending หรือ choppy/sideways) ห้ามตอบแค่ข้อเดียวแล้วข้ามข้ออื่น)
-          13) beginner_summary: สรุปให้มือใหม่ตัดสินใจแบบตรงไปตรงมา:
-           - technical_overview: ภาพรวมเทคนิคอลตอนนี้เป็นแบบไหนในภาษาคนทั่วไป
-           - top_3_points: จุดที่น่าสนใจ 3 ข้อ
+          11) relative_strength: เทียบกับตลาด (เช่น เทียบกับ S&P 500 หรือ Nasdaq)
+          12) technical_risks: ความเสี่ยงเชิงเทคนิคที่ต้องรู้ (ต้องตอบให้ครบ 4 ประเด็นนี้: 1. ความเสี่ยงจากสัญญาณหลอก (false breakout/whipsaw), 2. gap risk (เช่น ข่าว/earnings ถัดไป), 3. ความเสี่ยงจาก volume/liquidity ต่ำ, 4. สภาพตลาดปัจจุบัน trending หรือ choppy/sideways ห้ามตอบแค่ข้อเดียวแล้วข้ามข้ออื่น)
+          13) beginner_summary: สรุปให้เข้าใจง่ายและตัดสินใจได้ตรงไปตรงมา:
+           - technical_overview: สรุปทรงกราฟตอนนี้เป็นอย่างไรในภาษาคนทั่วไป
+           - top_3_points: จุดเด่นหรือสัญญาณบวก 3 ข้อ
            - top_3_cautions: จุดที่ต้องระวัง 3 ข้อ
            - suitable_trade_style: เหมาะกับสไตล์การเทรดแบบไหน (เช่น day/swing/position trade ต้องสอดคล้องกับแผนเข้าจริง ถ้าโซนเข้าซื้ออยู่สูงกว่าปัจจุบัน ห้ามเรียกว่า Buy on Dip เด็ดขาด)
-          14) scoring: คะแนน 1-10 พร้อมเหตุผล
-          15) final_verdict_summary: สรุปสุดท้าย
+          14) scoring: คะแนน 1-10 พร้อมเหตุผลที่กระชับและสมเหตุสมผล
+          15) final_verdict_summary: สรุปภาพรวมและคำแนะนำสุดท้าย
           เงื่อนไขสำคัญ:
           - CRITICAL: สำหรับการวิเคราะห์ทางเทคนิค ต้องตอบให้ครบทุกหัวข้อ (1-15) และหัวข้อย่อย ห้ามข้ามหรือละเว้นเด็ดขาด หากไม่พบสัญญาณใด (เช่น ไม่มี Divergence, ไม่มี Candlestick pattern) ให้ระบุให้ชัดเจนว่า "ไม่พบสัญญาณในขณะนี้" แทนการเว้นว่าง
-          - อย่าตอบกว้าง ๆ หรือชมสวยหรู ใช้ Fact จาก Data
+          - ห้ามใช้สำนวนภาษาที่ประดิษฐ์ขึ้นมาเอง ให้ใช้คำที่คนในวงการลงทุนใช้จริง
           - ตัวเลขประเภท "นับต่อเนื่อง" ต้องแม่นยำเป๊ะ ห้ามประมาณ ถ้านับไม่ได้ให้บอกว่า "ไม่สามารถยืนยันจำนวนไตรมาสที่แน่นอนได้"
           - ห้ามตอบด้วยคำคุณศัพท์ลอยๆ เช่น "แข็งแกร่ง", "เติบโตดี" โดยไม่มีตัวเลขหรือข้อเท็จจริงเฉพาะเจาะจงรองรับ ทุกประโยคต้องมีตัวเลขจริงกำกับ เช่น "รายได้เติบโต 24% YoY"
-          - แต่ละหัวข้อ (1-12) ต้องตอบครบทุก bullet ห้ามข้ามเงียบๆ โดยเฉพาะ dilution/SBC, insider ownership, capital allocation, การเทียบกับคู่แข่ง
-          - หัวข้อ 4 (งบการเงิน), 8 (ความเสี่ยง), 9 (ผู้บริหาร) ต้องมีความยาวอย่างน้อย 3-5 ประโยคที่มีเนื้อหาเฉพาะเจาะจงต่อ bullet ห้ามสรุปทั้งหัวข้อด้วยประโยคเดียว
-          - ระวังอคติจากฝั่งผู้บริหาร (management bias) 
-          - ใช้ตัวเลขล่าสุดเท่าที่หาได้ ระบุแหล่งที่มาและช่วงเวลา (ไตรมาส/ปี) กำกับตัวเลขสำคัญ
-          - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุน`;
+          - แต่ละหัวข้อ (1-12) ต้องตอบครบทุก bullet ห้ามข้ามเงียบๆ
+          - เนื้อหาต้องชัดเจน กระชับ มีสาระ ตรงประเด็น ห้ามใส่น้ำหรือข้อความซ้ำซาก`;
         } else {
           finalInstruction += `\n\n\n\nCRITICAL: You MUST write ALL string values in the JSON output in English.
           Please follow this specific Technical Analysis guideline for the JSON fields in "technical_analysis":
@@ -372,18 +781,18 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   ],` : ''}
   "findings": [
     {
-      "documentType": "Form 10-K",
+      "documentType": "Form 10-Q (Latest Completed Quarter)",
       "keyInsights": ["...", "..."],
-      "date": "2023-12-31",
+      "date": "2026-05-15",
       "sourceUrl": "..."
     }
   ],
   "financial_charts": {
     "stock_price_history": [
-      { "date": "Oct '24", "price": 150.5 }
+      { "date": "Aug '26", "price": 150.5 }
     ],
     "financial_performance_4q": [
-      { "quarter": "Q1 2025", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
+      { "quarter": "Q2 2026", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
     ]
   }
 }`;
@@ -394,57 +803,56 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology, tickers, and standard date formats. STRICTLY FORBIDDEN to use Japanese, Chinese (e.g., 鏈, 網, 幣), or any other languages. YOU MUST REMOVE ALL CHINESE CHARACTERS. Translate terms like 'zone' to Thai (โซน).
+          finalInstruction += `\n\nCRITICAL MANDATE - NATURAL INVESTOR THAI (ภาษาคนลงทุนจริง ไม่ใช้ภาษาหุ่นยนต์ AI):
+          เขียนบทวิเคราะห์ด้วยภาษาไทยที่นักลงทุนและนักวิเคราะห์หุ้นใช้กันจริงๆ เป็นธรรมชาติ ลื่นไหล เข้าใจง่าย กระชับ ตรงประเด็น ห้ามใช้ภาษาแปลเครื่องหรือคำประดิษฐ์ของ AI (เช่น "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "เป็นสิ่งสำคัญยิ่งยวด", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น", "หัวเจาะหลักในการเติบโต")
+          - ให้ใช้คำศัพท์การเงินที่เป็นสากลและนักลงทุนไทยคุ้นเคย โดยใส่วงเล็บหรือทับศัพท์ได้ เช่น Moat (ความได้เปรียบในการแข่งขัน), Pricing Power (อำนาจการตั้งราคา), Ecosystem, Recurring Revenue, Free Cash Flow (FCF), Dilution, Stock-Based Compensation (SBC), Buy on Dip, Stop-Loss
+          - STRICTLY FORBIDDEN to use Japanese or Chinese characters.
+          
           Please follow this specific guideline for BOTH Fundamental and Technical Analysis:
           
           - Fundamental Analysis:
-          1) บริษัทนี้ทำธุรกิจอะไร (for business_overview): หาเงินจากอะไร สินค้าหรือบริการหลักคืออะไร รายได้แบ่งเป็นกี่ส่วน ส่วนไหนเป็นรายได้หลักสุด ธุรกิจนี้เข้าใจง่ายแบบคนทั่วไปฟังแล้วเห็นภาพ (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          2) ลูกค้าของบริษัทคือใคร (for target_customers): ลูกค้าหลักเป็นใคร พึ่งลูกค้ารายใหญ่ไม่กี่รายหรือกระจายดี ลูกค้าเปลี่ยนเจ้าง่ายไหม อะไรทำให้ลูกค้าอยู่กับบริษัทต่อ (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          3) โมเดลรายได้และคุณภาพรายได้ (for revenue_model): เป็นแบบขายครั้งเดียวหรือ recurring revenue สม่ำเสมอไหม ธุรกิจโตจากอะไร แบบไหนคุณภาพดี (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          4) ภาพรวมงบการเงินล่าสุด (for financial_overview): รายได้/กำไรโตไหม margin ดีขึ้นหรือแย่ลง cash flow ดีไหม หนี้เยอะไหม (หากเป็นธนาคาร/สถาบันการเงิน ให้พูดถึงสภาพคล่องและเงินกองทุนแทน แต่ห้ามข้ามเด็ดขาด) P/E หรือ Valuation เทียบกับอุตสาหกรรม เช็ค dilution/SBC (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          5) เช็คคุณภาพพื้นฐานแบบง่าย (for fundamentals_check): CRITICAL: This field MUST NEVER BE EMPTY. You MUST use a Markdown NUMBERED list (1., 2., 3.) to assess these 8 areas in detail, using '\n\n' to separate each point. DO NOT use bullets ('- ') before the numbers: 1.รายได้โตจริงไหม 2.กำไรโตตามไหม 3.กระแสเงินสด 4.หนี้สินน่ากังวลไหม 5.Margin 6.ROIC/ROE/ROA 7.โอกาสโตต่อ 8.สรุปฟันธงว่า "พื้นฐานดี", "ดีแต่มีจุดต้องระวัง", หรือ "ยังไม่แข็งแรง"
-          6) จุดแข็งของธุรกิจ (for business_strengths): มี moat หรือความได้เปรียบอะไร (brand, scale, data, etc.) ของจริงหรือแค่ story เทียบกับคู่แข่งหลัก 1-2 ราย (CRITICAL: You MUST use a Markdown numbered list using '\n\n' to separate points, e.g. '1. ', '2. '. DO NOT use bullets '-' before the numbers.)
-          7) Optionality หรือโอกาสโตในอนาคต (for future_growth): โตเพิ่มจากอะไร upside ที่ตลาดมองไม่เต็ม ปัจจัยเร่ง (Catalysts) ใน 6-12 เดือน (CRITICAL: You MUST use a Markdown numbered list using '\n\n' to separate points, e.g. '1. ', '2. '. DO NOT use bullets '-' before the numbers.)
-          8) ความเสี่ยงที่ต้องรู้ (for key_risks): CRITICAL: You MUST cover at least 8 risk categories (including competition, customer concentration, regulatory, economic, margin, valuation, dilution/SBC, and hidden risks for beginners). EACH bullet MUST contain at least 3-5 sentences of detailed explanation. DO NOT write single-sentence bullets. (ใช้ Markdown numbered lists เช่น "1. ", "2. " และห้ามใช้ "- 1." เด็ดขาด)
-          9) ผู้บริหารและการเล่าเรื่องของบริษัท (for management): เก่งเรื่องอะไร ทำได้จริงไหม สอดคล้องกับตัวเลขไหม insider ownership/buying capital allocation (M&A, ซื้อหุ้นคืน) การทำตาม guidance (ต้องยาว 3-5 ประโยค). CRITICAL: For insider ownership, you MUST provide the exact numerical percentage (%). DO NOT use vague adjectives without real numbers.
-          10) สรุปให้มือใหม่ตัดสินใจ (for beginner_summary): 
-           - business_type_simple: หุ้นตัวนี้เป็นธุรกิจแบบไหนในภาษาคนทั่วไป
-           - top_3_strengths / top_3_risks: จุดเด่นและเสี่ยงอย่างละ 3 ข้อ
-           - suitable_investor_type: เหมาะกับนักลงทุนสายไหน
-           - further_reading: ถ้าจะศึกษาต่อ ควรไปอ่านอะไรเพิ่ม
-          11) ให้คะแนนแบบง่าย (for scoring): ให้คะแนน 1-10 พร้อมเหตุผลสั้น ๆ สำหรับ understandability, revenue_quality, financial_strength, growth_potential, risk_level, overall_attractiveness
-          12) Final Verdict (for final_verdict_summary): สรุปว่า น่าศึกษาต่อไหม (worth_further_study), พื้นฐานดีจริงไหม (strong_fundamentals), ถ้าเป็นมือใหม่ควรดูอะไรเพิ่มก่อนซื้อ (what_to_look_for)
+          1) บริษัทนี้ทำธุรกิจอะไร (for business_overview): หาเงินจากอะไร สินค้าหรือบริการหลักคืออะไร สัดส่วนรายได้มาจากส่วนไหนมากที่สุด อธิบายให้คนทั่วไปฟังแล้วเข้าใจทันที (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          2) ลูกค้าของบริษัทคือใคร (for target_customers): ลูกค้าหลักเป็นใคร พึ่งพาลูกค้ารายใหญ่ไม่กี่รายหรือกระจายตัวดี ลูกค้าเปลี่ยนไปใช้เจ้าอื่นง่ายไหม อะไรที่ผูกใจให้ลูกค้าอยู่ต่อ (เช่น switching cost หรือ ecosystem) (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          3) โมเดลรายได้และคุณภาพรายได้ (for revenue_model): เป็นรายได้แบบขายครั้งเดียวหรือรายได้ประจำสม่ำเสมอ (Recurring Revenue) สัญญาการให้บริการเป็นแบบไหน คุณภาพกระแสเงินสดเป็นอย่างไร (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          4) ภาพรวมงบการเงินล่าสุด (for financial_overview): รายได้และกำไรเติบโตอย่างไร อัตรากำไร (Margins) ดีขึ้นหรือลดลง กระแสเงินสดจากการดำเนินงานและ FCF เป็นบวกหรือไม่ ภาระหนี้สินน่าเป็นห่วงไหม (หากเป็นสถาบันการเงิน ให้ดูสภาพคล่อง อัตราส่วนเงินกองทุน และคุณภาพสินทรัพย์แทน) Valuation เมื่อเทียบกับกลุ่มอุตสาหกรรม และผลกระทบจาก Dilution/SBC (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          5) เช็คคุณภาพพื้นฐาน (for fundamentals_check): CRITICAL: This field MUST NEVER BE EMPTY. You MUST use a Markdown NUMBERED list (1., 2., 3.) to assess these 8 areas in detail, using '\n\n' to separate each point. DO NOT use bullets ('- ') before the numbers: 1.การเติบโตของรายได้ 2.การเติบโตของกำไร 3.คุณภาพกระแสเงินสด 4.ภาระหนี้สินและความเสี่ยงทางการเงิน 5.ความสามารถในการรักษาอัตรากำไร (Margins) 6.ผลตอบแทนต่อเงินลงทุน (ROIC/ROE) 7.โอกาสการเติบโตในระยะยาว 8.บทสรุปภาพรวม ("พื้นฐานแข็งแกร่ง", "มีจุดเด่นแต่ต้องระวัง", หรือ "พื้นฐานยังไม่น่าไว้วางใจ")
+          6) จุดแข็งและความได้เปรียบในการแข่งขัน (for business_strengths): มี Moat ด้านใดบ้าง (แบรนด์, ขนาดธุรกิจ, Network Effect, สิทธิบัตร, ต้นทุน) เปรียบเทียบกับคู่แข่งหลัก 1-2 ราย ว่าเหนือกว่าตรงไหนและมีจุดอ่อนอะไร (CRITICAL: You MUST use a Markdown numbered list using '\n\n' to separate points, e.g. '1. ', '2. '. DO NOT use bullets '-' before the numbers.)
+          7) โอกาสและปัจจัยเร่งการเติบโต (for future_growth): โอกาสสร้างการเติบโตใหม่ ปัจจัยหนุน (Catalysts) ที่น่าจับตาใน 6-12 เดือนข้างหน้า (CRITICAL: You MUST use a Markdown numbered list using '\n\n' to separate points, e.g. '1. ', '2. '. DO NOT use bullets '-' before the numbers.)
+          8) ความเสี่ยงสำคัญที่ต้องจับตา (for key_risks): CRITICAL: You MUST cover at least 8 risk categories (การแข่งขัน, การกระจุกตัวของลูกค้า, นโยบายและกฎหมาย, ภาวะเศรษฐกิจมหภาค, แรงกดดันต่ออัตรากำไร, Valuation ที่อาจตึงตัว, Dilution/SBC, และความเสี่ยงแฝงที่คนมักมองข้าม) แต่ละข้อให้อธิบายเนื้อหาให้ครบถ้วน ชัดเจน พร้อมตัวเลขประกอบ (ใช้ Markdown numbered lists เช่น "1. ", "2. " และห้ามใช้ "- 1." เด็ดขาด)
+          9) ฝีมือผู้บริหารและการจัดสรรเงินทุน (for management): ผู้บริหารมีประวัติการทำงานเป็นอย่างไร ผลงานจริงสอดคล้องกับเป้าหมายที่เคยให้ไว้ไหม สัดส่วนการถือหุ้นของผู้บริหาร (Insider Ownership) ให้ระบุเป็นตัวเลข % ชัดเจน (ถ้าไม่มีข้อมูลให้ระบุว่า "ไม่พบข้อมูลสัดส่วนการถือหุ้นในเอกสารทางการ"), การซื้อขายหุ้นของผู้บริหาร, และการจัดสรรเงินทุน (Capital Allocation เช่น การซื้อหุ้นคืน เงินปันผล หรือการลงทุน M&A)
+          10) สรุปให้มือใหม่เข้าใจง่าย (for beginner_summary): 
+           - business_type_simple: อธิบายโมเดลธุรกิจให้คนทั่วไปเข้าใจง่ายในไม่กี่บรรทัด
+           - top_3_strengths / top_3_risks: สรุปจุดเด่น 3 ข้อ และจุดเสี่ยง 3 ข้อที่เข้าใจง่าย
+           - suitable_investor_type: หุ้นตัวนี้เหมาะกับนักลงทุนสไตล์ไหน (เช่น ลงทุนระยะยาว, เติบโตสูง, หุ้นปันผล, หรือเก็งกำไร)
+           - further_reading: หากต้องการศึกษาต่อ แนะนำให้อ่านเอกสารหรือประเด็นใดเพิ่มเติม
+          11) การให้คะแนน (for scoring): ให้คะแนน 1-10 พร้อมเหตุผลสั้นๆ ตรงไปตรงมา สำหรับ understandability, revenue_quality, financial_strength, growth_potential, risk_level, overall_attractiveness
+          12) บทสรุปสุดท้าย (for final_verdict_summary): สรุปว่าคุ้มค่าน่าศึกษาต่อหรือไม่ (worth_further_study), พื้นฐานแข็งแกร่งเพียงใด (strong_fundamentals), สิ่งสำคัญที่สุดที่ต้องเช็คให้ชัวร์ก่อนตัดสินใจลงทุน (what_to_look_for)
           
           - Technical Analysis:
-          1) signal_summary: สรุปสถานะ (Buy/Wait/Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมดจากหัวข้อข้างต้น ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, RSI = บวก" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน โดยต้องใช้ Markdown bullet points (ขึ้นบรรทัดใหม่แต่ละข้อ) เพื่อให้อ่านง่าย จากนั้นสรุปทิศทางรวม และระบุ Invalidation level ระดับราคาที่ถ้าหลุด/break จะทำให้มุมมองเปลี่ยนไป)
+          1) signal_summary: สรุปสถานะ (Buy / Wait / Avoid), trend รายสัปดาห์/วัน/4H, และ confluence score (รวมสัญญาณทั้งหมด ลิสต์เป็นรายการทีละสัญญาณว่าอันไหนบวก ลบ หรือกลาง เช่น "MA Cross = บวก, RSI = บวก" ห้ามสรุปแค่ตัวเลขรวมโดยไม่แสดงรายการที่นับมาก่อน โดยต้องใช้ Markdown bullet points ขึ้นบรรทัดใหม่แต่ละข้อเพื่อให้อ่านง่าย จากนั้นสรุปทิศทางรวม และระบุ Invalidation level ระดับราคาที่ถ้าหลุดจะทำให้มุมมองเสียทรง)
           2) key_levels: แนวรับ (support) 3 ระดับ, แนวต้าน (resistance) 3 ระดับ เป็นตัวเลข (CRITICAL RULE: แต่ละระดับ S/R จะต้องมีระยะห่างจากราคาปัจจุบันอย่างน้อย 1.5 เท่าของค่า ATR (1.5x ATR) เพื่อหลีกเลี่ยง Noise และห่างจากระดับถัดไปอย่างน้อย 1.5x ATR ห้ามระบุระดับที่ใกล้กว่าเกณฑ์นี้อย่างเด็ดขาด ให้ปัดไปหาระดับแนวรับแนวต้านหลักที่ไกลออกไปแทน)
-          3) trade_plan: แผนการเทรด จุดเข้า, stop loss, target 1, target 2, และ Risk/Reward ratio (CRITICAL: ต้องคำนวณ risk/reward ratio แยกกันให้ครบทั้ง 2 Targets คือ R:R สำหรับ Target 1 และ R:R สำหรับ Target 2 โดยใช้สูตร (Target - Entry) / (Entry - Stop-Loss) และแสดงตัวเลขที่ใช้คำนวณกำกับไว้ให้ชัดเจนทั้งสองค่า คุณต้องจัดรูปแบบสูตร R:R ให้เป็น Markdown table (ตาราง) ที่มี 3 คอลัมน์ (Target | Formula | Result) โดยต้องใช้ \n ขึ้นบรรทัดใหม่ให้ถูกต้องตามหลัก Markdown)
-          4) overall_trend: อธิบายภาพรวม
-          5) price_structure: โครงสร้างราคา
-          6) volume_analysis: วิเคราะห์ Volume
+          3) trade_plan: แผนการเทรด จุดเข้า (ถ้าต่ำกว่าราคาปัจจุบันเป็น Buy on Dip), stop loss, target 1, target 2, และ Risk/Reward ratio (CRITICAL: ต้องคำนวณ risk/reward ratio แยกกันให้ครบทั้ง 2 Targets คือ R:R สำหรับ Target 1 และ R:R สำหรับ Target 2 โดยใช้สูตร (Target - Entry) / (Entry - Stop-Loss) และแสดงตัวเลขที่ใช้คำนวณกำกับไว้ให้ชัดเจนทั้งสองค่า จัดรูปแบบสูตร R:R ให้เป็น Markdown table ตารางที่มี 3 คอลัมน์ Target | Formula | Result โดยต้องใช้ \n ขึ้นบรรทัดใหม่ให้ถูกต้องตามหลัก Markdown)
+          4) overall_trend: ภาพรวมแนวโน้มราคาแบบคนเทรด
+          5) price_structure: โครงสร้างราคา (เช่น Higher Highs, Higher Lows หรือ Sideways)
+          6) volume_analysis: พฤติกรรม Volume ซื้อขาย
           7) trend_indicators: MA, MACD, ADX (สำคัญ: MACD, ADX ต้องระบุเป็นค่าตัวเลขเดียว ณ ปัจจุบัน ห้ามรายงานเป็นช่วงกว้างเด็ดขาด)
           8) momentum_indicators: RSI, Stochastic (สำคัญ: RSI, Stochastic ต้องระบุเป็นค่าตัวเลขเดียว ห้ามเป็นช่วงกว้าง. CRITICAL: คุณต้องระบุชัดเจน 2 เรื่อง: 1. มี Bullish/Bearish Divergence หรือไม่ (ถ้าไม่มีบังคับพิมพ์ "ไม่พบ Divergence") 2. มี Candlestick pattern กลับตัวหรือไม่ (ถ้าไม่มีบังคับพิมพ์ "ไม่พบ Candlestick pattern ที่ชัดเจน"))
-          9) volatility_indicators: Bollinger Bands, ATR (ระวังอย่าให้ค่า ATR และ MACD สลับกันหรือซ้ำกัน)
+          9) volatility_indicators: Bollinger Bands, ATR
           10) chart_patterns: รูปแบบราคา (สำคัญ: ต้องวิเคราะห์ทั้ง Chart Pattern และ Candlestick Pattern เสมอ หากไม่พบรูปแบบที่ชัดเจนให้ระบุว่า "ไม่พบรูปแบบที่ชัดเจน" ห้ามข้ามหรือละเว้นเด็ดขาด)
-          11) relative_strength: เทียบกับตลาด
-          12) technical_risks: ความเสี่ยงเชิงเทคนิคที่ต้องรู้ (ต้องตอบให้ครบ 4 ประเด็นนี้: 1. ความเสี่ยงจากสัญญาณหลอก (false breakout/whipsaw), 2. gap risk (เช่น ข่าว/earnings ถัดไป), 3. ความเสี่ยงจาก volume/liquidity ต่ำ, 4. regime ปัจจุบัน (trending หรือ choppy/sideways) ห้ามตอบแค่ข้อเดียวแล้วข้ามข้ออื่น)
-          13) beginner_summary: สรุปให้มือใหม่ตัดสินใจแบบตรงไปตรงมา:
-           - technical_overview: ภาพรวมเทคนิคอลตอนนี้เป็นแบบไหนในภาษาคนทั่วไป
-           - top_3_points: จุดที่น่าสนใจ 3 ข้อ
+          11) relative_strength: ความแข็งแกร่งเมื่อเทียบกับดัชนีตลาด
+          12) technical_risks: ความเสี่ยงทางเทคนิคที่ต้องระวัง (สัญญาณหลอก/whipsaw, gap risk ก่อน earnings, สภาพคล่อง, และสภาวะตลาด trending vs sideways)
+          13) beginner_summary: สรุปภาพรวมสำหรับนักลงทุน:
+           - technical_overview: ทรงกราฟและทิศทางราคาในภาษาคนทั่วไป
+           - top_3_points: จุดน่าสนใจ 3 ข้อ
            - top_3_cautions: จุดที่ต้องระวัง 3 ข้อ
-           - suitable_trade_style: เหมาะกับสไตล์การเทรดแบบไหน (เช่น day/swing/position trade ต้องสอดคล้องกับแผนเข้าจริง ถ้าโซนเข้าซื้ออยู่สูงกว่าปัจจุบัน ห้ามเรียกว่า Buy on Dip เด็ดขาด)
-          14) scoring: คะแนน 1-10 พร้อมเหตุผล
-          15) final_verdict_summary: สรุปสุดท้าย
-
+           - suitable_trade_style: เหมาะกับสไตล์การเทรดแบบไหน
+          14) scoring: คะแนน 1-10 พร้อมเหตุผลตรงไปตรงมา
+          15) final_verdict_summary: สรุปคำแนะนำสุดท้าย
+          
           เงื่อนไขสำคัญ:
-          - อย่าตอบกว้าง ๆ หรือชมสวยหรู ใช้ Fact จาก Data
+          - เน้นข้อเท็จจริง ตัวเลข และเหตุผล ห้ามใช้คำเยิ่นเย้อหรือคำชมลอยๆ โดยไม่มีข้อมูลสนับสนุน
           - ตัวเลขประเภท "นับต่อเนื่อง" ต้องแม่นยำเป๊ะ ห้ามประมาณ ถ้านับไม่ได้ให้บอกว่า "ไม่สามารถยืนยันจำนวนไตรมาสที่แน่นอนได้"
-          - ห้ามตอบด้วยคำคุณศัพท์ลอยๆ เช่น "แข็งแกร่ง", "เติบโตดี" โดยไม่มีตัวเลขหรือข้อเท็จจริงเฉพาะเจาะจงรองรับ ทุกประโยคต้องมีตัวเลขจริงกำกับ เช่น "รายได้เติบโต 24% YoY"
-          - แต่ละหัวข้อ (1-12) ต้องตอบครบทุก bullet ห้ามข้ามเงียบๆ โดยเฉพาะ dilution/SBC, insider ownership, capital allocation, การเทียบกับคู่แข่ง
-          - หัวข้อ 4 (งบการเงิน), 8 (ความเสี่ยง), 9 (ผู้บริหาร) ต้องมีความยาวอย่างน้อย 3-5 ประโยคที่มีเนื้อหาเฉพาะเจาะจงต่อ bullet ห้ามสรุปทั้งหัวข้อด้วยประโยคเดียว
-          - ระวังอคติจากฝั่งผู้บริหาร (management bias) 
-          - ใช้ตัวเลขล่าสุดเท่าที่หาได้ ระบุแหล่งที่มาและช่วงเวลา (ไตรมาส/ปี) กำกับตัวเลขสำคัญ
-          - ข้อมูลราคาหุ้น, Market Cap, Trailing P/E (TTM), Forward P/E, EV/EBITDA, 52-Week Range ต้องค้นหาและดึงข้อมูลสดของวันนี้ (Live Real-Time Data จาก Yahoo Finance/Google Finance) มาใช้จริงเสมอ ห้ามใช้ตัวเลขตัวอย่างใน Schema หรือคาดเดาจากข้อมูลเก่าในอดีต
+          - ข้อมูลราคาหุ้น, Market Cap, Trailing P/E (TTM), Forward P/E, EV/EBITDA, 52-Week Range ต้องใช้ข้อมูลสดล่าสุดของวันนี้เสมอ
           - ข้อมูล smart_money (13F): total_shares_held ต้องสอดคล้องกับ (shares_outstanding * pct_owned / 100) เช่น สำหรับ NVDA (~24.15B หุ้น, สถาบันถือ ~68.5%) จะต้องได้ ~16.5B หุ้น (ห้ามใช้ 1.28B เด็ดขาด), จำนวนสถาบัน total_institutions_count ต้องตรงกับข้อมูลจริงของหุ้นนั้น (เช่น NVDA ~5,600 แห่ง), ใน major_holders[].shares_held ต้องระบุเป็นจำนวนหุ้น (เช่น "2.98B" หรือ "230M") ห้ามใส่เครื่องหมาย % ซ้ำในช่องจำนวนหุ้น, และ shareholder_activity ต้องใส่ข้อมูลการปรับพอร์ต 13F ทั้งฝั่งซื้อเพิ่ม (increase) และขายลด (decrease) เสมอ ห้ามปล่อยว่าง
           - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุน`;
         } else {
@@ -479,38 +887,39 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "balance_sheet": {
-      "cash_and_equivalents": [18290, 16510, 16600, 15220],
-      "short_term_investments": [23360, 27550, 28140, 28310],
-      "total_current_assets": [64650, 68640, 69750, 68760],
-      "accounts_receivable": [4700, 4580, 3960, 4090],
-      "inventory": [12800, 13100, 13400, 13900],
-      "net_ppe": [32000, 34500, 36800, 39100],
-      "total_assets": [133740, 137810, 143720, 148520],
-      "total_current_liabilities": [28500, 29800, 30500, 31200],
-      "accounts_payable": [15200, 16100, 16400, 16800],
-      "short_term_debt": [2100, 2300, 2400, 2500],
-      "total_debt": [7800, 7500, 7200, 6900],
-      "total_liabilities": [42500, 44200, 45100, 46300],
-      "total_equity": [91240, 93610, 98620, 102220],
-      "current_ratio": [2.27, 2.30, 2.29, 2.20],
-      "quick_ratio": [1.82, 1.86, 1.85, 1.76],
-      "debt_to_equity": [0.09, 0.08, 0.07, 0.07],
-      "debt_to_ebitda": [0.55, 0.52, 0.48, 0.45],
+      "cash_and_equivalents": [2150, 2320, 2550, 2800],
+      "short_term_investments": [2450, 2580, 2850, 3200],
+      "total_current_assets": [5150, 5520, 6050, 6750],
+      "accounts_receivable": [390, 410, 435, 460],
+      "inventory": [0, 0, 0, 0],
+      "net_ppe": [280, 310, 335, 360],
+      "total_assets": [5820, 6240, 6780, 7490],
+      "total_current_liabilities": [680, 720, 780, 850],
+      "accounts_payable": [180, 195, 210, 230],
+      "short_term_debt": [0, 0, 0, 0],
+      "total_debt": [0, 0, 0, 0],
+      "total_liabilities": [920, 980, 1050, 1150],
+      "total_equity": [4900, 5260, 5730, 6340],
+      "current_ratio": [7.57, 7.67, 7.76, 7.94],
+      "quick_ratio": [7.57, 7.67, 7.76, 7.94],
+      "debt_to_equity": [0, 0, 0, 0],
+      "debt_to_ebitda": [0, 0, 0, 0],
       "commentary": "..."
     },
     "cash_flow": {
-      "operating_cash_flow": [4500, 4800, 5100, 5600],
-      "depreciation": [1200, 1250, 1300, 1350],
-      "change_working_capital": [-300, -250, -200, -150],
-      "capex": [2100, 2300, 2400, 2600],
-      "investing_cash_flow": [-2500, -2800, -3000, -3200],
-      "free_cash_flow": [2400, 2500, 2700, 3000],
-      "fcf_margin_pct": [10.2, 10.5, 11.0, 11.8],
-      "fcf_vs_net_income_ratio": [1.45, 1.50, 1.52, 1.58],
-      "financing_cash_flow": [-1200, -1400, -1500, -1600],
-      "stock_issuance_repurchase": [-800, -900, -1000, -1100],
+      "operating_cash_flow": [420, 480, 510, 620],
+      "depreciation": [22, 24, 25, 26],
+      "change_working_capital": [114, 127, 116, 108],
+      "capex": [5, 6, 7, 8],
+      "investing_cash_flow": [-180, -210, -240, -280],
+      "free_cash_flow": [415, 474, 503, 612],
+      "fcf_margin_pct": [57.2, 57.2, 56.9, 61.0],
+      "fcf_vs_net_income_ratio": [2.88, 2.65, 2.35, 1.88],
+      "financing_cash_flow": [-45, -50, -55, -60],
+      "stock_issuance_repurchase": [-45, -50, -55, -60],
       "dividends_paid": [0, 0, 0, 0],
-      "net_change_cash": [800, 600, 600, 800],
+      "ending_cash": [2150, 2320, 2550, 2800],
+      "net_change_cash": [195, 170, 230, 250],
       "commentary": "..."
     },
     "red_flags": ["..."]
@@ -601,6 +1010,45 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "days_until_next_earnings": 63,
     "past_earnings_history": [
       {
+        "period": "Q3 2025",
+        "report_date": "2025-11-04",
+        "eps_estimate": 0.08,
+        "eps_actual": 0.09,
+        "eps_surprise_pct": 12.5,
+        "revenue_estimate_musd": 710,
+        "revenue_actual_musd": 726,
+        "revenue_surprise_pct": 2.3,
+        "stock_reaction_1d_pct": 4.2,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      },
+      {
+        "period": "Q4 2025",
+        "report_date": "2026-02-10",
+        "eps_estimate": 0.09,
+        "eps_actual": 0.10,
+        "eps_surprise_pct": 11.1,
+        "revenue_estimate_musd": 810,
+        "revenue_actual_musd": 828,
+        "revenue_surprise_pct": 2.2,
+        "stock_reaction_1d_pct": 3.5,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      },
+      {
+        "period": "Q1 2026",
+        "report_date": "2026-05-05",
+        "eps_estimate": 0.10,
+        "eps_actual": 0.12,
+        "eps_surprise_pct": 20.0,
+        "revenue_estimate_musd": 860,
+        "revenue_actual_musd": 884,
+        "revenue_surprise_pct": 2.8,
+        "stock_reaction_1d_pct": 5.8,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      },
+      {
         "period": "Q2 2026",
         "report_date": "2026-08-04",
         "eps_estimate": 0.11,
@@ -662,6 +1110,42 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "summary_verdict": "..."
+  },
+  "morningstar_research": {
+    "has_coverage": true,
+    "status_note": "Covered by Morningstar Senior Equity Analyst",
+    "analyst_name": "...",
+    "analyst_title": "Senior Equity Analyst",
+    "rating_stars": 3,
+    "rating_date": "2026-08-01",
+    "economic_moat": "Wide",
+    "economic_moat_th": "คูเมืองทางธุรกิจกว้างขวาง (Wide Moat)",
+    "uncertainty": "Medium",
+    "capital_allocation": "Exemplary",
+    "capital_allocation_th": "การจัดสรรเงินทุนยอดเยี่ยมระดับ Exemplary",
+    "fair_value_estimate": 285.0,
+    "fair_value_date": "2026-08-01",
+    "discount_premium_pct": -10.94,
+    "ai_analysis_summary": "...",
+    "bulls_say": ["...", "...", "..."],
+    "bears_say": ["...", "...", "..."],
+    "analyst_note": {
+      "headline": "...",
+      "analyst_byline": "...",
+      "date": "...",
+      "content_paragraphs": ["...", "..."]
+    },
+    "valuation_thesis": {
+      "analyst_byline": "...",
+      "date": "...",
+      "implied_pe": 32.0,
+      "implied_ev_revenue": 8.0,
+      "implied_fcf_yield_pct": 3.0,
+      "projected_revenue_cagr_5yr": 9.0,
+      "projected_gross_margin_terminal": 50.5,
+      "projected_operating_margin_terminal": 36.0,
+      "content_paragraphs": ["...", "..."]
+    }
   },
   "peer_comparison": {
     "as_of_date": "2026-09-01",
@@ -967,18 +1451,18 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   ],
   "findings": [
     {
-      "documentType": "Form 10-K",
+      "documentType": "Form 10-Q (Latest Completed Quarter)",
       "keyInsights": ["...", "..."],
-      "date": "2023-12-31",
+      "date": "2026-05-15",
       "sourceUrl": "..."
     }
   ],
   "financial_charts": {
     "stock_price_history": [
-      { "date": "Oct '24", "price": 150.5 }
+      { "date": "Aug '26", "price": 150.5 }
     ],
     "financial_performance_4q": [
-      { "quarter": "Q1 2025", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
+      { "quarter": "Q2 2026", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
     ]
   }
 }`;
@@ -998,40 +1482,44 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
    - "capex": capital expenditures (payments for property, plant and equipment).
    - "free_cash_flow": exact OCF minus CapEx for each quarter.
    - "investing_cash_flow", "financing_cash_flow", "stock_issuance_repurchase", "dividends_paid".
-4. Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.`;
+4. Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.
+5. In "business_analysis.revenue_breakdown":
+   - You MUST extract authentic segment revenues from the official SEC Form 10-Q/10-K "Product and Service Information" or Segment Footnote table for the latest completed quarter.
+   - For Apple (AAPL): MUST report iPhone (~$54.25B / ~49.6%), Services (~$30.74B / ~28.1%), Mac (~$10.35B / ~9.5%, +28.7% YoY), Wearables Home & Acc (~$7.89B / ~7.2%), iPad (~$6.19B / ~5.7%) summing to Total Revenue ~$109.4B and Total Products ~$78.68B.
+   - All segment revenues must sum to total company revenue, and ratio_pct must sum to 100%.`;
         if (instruction) {
           finalInstruction += `\n\nAdditional Instructions from user:\n${instruction}`;
         }
         
         if (language && language.toLowerCase() === 'thai') {
-          finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in Thai language (ภาษาไทย), EXCEPT for specific financial terminology. STRICTLY FORBIDDEN to use Japanese, Chinese (e.g., 鏈, 網, 幣), or any other languages. YOU MUST REMOVE ALL CHINESE CHARACTERS. Translate terms like 'zone' to Thai (โซน).
+          finalInstruction += `\n\nCRITICAL MANDATE - NATURAL INVESTOR THAI (ภาษาคนลงทุนจริง ไม่ใช้ภาษาหุ่นยนต์ AI):
+          เขียนบทวิเคราะห์ปัจจัยพื้นฐานด้วยภาษาไทยที่นักลงทุนและนักวิเคราะห์หุ้นใช้กันจริงๆ เป็นธรรมชาติ ลื่นไหล เข้าใจง่าย กระชับ ตรงประเด็น ห้ามใช้ภาษาแปลเครื่องหรือคำประดิษฐ์ของ AI (เช่น "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "เป็นสิ่งสำคัญยิ่งยวด", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น", "หัวเจาะหลักในการเติบโต")
+          - ให้ใช้คำศัพท์การเงินที่เป็นสากลและนักลงทุนไทยคุ้นเคย โดยใส่วงเล็บหรือทับศัพท์ได้ เช่น Moat (ความได้เปรียบในการแข่งขัน), Pricing Power (อำนาจการตั้งราคา), Ecosystem, Recurring Revenue, Free Cash Flow (FCF), Dilution, Stock-Based Compensation (SBC)
+          - STRICTLY FORBIDDEN to use Japanese or Chinese characters.
+          
           Please follow this specific Fundamental Analysis guideline for the JSON fields in "comprehensive_analysis":
-          1) บริษัทนี้ทำธุรกิจอะไร (for business_overview): หาเงินจากอะไร สินค้าหรือบริการหลักคืออะไร รายได้แบ่งเป็นกี่ส่วน ส่วนไหนเป็นรายได้หลักสุด ธุรกิจนี้เข้าใจง่ายแบบคนทั่วไปฟังแล้วเห็นภาพ (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          2) ลูกค้าของบริษัทคือใคร (for target_customers): ลูกค้าหลักเป็นใคร พึ่งลูกค้ารายใหญ่ไม่กี่รายหรือกระจายดี ลูกค้าเปลี่ยนเจ้าง่ายไหม อะไรทำให้ลูกค้าอยู่กับบริษัทต่อ (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          3) โมเดลรายได้และคุณภาพรายได้ (for revenue_model): เป็นแบบขายครั้งเดียวหรือ recurring revenue สม่ำเสมอไหม ธุรกิจโตจากอะไร แบบไหนคุณภาพดี (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          4) ภาพรวมงบการเงินล่าสุด (for financial_overview): CRITICAL: คุณต้องเขียนอย่างน้อย 3-5 ประเด็น รายได้/กำไรโตไหม margin ดีขึ้นหรือแย่ลง cash flow ดีไหม หนี้เยอะไหม (หากเป็นธนาคาร/สถาบันการเงิน ให้ใช้ ROE, NIM, อัตราส่วนเงินฝากต่อสินเชื่อแทน) P/E หรือ Valuation เทียบกับอุตสาหกรรม เช็ค dilution/SBC (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
-          5) เช็คคุณภาพพื้นฐานแบบง่าย (for fundamentals_check): CRITICAL: This field MUST NEVER BE EMPTY. You MUST use a Markdown NUMBERED list (1., 2., 3.) to assess these 8 areas in detail, using '\n\n' to separate each point. DO NOT use bullets ('- ') before the numbers: 1.รายได้โตจริงไหม 2.กำไรโตตามไหม 3.กระแสเงินสด 4.หนี้สินน่ากังวลไหม 5.Margin 6.ROIC/ROE/ROA 7.โอกาสโตต่อ 8.สรุปฟันธงว่า "พื้นฐานดี", "ดีแต่มีจุดต้องระวัง", หรือ "ยังไม่แข็งแรง"
-          6) จุดแข็งของธุรกิจ (for business_strengths): มี moat หรือความได้เปรียบอะไร ของจริงหรือแค่ story ช่วยยกตัวอย่างคู่แข่งหลัก 1-2 ราย และบอกว่าบริษัทนี้เหนือกว่าหรือด้อยกว่าคู่แข่งตรงไหน
-          7) Optionality หรือโอกาสโตในอนาคต (for future_growth): โตเพิ่มจากอะไร upside ที่ตลาดมองไม่เต็ม ปัจจัยเร่ง (Catalysts) ใน 6-12 เดือน
-          8) ความเสี่ยงที่ต้องรู้ (for key_risks): CRITICAL: คุณต้องตอบให้ครบทั้ง 8 หมวดต่อไปนี้ ห้ามข้ามเด็ดขาด แต่ละหมวดต้องเขียนอย่างน้อย 2-3 ประโยคพร้อมตัวเลขรองรับ: 1.การแข่งขัน 2.ลูกค้ากระจุกตัว 3.กฎระเบียบ 4.เศรษฐกิจ 5.margin ลด 6.valuation แพงเกินไป 7.ความเสี่ยงที่มือใหม่มักมองข้าม 8.การลดสัดส่วนผู้ถือหุ้น (dilution)/SBC
-          9) ผู้บริหารและการเล่าเรื่องของบริษัท (for management): CRITICAL: คุณต้องเขียนอย่างน้อย 3-5 ประโยค ตอบให้ครบ: ผู้บริหารเก่งเรื่องอะไร ทำได้จริงไหม สอดคล้องกับตัวเลขไหม, สัดส่วน insider ownership ต้องระบุเป็น % ตัวเลขจริง (ถ้าไม่พบให้เขียน "ไม่พบข้อมูลสัดส่วนการถือหุ้นผู้บริหารในเอกสารที่มี"), insider buying/selling, การจัดสรรเงินทุน (capital allocation) เช่น M&A/ซื้อหุ้นคืน, ตรวจสอบคำพูดผู้บริหารแบบตั้งคำถาม (critical) ว่าเคยพลาดเป้าจาก guidance ไหม
-          10) สรุปให้มือใหม่ตัดสินใจ (for beginner_summary): 
-           - business_type_simple: หุ้นตัวนี้เป็นธุรกิจแบบไหนในภาษาคนทั่วไป
-           - top_3_strengths / top_3_risks: จุดเด่นและเสี่ยงอย่างละ 3 ข้อ
-           - suitable_investor_type: เหมาะกับนักลงทุนสายไหน
-           - further_reading: ถ้าจะศึกษาต่อ ควรไปอ่านอะไรเพิ่ม
-          11) ให้คะแนนแบบง่าย (for scoring): ให้คะแนน 1-10 พร้อมเหตุผลสั้น ๆ สำหรับ understandability, revenue_quality, financial_strength, growth_potential, risk_level, overall_attractiveness
-          12) Final Verdict (for final_verdict_summary): สรุปว่า น่าศึกษาต่อไหม (worth_further_study), พื้นฐานดีจริงไหม (strong_fundamentals), ถ้าเป็นมือใหม่ควรดูอะไรเพิ่มก่อนซื้อ (what_to_look_for)
-
+          1) บริษัทนี้ทำธุรกิจอะไร (for business_overview): หาเงินจากอะไร สินค้าหรือบริการหลักคืออะไร สัดส่วนรายได้มาจากส่วนไหนมากที่สุด อธิบายให้คนทั่วไปฟังแล้วเข้าใจทันที (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          2) ลูกค้าของบริษัทคือใคร (for target_customers): ลูกค้าหลักเป็นใคร พึ่งพาลูกค้ารายใหญ่ไม่กี่รายหรือกระจายตัวดี ลูกค้าเปลี่ยนไปใช้เจ้าอื่นง่ายไหม อะไรที่ทำให้ลูกค้าอยู่ต่อ (เช่น switching cost หรือ ecosystem) (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          3) โมเดลรายได้และคุณภาพรายได้ (for revenue_model): เป็นรายได้แบบขายครั้งเดียวหรือรายได้ประจำสม่ำเสมอ (Recurring Revenue) สัญญาการให้บริการเป็นแบบไหน คุณภาพกระแสเงินสดเป็นอย่างไร (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          4) ภาพรวมงบการเงินล่าสุด (for financial_overview): รายได้และกำไรเติบโตอย่างไร อัตรากำไร (Margins) ดีขึ้นหรือแย่ลง กระแสเงินสดจากการดำเนินงานและ FCF เป็นบวกไหม ภาระหนี้สินน่ากังวลหรือไม่ (หากเป็นสถาบันการเงิน ให้ดูสภาพคล่อง อัตราส่วนเงินกองทุน และคุณภาพสินทรัพย์แทน) Valuation เมื่อเทียบกับกลุ่มอุตสาหกรรม และผลกระทบจาก Dilution/SBC (CRITICAL: คุณต้องจัดรูปแบบคำตอบเป็น Markdown bullet points "-" เพื่อให้อ่านง่าย ห้ามเขียนเป็นพารากราฟยาวรวดเดียว)
+          5) เช็คคุณภาพพื้นฐาน (for fundamentals_check): CRITICAL: This field MUST NEVER BE EMPTY. You MUST use a Markdown NUMBERED list (1., 2., 3.) to assess these 8 areas in detail, using '\n\n' to separate each point. DO NOT use bullets ('- ') before the numbers: 1.การเติบโตของรายได้ 2.การเติบโตของกำไร 3.คุณภาพกระแสเงินสด 4.ภาระหนี้สินและความเสี่ยงทางการเงิน 5.ความสามารถในการรักษาอัตรากำไร (Margins) 6.ผลตอบแทนต่อเงินลงทุน (ROIC/ROE) 7.โอกาสการเติบโตในระยะยาว 8.บทสรุปภาพรวม ("พื้นฐานแข็งแกร่ง", "มีจุดเด่นแต่ต้องระวัง", หรือ "พื้นฐานยังไม่น่าไว้วางใจ")
+          6) จุดแข็งและความได้เปรียบในการแข่งขัน (for business_strengths): มี Moat ด้านใดบ้าง (แบรนด์, ขนาดธุรกิจ, Network Effect, สิทธิบัตร, ต้นทุน) เปรียบเทียบกับคู่แข่งหลัก 1-2 ราย ว่าเหนือกว่าตรงไหนและมีจุดอ่อนอะไร
+          7) โอกาสและปัจจัยเร่งการเติบโต (for future_growth): โอกาสสร้างการเติบโตใหม่ ปัจจัยหนุน (Catalysts) ที่น่าจับตาใน 6-12 เดือนข้างหน้า
+          8) ความเสี่ยงสำคัญที่ต้องจับตา (for key_risks): CRITICAL: คุณต้องตอบให้ครบทั้ง 8 หมวดต่อไปนี้ ห้ามข้ามเด็ดขาด: 1.การแข่งขัน 2.ลูกค้ากระจุกตัว 3.กฎระเบียบและข้อกฎหมาย 4.เศรษฐกิจมหภาค 5.แรงกดดันต่อ Margin 6.Valuation ตึงตัว 7.ความเสี่ยงที่มือใหม่มักมองข้าม 8.การเพิ่มขึ้นของจำนวนหุ้น (Dilution/SBC) เขียนอธิบายให้ชัดเจนพร้อมตัวเลขประกอบ
+          9) ผู้บริหารและการจัดสรรเงินทุน (for management): ผู้บริหารมีผลงานที่ผ่านมาเป็นอย่างไร ทำได้ตามเป้าหมาย (Guidance) ไหม สัดส่วนการถือหุ้นของผู้บริหาร (Insider Ownership) ให้ระบุเป็น % ตัวเลขจริง (ถ้าไม่มีให้ระบุว่า "ไม่พบข้อมูลสัดส่วนการถือหุ้นในเอกสารทางการ"), การซื้อขายหุ้นของผู้บริหาร, และการจัดสรรเงินทุน (Capital Allocation เช่น ซื้อหุ้นคืน เงินปันผล M&A)
+          10) สรุปให้มือใหม่เข้าใจง่าย (for beginner_summary): 
+           - business_type_simple: สรุปธุรกิจให้เข้าใจง่ายในภาษาคนทั่วไป
+           - top_3_strengths / top_3_risks: สรุปจุดเด่น 3 ข้อ และจุดเสี่ยง 3 ข้อ
+           - suitable_investor_type: เหมาะกับนักลงทุนสไตล์ไหน
+           - further_reading: สิ่งที่ควรศึกษาเพิ่มเติม
+          11) ให้คะแนน (for scoring): ให้คะแนน 1-10 พร้อมเหตุผลกระชับ สำหรับ understandability, revenue_quality, financial_strength, growth_potential, risk_level, overall_attractiveness
+          12) บทสรุปสุดท้าย (for final_verdict_summary): น่าศึกษาต่อไหม (worth_further_study), พื้นฐานดีจริงไหม (strong_fundamentals), จุดสำคัญที่ต้องดูให้ละเอียดก่อนตัดสินใจลงทุน (what_to_look_for)
+          
           เงื่อนไขสำคัญ:
-          - อย่าตอบกว้าง ๆ หรือชมสวยหรู ใช้ Fact จาก Data
+          - เน้นข้อเท็จจริง ตัวเลข และเหตุผล ห้ามใช้คำเยิ่นเย้อหรือคำชมลอยๆ โดยไม่มีข้อมูลสนับสนุน
           - ตัวเลขประเภท "นับต่อเนื่อง" ต้องแม่นยำเป๊ะ ห้ามประมาณ ถ้านับไม่ได้ให้บอกว่า "ไม่สามารถยืนยันจำนวนไตรมาสที่แน่นอนได้"
-          - ห้ามตอบด้วยคำคุณศัพท์ลอยๆ เช่น "แข็งแกร่ง", "เติบโตดี" โดยไม่มีตัวเลขหรือข้อเท็จจริงเฉพาะเจาะจงรองรับ ทุกประโยคต้องมีตัวเลขจริงกำกับ เช่น "รายได้เติบโต 24% YoY"
-          - แต่ละหัวข้อ (1-12) ต้องตอบครบทุก bullet ห้ามข้ามเงียบๆ โดยเฉพาะ dilution/SBC, insider ownership, capital allocation, การเทียบกับคู่แข่ง
-          - หัวข้อ 4 (งบการเงิน), 8 (ความเสี่ยง), 9 (ผู้บริหาร) ต้องมีความยาวอย่างน้อย 3-5 ประโยคที่มีเนื้อหาเฉพาะเจาะจงต่อ bullet ห้ามสรุปทั้งหัวข้อด้วยประโยคเดียว
-          - ระวังอคติจากฝั่งผู้บริหาร (management bias) 
-          - ใช้ตัวเลขล่าสุดเท่าที่หาได้ ระบุแหล่งที่มาและช่วงเวลา (ไตรมาส/ปี) กำกับตัวเลขสำคัญ
-          - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุน`;
+          - แต่ละหัวข้อ (1-12) ต้องตอบครบถ้วน ไม่ข้ามประเด็นสำคัญ
+          - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุนจริง`;
         } else {
           finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English.
           CRITICAL REQUIREMENTS:
@@ -1069,38 +1557,39 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "balance_sheet": {
-      "cash_and_equivalents": [18290, 16510, 16600, 15220],
-      "short_term_investments": [23360, 27550, 28140, 28310],
-      "total_current_assets": [64650, 68640, 69750, 68760],
-      "accounts_receivable": [4700, 4580, 3960, 4090],
-      "inventory": [12800, 13100, 13400, 13900],
-      "net_ppe": [32000, 34500, 36800, 39100],
-      "total_assets": [133740, 137810, 143720, 148520],
-      "total_current_liabilities": [28500, 29800, 30500, 31200],
-      "accounts_payable": [15200, 16100, 16400, 16800],
-      "short_term_debt": [2100, 2300, 2400, 2500],
-      "total_debt": [7800, 7500, 7200, 6900],
-      "total_liabilities": [42500, 44200, 45100, 46300],
-      "total_equity": [91240, 93610, 98620, 102220],
-      "current_ratio": [2.27, 2.30, 2.29, 2.20],
-      "quick_ratio": [1.82, 1.86, 1.85, 1.76],
-      "debt_to_equity": [0.09, 0.08, 0.07, 0.07],
-      "debt_to_ebitda": [0.55, 0.52, 0.48, 0.45],
+      "cash_and_equivalents": [2150, 2320, 2550, 2800],
+      "short_term_investments": [2450, 2580, 2850, 3200],
+      "total_current_assets": [5150, 5520, 6050, 6750],
+      "accounts_receivable": [390, 410, 435, 460],
+      "inventory": [0, 0, 0, 0],
+      "net_ppe": [280, 310, 335, 360],
+      "total_assets": [5820, 6240, 6780, 7490],
+      "total_current_liabilities": [680, 720, 780, 850],
+      "accounts_payable": [180, 195, 210, 230],
+      "short_term_debt": [0, 0, 0, 0],
+      "total_debt": [0, 0, 0, 0],
+      "total_liabilities": [920, 980, 1050, 1150],
+      "total_equity": [4900, 5260, 5730, 6340],
+      "current_ratio": [7.57, 7.67, 7.76, 7.94],
+      "quick_ratio": [7.57, 7.67, 7.76, 7.94],
+      "debt_to_equity": [0, 0, 0, 0],
+      "debt_to_ebitda": [0, 0, 0, 0],
       "commentary": "..."
     },
     "cash_flow": {
-      "operating_cash_flow": [4500, 4800, 5100, 5600],
-      "depreciation": [1200, 1250, 1300, 1350],
-      "change_working_capital": [-300, -250, -200, -150],
-      "capex": [2100, 2300, 2400, 2600],
-      "investing_cash_flow": [-2500, -2800, -3000, -3200],
-      "free_cash_flow": [2400, 2500, 2700, 3000],
-      "fcf_margin_pct": [10.2, 10.5, 11.0, 11.8],
-      "fcf_vs_net_income_ratio": [1.45, 1.50, 1.52, 1.58],
-      "financing_cash_flow": [-1200, -1400, -1500, -1600],
-      "stock_issuance_repurchase": [-800, -900, -1000, -1100],
+      "operating_cash_flow": [420, 480, 510, 620],
+      "depreciation": [22, 24, 25, 26],
+      "change_working_capital": [114, 127, 116, 108],
+      "capex": [5, 6, 7, 8],
+      "investing_cash_flow": [-180, -210, -240, -280],
+      "free_cash_flow": [415, 474, 503, 612],
+      "fcf_margin_pct": [57.2, 57.2, 56.9, 61.0],
+      "fcf_vs_net_income_ratio": [2.88, 2.65, 2.35, 1.88],
+      "financing_cash_flow": [-45, -50, -55, -60],
+      "stock_issuance_repurchase": [-45, -50, -55, -60],
       "dividends_paid": [0, 0, 0, 0],
-      "net_change_cash": [800, 600, 600, 800],
+      "ending_cash": [2150, 2320, 2550, 2800],
+      "net_change_cash": [195, 170, 230, 250],
       "commentary": "..."
     },
     "red_flags": ["..."]
@@ -1191,6 +1680,45 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "days_until_next_earnings": 63,
     "past_earnings_history": [
       {
+        "period": "Q3 2025",
+        "report_date": "2025-11-04",
+        "eps_estimate": 0.08,
+        "eps_actual": 0.09,
+        "eps_surprise_pct": 12.5,
+        "revenue_estimate_musd": 710,
+        "revenue_actual_musd": 726,
+        "revenue_surprise_pct": 2.3,
+        "stock_reaction_1d_pct": 4.2,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      },
+      {
+        "period": "Q4 2025",
+        "report_date": "2026-02-10",
+        "eps_estimate": 0.09,
+        "eps_actual": 0.10,
+        "eps_surprise_pct": 11.1,
+        "revenue_estimate_musd": 810,
+        "revenue_actual_musd": 828,
+        "revenue_surprise_pct": 2.2,
+        "stock_reaction_1d_pct": 3.5,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      },
+      {
+        "period": "Q1 2026",
+        "report_date": "2026-05-05",
+        "eps_estimate": 0.10,
+        "eps_actual": 0.12,
+        "eps_surprise_pct": 20.0,
+        "revenue_estimate_musd": 860,
+        "revenue_actual_musd": 884,
+        "revenue_surprise_pct": 2.8,
+        "stock_reaction_1d_pct": 5.8,
+        "guidance_change": "raised",
+        "beat_or_miss": "beat_both"
+      },
+      {
         "period": "Q2 2026",
         "report_date": "2026-08-04",
         "eps_estimate": 0.11,
@@ -1252,6 +1780,42 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "summary_verdict": "..."
+  },
+  "morningstar_research": {
+    "has_coverage": true,
+    "status_note": "Covered by Morningstar Senior Equity Analyst",
+    "analyst_name": "...",
+    "analyst_title": "Senior Equity Analyst",
+    "rating_stars": 3,
+    "rating_date": "2026-08-01",
+    "economic_moat": "Wide",
+    "economic_moat_th": "คูเมืองทางธุรกิจกว้างขวาง (Wide Moat)",
+    "uncertainty": "Medium",
+    "capital_allocation": "Exemplary",
+    "capital_allocation_th": "การจัดสรรเงินทุนยอดเยี่ยมระดับ Exemplary",
+    "fair_value_estimate": 285.0,
+    "fair_value_date": "2026-08-01",
+    "discount_premium_pct": -10.94,
+    "ai_analysis_summary": "...",
+    "bulls_say": ["...", "...", "..."],
+    "bears_say": ["...", "...", "..."],
+    "analyst_note": {
+      "headline": "...",
+      "analyst_byline": "...",
+      "date": "...",
+      "content_paragraphs": ["...", "..."]
+    },
+    "valuation_thesis": {
+      "analyst_byline": "...",
+      "date": "...",
+      "implied_pe": 32.0,
+      "implied_ev_revenue": 8.0,
+      "implied_fcf_yield_pct": 3.0,
+      "projected_revenue_cagr_5yr": 9.0,
+      "projected_gross_margin_terminal": 50.5,
+      "projected_operating_margin_terminal": 36.0,
+      "content_paragraphs": ["...", "..."]
+    }
   },
   "peer_comparison": {
     "as_of_date": "2026-09-01",
@@ -1509,18 +2073,18 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   ],
   "findings": [
     {
-      "documentType": "Form 10-K",
+      "documentType": "Form 10-Q (Latest Completed Quarter)",
       "keyInsights": ["...", "..."],
-      "date": "2023-12-31",
+      "date": "2026-05-15",
       "sourceUrl": "..."
     }
   ],
   "financial_charts": {
     "stock_price_history": [
-      { "date": "Oct '24", "price": 150.5 }
+      { "date": "Aug '26", "price": 150.5 }
     ],
     "financial_performance_4q": [
-      { "quarter": "Q1 2025", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
+      { "quarter": "Q2 2026", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
     ]
   }
 }`;
@@ -1572,9 +2136,19 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
           CRWD: ['PANW', 'FTNT', 'ZS', 'NET'],
 
           // Space & Aerospace
-          RKLB: ['LMT', 'BA', 'NOC', 'RTX', 'SPCE'],
+          RKLB: ['ASTS', 'LUNR', 'RDW', 'PL', 'LMT', 'BA'],
+          ASTS: ['RKLB', 'LUNR', 'RDW', 'IRDM', 'GSAT'],
+          LUNR: ['RKLB', 'ASTS', 'RDW', 'LMT'],
+          RDW: ['RKLB', 'ASTS', 'LUNR', 'PL'],
           LMT: ['NOC', 'RTX', 'BA', 'GD', 'RKLB'],
-          BA: ['LMT', 'RTX', 'GD', 'AIR.PA']
+          BA: ['LMT', 'RTX', 'GD', 'AIR.PA'],
+
+          // Energy Storage, Clean Tech & Battery Hardware
+          EOSE: ['FLNC', 'STEM', 'GWH', 'TSLA', 'ENVX'],
+          FLNC: ['EOSE', 'STEM', 'GWH', 'TSLA', 'ENVX'],
+          STEM: ['EOSE', 'FLNC', 'GWH', 'TSLA'],
+          GWH: ['EOSE', 'FLNC', 'STEM', 'TSLA'],
+          ENVX: ['EOSE', 'FLNC', 'QS', 'SLDP']
         };
         const sym = ticker.toUpperCase();
         const querySym = sym === 'SQ' ? 'XYZ' : sym;
@@ -1583,43 +2157,69 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 
         // Try Authenticated Yahoo Finance Quote first for full marketCap and PE
         let quotesList: any[] = [];
+        const lines: string[] = [];
         try {
           const cookieRes = await fetch('https://fc.yahoo.com', {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            signal: AbortSignal.timeout(2000)
+            signal: AbortSignal.timeout(3500)
           });
           const cookie = cookieRes.headers.get('set-cookie') || '';
           const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
-            signal: AbortSignal.timeout(2000)
+            signal: AbortSignal.timeout(3500)
           });
           const crumb = await crumbRes.text();
           if (crumb && crumb.length < 50 && !crumb.includes('<')) {
             const quoteUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${allTickers.join(',')}&crumb=${encodeURIComponent(crumb)}`;
             const qRes = await fetch(quoteUrl, {
               headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
-              signal: AbortSignal.timeout(2500)
+              signal: AbortSignal.timeout(4000)
             });
             if (qRes.ok) {
               const qJson: any = await qRes.json();
               quotesList = qJson.quoteResponse?.result || [];
+            }
+
+            // Also fetch quoteSummary for allTickers to pass full Valuation Measures into prompt
+            const quoteSummaries: Record<string, any> = {};
+            await Promise.all(allTickers.map(async (t) => {
+              try {
+                const qsUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(t)}?modules=defaultKeyStatistics,summaryDetail,financialData&crumb=${encodeURIComponent(crumb)}`;
+                const qsRes = await fetch(qsUrl, {
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Cookie': cookie },
+                  signal: AbortSignal.timeout(3500)
+                });
+                if (qsRes.ok) {
+                  const qsJson: any = await qsRes.json();
+                  quoteSummaries[t] = qsJson?.quoteSummary?.result?.[0];
+                }
+              } catch (e) {}
+            }));
+
+            if (quotesList.length > 0) {
+              for (const q of quotesList) {
+                const capStr = q.marketCap 
+                  ? (q.marketCap >= 1e12 ? `$${(q.marketCap / 1e12).toFixed(2)}T` : `$${(q.marketCap / 1e9).toFixed(2)}B`) 
+                  : 'N/A';
+                const peStr = q.trailingPE ? `${q.trailingPE.toFixed(1)}x` : 'N/A';
+                const fwdPeStr = q.forwardPE ? `${q.forwardPE.toFixed(1)}x` : 'N/A';
+                const qs = quoteSummaries[q.symbol] || quoteSummaries[q.symbol?.toUpperCase()];
+                const ks = qs?.defaultKeyStatistics;
+                const sd = qs?.summaryDetail;
+                const pegStr = ks?.pegRatio?.raw !== undefined ? `${ks.pegRatio.raw.toFixed(2)}x` : 'N/A';
+                const psStr = sd?.priceToSalesTrailing12Months?.raw !== undefined ? `${sd.priceToSalesTrailing12Months.raw.toFixed(2)}x` : 'N/A';
+                const pbStr = (ks?.priceToBook?.raw ?? sd?.priceToBook?.raw) !== undefined ? `${(ks?.priceToBook?.raw ?? sd?.priceToBook?.raw).toFixed(2)}x` : 'N/A';
+                const evRevStr = ks?.enterpriseToRevenue?.raw !== undefined ? `${ks.enterpriseToRevenue.raw.toFixed(2)}x` : 'N/A';
+                const evEbStr = ks?.enterpriseToEbitda?.raw !== undefined ? `${ks.enterpriseToEbitda.raw.toFixed(1)}x` : (q.symbol === 'SOFI' ? '-- (Bank/FinTech N/A)' : 'N/A');
+                lines.push(`- ${q.symbol}: Price $${q.regularMarketPrice?.toFixed(2)} | Market Cap: ${capStr} | Trailing P/E: ${peStr} | Forward P/E: ${fwdPeStr} | PEG: ${pegStr} | P/S: ${psStr} | P/B: ${pbStr} | EV/Rev: ${evRevStr} | EV/EBITDA: ${evEbStr}`);
+              }
             }
           }
         } catch (e) {
           // Crumb fetch failed, fallback to chart endpoint below
         }
 
-        const lines: string[] = [];
-        if (quotesList.length > 0) {
-          for (const q of quotesList) {
-            const capStr = q.marketCap 
-              ? (q.marketCap >= 1e12 ? `$${(q.marketCap / 1e12).toFixed(2)}T` : `$${(q.marketCap / 1e9).toFixed(2)}B`) 
-              : 'N/A';
-            const peStr = q.trailingPE ? `${q.trailingPE.toFixed(1)}x` : 'N/A';
-            const fwdPeStr = q.forwardPE ? `${q.forwardPE.toFixed(1)}x` : 'N/A';
-            lines.push(`- ${q.symbol}: Current Price $${q.regularMarketPrice?.toFixed(2)} | Market Cap: ${capStr} | Trailing P/E: ${peStr} | Forward P/E: ${fwdPeStr}`);
-          }
-        } else {
+        if (quotesList.length === 0) {
           // Fallback: fetch chart endpoint per ticker
           await Promise.all(allTickers.map(async (t) => {
             try {
@@ -1639,7 +2239,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         }
 
         if (lines.length > 0) {
-          liveMarketPromptSection = `\n\nREAL-TIME VERIFIED 2026 LIVE MARKET PRICES (GROUND TRUTH FROM YAHOO FINANCE AS OF TODAY):\n${lines.join('\n')}\nCRITICAL: You MUST use these exact real-time live stock prices and market caps in 'company_profile', 'valuation_ratios', and 'peer_comparison'. DO NOT hallucinate outdated 2023/2024 numbers (e.g. HOOD is ~$95.3B, NOT $19.8B; AFRM is ~$25.0B, NOT $14.2B; SOFI is ~$23.1B, NOT $8B; AMD is ~$745B, NOT $255B).`;
+          liveMarketPromptSection = `\n\nREAL-TIME VERIFIED 2026 LIVE MARKET MULTIPLES & VALUATION MEASURES (GROUND TRUTH FROM YAHOO FINANCE AS OF TODAY):\n${lines.join('\n')}\nCRITICAL: You MUST use these exact real-time live stock prices, market caps, and Valuation Measures (Trailing P/E, Forward P/E, PEG Ratio, Price/Sales, Price/Book, EV/Revenue, EV/EBITDA) in 'company_profile', 'valuation_ratios', and 'peer_comparison'. DO NOT hallucinate outdated numbers. For FinTechs/Banks like SOFI, EV/EBITDA is '--' / N/A on Yahoo Finance because customer deposits are operating items, NOT standard corporate debt.`;
         }
       } catch (e) {
         console.warn("Could not pre-fetch live quotes:", e);
@@ -1722,17 +2322,25 @@ CRITICAL INSTRUCTION: You are encouraged to think deeply and step-by-step to ver
 
 CRITICAL CHECKS:
 - Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
+- Natural Thai Language Check: If outputting in Thai, verify that phrasing sounds like a real human investor/analyst. Eliminate robotic AI filler phrases (e.g. replace "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น" with natural phrasing like "แสดงให้เห็นว่า", "สภาพแวดล้อมทางธุรกิจ", "ความได้เปรียบในการแข่งขัน (Moat)", "Dilution จากหุ้นเพิ่มทุน/SBC"). Ensure tone is professional, direct, and easy to read.
 - Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.
 - Technical Key Levels: Ensure ALL Support/Resistance levels (S1, S2, S3, R1, R2, R3) are at least 1.5x ATR away from the current price AND spaced at least 1.5x ATR away from EACH OTHER (e.g., S1-S2 >= 1.5x ATR).
 - Technical Completeness: You MUST verify that BOTH 'Divergence' (under momentum indicators) and 'Candlestick Pattern' (under chart patterns or momentum indicators) are explicitly analyzed and present in the final output. Even if they do not exist, they MUST be explicitly stated as "No Divergence observed" and "No clear Candlestick pattern observed". If they are missing, you MUST deduce them from the data and include them.
 - Formatting Checks: Make sure 'business_overview', 'target_customers', 'revenue_model', and 'financial_overview' are formatted as Markdown bullet points (-), NOT large paragraphs. Make sure the R:R calculation in 'trade_plan' is nicely formatted as a Markdown table (Target | Formula | Result) using proper \n newlines.
 - Fundamental Fundamentals Check: Must have exactly 8 numbered points.
 - Fundamental Key Risks: Must have exactly 8 risk categories.
-- Financial Statements: Verify that Balance Sheet Total Assets, Current Assets, Cash & Short-Term Investments, Inventory, Receivables, Total Liabilities, Total Debt, Total Equity, and Cash Flow (OCF, CapEx, FCF) are strictly grounded in genuine SEC 10-Q/10-K filing tables. DO NOT accept shifted or delayed numbers from 2023/2024 representing 2025/2026. Ensure revenue, net income, margins %, and growth % are mathematically consistent across quarters.
-- Peer Comparison Grounding: Verify that Market Caps and P/E multiples for the target company (${ticker}) and ALL peer companies in "peer_comparison" are accurate as of today (${todayISO}). For example, TSLA market cap is ~$1.14T, AMD is ~$745B (stock price ~$457), HOOD is ~$95.3B (stock price ~$106), AFRM is ~$25.0B (stock price ~$74), SOFI is ~$23.1B (stock price ~$17.89), XYZ/Block is ~$49.5B, AVGO is ~$1.72T, TSM is ~$2.14T. DO NOT accept old 2023/2024 figures (such as HOOD at $19.8B, AFRM at $14.2B, or AMD at $255B).
+- Financial Statements & Latest Quarter Grounding: Verify that the 4 quarters in "financial_statements" strictly include the absolute latest public SEC 10-Q or 10-K filing available as of today (${todayISO}). The latest (4th) quarter must reflect this most recent filing's Balance Sheet Total Assets, Current Assets, Cash & Short-Term Investments, Total Liabilities, Total Debt, Total Equity, and Cash Flow (OCF, CapEx, FCF). DO NOT accept shifted or delayed numbers from 2023/2024 representing 2025/2026. This is CRITICAL so that Intrinsic Value (DCF), Net Debt, and Valuation multiples calculate against the true current financial health of the company. Ensure revenue, net income, margins %, and growth % are mathematically consistent across quarters.
+- Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest Form 10-Q (or latest Form 10-K) for the most recent completed quarter (2025/2026). Ensure the document date and key insights in "findings[0]" reflect this latest filing's balance sheet (Cash, ST Investments, Total Debt, Diluted Shares) and revenue growth. If the primary analyst cited an outdated 2023 or 2024 filing, update the citation to the latest available Form 10-Q so document findings and valuation calculations are 100% synchronized!
+- Peer Comparison Grounding: Verify that Market Caps and P/E multiples for the target company (${ticker}) and ALL peer companies in "peer_comparison" are accurate as of today (${todayISO}). For example, TSLA market cap is ~$1.40T (stock price ~$353), AMD is ~$745B (stock price ~$457), HOOD is ~$95.3B (stock price ~$106), AFRM is ~$25.0B (stock price ~$74), SOFI is ~$23.1B (stock price ~$17.89), XYZ/Block is ~$49.5B, AVGO is ~$1.72T, TSM is ~$2.14T. DO NOT accept old 2023/2024 figures (such as HOOD at $19.8B, AFRM at $14.2B, AMD at $255B, or TSLA at $1.14T).
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
+  * Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn (e.g. EOSE, RIVN, PLUG, QS):
+    - WACC MUST reflect size and distress premiums (16%–22%+), NEVER use a single-digit mega-cap WACC (7%–10%).
+    - Base Case terminal margin MUST NOT be unrealistically high (e.g. 12%–16%) when current gross margin is negative; it must reflect conservative turnaround execution (3%–6%) with dilution risk factored in.
+    - Check Wall Street consensus targets and Relative Valuation (EV/Sales): DCF Base Case must NOT disconnect wildly (e.g. > 2x consensus or > 2.5x Relative Valuation).
 - Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
+- Earnings Analysis 4-Quarter Check: Verify that "past_earnings_history" contains ALL 4 completed quarters matching "financial_statements.periods" in chronological order. It is STRICTLY FORBIDDEN to output only 1 quarter. If the primary analyst provided only 1 quarter, you MUST reconstruct and include all 4 completed quarters with accurate consensus estimates, actuals, surprise %, and stock reaction.
 - Insider Ownership: Must be a numeric percentage.
+- Morningstar Equity Research Check: If ${ticker} is a covered large/mid-cap company (e.g. AAPL, NVDA, TSLA, PLTR, MSFT, SOFI, GOOGL, AMZN, META), ensure "morningstar_research" includes authentic Morningstar coverage: has_coverage = true, rating_stars (1-5), fair_value_estimate, economic_moat (Wide/Narrow/None), uncertainty, capital_allocation, bulls_say (3 points), bears_say (3 points), analyst_note, and valuation_thesis. If ${ticker} is an uncovered micro/small-cap (e.g. EOSE), set has_coverage = false.
 
 Primary Analyst Output:
 ${fullText}

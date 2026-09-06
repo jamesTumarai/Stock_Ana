@@ -17,6 +17,7 @@ run_logs/
 sub_agents_debug_*.txt
 test_upload.txt
 temp.ts
+scratch/
 
 # Dependencies & Build
 node_modules

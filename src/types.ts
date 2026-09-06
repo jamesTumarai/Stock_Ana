@@ -13,6 +13,26 @@ export interface IncomeStatementData {
   interest_expense?: (number | null)[];
   tax_rate?: (number | null)[];
   yoy_revenue_growth_pct?: (number | null)[];
+  // Banking / FinTech specific fields
+  net_interest_income?: (number | null)[];
+  total_interest_income?: (number | null)[];
+  total_interest_expense?: (number | null)[];
+  non_interest_income?: (number | null)[];
+  provision_for_credit_losses?: (number | null)[];
+  net_interest_margin_pct?: (number | null)[];
+  // Insurance specific fields
+  net_premiums_earned?: (number | null)[];
+  losses_and_loss_adjustment?: (number | null)[];
+  underwriting_expenses?: (number | null)[];
+  underwriting_profit?: (number | null)[];
+  investment_income?: (number | null)[];
+  combined_ratio_pct?: (number | null)[];
+  // REITs specific fields
+  rental_revenue?: (number | null)[];
+  property_operating_expenses?: (number | null)[];
+  noi?: (number | null)[]; // Net Operating Income
+  ffo?: (number | null)[]; // Funds From Operations
+  affo?: (number | null)[]; // Adjusted Funds From Operations
   commentary?: string;
 }
 
@@ -46,6 +66,23 @@ export interface BalanceSheetData {
   quick_ratio?: (number | null)[];
   debt_to_equity?: (number | null)[];
   debt_to_ebitda?: (number | null)[];
+  // Banking / FinTech specific fields
+  deposits?: (number | null)[]; // Mandatory banking line: Interest-bearing + non-interest-bearing deposits
+  interest_bearing_deposits?: (number | null)[];
+  non_interest_bearing_deposits?: (number | null)[];
+  loans_held_for_investment?: (number | null)[];
+  loans_held_for_sale?: (number | null)[];
+  allowance_for_loan_losses?: (number | null)[];
+  investment_securities?: (number | null)[];
+  tier1_capital_ratio?: (number | null)[];
+  // Insurance specific fields
+  unearned_premium_reserve?: (number | null)[];
+  loss_reserve?: (number | null)[];
+  reinsurance_recoverable?: (number | null)[];
+  // REITs specific fields
+  real_estate_properties?: (number | null)[];
+  accumulated_depreciation_re?: (number | null)[];
+  mortgage_debt?: (number | null)[];
   commentary?: string;
 }
 
@@ -70,9 +107,20 @@ export interface CashFlowData {
   other_financing?: (number | null)[];
   beginning_cash?: (number | null)[];
   net_change_cash?: (number | null)[];
+  ending_cash?: (number | null)[];
   free_cash_flow?: (number | null)[];
   fcf_margin_pct?: (number | null)[];
   fcf_vs_net_income_ratio?: (number | null)[];
+  // Banking / FinTech specific fields
+  change_in_deposits?: (number | null)[]; // Mandatory banking line: Customer deposits net flow
+  change_in_loans?: (number | null)[];
+  change_in_loans_held_for_sale?: (number | null)[]; // Crucial driver of lending operating cash flow (originations vs sales)
+  provision_addback?: (number | null)[];
+  // Insurance specific fields
+  premiums_collected?: (number | null)[];
+  claims_paid?: (number | null)[];
+  // REITs specific fields
+  ffo_starting_cash?: (number | null)[];
   commentary?: string;
 }
 
@@ -98,6 +146,21 @@ export interface KeyIndicatorsData {
   categories: KeyIndicatorsCategory[];
 }
 
+export type StatementTemplateType = 'standard' | 'banking' | 'insurance' | 'reit' | 'cyclical' | 'biotech';
+
+export interface StatementValidationSummary {
+  is_balanced: boolean; // Total Assets = Total Liabilities + Total Equity within tolerance
+  discrepancy_pct?: (number | null)[];
+  discrepancy_amount?: (number | null)[];
+  impossible_guards_passed: boolean;
+  failed_guards?: string[];
+  passed_guards?: string[];
+  flagged_metrics?: Record<string, string>; // E.g., { roe: "Raw Net Income or Equity unverified" }
+  ratio_reliability_warning?: boolean; // When true, alerts that derived ratios might be deceptively normal
+  filing_source?: string;
+  filing_date?: string;
+}
+
 export interface FinancialStatementsData {
   currency?: string;
   fiscal_period_type?: 'quarterly' | 'annual' | string;
@@ -107,6 +170,8 @@ export interface FinancialStatementsData {
   income_statement: IncomeStatementData;
   balance_sheet: BalanceSheetData;
   cash_flow: CashFlowData;
+  statement_template?: StatementTemplateType;
+  validation_summary?: StatementValidationSummary;
   red_flags?: string[];
 }
 
@@ -140,6 +205,7 @@ export type ValuationModelType =
   | 'dcf_gordon'        // 1-2 Stage Gordon DCF for Mature/Value
   | 'dcf_cyclical'      // Through-Cycle Normalized DCF for Cyclicals
   | 'ddm'               // Dividend Discount Model & Residual Income for Banks/Financials
+  | 'fintech_pe'        // Forward P/E, PEG & Platform Residual Income for FinTech / Digital Banks
   | 'reit_affo'         // FFO/AFFO Multiple & DCF for REITs
   | 'relative_only';    // Relative Valuation fallback for Negative FCF / Pre-Revenue
 
@@ -171,6 +237,10 @@ export interface CostOfCapitalResult {
   wacc_pct: number;
   currency_risk_premium_pct?: number;
   is_foreign_currency_converted?: boolean;
+  size_premium_pct?: number;
+  distress_premium_pct?: number;
+  size_category?: string;
+  is_distressed_or_unprofitable?: boolean;
 }
 
 export interface DCFScenario {
@@ -465,6 +535,75 @@ export interface ForecastDashboardData {
   disclaimer?: string;
 }
 
+export interface MorningstarAnalystNote {
+  headline?: string;
+  headline_th?: string;
+  analyst_byline?: string;
+  date?: string;
+  content_paragraphs?: string[];
+  content_paragraphs_th?: string[];
+}
+
+export interface MorningstarValuationThesis {
+  analyst_byline?: string;
+  date?: string;
+  implied_pe?: number;
+  implied_ev_revenue?: number;
+  implied_fcf_yield_pct?: number;
+  projected_revenue_cagr_5yr?: number;
+  projected_gross_margin_terminal?: number;
+  projected_operating_margin_terminal?: number;
+  content_paragraphs?: string[];
+  content_paragraphs_th?: string[];
+}
+
+export interface MorningstarResearchData {
+  as_of_date?: string;
+  has_coverage: boolean;
+  status_note?: string;
+  status_note_th?: string;
+  analyst_name?: string;
+  analyst_title?: string;
+  analyst_title_th?: string;
+  rating_stars?: number; // 1 to 5
+  rating_date?: string;
+  economic_moat?: 'Wide' | 'Narrow' | 'None' | string;
+  economic_moat_th?: string;
+  uncertainty?: 'Low' | 'Medium' | 'High' | 'Very High' | string;
+  uncertainty_th?: string;
+  capital_allocation?: 'Exemplary' | 'Standard' | 'Poor' | string;
+  capital_allocation_th?: string;
+  fair_value_estimate?: number;
+  fair_value_date?: string;
+  discount_premium_pct?: number;
+  ai_analysis_summary?: string;
+  ai_analysis_summary_th?: string;
+  bulls_say?: string[];
+  bulls_say_th?: string[];
+  bears_say?: string[];
+  bears_say_th?: string[];
+  analyst_note?: MorningstarAnalystNote;
+  business_strategy?: MorningstarDetailSection;
+  valuation_thesis?: MorningstarValuationThesis;
+  economic_moat_details?: MorningstarDetailSection;
+  uncertainty_details?: MorningstarDetailSection;
+  capital_allocation_details?: MorningstarDetailSection;
+  financial_health?: MorningstarDetailSection;
+  disclaimer?: string;
+  disclaimer_th?: string;
+}
+
+export interface MorningstarDetailSection {
+  title?: string;
+  title_th?: string;
+  analyst_byline?: string;
+  date?: string;
+  badge?: string;
+  badge_th?: string;
+  content_paragraphs?: string[];
+  content_paragraphs_th?: string[];
+}
+
 export interface EarningsAnalysisData {
   as_of_date?: string;
   next_earnings_date?: string;
@@ -676,6 +815,11 @@ export interface CompanyProfileData {
   description?: string;
   beta?: number;
   stock_price?: number;
+  price_change?: number;
+  price_change_pct?: number;
+  market_cap?: string;
+  fifty_two_week_high?: number;
+  fifty_two_week_low?: number;
   shares_outstanding?: number | string;
   currency?: string;
 }
@@ -855,6 +999,8 @@ export interface DocumentFinding {
   date?: string;
   sourceUrl?: string;
   source_url?: string;
+  is_latest_quarter?: boolean;
+  quarter_period?: string;
 }
 
 export interface DeepInsight {
@@ -946,6 +1092,22 @@ export interface TechnicalAnalysis {
   };
 }
 
+export interface ConvictionPillarScore {
+  score: number;
+  maxScore: number;
+  pct: number;
+  reasonTh: string;
+  reasonEn: string;
+}
+
+export interface ConvictionBreakdown {
+  growth: ConvictionPillarScore;
+  financial_health: ConvictionPillarScore;
+  valuation: ConvictionPillarScore;
+  moat_and_risk: ConvictionPillarScore;
+  total_score: number;
+}
+
 export interface AnalysisReport {
   generated_at: string;
   ticker: string;
@@ -956,6 +1118,7 @@ export interface AnalysisReport {
     summary: string;
     conviction_score: number;
     key_takeaways: string[];
+    conviction_breakdown?: ConvictionBreakdown;
   };
   comprehensive_analysis?: ComprehensiveAnalysis;
   technical_analysis?: TechnicalAnalysis;
@@ -967,6 +1130,7 @@ export interface AnalysisReport {
   intrinsic_value?: IntrinsicValueData;
   earnings_analysis?: EarningsAnalysisData;
   forecast_dashboard?: ForecastDashboardData;
+  morningstar_research?: MorningstarResearchData;
   peer_comparison?: PeerComparisonData;
   catalysts_and_events?: CatalystsData;
   insider_activity?: InsiderActivityData;

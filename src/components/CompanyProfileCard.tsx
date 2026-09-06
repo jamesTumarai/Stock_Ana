@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Building2, Users, ExternalLink, MapPin, Phone, Calendar, Globe, Briefcase, ChevronDown, ChevronUp, UserCheck, Shield } from 'lucide-react';
 import { CompanyProfileData } from '../types';
+import { CompanyLogo } from './CompanyLogo';
 
 interface CompanyProfileCardProps {
   data?: CompanyProfileData;
@@ -29,14 +30,17 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
     <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col gap-5 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-800 flex items-center justify-center border border-blue-200/60 shadow-xs">
-            <Building2 className="w-5 h-5" />
-          </div>
+        <div className="flex items-center gap-3">
+          <CompanyLogo ticker={ticker} className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl shadow-xs" />
           <div>
-            <h3 className="font-bold text-stone-900 text-lg sm:text-xl font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight">
-              {isThai ? 'ข้อมูลบริษัท & ทีมผู้บริหาร (Company Profile & Executives)' : 'Company Profile & Executive Team'}
-            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-stone-900 text-lg sm:text-xl font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight">
+                {overview?.company_name || ticker}
+              </h3>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 font-mono font-bold border border-stone-200">
+                {ticker}
+              </span>
+            </div>
             <span className="text-xs text-stone-500 font-sans">
               {isThai ? 'ข้อมูลองค์กร, สำนักงานใหญ่, ปีที่ก่อตั้ง, ตลาดจดทะเบียน และประวัติผู้บริหาร' : 'Corporate information, headquarters, founding year, exchange & leadership team'}
             </span>

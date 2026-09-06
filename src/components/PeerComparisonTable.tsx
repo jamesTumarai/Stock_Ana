@@ -1,18 +1,23 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Users, TrendingUp, TrendingDown, Layers } from 'lucide-react';
+import { Users, TrendingUp, TrendingDown, Layers, RefreshCw } from 'lucide-react';
 import { PeerComparisonData, PeerCompanyItem } from '../types';
+import { CompanyLogo } from './CompanyLogo';
 
 interface Props {
   data?: PeerComparisonData;
   isThai: boolean;
   targetTicker?: string;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export function PeerComparisonTable({ 
   data, 
   isThai, 
-  targetTicker = 'PLTR' 
+  targetTicker = 'PLTR',
+  onRefresh,
+  isRefreshing = false
 }: Props) {
   if (!data || !data.peers || data.peers.length === 0) {
     return null;
@@ -37,11 +42,29 @@ export function PeerComparisonTable({
           </div>
         </div>
 
-        {data.as_of_date && (
-          <span className="text-xs text-stone-400 font-mono self-start sm:self-auto">
-            {isThai ? 'ข้อมูล ณ ' : 'As of '}{data.as_of_date}
-          </span>
-        )}
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-all cursor-pointer select-none ${
+                isRefreshing 
+                  ? 'bg-amber-50 border-amber-300 text-amber-700 animate-pulse'
+                  : 'bg-stone-50 hover:bg-emerald-50 border-stone-200 hover:border-emerald-300 text-stone-600 hover:text-emerald-700 shadow-2xs'
+              }`}
+              title={isThai ? 'ดึงราคาหุ้นและข้อมูลสดล่าสุดจาก Yahoo Finance' : 'Refresh live prices and market caps from Yahoo Finance'}
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
+              <span className="font-sans font-medium">{isRefreshing ? (isThai ? 'กำลังดึง...' : 'Syncing...') : (isThai ? '⚡ อัปเดตสด' : '⚡ Live Sync')}</span>
+            </button>
+          )}
+          {data.as_of_date && (
+            <span className="text-xs text-stone-400 font-mono">
+              {isThai ? 'ข้อมูล ณ ' : 'As of '}{data.as_of_date}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto w-full">
@@ -75,17 +98,22 @@ export function PeerComparisonTable({
                   <td className={`py-3 px-4 font-sans sticky left-0 shadow-[1px_0_0_#e7e5e4] ${
                     isTarget ? 'bg-emerald-50 text-[#0b5a4b]' : 'bg-white text-stone-900'
                   }`}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold">{peer.ticker}</span>
-                      {isTarget && (
-                        <span className="text-[10px] bg-[#0b5a4b] text-white px-1.5 py-0.2 rounded font-mono font-normal">
-                          {isThai ? 'หุ้นนี้' : 'Target'}
+                    <div className="flex items-center gap-2.5">
+                      <CompanyLogo ticker={peer.ticker} className="w-8 h-8 rounded-lg shrink-0" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold">{peer.ticker}</span>
+                          {isTarget && (
+                            <span className="text-[10px] bg-[#0b5a4b] text-white px-1.5 py-0.2 rounded font-mono font-normal">
+                              {isThai ? 'หุ้นนี้' : 'Target'}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-stone-500 font-normal block truncate max-w-[140px]">
+                          {peer.company_name}
                         </span>
-                      )}
+                      </div>
                     </div>
-                    <span className="text-[11px] text-stone-500 font-normal block truncate max-w-[140px]">
-                      {peer.company_name}
-                    </span>
                   </td>
                   <td className="py-3 px-3 text-right text-stone-800">{peer.market_cap || '-'}</td>
                   <td className="py-3 px-3 text-right font-bold text-stone-900">

@@ -138,7 +138,7 @@
   @media print {
     @page {
       size: A4 portrait;
-      margin: 10mm;
+      margin: 0; /* Zero page margin strictly suppresses browser default header (date/time/title) and footer (localhost:3000/page number) */
     }
 
     *, *::before, *::after {
@@ -152,7 +152,6 @@
     body,
     #root,
     #report-scroll-container,
-    #report-content,
     .report-cute-font {
       height: auto !important;
       min-height: 0 !important;
@@ -160,8 +159,6 @@
       width: 100% !important;
       max-width: 100% !important;
       overflow: visible !important;
-      overflow-x: visible !important;
-      overflow-y: visible !important;
       position: static !important;
       display: block !important;
       float: none !important;
@@ -172,27 +169,77 @@
       padding: 0 !important;
     }
 
-    /* Enable natural multi-page flow for large cards, tables and containers */
-    .bg-white,
-    .bg-stone-50,
-    .bg-\[\#F6F4F0\],
-    .rounded-2xl,
-    .rounded-3xl,
-    table,
-    tbody,
-    div {
-      break-inside: auto;
-      page-break-inside: auto;
+    /* CRITICAL FOR CHROMIUM PRINT PAGINATION:
+       In Chromium, elements with display: flex cannot be fragmented across pages.
+       Containers that span multiple pages must be display: block */
+    #report-content,
+    #report-content > div,
+    #report-content > section,
+    [id^="section-"],
+    .flex-col {
+      display: block !important;
     }
 
-    /* Prevent awkward breaks inside specific atomic rows & headers */
+    #report-content {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      color: #1c1917 !important;
+      margin: 0 auto !important;
+      padding: 8mm 10mm !important;
+      box-sizing: border-box !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+
+    /* All multi-page containers and sections MUST allow page breaks */
+    #report-content,
+    #report-content > div,
+    #report-content > section,
+    [id^="section-"],
+    .rounded-2xl,
+    .rounded-3xl,
+    .bg-white,
+    .bg-stone-50,
+    table,
+    tbody {
+      break-inside: auto !important;
+      page-break-inside: auto !important;
+    }
+
+    /* Spacing between sections when printed */
+    #report-content > div,
+    #report-content > section {
+      margin-bottom: 20px !important;
+    }
+
+    /* Only individual atomic components, charts, and table rows should avoid breaking internally */
     tr,
     thead,
     th,
     h1, h2, h3, h4,
-    .avoid-page-break {
+    .avoid-page-break,
+    .avoid-break,
+    .recharts-responsive-container,
+    .recharts-wrapper {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
+    }
+
+    /* Remove heavy drop shadows in print that cause dark smudged edges */
+    .shadow-xs,
+    .shadow-sm,
+    .shadow-md,
+    .shadow-lg,
+    .shadow-xl,
+    .shadow-2xl {
+      box-shadow: none !important;
     }
 
     /* Ensure tables and charts expand to full printed width without horizontal clipping */
@@ -203,35 +250,58 @@
       max-height: none !important;
     }
 
-    table {
+    table,
+    .min-w-\[760px\] {
       width: 100% !important;
-      min-width: 100% !important;
+      min-width: 0 !important;
       table-layout: auto !important;
+      font-size: 10px !important;
+    }
+
+    table th,
+    table td {
+      padding: 4px 6px !important;
     }
 
     /* Sticky headers should be static in print */
     .sticky,
-    .fixed {
+    .fixed,
+    th.sticky,
+    td.sticky {
       position: static !important;
+      box-shadow: none !important;
     }
 
-    /* Recharts charts sizing during print */
-    .recharts-responsive-container,
+    /* Recharts charts sizing and SVG rendering during print */
+    .recharts-responsive-container {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-height: 190px !important;
+      overflow: visible !important;
+    }
+
     .recharts-wrapper {
       width: 100% !important;
       max-width: 100% !important;
       overflow: visible !important;
     }
 
-    /* Force all elements to full opacity and reset transforms */
-    * {
-      opacity: 1 !important;
-      transform: none !important;
+    svg {
+      overflow: visible !important;
+    }
+
+    /* CRITICAL: Do NOT apply transform: none to SVG elements as it strips Recharts coordinate matrices */
+    *:not(svg):not(path):not(g):not(rect):not(circle):not(line):not(text):not(polygon):not(polyline) {
       animation: none !important;
       transition: none !important;
     }
 
-    /* Hide sticky navigation and buttons during print/save */
+    /* Force all text/borders to printable contrast */
+    .bg-stone-50 {
+      background-color: #fafaf9 !important;
+    }
+
+    /* Hide sticky navigation and screen-only elements during print/save */
     .print\:hidden {
       display: none !important;
     }

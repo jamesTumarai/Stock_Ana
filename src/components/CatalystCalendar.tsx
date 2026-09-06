@@ -25,48 +25,59 @@ export function CatalystCalendar({
 
   if (!hasCatalysts && !hasInsiders) return null;
 
+  const bothPresent = hasCatalysts && hasInsiders;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
+    <div className={bothPresent ? "grid grid-cols-1 lg:grid-cols-2 gap-5 w-full" : "w-full"}>
       {/* Catalysts & Upcoming Events */}
       {hasCatalysts && (
-        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm flex flex-col justify-between gap-4">
+        <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col justify-between gap-4 w-full">
           <div>
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Flame className="w-5 h-5 text-amber-500" />
-                <h3 className="font-bold text-stone-900 text-base sm:text-lg font-['Prompt','Mitr','Nunito',sans-serif]">
-                  {isThai ? 'ปัจจัยเร่งและเหตุการณ์สำคัญ (Catalysts)' : 'Upcoming Catalysts & Events'}
-                </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/60 shadow-xs shrink-0">
+                  <Flame className="w-5 h-5 text-amber-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base sm:text-lg font-['Prompt','Mitr','Nunito',sans-serif]">
+                    {isThai ? 'ปัจจัยเร่งและเหตุการณ์สำคัญ (Catalysts)' : 'Upcoming Catalysts & Events'}
+                  </h3>
+                  <p className="text-[11px] text-stone-500 font-sans mt-0.5">
+                    {isThai ? 'เหตุการณ์และหมุดหมายสำคัญที่ส่งผลต่อการเติบโตและมูลค่าหุ้นในอนาคต' : 'Key milestones likely to impact business growth and market valuation'}
+                  </p>
+                </div>
               </div>
               {catalysts?.as_of_date && (
-                <span className="text-[11px] text-stone-400 font-mono">
+                <span className="text-[11px] text-stone-400 font-mono bg-stone-50 px-2.5 py-1 rounded-xl border border-stone-100 shrink-0">
                   {catalysts.as_of_date}
                 </span>
               )}
             </div>
 
-            <div className="space-y-3 mt-4">
+            <div className={bothPresent ? "space-y-3 mt-4" : "grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-4"}>
               {items.map((cat, idx) => (
-                <div key={idx} className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100 flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-stone-900 text-sm">{cat.title}</span>
-                    {cat.expected_impact && (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        cat.expected_impact === 'high' ? 'bg-red-100 text-red-700' :
-                        cat.expected_impact === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-stone-200 text-stone-700'
-                      }`}>
-                        {cat.expected_impact.toUpperCase()} IMPACT
+                <div key={idx} className="bg-stone-50/80 hover:bg-stone-50 p-4 rounded-2xl border border-stone-100 flex flex-col justify-between gap-2 transition-all">
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-bold text-stone-900 text-sm leading-snug">{cat.title}</span>
+                      {cat.expected_impact && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          cat.expected_impact === 'high' ? 'bg-red-100 text-red-700' :
+                          cat.expected_impact === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-stone-200 text-stone-700'
+                        }`}>
+                          {cat.expected_impact.toUpperCase()} IMPACT
+                        </span>
+                      )}
+                    </div>
+                    {cat.date && (
+                      <span className="text-[11px] text-stone-500 font-mono flex items-center gap-1.5 mt-1.5 font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600/70" /> {cat.date}
                       </span>
                     )}
+                    <p className="text-xs text-stone-600 leading-relaxed font-sans mt-2">
+                      {cat.description}
+                    </p>
                   </div>
-                  {cat.date && (
-                    <span className="text-[11px] text-stone-500 font-mono flex items-center gap-1">
-                      <Calendar className="w-3 h-3 text-stone-400" /> {cat.date}
-                    </span>
-                  )}
-                  <p className="text-xs text-stone-600 leading-relaxed font-sans mt-1">
-                    {cat.description}
-                  </p>
                 </div>
               ))}
             </div>
@@ -76,7 +87,7 @@ export function CatalystCalendar({
 
       {/* Insider & Institutional Activity Tracker */}
       {hasInsiders && (
-        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-sm flex flex-col justify-between gap-4">
+        <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col justify-between gap-4 w-full">
           <div>
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div className="flex items-center gap-2">

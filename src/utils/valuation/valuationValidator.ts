@@ -16,16 +16,18 @@ export function validateValuationAssumptions(data?: IntrinsicValueData): Valuati
   // 1. Terminal Growth vs WACC / Ke Check
   const waccOrKe = selectedModel === 'ddm' ? (ddm?.assumptions.cost_of_equity_pct || 9.5) : (dcf?.assumptions.wacc_pct || 9.5);
   const termGrowth = selectedModel === 'ddm' ? (ddm?.assumptions.terminal_growth_pct || 3.0) : (dcf?.assumptions.terminal_growth_pct || 3.0);
+  const rawTermGrowth = (data as any)?.intrinsic_value?.dcf_model?.assumptions?.terminal_growth_pct ?? termGrowth;
 
-  if (termGrowth >= waccOrKe) {
+  if (termGrowth >= waccOrKe || rawTermGrowth >= waccOrKe) {
     alerts.push({
       type: 'error',
       code: 'TERMINAL_GROWTH_EXCEEDS_DISCOUNT_RATE',
-      message_th: `อัตราเติบโตยั่งยืน (${termGrowth}%) ต้องต่ำกว่าต้นทุนเงินทุน (${waccOrKe}%)`,
-      message_en: `Terminal Growth Rate (${termGrowth}%) cannot exceed Discount Rate (${waccOrKe}%)`,
+      message_th: `อัตราเติบโตยั่งยืน (${rawTermGrowth}%) ต้องต่ำกว่าต้นทุนเงินทุน (${waccOrKe}%)`,
+      message_en: `Terminal Growth Rate (${rawTermGrowth}%) cannot exceed Discount Rate (${waccOrKe}%)`,
       detail: 'ในทางคณิตศาสตร์การเงิน Terminal Growth ที่สูงกว่าหรือเท่ากับ Discount Rate จะทำให้มูลค่ากิจการพุ่งเป็นอนันต์'
     });
   }
+
 
   // 2. WACC < Local Rf + 2% Check
   if (coc && coc.wacc_pct < (coc.risk_free_rate_pct + 2.0)) {
@@ -81,7 +83,41 @@ export function validateValuationAssumptions(data?: IntrinsicValueData): Valuati
     }
   }
 
-  // 6. Currency Mismatch Check
+  // 6. DCF vs Relative Valuation Discrepancy Check (Cross-Model Divergence)
+  const relFair = data.relative_valuation?.fair_value_per_share;
+  if (relFair && relFair > 0 && baseFairVal > 0) {
+    const ratio = baseFairVal / relFair;
+    if (ratio >= 2.5) {
+      alerts.push({
+        type: 'warning',
+        code: 'DCF_RELATIVE_DISCREPANCY_ALERT',
+        message_th: `ความขัดแย้งของแบบจำลอง: ราคา DCF Base Case ($${baseFairVal.toFixed(2)}) สูงกว่า Relative Valuation ($${relFair.toFixed(2)}) ถึง ${ratio.toFixed(1)} เท่า`,
+        message_en: `Model Divergence Alert: DCF Base Case ($${baseFairVal.toFixed(2)}) is ${ratio.toFixed(1)}x higher than Relative Valuation ($${relFair.toFixed(2)})`,
+        detail: 'ความแตกต่างข้ามโมเดลเกิน 2.5 เท่า บ่งชี้ว่าสมมติฐานการเติบโตหรืออัตราคิดลด (WACC) ใน DCF อาจมองโลกในแง่ดีเกินไปเมื่อเทียบกับมูลค่าที่ตลาดซื้อขายจริง แนะนำให้อิง Relative Valuation หรือถ่วงน้ำหนักความน่าจะเป็น'
+      });
+    } else if (ratio <= 0.4) {
+      alerts.push({
+        type: 'warning',
+        code: 'DCF_RELATIVE_DISCREPANCY_ALERT',
+        message_th: `ความขัดแย้งของแบบจำลอง: ราคา DCF Base Case ($${baseFairVal.toFixed(2)}) ต่ำกว่า Relative Valuation ($${relFair.toFixed(2)}) อย่างมีนัยสำคัญ (${ratio.toFixed(2)}x)`,
+        message_en: `Model Divergence Alert: DCF Base Case ($${baseFairVal.toFixed(2)}) is significantly lower than Relative Valuation ($${relFair.toFixed(2)}) (${ratio.toFixed(2)}x)`,
+        detail: 'ราคา DCF ต่ำกว่ามูลค่าเปรียบเทียบในอุตสาหกรรมมาก ควรตรวจสอบภาระหนี้สินหรือการปรับตัวของมาร์จิ้น'
+      });
+    }
+  }
+
+  // 7. Unprofitable / Distressed Low WACC Check
+  if (coc && coc.is_distressed_or_unprofitable && coc.wacc_pct < 13.0) {
+    alerts.push({
+      type: 'warning',
+      code: 'UNPROFITABLE_DISTRESS_WACC_WARNING',
+      message_th: `WACC (${coc.wacc_pct}%) ต่ำเกินไปสำหรับบริษัทที่ยังขาดทุนหรือกระแสเงินสดติดลบ`,
+      message_en: `WACC (${coc.wacc_pct}%) is too low for an unprofitable / cash-burning company`,
+      detail: 'บริษัทที่มีผลการดำเนินงานขาดทุนหรือ Gross Margin ติดลบ ควรมี WACC ไม่ต่ำกว่า 14-18% เพื่อสะท้อน Size Premium และ Distress Risk'
+    });
+  }
+
+  // 8. Currency Mismatch Check
   if (coc && coc.is_foreign_currency_converted) {
     alerts.push({
       type: 'info',

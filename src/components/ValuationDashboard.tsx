@@ -237,7 +237,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
 
           {/* Recharts Area + Line Band Chart */}
           <div className="h-56 w-full mt-3">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={224} minHeight={224}>
               <AreaChart data={currentDetail.band_chart_data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e4" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#78716c' }} />
@@ -255,17 +255,17 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                   }
                 />
                 {/* Shaded Reasonable Range Band */}
-                <Area type="monotone" dataKey="band_upper" stroke="none" fill="#0b5a4b" fillOpacity={0.08} name="reasonable_range" />
-                <Area type="monotone" dataKey="band_lower" stroke="none" fill="#ffffff" fillOpacity={1} />
+                <Area type="monotone" dataKey="band_upper" stroke="none" fill="#0b5a4b" fillOpacity={0.08} name="reasonable_range" isAnimationActive={false} />
+                <Area type="monotone" dataKey="band_lower" stroke="none" fill="#ffffff" fillOpacity={1} isAnimationActive={false} />
                 
                 {/* Lines */}
-                <Line type="monotone" dataKey="ratio_value" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 3, fill: '#0b5a4b' }} activeDot={{ r: 5 }} name="ratio_value" />
-                <Line type="monotone" dataKey="historical_avg" stroke="#78716c" strokeWidth={1.8} strokeDasharray="4 4" dot={false} name="historical_avg" />
+                <Line type="monotone" dataKey="ratio_value" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 3, fill: '#0b5a4b' }} activeDot={{ r: 5 }} name="ratio_value" isAnimationActive={false} />
+                <Line type="monotone" dataKey="historical_avg" stroke="#78716c" strokeWidth={1.8} strokeDasharray="4 4" dot={false} name="historical_avg" isAnimationActive={false} />
                 {currentDetail.band_chart_data[0]?.industry_avg !== undefined && (
-                  <Line type="monotone" dataKey="industry_avg" stroke="#d97706" strokeWidth={2} dot={false} name="industry_avg" />
+                  <Line type="monotone" dataKey="industry_avg" stroke="#d97706" strokeWidth={2} dot={false} name="industry_avg" isAnimationActive={false} />
                 )}
                 {currentDetail.band_chart_data[0]?.benchmark_index !== undefined && (
-                  <Line type="monotone" dataKey="benchmark_index" stroke="#64748b" strokeWidth={1.8} dot={false} name="benchmark_index" />
+                  <Line type="monotone" dataKey="benchmark_index" stroke="#64748b" strokeWidth={1.8} dot={false} name="benchmark_index" isAnimationActive={false} />
                 )}
               </AreaChart>
             </ResponsiveContainer>
@@ -298,7 +298,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
             )}
 
             <div className="h-48 w-full mt-1">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={192} minHeight={192}>
                 <LineChart data={earningsGrowth?.chart_data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e4" />
                   <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#78716c' }} />
@@ -334,8 +334,8 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                     height={26} 
                     formatter={(value) => value === 'net_income_multiple' ? (isThai ? '— กำไรสุทธิ TTM' : '— Net Income TTM') : (isThai ? '— มูลค่าตลาด' : '— Market Cap')} 
                   />
-                  <Line type="monotone" dataKey="net_income_multiple" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 3, fill: '#0b5a4b' }} activeDot={{ r: 5 }} name="net_income_multiple" />
-                  <Line type="monotone" dataKey="market_cap_multiple" stroke="#d97706" strokeWidth={2.5} dot={{ r: 3, fill: '#d97706' }} activeDot={{ r: 5 }} name="market_cap_multiple" />
+                  <Line type="monotone" dataKey="net_income_multiple" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 3, fill: '#0b5a4b' }} activeDot={{ r: 5 }} name="net_income_multiple" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="market_cap_multiple" stroke="#d97706" strokeWidth={2.5} dot={{ r: 3, fill: '#d97706' }} activeDot={{ r: 5 }} name="market_cap_multiple" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -366,7 +366,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
             )}
 
             <div className="h-48 w-full mt-1">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={192} minHeight={192}>
                 <LineChart data={revenueGrowth?.chart_data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e4" />
                   <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#78716c' }} />
@@ -402,8 +402,8 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                     height={26} 
                     formatter={(value) => value === 'revenue_multiple' ? (isThai ? '— รายได้รวม TTM' : '— Revenue TTM') : (isThai ? '— มูลค่าตลาด' : '— Market Cap')} 
                   />
-                  <Line type="monotone" dataKey="revenue_multiple" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 3, fill: '#0b5a4b' }} activeDot={{ r: 5 }} name="revenue_multiple" />
-                  <Line type="monotone" dataKey="market_cap_multiple" stroke="#d97706" strokeWidth={2.5} dot={{ r: 3, fill: '#d97706' }} activeDot={{ r: 5 }} name="market_cap_multiple" />
+                  <Line type="monotone" dataKey="revenue_multiple" stroke="#0b5a4b" strokeWidth={2.5} dot={{ r: 3, fill: '#0b5a4b' }} activeDot={{ r: 5 }} name="revenue_multiple" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="market_cap_multiple" stroke="#d97706" strokeWidth={2.5} dot={{ r: 3, fill: '#d97706' }} activeDot={{ r: 5 }} name="market_cap_multiple" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -431,7 +431,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
             </div>
 
             <div className="h-56 w-full mt-3">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={224} minHeight={224}>
                 <ScatterChart margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e4" />
                   <XAxis type="number" dataKey="ratio_value" name={ratioLabel} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#78716c' }} />
@@ -518,7 +518,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
 
             {/* Scatter Plot / Bubble Distribution */}
             <div className="h-56 w-full mt-3">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={224} minHeight={224}>
                 <ScatterChart margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e4" />
                   <XAxis type="number" dataKey="ratio_value" name={ratioLabel} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#78716c' }} />
@@ -544,6 +544,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                     name="Companies" 
                     data={currentDetail.industry_distribution} 
                     fill="#94a3b8"
+                    isAnimationActive={false}
                     shape={(props: any) => {
                       const { cx, cy, payload } = props;
                       const isTarget = payload.is_target;
@@ -602,7 +603,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3 mt-3">
             {/* Donut Chart with Ticker Centered */}
             <div className="relative h-48 w-full flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={192} minHeight={192}>
                 <RechartsPieChart>
                   <Pie
                     data={marketDist}
@@ -613,6 +614,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                     paddingAngle={2}
                     dataKey="ratio_pct"
                     nameKey="range_label"
+                    isAnimationActive={false}
                     onMouseEnter={(_, index) => setActiveDistIndex(index)}
                   >
                     {marketDist.map((_, index) => (

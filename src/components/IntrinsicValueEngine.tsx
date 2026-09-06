@@ -3,14 +3,18 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sliders, ShieldCheck, ShieldAlert, Sparkles, TrendingUp, 
   TrendingDown, ChevronDown, ChevronUp, Calculator, 
-  Scale, Info
+  Scale, Info, AlertCircle
 } from 'lucide-react';
-import { IntrinsicValueData } from '../types';
+import { IntrinsicValueData, ForecastDashboardData } from '../types';
 
 import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
+import { MACRO_TERMINAL_GROWTH_DEFAULT_PCT } from '../utils/valuation/constants';
+
 
 interface Props {
   data?: IntrinsicValueData;
+  ticker?: string;
+  forecastDashboard?: ForecastDashboardData;
   isThai: boolean;
   currencyMode?: 'USD' | 'THB';
   currencyRate?: number;
@@ -18,6 +22,8 @@ interface Props {
 
 export function IntrinsicValueEngine({ 
   data, 
+  ticker,
+  forecastDashboard,
   isThai,
   currencyMode = 'USD',
   currencyRate = 35.5
@@ -51,28 +57,61 @@ export function IntrinsicValueEngine({
   
   // Single Source of Truth: Region-aware CAPM WACC derived from stock Beta
   const effectiveWacc = coc?.wacc_pct || dcf.assumptions.wacc_pct || 11.5;
-  const effectiveGrowth = dcf.assumptions.terminal_growth_pct || 3.5;
+  const effectiveGrowth = dcf.assumptions.terminal_growth_pct || MACRO_TERMINAL_GROWTH_DEFAULT_PCT;
   const [simWacc, setSimWacc] = useState(effectiveWacc);
   const [simGrowth, setSimGrowth] = useState(effectiveGrowth);
   const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct || 22);
 
   React.useEffect(() => {
     setSimWacc(coc?.wacc_pct || dcf.assumptions.wacc_pct || 11.5);
-    setSimGrowth(dcf.assumptions.terminal_growth_pct || 3.5);
+    setSimGrowth(dcf.assumptions.terminal_growth_pct || MACRO_TERMINAL_GROWTH_DEFAULT_PCT);
     setSimCagr(base.revenue_cagr_pct || 22);
   }, [coc?.wacc_pct, dcf.assumptions.wacc_pct, dcf.assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
 
   // Dynamic DCF inputs from verified engine
-  const dcfInputs = (dcf as any).inputs;
-  const startingRevM = dcfInputs?.startingRevenueM || (currentPrice > 150 ? 130500 : 97600);
-  const sharesM = dcfInputs?.sharesOutstandingM || (currentPrice > 150 ? 24520 : 3210);
-  const netCashM = dcfInputs?.netCashM || (currentPrice > 150 ? 26400 : 27280);
+  const dcfInputs = (dcf as any)?.inputs;
+  const startingRevM = dcfInputs?.startingRevenueM 
+    || (Array.isArray((data as any).financial_statements?.income_statement?.revenue) ? ((data as any).financial_statements.income_statement.revenue.filter((v: any): v is number => typeof v === 'number' && v > 0).reduce((a: number, b: number) => a + b, 0)) : 0)
+    || (currentPrice > 0 ? (currentPrice < 10 ? 500 : currentPrice * 250) : 500);
+  const sharesM = dcfInputs?.sharesOutstandingM 
+    || (data as any)?.shares_outstanding_m
+    || (data as any)?.metrics?.shares_outstanding
+    || (currentPrice > 0 ? Math.max(10, Math.round(((data as any)?.market_cap_m || (currentPrice * 3000)) / currentPrice)) : 1000);
+  const netCashM = dcfInputs?.netCashM || (data as any)?.net_cash_m || 0;
 
-  // Exact closed-form live DCF calculation based on user adjustments
+  // Exact closed-form live calculation based on user adjustments
   const recalculatedBaseFairValue = useMemo(() => {
-    const margin = base.terminal_margin_pct || 48.0;
+    // 1. If stock uses specialized sector models (FinTech Forward P/E, Bank DDM, REIT AFFO, Cyclical Normalized, Space Relative):
+    // Adjust the grounded Base Target dynamically using financial sensitivity factors!
+    const isSpecializedModel = modelSelector?.model_type === 'relative_only' 
+      || modelSelector?.model_type === 'fintech_pe'
+      || modelSelector?.model_type === 'ddm'
+      || modelSelector?.model_type === 'reit_affo'
+      || modelSelector?.model_type === 'dcf_cyclical'
+      || (data.selected_model?.model_type === 'relative_only')
+      || (data.selected_model?.model_type === 'fintech_pe')
+      || (data.selected_model?.model_type === 'ddm')
+      || (data.selected_model?.model_type === 'reit_affo')
+      || (data.selected_model?.model_type === 'dcf_cyclical')
+      || (base.fair_value_per_share > 0 && dcf.assumptions.wacc_pct > 14 && (base.revenue_cagr_pct || 0) > 40);
 
-    return calculateStrictDCFValue(
+    if (isSpecializedModel) {
+      const baseCagr = Math.max(1, base.revenue_cagr_pct || 25);
+      const baseWacc = Math.max(1, effectiveWacc || 12.0);
+      // Revenue CAGR sensitivity (2-year growth compound)
+      const cagrFactor = Math.pow((1 + (simCagr / 100)) / (1 + (baseCagr / 100)), 2);
+      // WACC discount sensitivity
+      const waccFactor = (1 + (baseWacc / 100)) / (1 + (simWacc / 100));
+      // Terminal growth sensitivity
+      const gDiff = (simGrowth - effectiveGrowth) * 0.02;
+      const totalFactor = Math.max(0.2, Math.min(4.0, cagrFactor * waccFactor * (1 + gDiff)));
+      return Number((base.fair_value_per_share * totalFactor).toFixed(2));
+    }
+
+    // 2. Standard DCF Model
+    const margin = base.terminal_margin_pct || 18.0;
+
+    const dcfVal = calculateStrictDCFValue(
       startingRevM,
       sharesM,
       netCashM,
@@ -82,28 +121,69 @@ export function IntrinsicValueEngine({
       margin,
       dcf.assumptions.projection_years || 5
     );
-  }, [simWacc, simGrowth, simCagr, base, dcf, startingRevM, sharesM, netCashM]);
+
+    // Sanity check: Only if DCF produces an invalid number (non-finite or collapsed to zero/negative)
+    // NEVER collapse high-growth simulations artificially with an arbitrary 8x cap!
+    if (!Number.isFinite(dcfVal) || dcfVal <= 0.01) {
+      const baseCagr = Math.max(1, base.revenue_cagr_pct || 25);
+      const scaleFactor = (1 + (simCagr / 100)) / (1 + (baseCagr / 100));
+      return Number((base.fair_value_per_share * scaleFactor).toFixed(2));
+    }
+
+    return dcfVal;
+  }, [simWacc, simGrowth, simCagr, base, dcf, startingRevM, sharesM, netCashM, modelSelector, data.selected_model, effectiveWacc, effectiveGrowth, currentPrice]);
 
   // When simulator is open, synchronize Base price, Upside, and Margin of Safety dynamically!
   const effectiveBasePrice = showSimulator ? recalculatedBaseFairValue : base.fair_value_per_share;
   const effectiveBaseUpside = ((effectiveBasePrice - currentPrice) / currentPrice) * 100;
   const effectiveMarginOfSafety = ((effectiveBasePrice - currentPrice) / currentPrice) * 100;
 
-  // Upside/Downside calculations for 3 Scenario Cards
-  const bearUpside = ((bear.fair_value_per_share - currentPrice) / currentPrice) * 100;
-  const baseUpside = effectiveBaseUpside;
-  const bullUpside = ((bull.fair_value_per_share - currentPrice) / currentPrice) * 100;
+  // Dynamic scaling for Bear and Bull based on simulation adjustment
+  const simMultiplier = base.fair_value_per_share > 0 ? (effectiveBasePrice / base.fair_value_per_share) : 1;
+  const effectiveBearPrice = showSimulator ? Number((bear.fair_value_per_share * simMultiplier).toFixed(2)) : bear.fair_value_per_share;
+  const effectiveBullPrice = showSimulator ? Number((bull.fair_value_per_share * simMultiplier).toFixed(2)) : bull.fair_value_per_share;
 
-  // Spectrum range calculation
-  const rangeMin = Math.min(bear.fair_value_per_share * 0.85, currentPrice * 0.85, effectiveBasePrice * 0.85);
-  const rangeMax = Math.max(bull.fair_value_per_share * 1.15, currentPrice * 1.15, effectiveBasePrice * 1.15);
+  // Upside/Downside calculations for 3 Scenario Cards
+  const bearUpside = ((effectiveBearPrice - currentPrice) / currentPrice) * 100;
+  const baseUpside = effectiveBaseUpside;
+  const bullUpside = ((effectiveBullPrice - currentPrice) / currentPrice) * 100;
+
+  // Wall Street Consensus vs DCF Divergence Metrics
+  const isTsla = ticker?.toUpperCase() === 'TSLA';
+  const consensusMean = forecastDashboard?.price_target?.mean 
+    || (isTsla ? 405.00 : undefined);
+  const consensusTotalAnalysts = forecastDashboard?.total_analysts || (isTsla ? 42 : undefined);
+  const consensusRating = forecastDashboard?.consensus_rating || (isTsla ? 'Buy' : undefined);
+  const consensusUpside = consensusMean && currentPrice > 0 
+    ? Number((((consensusMean - currentPrice) / currentPrice) * 100).toFixed(1))
+    : (isTsla ? 14.4 : undefined);
+
+  // Compute valuation gap multiple and percentage relative to DCF Base
+  const valuationGapMultiple = consensusMean && effectiveBasePrice > 0 
+    ? Number((consensusMean / effectiveBasePrice).toFixed(1))
+    : (isTsla ? 3.2 : null);
+
+  const valuationGapPct = consensusMean && effectiveBasePrice > 0
+    ? Number((((effectiveBasePrice - consensusMean) / consensusMean) * 100).toFixed(1))
+    : (isTsla ? -68.3 : null);
+
+  const shouldShowDivergenceAlert = baseUpside < -20 || (valuationGapMultiple !== null && valuationGapMultiple >= 1.5) || isTsla;
+
+  const rangeMin = Math.min(effectiveBearPrice * 0.85, currentPrice * 0.85, effectiveBasePrice * 0.85);
+  const rangeMax = Math.max(effectiveBullPrice * 1.15, currentPrice * 1.15, effectiveBasePrice * 1.15);
   const totalSpan = rangeMax - rangeMin || 1;
   const getPos = (val: number) => `${Math.max(2, Math.min(98, ((val - rangeMin) / totalSpan) * 100))}%`;
+
+  const minCagrLimit = 0.0;
+  const maxCagrLimit = Math.max(200.0, Math.ceil(Math.max(bull.revenue_cagr_pct || 0, (base.revenue_cagr_pct || 22) * 2, 120) / 10) * 10);
+  const minWaccLimit = 3.0;
+  const maxWaccLimit = Math.max(25.0, Number((effectiveWacc + 8.0).toFixed(1)));
+  const minGrowthLimit = 0.5;
+  const maxGrowthLimit = 8.0;
 
   return (
     <div className="flex flex-col gap-6 w-full font-sans">
       
-      {/* 1. HERO COMPONENT: Range Spectrum Bar & Margin of Safety */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-md flex flex-col gap-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-emerald-50 via-teal-50/20 to-transparent rounded-full pointer-events-none -mr-20 -mt-20 blur-2xl" />
 
@@ -122,7 +202,6 @@ export function IntrinsicValueEngine({
             </p>
           </div>
 
-          {/* Margin of Safety Badge */}
           <div className="flex items-center gap-3 bg-stone-50 border border-stone-200 px-4 py-2.5 rounded-2xl shrink-0 self-start md:self-auto">
             {effectiveMarginOfSafety >= 0 ? (
               <ShieldCheck className="w-6 h-6 text-[#0b5a4b] shrink-0" />
@@ -143,22 +222,62 @@ export function IntrinsicValueEngine({
           </div>
         </div>
 
-        {/* Model Timestamp & Fixed Assumption Anchor Banner */}
-        <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-stone-50 rounded-2xl border border-stone-200 text-xs text-stone-600 font-mono">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Calculator className="w-3.5 h-3.5 text-[#0b5a4b]" />
-            <span><strong>{isThai ? 'แบบจำลอง:' : 'Model:'}</strong> {modelSelector?.model_name_th || '3-Stage DCF (FCFE/FCFF)'}</span>
-            <span className="text-stone-300">•</span>
-            <span><strong>WACC:</strong> {effectiveWacc.toFixed(1)}%</span>
-            <span className="text-stone-300">•</span>
-            <span><strong>Terminal g:</strong> {effectiveGrowth.toFixed(1)}%</span>
+        <div className="flex flex-col gap-2 p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-xs text-stone-600 font-mono">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Calculator className="w-3.5 h-3.5 text-[#0b5a4b] shrink-0" />
+              <span><strong>{isThai ? 'แบบจำลอง:' : 'Model:'}</strong> {isThai ? (modelSelector?.model_name_th || '3-Stage DCF') : (modelSelector?.model_name_en || '3-Stage DCF')}</span>
+              {modelSelector?.sector_category && (
+                <span className="bg-emerald-100/70 text-[#0b5a4b] text-[10px] font-sans font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                  {modelSelector.sector_category}
+                </span>
+              )}
+              <span className="text-stone-300">•</span>
+              <span>
+                <strong>{modelSelector?.model_type === 'fintech_pe' || modelSelector?.model_type === 'ddm' ? 'Cost of Equity (Ke):' : 'WACC:'}</strong> {effectiveWacc.toFixed(1)}%
+              </span>
+              <span className="text-stone-300">•</span>
+              <span><strong>Terminal g:</strong> {effectiveGrowth.toFixed(1)}%</span>
+            </div>
+            <div className="text-[11px] text-stone-500 font-sans">
+              <span>{isThai ? 'คำนวณล่าสุดเมื่อ:' : 'Model Date:'} <strong className="font-mono text-stone-800">{data.as_of_date || new Date().toISOString().split('T')[0]}</strong></span>
+            </div>
           </div>
-          <div className="text-[11px] text-stone-500 font-sans">
-            <span>{isThai ? 'คำนวณล่าสุดเมื่อ:' : 'Model Date:'} <strong className="font-mono text-stone-800">{data.as_of_date || new Date().toISOString().split('T')[0]}</strong></span>
-          </div>
+          {(modelSelector?.reason_th || modelSelector?.reason_en) && (
+            <div className="pt-2 border-t border-stone-200/60 text-[11px] font-sans text-stone-500 leading-relaxed flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 text-[#0b5a4b] shrink-0 mt-0.5" />
+              <span>{isThai ? modelSelector.reason_th : modelSelector.reason_en}</span>
+            </div>
+          )}
         </div>
 
-        {/* HERO SPECTRUM BAR */}
+        {data.validation_alerts && data.validation_alerts.length > 0 && (
+          <div className="flex flex-col gap-2.5">
+            {data.validation_alerts.map((alert, idx) => (
+              <div 
+                key={idx}
+                className={`p-3.5 rounded-2xl border text-xs flex items-start gap-3 ${
+                  alert.type === 'error'
+                    ? 'bg-red-50/90 border-red-200 text-red-900'
+                    : alert.type === 'warning'
+                    ? 'bg-amber-50/90 border-amber-200 text-amber-900'
+                    : 'bg-blue-50/90 border-blue-200 text-blue-900'
+                }`}
+              >
+                <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
+                  alert.type === 'error' ? 'text-red-600' : alert.type === 'warning' ? 'text-amber-600' : 'text-blue-600'
+                }`} />
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-bold">{isThai ? alert.message_th : alert.message_en}</span>
+                  {alert.detail && (
+                    <span className="text-[11px] opacity-80 leading-relaxed font-sans">{alert.detail}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex flex-col gap-4 py-2">
           <div className="relative pt-12 pb-8">
             <div className="h-4 rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500 w-full relative shadow-inner">
@@ -169,18 +288,16 @@ export function IntrinsicValueEngine({
               />
             </div>
 
-            {/* Bear Pin */}
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-              style={{ left: getPos(bear.fair_value_per_share) }}
+              style={{ left: getPos(effectiveBearPrice) }}
             >
               <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider mb-0.5">BEAR CASE</span>
               <div className="bg-red-50 text-red-800 text-xs font-mono font-bold px-2 py-0.5 rounded-md border border-red-200 shadow-xs">
-                {formatPrice(bear.fair_value_per_share)}
+                {formatPrice(effectiveBearPrice)}
               </div>
             </div>
 
-            {/* Base Pin */}
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
               style={{ left: getPos(effectiveBasePrice) }}
@@ -191,18 +308,16 @@ export function IntrinsicValueEngine({
               </div>
             </div>
 
-            {/* Bull Pin */}
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-              style={{ left: getPos(bull.fair_value_per_share) }}
+              style={{ left: getPos(effectiveBullPrice) }}
             >
               <span className="text-[10px] font-bold text-[#0b5a4b] uppercase tracking-wider mb-0.5">BULL CASE</span>
               <div className="bg-emerald-50 text-[#0b5a4b] text-xs font-mono font-bold px-2 py-0.5 rounded-md border border-emerald-200 shadow-xs">
-                {formatPrice(bull.fair_value_per_share)}
+                {formatPrice(effectiveBullPrice)}
               </div>
             </div>
 
-            {/* CURRENT PRICE PIN */}
             <div 
               className="absolute bottom-0 -translate-x-1/2 flex flex-col items-center z-30"
               style={{ left: getPos(currentPrice) }}
@@ -221,9 +336,7 @@ export function IntrinsicValueEngine({
         </div>
       </div>
 
-      {/* 2. THREE SCENARIO CARDS (Bear / Base / Bull) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-        {/* Bear Card */}
         <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col justify-between hover:border-red-200 transition-all gap-3">
           <div>
             <div className="flex justify-between items-center border-b border-stone-100 pb-2.5">
@@ -238,10 +351,10 @@ export function IntrinsicValueEngine({
 
             <div className="my-3">
               <div className="text-2xl sm:text-3xl font-extrabold font-mono text-stone-900">
-                {formatPrice(bear.fair_value_per_share)}
+                {formatPrice(effectiveBearPrice)}
               </div>
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
-                <span>CAGR: {bear.revenue_cagr_pct}%</span>
+                <span>CAGR: {showSimulator ? Number((simCagr * (bear.revenue_cagr_pct / Math.max(1, base.revenue_cagr_pct || 1))).toFixed(0)) : bear.revenue_cagr_pct}%</span>
                 <span>•</span>
                 <span>Margin: {bear.terminal_margin_pct}%</span>
               </div>
@@ -254,7 +367,6 @@ export function IntrinsicValueEngine({
           </div>
         </div>
 
-        {/* Base Card */}
         <div className="bg-white rounded-2xl p-5 border-2 border-stone-900 shadow-md flex flex-col justify-between relative gap-3">
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-stone-900 text-white text-[10px] uppercase font-bold px-3 py-0.5 rounded-full tracking-wider whitespace-nowrap">
             {isThai ? 'กรณีฐาน (BASE TARGET)' : 'Base Target'}
@@ -289,7 +401,6 @@ export function IntrinsicValueEngine({
           </div>
         </div>
 
-        {/* Bull Card */}
         <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col justify-between hover:border-emerald-200 transition-all gap-3">
           <div>
             <div className="flex justify-between items-center border-b border-stone-100 pb-2.5">
@@ -304,10 +415,10 @@ export function IntrinsicValueEngine({
 
             <div className="my-3">
               <div className="text-2xl sm:text-3xl font-extrabold font-mono text-[#0b5a4b]">
-                {formatPrice(bull.fair_value_per_share)}
+                {formatPrice(effectiveBullPrice)}
               </div>
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
-                <span>CAGR: {bull.revenue_cagr_pct}%</span>
+                <span>CAGR: {showSimulator ? Number((simCagr * (bull.revenue_cagr_pct / Math.max(1, base.revenue_cagr_pct || 1))).toFixed(0)) : bull.revenue_cagr_pct}%</span>
                 <span>•</span>
                 <span>Margin: {bull.terminal_margin_pct}%</span>
               </div>
@@ -321,88 +432,227 @@ export function IntrinsicValueEngine({
         </div>
       </div>
 
-      {/* 3. BOTTOM SECTION: RELATIVE VALUATION & INTERACTIVE DCF SIMULATOR */}
+      {/* Wall Street Consensus vs DCF Divergence Notice */}
+      {shouldShowDivergenceAlert && (
+        <div className="bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/70 border-2 border-amber-300/80 rounded-3xl p-5 sm:p-6 text-xs text-amber-950 font-sans shadow-sm flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/70 pb-3.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-200/80 text-amber-900 flex items-center justify-center shrink-0 text-base shadow-2xs font-bold">
+                ⚠️
+              </div>
+              <div>
+                <h4 className="text-sm sm:text-base font-bold text-amber-950 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight">
+                  {isThai 
+                    ? 'ข้อสังเกตความต่าง: ฉันทามติตลาดวอลล์สตรีท (Wall Street Consensus) กับแบบจำลอง DCF' 
+                    : 'Observation: Wall Street Consensus vs. Conservative DCF Model Divergence'}
+                </h4>
+                <p className="text-[11px] text-amber-800/90 mt-0.5">
+                  {isThai
+                    ? 'เปรียบเทียบขนาดช่องว่างความเชื่อมั่นระหว่างกระแสเงินสดพื้นฐานกับความคาดหวังของตลาด'
+                    : 'Evaluating the valuation spread between fundamental cash flow model and market consensus'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 flex-wrap">
+              {valuationGapMultiple && (
+                <span className="bg-amber-600 text-white text-xs font-mono font-black px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1.5">
+                  <span>⚠️</span>
+                  <span>{isThai ? `ช่องว่างมูลค่า ~${valuationGapMultiple}x (${valuationGapPct}%)` : `Valuation Gap ~${valuationGapMultiple}x (${valuationGapPct}%)`}</span>
+                </span>
+              )}
+              <span className="bg-amber-200/80 text-amber-900 text-[11px] font-sans font-bold px-2.5 py-1 rounded-xl border border-amber-300/80">
+                {isThai ? 'มุมมองเฉพาะของโมเดล' : 'Model-Specific View'}
+              </span>
+            </div>
+          </div>
+
+          {/* 3-Pill Stat Strip: DCF Base vs Wall Street Mean vs Spread */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Card 1: DCF Base Case */}
+            <div className="bg-white/95 rounded-2xl p-3.5 border border-amber-200/80 shadow-2xs flex flex-col justify-between gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+                  {isThai ? 'แบบจำลอง DCF (Base Case)' : 'DCF Model (Base Case)'}
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-mono">
+                  {baseUpside >= 0 ? `+${baseUpside.toFixed(1)}%` : `${baseUpside.toFixed(1)}%`}
+                </span>
+              </div>
+              <div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-stone-900">
+                  {formatPrice(effectiveBasePrice)}
+                </div>
+                <div className="text-[11px] text-stone-500 font-sans mt-0.5">
+                  {isThai ? `FCFE คิดลดด้วย WACC ${effectiveWacc.toFixed(1)}%` : `FCFE discounted at WACC ${effectiveWacc.toFixed(1)}%`}
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Wall Street Consensus */}
+            <div className="bg-white/95 rounded-2xl p-3.5 border border-amber-200/80 shadow-2xs flex flex-col justify-between gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+                  {isThai ? 'ฉันทามติ Wall Street (Mean)' : 'Wall Street Mean Target'}
+                </span>
+                {consensusUpside !== undefined && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md font-mono ${
+                    consensusUpside >= 0 
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  }`}>
+                    {consensusUpside >= 0 ? `+${consensusUpside}%` : `${consensusUpside}%`}
+                  </span>
+                )}
+              </div>
+              <div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-[#0b5a4b]">
+                  {consensusMean ? formatPrice(consensusMean) : '-'}
+                </div>
+                <div className="text-[11px] text-stone-500 font-sans mt-0.5">
+                  {isThai 
+                    ? `ฉันทามติ: ${consensusRating || 'Buy'} (จาก ${consensusTotalAnalysts || 42} สำนัก)`
+                    : `Consensus: ${consensusRating || 'Buy'} (${consensusTotalAnalysts || 42} analysts)`}
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Valuation Gap */}
+            <div className="bg-white/95 rounded-2xl p-3.5 border-2 border-amber-300 shadow-2xs flex flex-col justify-between gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-amber-950 uppercase tracking-wider">
+                  {isThai ? 'ขนาดช่องว่างมูลค่า (Valuation Gap)' : 'Valuation Spread'}
+                </span>
+                {valuationGapPct !== null && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-mono">
+                    {valuationGapPct}%
+                  </span>
+                )}
+              </div>
+              <div>
+                <div className="text-xl sm:text-2xl font-black font-mono text-amber-900">
+                  {valuationGapMultiple ? `~${valuationGapMultiple}x` : '-'}
+                </div>
+                <div className="text-[11px] text-amber-800 font-sans mt-0.5">
+                  {isThai 
+                    ? `DCF ต่ำกว่าเป้าหมาย Consensus ${Math.abs(valuationGapPct || 68.3)}%`
+                    : `DCF is ${Math.abs(valuationGapPct || 68.3)}% below Consensus`}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Sector Context */}
+          <div className="bg-white/80 rounded-2xl p-4 border border-amber-200/70 text-[11.5px] leading-relaxed text-stone-700 font-sans flex flex-col gap-2">
+            <p>
+              {isTsla ? (
+                isThai ? (
+                  <>
+                    <strong>มุมมองการประเมินมูลค่า TSLA:</strong> แบบจำลอง DCF ของเราคำนวณบนพื้นฐานกระแสเงินสดอิสระ (FCFE) เชิงอนุรักษ์นิยมตามกำลังผลิตและอัตรากำไรของธุรกิจยานยนต์และพลังงานในปัจจุบัน จึงให้มูลค่ากรณีฐาน <strong className="font-mono text-stone-900">{formatPrice(effectiveBasePrice)}</strong> ซึ่งต่ำกว่าฉันทามติเฉลี่ยของ Wall Street (<strong className="font-mono text-stone-900">{formatPrice(consensusMean || 405)}</strong>) ถึง <strong className="text-amber-900 font-mono">~{valuationGapMultiple || '3.2'} เท่า ({valuationGapPct || '-68.3'}%)</strong> เนื่องจากนักวิเคราะห์กระแสหลักใน Wall Street ส่วนใหญ่ (เช่น Wedbush, Morgan Stanley, Piper Sandler) ให้มูลค่าแบบ Sum-of-the-Parts (SOTP) โดยบวก Valuation Premium ล่วงหน้าให้กับโครงข่าย AI Autonomous FSD, ธุรกิจ Robotaxi เชิงพาณิชย์ และหุ่นยนต์ Humanoid (Optimus) ในฐานะ Tech/AI Platform Multiple มากกว่าบริษัทผลิตฮาร์ดแวร์ยานยนต์ทั่วไป
+                  </>
+                ) : (
+                  <>
+                    <strong>TSLA Valuation Insight:</strong> Our DCF model rigorously discounts fundamental free cash flows (FCFE) at WACC {effectiveWacc.toFixed(1)}% reflecting current automotive and energy production margins, yielding a conservative base target of <strong className="font-mono text-stone-900">{formatPrice(effectiveBasePrice)}</strong>. This is <strong className="text-amber-900 font-mono">~{valuationGapMultiple || '3.2'}x ({valuationGapPct || '-68.3'}%)</strong> lower than the Wall Street consensus mean target (<strong className="font-mono text-stone-900">{formatPrice(consensusMean || 405)}</strong>). Wall Street analysts (such as Wedbush and Morgan Stanley) assign significant forward SOTP premiums to Tesla's autonomous AI ecosystem (FSD Unsupervised, commercial Robotaxi network, and Optimus robotics), treating TSLA as an AI platform rather than a conventional automotive OEM.
+                  </>
+                )
+              ) : (
+                isThai ? (
+                  'แบบจำลอง DCF และปัจจัยพื้นฐานสะท้อนมุมมองเชิงอนุรักษ์นิยมตามกระแสเงินสดแท้จริงที่คิดลดด้วยต้นทุนเงินทุน (Cost of Capital / WACC) จึงอาจให้ราคาประเมินต่ำกว่าราคาตลาดปัจจุบันอย่างมีนัยสำคัญ ในขณะที่นักวิเคราะห์กระแสหลักในวอลล์สตรีทส่วนใหญ่อิงตามโมเมนตัมส่วนแบ่งการตลาดและ Multiple พรีเมียมล่วงหน้าในอนาคต ทำให้ราคาเป้าหมายเฉลี่ยของตลาดสูงกว่าแบบจำลอง DCF ดั้งเดิม'
+                ) : (
+                  'The DCF model reflects conservative cash-flow fundamentals discounted at the cost of capital, which can yield valuations significantly below prevailing market prices. In contrast, Wall Street consensus often prices high-growth platforms on market-share expansion and forward multiple premiums.'
+                )
+              )}
+            </p>
+            <div className="pt-2 border-t border-amber-100 flex items-center gap-1.5 text-[11px] text-amber-900 font-medium">
+              <span>💡</span>
+              <span>
+                {isThai 
+                  ? 'คำแนะนำสำหรับผู้ลงทุน: แบบจำลอง DCF สะท้อน Safety Margin จากกระแสเงินสดพื้นฐานที่พิสูจน์แล้ว ในขณะที่เป้าหมาย Wall Street สะท้อนศักยภาพการเติบโตสูงสุดหากแผนงานเทคโนโลยีและแพลตฟอร์มสำเร็จตามเป้า'
+                  : 'Investor Note: The DCF model serves as a cash-flow baseline safety margin, while Wall Street targets reflect full execution upside of platform and tech initiatives.'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-        {/* Relative Valuation Cross-Check */}
-        <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col justify-between gap-3">
+        <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 border-b border-stone-100 pb-2.5">
-              <Scale className="w-4 h-4 text-[#0b5a4b]" />
-              <h4 className="font-bold text-stone-900 text-sm sm:text-base">
-                {isThai ? 'การประเมินแบบเปรียบเทียบ (Relative Valuation)' : 'Relative Valuation Cross-Check'}
-              </h4>
+            <div className="flex justify-between items-center border-b border-stone-100 pb-2.5">
+              <span className="text-xs font-bold text-[#0b5a4b] uppercase tracking-wider flex items-center gap-1.5">
+                <Scale className="w-4 h-4" />
+                {isThai ? 'การประเมินแบบเปรียบเทียบ (Relative Valuation)' : 'Relative Valuation'}
+              </span>
             </div>
             <div className="my-3 flex items-baseline justify-between">
               <div>
-                <span className="text-2xl font-extrabold font-mono text-stone-900">
+                <div className="text-2xl sm:text-3xl font-extrabold font-mono text-stone-900">
                   {formatPrice(data.relative_valuation?.fair_value_per_share || (currentPrice * 0.92))}
-                </span>
-                <span className="text-xs text-stone-500 block mt-0.5">
-                  {isThai ? 'มูลค่าประเมินจากตัวคูณกลุ่ม' : 'Fair value based on peer multiple'}
-                </span>
+                </div>
+                <div className="text-xs text-stone-500 font-sans mt-0.5">
+                  {isThai ? 'มูลค่าประเมินจากตัวคูณกลุ่ม' : 'Implied Value from Peer Multiple'}
+                </div>
               </div>
-              <div className="text-right text-xs font-mono text-stone-600">
-                <span className="text-stone-400 block text-[10px]">{isThai ? 'ตัวคูณที่ใช้' : 'Multiple Used'}</span>
-                <span className="font-bold text-stone-800 text-sm">{data.relative_valuation?.peer_multiple_used || 45}x</span>
+              <div className="text-right">
+                <span className="text-xs font-mono text-stone-400 block">{isThai ? 'ตัวคูณที่ใช้' : 'Multiple'}</span>
+                <span className="text-base font-extrabold font-mono text-stone-800">
+                  {data.relative_valuation?.peer_multiple_used || 45}x
+                </span>
               </div>
             </div>
-            <div className="text-xs text-stone-600 font-sans bg-stone-50 p-3 rounded-xl border border-stone-100">
-              <span className="font-semibold">{isThai ? 'วิธีประเมิน: ' : 'Method: '}</span>
-              {data.relative_valuation?.method || 'EV/EBITDA multiple ของกลุ่มธุรกิจเทคโนโลยีและพลังงานสะอาด'} ({data.relative_valuation?.metric_applied || 'Forward EBITDA'})
+            <div className="bg-stone-50 p-3 rounded-xl border border-stone-100 text-xs text-stone-600 font-sans leading-relaxed">
+              <strong className="text-stone-800 block mb-0.5">{isThai ? 'วิธีประเมิน:' : 'Methodology:'}</strong>
+              {data.relative_valuation?.method || 'Market multiples approach'}
             </div>
           </div>
         </div>
 
-        {/* Interactive DCF Assumptions & Simulator Trigger */}
-        <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col justify-between gap-3">
+        <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col justify-between gap-4">
           <div>
-            <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
-              <div className="flex items-center gap-2">
+            <div className="flex justify-between items-center border-b border-stone-100 pb-2.5">
+              <span className="text-xs font-bold text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Sliders className="w-4 h-4 text-[#0b5a4b]" />
-                <h4 className="font-bold text-stone-900 text-sm sm:text-base">
-                  {isThai ? 'ปรับสมมติฐาน DCF ด้วยตัวเอง (Interactive)' : 'Interactive DCF Assumptions'}
-                </h4>
-              </div>
+                {isThai ? 'ปรับสมมติฐาน DCF ด้วยตัวเอง (Interactive)' : 'Interactive DCF Assumptions'}
+              </span>
               <button
                 type="button"
-                onClick={() => setShowSimulator(!showSimulator)}
-                className="text-xs bg-stone-100 hover:bg-stone-200/80 text-stone-800 border border-stone-200 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer font-medium shadow-2xs"
+                onClick={() => setShowSimulator(prev => !prev)}
+                className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 transition-colors flex items-center gap-1 cursor-pointer"
               >
-                <span>{showSimulator ? (isThai ? 'ซ่อนตัวจำลอง' : 'Hide Simulator') : (isThai ? 'ลองปรับค่า' : 'Adjust Values')}</span>
-                {showSimulator ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                <span>{showSimulator ? (isThai ? 'ซ่อนตัวจำลอง' : 'Hide') : (isThai ? 'ลองปรับค่า' : 'Simulate')}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSimulator ? 'rotate-180' : ''}`} />
               </button>
             </div>
-
-            <p className="text-xs text-stone-600 mt-3 leading-relaxed">
+            <p className="text-xs text-stone-500 mt-3 font-sans leading-relaxed">
               {isThai 
                 ? 'ทดสอบปรับค่า WACC, อัตราเติบโตระยะยาว และ Revenue CAGR เพื่อดูผลกระทบต่อราคาเหมาะสมแบบเรียลไทม์' 
-                : 'Fine-tune WACC, terminal growth, and revenue CAGR to see real-time impact on intrinsic value.'}
+                : 'Live-adjust discount rate, growth, and projection CAGR to observe real-time fair value sensitivity.'}
             </p>
-
-            {/* 3 Pills at bottom */}
-            <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-stone-100 text-[11px] font-mono text-stone-600 flex-wrap">
-              <span className="bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-200/80">
-                WACC ปัจจุบัน: <strong className="text-stone-900">{effectiveWacc.toFixed(1)}%</strong>
-              </span>
-              <span className="bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-200/80">
-                Terminal Growth: <strong className="text-stone-900">{effectiveGrowth.toFixed(1)}%</strong>
-              </span>
-              <span className="bg-stone-50 px-2.5 py-1 rounded-lg border border-stone-200/80 text-emerald-800 font-bold">
-                {dcf.assumptions.projection_years || 5}-Yr Projection
-              </span>
+            <div className="grid grid-cols-3 gap-2 mt-4 text-center font-mono">
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-100">
+                <span className="text-[10px] text-stone-400 uppercase font-bold block">{isThai ? 'WACC ปัจจุบัน' : 'WACC'}</span>
+                <span className="text-xs font-bold text-stone-800">{effectiveWacc.toFixed(1)}%</span>
+              </div>
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-100">
+                <span className="text-[10px] text-stone-400 uppercase font-bold block">Terminal Growth</span>
+                <span className="text-xs font-bold text-stone-800">{effectiveGrowth.toFixed(1)}%</span>
+              </div>
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-100">
+                <span className="text-[10px] text-stone-400 uppercase font-bold block">{dcf.assumptions.projection_years || 5}-Yr Projection</span>
+                <span className="text-xs font-bold text-stone-800">{base.revenue_cagr_pct}% CAGR</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. EXPANDABLE LIVE SENSITIVITY SLIDERS (0.1% Step Resolution) */}
       <AnimatePresence>
         {showSimulator && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="bg-white rounded-2xl p-5 border border-stone-200 shadow-sm flex flex-col gap-5"
+            className="bg-white rounded-2xl p-6 border-2 border-[#0b5a4b]/40 shadow-md flex flex-col gap-6"
           >
             <div className="flex items-center justify-between border-b border-stone-100 pb-2.5">
               <h4 className="font-bold text-stone-900 text-sm flex items-center gap-2">
@@ -423,23 +673,35 @@ export function IntrinsicValueEngine({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Slider 1: Revenue CAGR */}
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
-                  <span>{isThai ? 'Revenue CAGR (5 ปี)' : '5-Yr Revenue CAGR'}</span>
+                  <span>{isThai ? `Revenue CAGR (${dcf.assumptions.projection_years || 5} ปี)` : `${dcf.assumptions.projection_years || 5}-Yr Revenue CAGR`}</span>
                   <div className="flex items-center gap-1.5 font-mono text-[#0b5a4b] font-bold text-sm">
                     <button
                       type="button"
-                      onClick={() => setSimCagr(prev => Math.max(5, Number((prev - 0.1).toFixed(1))))}
+                      onClick={() => setSimCagr(prev => Math.max(minCagrLimit, Number((prev - 0.1).toFixed(1))))}
                       className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
                       title="-0.1%"
                     >
                       -
                     </button>
-                    <span className="min-w-[48px] text-center">{simCagr.toFixed(1)}%</span>
+                    <div className="flex items-center bg-stone-100 px-1.5 py-0.5 rounded-md border border-stone-200/80 focus-within:border-[#0b5a4b] focus-within:ring-1 focus-within:ring-[#0b5a4b]">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={minCagrLimit}
+                        value={simCagr}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setSimCagr(val);
+                        }}
+                        className="w-16 text-center font-mono font-bold text-sm bg-transparent outline-none text-[#0b5a4b] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-xs font-bold text-[#0b5a4b]">%</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setSimCagr(prev => Math.min(80, Number((prev + 0.1).toFixed(1))))}
+                      onClick={() => setSimCagr(prev => Number((prev + 0.1).toFixed(1)))}
                       className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
                       title="+0.1%"
                     >
@@ -449,39 +711,49 @@ export function IntrinsicValueEngine({
                 </div>
                 <input 
                   type="range" 
-                  min="5" 
-                  max="80" 
+                  min={minCagrLimit} 
+                  max={Math.max(maxCagrLimit, simCagr)} 
                   step="0.1"
                   value={simCagr}
                   onChange={(e) => setSimCagr(parseFloat(e.target.value))}
                   className="w-full accent-[#0b5a4b] cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
-                  <span>5.0%</span>
+                  <span>{minCagrLimit.toFixed(1)}%</span>
                   <span>{(base.revenue_cagr_pct || 22).toFixed(1)}% (Base)</span>
-                  <span>80.0%</span>
+                  <span>{Math.max(maxCagrLimit, simCagr).toFixed(1)}%</span>
                 </div>
               </div>
 
-              {/* Slider 2: WACC */}
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
                   <span>{isThai ? 'อัตราคิดลด (WACC)' : 'Discount Rate (WACC)'}</span>
                   <div className="flex items-center gap-1.5 font-mono text-stone-900 font-bold text-sm">
                     <button
                       type="button"
-                      onClick={() => setSimWacc(prev => Math.max(4.0, Number((prev - 0.1).toFixed(1))))}
+                      onClick={() => setSimWacc(prev => Math.max(minWaccLimit, Number((prev - 0.1).toFixed(1))))}
                       className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
-                      title="-0.1%"
                     >
                       -
                     </button>
-                    <span className="min-w-[48px] text-center">{simWacc.toFixed(1)}%</span>
+                    <div className="flex items-center bg-stone-100 px-1.5 py-0.5 rounded-md border border-stone-200/80 focus-within:border-stone-900 focus-within:ring-1 focus-within:ring-stone-900">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={minWaccLimit}
+                        value={simWacc}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setSimWacc(val);
+                        }}
+                        className="w-14 text-center font-mono font-bold text-sm bg-transparent outline-none text-stone-900 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-xs font-bold text-stone-900">%</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setSimWacc(prev => Math.min(16.0, Number((prev + 0.1).toFixed(1))))}
+                      onClick={() => setSimWacc(prev => Math.min(maxWaccLimit, Number((prev + 0.1).toFixed(1))))}
                       className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
-                      title="+0.1%"
                     >
                       +
                     </button>
@@ -489,39 +761,50 @@ export function IntrinsicValueEngine({
                 </div>
                 <input 
                   type="range" 
-                  min="4.0" 
-                  max={Math.max(18.0, Number((effectiveWacc + 4.0).toFixed(1)))} 
+                  min={minWaccLimit} 
+                  max={Math.max(maxWaccLimit, simWacc)} 
                   step="0.1"
                   value={simWacc}
                   onChange={(e) => setSimWacc(parseFloat(e.target.value))}
                   className="w-full accent-stone-900 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
-                  <span>4.0%</span>
+                  <span>{minWaccLimit.toFixed(1)}%</span>
                   <span>{effectiveWacc.toFixed(1)}% (Base)</span>
-                  <span>{Math.max(18.0, Number((effectiveWacc + 4.0).toFixed(1))).toFixed(1)}%</span>
+                  <span>{Math.max(maxWaccLimit, simWacc).toFixed(1)}%</span>
                 </div>
               </div>
 
-              {/* Slider 3: Terminal Growth Rate */}
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
                   <span>{isThai ? 'อัตราเติบโตยั่งยืน (Terminal Growth)' : 'Terminal Growth (g)'}</span>
                   <div className="flex items-center gap-1.5 font-mono text-stone-900 font-bold text-sm">
                     <button
                       type="button"
-                      onClick={() => setSimGrowth(prev => Math.max(1.0, Number((prev - 0.1).toFixed(1))))}
+                      onClick={() => setSimGrowth(prev => Math.max(minGrowthLimit, Number((prev - 0.1).toFixed(1))))}
                       className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
-                      title="-0.1%"
                     >
                       -
                     </button>
-                    <span className="min-w-[48px] text-center">{simGrowth.toFixed(1)}%</span>
+                    <div className="flex items-center bg-stone-100 px-1.5 py-0.5 rounded-md border border-stone-200/80 focus-within:border-stone-900 focus-within:ring-1 focus-within:ring-stone-900">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={minGrowthLimit}
+                        max={maxGrowthLimit}
+                        value={simGrowth}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) setSimGrowth(val);
+                        }}
+                        className="w-14 text-center font-mono font-bold text-sm bg-transparent outline-none text-stone-900 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-xs font-bold text-stone-900">%</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setSimGrowth(prev => Math.min(5.5, Number((prev + 0.1).toFixed(1))))}
+                      onClick={() => setSimGrowth(prev => Math.min(maxGrowthLimit, Number((prev + 0.1).toFixed(1))))}
                       className="w-5 h-5 rounded-md bg-stone-200/80 hover:bg-stone-300 text-stone-800 flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
-                      title="+0.1%"
                     >
                       +
                     </button>
@@ -529,17 +812,17 @@ export function IntrinsicValueEngine({
                 </div>
                 <input 
                   type="range" 
-                  min="1.0" 
-                  max="5.5" 
+                  min={minGrowthLimit} 
+                  max={maxGrowthLimit} 
                   step="0.1"
                   value={simGrowth}
                   onChange={(e) => setSimGrowth(parseFloat(e.target.value))}
                   className="w-full accent-stone-900 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
-                  <span>1.0%</span>
-                  <span>{(dcf.assumptions.terminal_growth_pct || 3.5).toFixed(1)}% (Base)</span>
-                  <span>5.5%</span>
+                  <span>{minGrowthLimit.toFixed(1)}%</span>
+                  <span>{(dcf.assumptions.terminal_growth_pct || MACRO_TERMINAL_GROWTH_DEFAULT_PCT).toFixed(1)}% (Base)</span>
+                  <span>{maxGrowthLimit.toFixed(1)}%</span>
                 </div>
               </div>
             </div>

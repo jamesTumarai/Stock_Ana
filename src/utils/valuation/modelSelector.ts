@@ -16,7 +16,34 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
   const businessSummary = (profile?.description || profile?.overview?.description || data?.comprehensive_analysis?.business_overview || '').toLowerCase();
   const cf = data?.financial_statements?.cash_flow;
 
-  // 1. Check Financial Institutions (Banks, Insurance, Asset Management)
+  // 1. Check FinTech & Digital Banking (e.g., SOFI, NU, HOOD, COIN, AFRM, UPST, PYPL, SQ, XYZ)
+  const isFintechOrDigitalBank = 
+    ['SOFI', 'NU', 'HOOD', 'COIN', 'AFRM', 'UPST', 'PYPL', 'SQ', 'XYZ', 'LC'].includes(symbol) ||
+    industry.includes('financial technology') ||
+    industry.includes('fintech') ||
+    industry.includes('digital bank') ||
+    industry.includes('consumer finance') ||
+    industry.includes('credit services') ||
+    industry.includes('digital brokerage') ||
+    businessSummary.includes('fintech') ||
+    businessSummary.includes('digital banking') ||
+    businessSummary.includes('financial technology') ||
+    (sector.includes('financial') && (businessSummary.includes('platform') || businessSummary.includes('technology') || industry.includes('technology')));
+
+  if (isFintechOrDigitalBank) {
+    return {
+      model_type: 'fintech_pe',
+      model_name_th: 'FinTech Platform & Residual Income (Forward P/E & Platform DCF)',
+      model_name_en: 'FinTech Platform & Residual Income Model',
+      sector_category: 'สถาบันการเงินดิจิทัล / FinTech (Digital Banking & FinTech)',
+      reason_th: 'ธนาคารดิจิทัลและ FinTech ระดมเงินฝากและวงเงินเครดิตเพื่อใช้เป็นวัตถุดิบในการปล่อยสินเชื่อ ไม่ใช่ภาระหนี้สินทางการเงิน (Financial Leverage) แบบบริษัททั่วไป การหักหนี้สินเงินฝากออกตรงๆ จะทำให้มูลค่ากิจการต่ำกว่าความเป็นจริงอย่างรุนแรง และเนื่องจากบริษัทอยู่ในช่วงขยายฐานลูกค้าจึงยังไม่จ่ายปันผล (DDM จึงประเมินได้ $0 หรือต่ำเกินไป) โมเดลที่เหมาะสมที่สุดคือ Forward P/E & PEG Multiple ควบคู่กับ Platform Net Margin DCF',
+      reason_en: 'Digital banks and FinTech lenders utilize customer deposits and warehouse credit facilities as operating inventory, not corporate leverage. Subtracting deposits as debt severely distorts equity value, while zero dividends render classic DDM ineffective. Forward P/E, PEG, and Platform Residual Income DCF are the industry standards.',
+      alternative_models: ['relative_only', 'dcf_multistage'],
+      disclaimer_note: 'ประเมินมูลค่าตามส่วนของผู้ถือหุ้น (Cost of Equity) โดยไม่นำเงินฝากและวงเงินเครดิตมาหักลบเป็นหนี้สินทางการเงิน'
+    };
+  }
+
+  // 2. Check Financial Institutions (Commercial Banks, Insurance, Asset Management)
   const isBankOrInsurance = 
     sector.includes('financial') || 
     sector.includes('bank') || 
@@ -24,16 +51,16 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     industry.includes('bank') ||
     industry.includes('insurance') ||
     industry.includes('capital market') ||
-    ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BBL', 'KBANK', 'SCB', 'KTB', 'TTB', 'AIA', 'BAM'].includes(symbol);
+    ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BBL', 'KBANK', 'SCB', 'KTB', 'TTB', 'AIA', 'BAM', 'BRK.A', 'BRK.B', 'MET', 'PRU', 'PGR', 'TRV', 'ALL'].includes(symbol);
 
   if (isBankOrInsurance) {
     return {
       model_type: 'ddm',
       model_name_th: 'Dividend Discount Model (DDM) & Residual Income',
       model_name_en: 'Dividend Discount Model & Residual Income',
-      sector_category: 'สถาบันการเงิน / ประกันภัย (Financial Institutions)',
-      reason_th: 'หนี้สินและเงินฝากเป็นวัตถุดิบในการดำเนินธุรกิจของธนาคาร ไม่ใช่ภาระหนี้ (Leverage) แบบบริษัททั่วไป การนิยาม Free Cash Flow แบบมาตรฐานจึงไม่สะท้อนมูลค่าที่แท้จริง DDM และ Residual Income จึงเป็นวิธีมาตรฐานสากลที่เหมาะสมที่สุด',
-      reason_en: 'Debt and deposits serve as raw operating material for financial institutions. Standard Free Cash Flow is non-applicable; DDM and Residual Income are the industry standards.',
+      sector_category: 'สถาบันการเงิน / ประกันภัย (Financial Institutions & Insurance)',
+      reason_th: 'หนี้สินและเงินฝากเป็นวัตถุดิบในการดำเนินธุรกิจของธนาคารและสถาบันการเงิน (รวมถึงเงินสำรองประกันภัย Float) ไม่ใช่ภาระหนี้ (Leverage) แบบบริษัททั่วไป การนิยาม Free Cash Flow แบบมาตรฐานจึงไม่สะท้อนมูลค่าที่แท้จริง DDM และ Residual Income จึงเป็นวิธีมาตรฐานสากลที่เหมาะสมที่สุด',
+      reason_en: 'Debt, deposits, and insurance float serve as raw operating material. Standard Free Cash Flow is non-applicable; DDM and Residual Income are the industry standards.',
       alternative_models: ['relative_only'],
       disclaimer_note: 'ประเมินมูลค่าตามส่วนของผู้ถือหุ้น (Cost of Equity) โดยอิงอัตราเงินปันผลจ่ายและผลตอบแทนส่วนของผู้ถือหุ้น (ROE)'
     };
@@ -60,23 +87,46 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     };
   }
 
-  // 3. Check Negative FCF / Pre-Revenue / Early Stage Growth
+  // 3. Check Negative Gross Margin / Negative FCF / Pre-Revenue / Early Stage Growth
+  const inc = data?.financial_statements?.income_statement;
+  const grossMarginArr = (inc?.gross_margin_pct || []).filter(v => typeof v === 'number');
+  const isNegativeGrossMargin = grossMarginArr.length > 0 && grossMarginArr[grossMarginArr.length - 1] < 0;
+
   const fcfArr = (cf?.free_cash_flow || []).filter(v => v !== null && v !== undefined).map(Number);
-  const isConsecutiveNegativeFcf = fcfArr.length >= 3 && fcfArr.every(v => v < 0);
+  const isConsecutiveNegativeFcf = fcfArr.length >= 2 && fcfArr.every(v => v < 0);
+  const isSpaceOrHeavyTechGrowth = 
+    ['RKLB', 'ASTS', 'LUNR', 'RDW', 'SPCE', 'PL'].includes(symbol) ||
+    (industry.includes('space') && !['LMT', 'BA', 'NOC', 'RTX', 'GD'].includes(symbol));
+
   const isPreRevenueOrEarlyLoss = 
+    isNegativeGrossMargin ||
     isConsecutiveNegativeFcf || 
-    ['RIVN', 'LCID', 'PLUG', 'QS', 'JOBY', 'ACHR'].includes(symbol);
+    isSpaceOrHeavyTechGrowth ||
+    ['RIVN', 'LCID', 'PLUG', 'QS', 'JOBY', 'ACHR', 'EOSE'].includes(symbol);
 
   if (isPreRevenueOrEarlyLoss) {
+    const isSpace = isSpaceOrHeavyTechGrowth || symbol === 'RKLB';
     return {
       model_type: 'relative_only',
-      model_name_th: 'Relative Valuation Only (EV/Sales & Comparable Multiples)',
-      model_name_en: 'Relative Valuation Only (EV/Revenue Multiples)',
-      sector_category: 'หุ้นระยะเริ่มต้น / กระแสเงินสดยังติดลบ (Early-Stage / Pre-Cash Flow)',
-      reason_th: 'บริษัทมีกระแสเงินสดอิสระ (FCF) ติดลบต่อเนื่องหรือยังอยู่ในช่วงลงทุนหนัก ทำให้สมมติฐาน Terminal Value ในโมเดล DCF มีความไม่แน่นอนสูง จึงประเมินด้วยวิธีเปรียบเทียบเชิงสัมพัทธ์ (Relative Valuation) เทียบกับกลุ่มบริษัทในระยะการเติบโตเดียวกัน',
-      reason_en: 'Consistent negative FCF breaks Terminal Value reliability in DCF models. Relative Valuation based on EV/Sales is standard for this stage.',
+      model_name_th: isSpace 
+        ? 'EV/Sales & Backlog Relative Valuation (กลุ่มอวกาศและเทคโนโลยีขั้นสูง)' 
+        : 'Relative Valuation Only (EV/Sales & Comparable Multiples)',
+      model_name_en: isSpace 
+        ? 'EV/Sales & Backlog Relative Valuation (Space & Advanced Tech)' 
+        : 'Relative Valuation Only (EV/Revenue Multiples)',
+      sector_category: isSpace 
+        ? 'เทคโนโลยีอวกาศระยะลงทุนสูง (Pure-play Space & Orbital Tech)' 
+        : 'หุ้นระยะเริ่มต้น / กระแสเงินสดยังติดลบ (Early-Stage / Pre-Cash Flow)',
+      reason_th: isSpace
+        ? 'บริษัทอยู่ในระยะลงทุนสร้างโครงสร้างพื้นฐานและวิจัยจรวด/ดาวเทียม (เช่น จรวด Neutron) ทำให้กระแสเงินสดอิสระ (FCF) ปัจจุบันยังติดลบ การใช้สูตร DCF 5 ปีทั่วไปจะทำให้ได้มูลค่า $0.01 (ไม่สะท้อนมูลค่าจริง) วอลล์สตรีทและนักวิเคราะห์สถาบันจึงใช้ Relative Valuation อิง EV/Sales Multiple และมูลค่าสัญญา Backlog เป็นวิธีมาตรฐาน'
+        : 'บริษัทมีกระแสเงินสดอิสระ (FCF) ติดลบต่อเนื่องหรือยังอยู่ในช่วงลงทุนหนัก ทำให้สมมติฐาน Terminal Value ในโมเดล DCF มีความไม่แน่นอนสูง จึงประเมินด้วยวิธีเปรียบเทียบเชิงสัมพัทธ์ (Relative Valuation) เทียบกับกลุ่มบริษัทในระยะการเติบโตเดียวกัน',
+      reason_en: isSpace
+        ? 'Company is in heavy CAPEX and R&D phase (e.g. Neutron rocket & satellite constellations) with negative current FCF. Naive DCF collapses to $0.01. Wall Street benchmarks pure-play space tech using EV/Sales multiples and order backlog.'
+        : 'Consistent negative FCF breaks Terminal Value reliability in DCF models. Relative Valuation based on EV/Sales is standard for this stage.',
       alternative_models: ['dcf_multistage'],
-      disclaimer_note: 'คำเตือน: หุ้นนี้ยังไม่มีกระแสเงินสดอิสระที่มั่นคง การประเมินด้วย Relative Valuation มีความผันผวนและความไม่แน่นอนสูงกว่าปกติ'
+      disclaimer_note: isSpace
+        ? 'ประเมินด้วย Forward EV/Sales Multiple เทียบกับกลุ่ม Aerospace & Space Tech ชั้นนำ และสะท้อนมูลค่าสัญญา Backlog จากภาครัฐและเอกชน'
+        : 'คำเตือน: หุ้นนี้ยังไม่มีกระแสเงินสดอิสระที่มั่นคง การประเมินด้วย Relative Valuation มีความผันผวนและความไม่แน่นอนสูงกว่าปกติ'
     };
   }
 
@@ -124,13 +174,15 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     };
   }
 
-  // 6. Check Mature / Stable Cash Cow / Low Growth Value
+  // 6. Check Mature / Stable Cash Cow / Regulated Utilities & Telecoms
   const isMatureValue = 
     sector.includes('utilities') || 
+    sector.includes('telecommunication') || 
     industry.includes('utility') ||
     industry.includes('electric') ||
     industry.includes('water') ||
-    ['KO', 'PG', 'SO', 'NEE', 'DUK', 'EGCO', 'RATCH', 'TTW'].includes(symbol);
+    industry.includes('telecom') ||
+    ['KO', 'PG', 'SO', 'NEE', 'DUK', 'EGCO', 'RATCH', 'TTW', 'T', 'VZ', 'ADVANC', 'TRUE'].includes(symbol);
 
   if (isMatureValue) {
     return {

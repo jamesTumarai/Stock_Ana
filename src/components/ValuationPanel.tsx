@@ -81,6 +81,13 @@ export function ValuationPanel({
         dot: 'bg-amber-600'
       };
     }
+    if (rawVerdict.includes('n/a') || rawVerdict.includes('bank') || rawVerdict.includes('fintech')) {
+      return {
+        label: isThai ? 'ไม่ใช้กับ FinTech/Bank' : 'N/A (Bank/FinTech)',
+        bg: 'bg-stone-100 text-stone-700 border-stone-300',
+        dot: 'bg-stone-400'
+      };
+    }
     return {
       label: ratio.verdict || (isThai ? 'ไม่ระบุ' : 'N/A'),
       bg: 'bg-stone-100 text-stone-800 border-stone-300',
@@ -199,7 +206,7 @@ export function ValuationPanel({
               <div className="flex flex-col gap-2 my-1">
                 <div className="flex items-baseline justify-between">
                   <span className="text-3xl font-extrabold font-mono text-stone-900 tracking-tight">
-                    {hasValue ? `${ratio.value}${ratio.unit || 'x'}` : 'N/A'}
+                    {hasValue ? `${ratio.value}${ratio.unit || 'x'}` : '--'}
                   </span>
                   {ratio.peer_avg !== null && ratio.peer_avg !== undefined && (
                     <div className="text-right text-xs text-stone-500">

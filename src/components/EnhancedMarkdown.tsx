@@ -1,21 +1,55 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 interface Props {
-  children: string;
+  children?: any;
   findings?: any[];
 }
 
+function toSafeString(val: any): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (Array.isArray(val)) {
+    return val.map(toSafeString).filter(Boolean).join('\n');
+  }
+  if (typeof val === 'object') {
+    if (typeof val.point === 'string') return val.point;
+    if (typeof val.text === 'string') return val.text;
+    if (typeof val.description === 'string') return val.description;
+    if (typeof val.summary === 'string') return val.summary;
+    if (typeof val.content === 'string') return val.content;
+    if (typeof val.value === 'string' || typeof val.value === 'number') return String(val.value);
+    if (typeof val.title === 'string') {
+      const sub = val.description || val.text || val.summary || '';
+      return sub ? `**${val.title}**: ${sub}` : val.title;
+    }
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return '';
+    }
+  }
+  return String(val);
+}
+
 export const EnhancedMarkdown: React.FC<Props> = ({ children, findings = [] }) => {
+  const safeText = toSafeString(children);
+
+  if (!safeText.trim()) {
+    return null;
+  }
+
   // Pre-process text to convert [1] into [1](#citation-1)
-  const processedText = children.replace(/\[(\d+)\]/g, '[$1](#citation-$1)');
+  const processedText = safeText.replace(/\[(\d+)\]/g, '[$1](#citation-$1)');
 
   const components = {
     a: ({ node, href, children, ...props }: any) => {
       if (href?.startsWith('#citation-')) {
-        const index = parseInt(href.replace('#citation-', '')) - 1;
-        const finding = findings[index];
+        const citationId = parseInt(href.replace('#citation-', ''), 10);
+        const index = isNaN(citationId) ? -1 : citationId - 1;
+        const finding = index >= 0 && Array.isArray(findings) ? findings[index] : undefined;
         
         return (
           <span className="relative group inline-block">
@@ -42,9 +76,14 @@ export const EnhancedMarkdown: React.FC<Props> = ({ children, findings = [] }) =
     }
   };
 
-  return (
-    <Markdown remarkPlugins={[remarkGfm]} components={components}>
-      {processedText}
-    </Markdown>
-  );
+  try {
+    return (
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+        {processedText}
+      </Markdown>
+    );
+  } catch (err) {
+    console.warn('[EnhancedMarkdown] Render error fallback:', err);
+    return <span>{processedText}</span>;
+  }
 };
