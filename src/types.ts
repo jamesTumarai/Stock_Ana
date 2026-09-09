@@ -1,3 +1,5 @@
+import type { SecVerificationEnvelope } from './domain/secVerification';
+
 export interface IncomeStatementData {
   revenue: (number | null)[];
   cogs?: (number | null)[];
@@ -304,6 +306,10 @@ export interface DCFModel {
     sourcePeriod?: string;
     missingFields?: string[];
     derivedFields?: string[];
+    priceSource?: 'market_snapshot' | 'intrinsic_value' | 'company_profile';
+    financialDataSource?: 'sec_verified' | 'report_statements';
+    financialDataAsOf?: string;
+    sharesAsOf?: string;
   };
   scenarios: {
     bear: DCFScenario;
@@ -1152,6 +1158,7 @@ export interface AnalysisReport {
   schema_version?: number;
   generated_by_version?: string;
   validation?: ReportValidationResult;
+  sec_verification?: SecVerificationEnvelope;
   verdict?: {
     summary: string;
     conviction_score: number | null;
