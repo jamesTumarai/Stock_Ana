@@ -22,15 +22,22 @@ export interface LiveQuoteItem {
   grossMargin?: number | null;
   netMargin?: number | null;
   forecast_data?: any;
+  provider?: string;
+  asOf?: string;
+  retrievedAt?: string;
 }
 
 export interface LiveQuotesResponse {
   quotes: Record<string, LiveQuoteItem>;
   asOf: string;
+  provider?: string;
+  dataType?: 'market_quote' | string;
+  isRealtime?: boolean;
 }
 
 /**
- * Fetches real-time market data quotes from the Lumina backend for a list of ticker symbols.
+ * Fetches market quote data from the Lumina backend for a list of ticker symbols.
+ * The backend may return delayed/session-dependent data, so callers must not label it guaranteed real-time.
  */
 export async function fetchLiveQuotes(symbols: string[]): Promise<LiveQuotesResponse | null> {
   const cleanSymbols = symbols.map(s => s.trim().toUpperCase()).filter(Boolean);
@@ -39,12 +46,26 @@ export async function fetchLiveQuotes(symbols: string[]): Promise<LiveQuotesResp
   try {
     const res = await fetch(`/api/live-quotes?symbols=${encodeURIComponent(cleanSymbols.join(','))}`);
     if (!res.ok) {
-      throw new Error(`Failed to fetch live quotes: ${res.statusText}`);
+      throw new Error(`Failed to fetch market quotes: ${res.statusText}`);
     }
-    const data: LiveQuotesResponse = await res.json();
-    return data;
+
+    const raw = await res.json() as LiveQuotesResponse;
+    const retrievedAt = new Date().toISOString();
+    const quotes = Object.fromEntries(
+      Object.entries(raw.quotes || {}).map(([symbol, quote]) => [symbol, {
+        ...quote,
+        provider: raw.provider,
+        asOf: raw.asOf,
+        retrievedAt,
+      }]),
+    );
+
+    return {
+      ...raw,
+      quotes,
+    };
   } catch (error) {
-    console.warn('[marketDataService] Error fetching live quotes:', error);
+    console.warn('[marketDataService] Error fetching market quotes:', error);
     return null;
   }
 }
