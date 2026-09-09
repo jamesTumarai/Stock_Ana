@@ -1,0 +1,97 @@
+name: Apply Phase 3K App Wiring
+
+on:
+  push:
+    branches:
+      - phase3k-sec-guarded-dcf
+    paths:
+      - .github/workflows/apply-phase3k-app-wiring.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase3k-sec-guarded-dcf
+          fetch-depth: 0
+      - name: Wire SEC verification into final report pipeline
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/App.tsx')
+          text = path.read_text()
+
+          import_anchor = "import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';\n"
+          import_line = "import { fetchSecVerificationEnvelope } from './services/secVerificationService';\n"
+          if import_line not in text:
+              if text.count(import_anchor) != 1:
+                  raise SystemExit('reportValidation import anchor mismatch')
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          controller_old = """    const controller = new AbortController();
+    aRef.current = controller;
+    const startTimestamp = Date.now();
+    let currentToolRuns = 0;
+"""
+          controller_new = """    const controller = new AbortController();
+    aRef.current = controller;
+    const requestedTicker = ticker.trim().toUpperCase();
+    const secVerificationPromise = aType === 'technical'
+      ? Promise.resolve(null)
+      : fetchSecVerificationEnvelope(requestedTicker, controller.signal);
+    const startTimestamp = Date.now();
+    let currentToolRuns = 0;
+"""
+          if "const secVerificationPromise" not in text:
+              if text.count(controller_old) != 1:
+                  raise SystemExit('controller anchor mismatch')
+              text = text.replace(controller_old, controller_new, 1)
+
+          final_old = """      if (accumulatedText) {
+          const finalData = parseFinalText(accumulatedText);
+          if (finalData) {
+            const prepared = validateAndPrepareReport(
+              { ...finalData, analysis_type: aType, ticker: ticker.trim() },
+              ticker.trim()
+            );
+            if (prepared.report) {
+"""
+          final_new = """      if (accumulatedText) {
+          const finalData = parseFinalText(accumulatedText);
+          if (finalData) {
+            const secVerification = await secVerificationPromise;
+            const prepared = validateAndPrepareReport(
+              {
+                ...finalData,
+                ...(secVerification ? { sec_verification: secVerification } : {}),
+                analysis_type: aType,
+                ticker: requestedTicker,
+              },
+              requestedTicker
+            );
+            if (prepared.report) {
+"""
+          if "...(secVerification ? { sec_verification: secVerification } : {})" not in text:
+              if text.count(final_old) != 1:
+                  raise SystemExit('final validation anchor mismatch')
+              text = text.replace(final_old, final_new, 1)
+
+          path.write_text(text)
+      - name: Commit wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/App.tsx; then
+            echo "App wiring already present"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx
+          git commit -m "feat: attach SEC verification before final report validation"
+          git push origin HEAD:phase3k-sec-guarded-dcf
