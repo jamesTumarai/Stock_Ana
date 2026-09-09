@@ -59,4 +59,33 @@ assert.deepEqual(normalized[3].accessionNumbers.sort(), ['fy', 'q3-ytd']);
   assert.deepEqual(values[1].accessionNumbers, ['i-q2-new']);
 }
 
+{
+  // A current filing can include a prior-year comparative fact tagged with the current filing's fy/fp.
+  // The newer filing date must never make the older period-end win over the current fiscal period.
+  const comparativeDurationFacts: SecCompanyFact[] = [
+    { start: '2026-01-01', end: '2026-03-31', val: 100, fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-05-01', accn: 'current-q1' },
+    { start: '2026-01-01', end: '2026-06-30', val: 220, fy: 2026, fp: 'Q2', form: '10-Q', filed: '2026-08-01', accn: 'current-q2' },
+    { start: '2026-01-01', end: '2026-09-30', val: 350, fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-11-01', accn: 'current-q3' },
+    { start: '2025-01-01', end: '2025-09-30', val: 300, fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-11-01', accn: 'comparative-q3' },
+  ];
+  const values = normalizeDurationFactsToStandaloneQuarters(comparativeDurationFacts);
+  const q3 = values.find(item => item.fiscalQuarter === 3);
+  assert.equal(q3?.value, 130, 'Current-period Q3 YTD must win over prior-year comparative Q3 fact');
+  assert.equal(q3?.end, '2026-09-30');
+  assert.ok(q3?.accessionNumbers.includes('current-q3'));
+  assert.ok(!q3?.accessionNumbers.includes('comparative-q3'));
+}
+
+{
+  const comparativeInstantFacts: SecCompanyFact[] = [
+    { end: '2026-06-30', val: 56, fy: 2026, fp: 'Q2', form: '10-Q', filed: '2026-08-01', accn: 'current-instant' },
+    { end: '2025-06-30', val: 44, fy: 2026, fp: 'Q2', form: '10-Q', filed: '2026-08-01', accn: 'comparative-instant' },
+  ];
+  const values = normalizeInstantFactsToFiscalQuarters(comparativeInstantFacts);
+  assert.equal(values.length, 1);
+  assert.equal(values[0].value, 56);
+  assert.equal(values[0].end, '2026-06-30');
+  assert.deepEqual(values[0].accessionNumbers, ['current-instant']);
+}
+
 console.log('SEC XBRL quarter normalization checks passed');
