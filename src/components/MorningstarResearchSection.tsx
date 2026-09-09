@@ -57,15 +57,19 @@ export function MorningstarResearchSection({
     setOpenAccordion(prev => prev === id ? null : id);
   };
 
-  const stars = Math.max(1, Math.min(5, data.rating_stars || 3));
+  const stars = typeof data.rating_stars === 'number' && Number.isFinite(data.rating_stars)
+    ? Math.max(1, Math.min(5, data.rating_stars))
+    : null;
   const fv = data.fair_value_estimate;
-  const effectivePrice = currentPrice || 100;
-  const discountPct = data.discount_premium_pct !== undefined 
+  const discountPct = data.discount_premium_pct !== undefined
     ? data.discount_premium_pct 
-    : (fv ? Number((((fv - effectivePrice) / effectivePrice) * 100).toFixed(2)) : 0);
+    : (typeof fv === 'number' && typeof currentPrice === 'number' && currentPrice > 0
+      ? Number((((fv - currentPrice) / currentPrice) * 100).toFixed(2))
+      : null);
 
-  const isOvervalued = discountPct < -3;
-  const isUndervalued = discountPct > 3;
+  const isOvervalued = discountPct !== null && discountPct < -3;
+  const isUndervalued = discountPct !== null && discountPct > 3;
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
 
   // Localized data selectors
   const summaryText = isThai 
@@ -135,8 +139,8 @@ export function MorningstarResearchSection({
               </h3>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-mono font-semibold border border-emerald-200">
                 {isThai 
-                  ? (data.status_note_th || data.status_note || 'ครอบคลุมการวิเคราะห์อย่างเป็นทางการ') 
-                  : (data.status_note || 'Active Coverage')}
+                  ? (data.status_note_th || data.status_note || unavailable)
+                  : (data.status_note || unavailable)}
               </span>
             </div>
             <span className="text-xs text-stone-500 font-sans block mt-0.5">
@@ -148,7 +152,7 @@ export function MorningstarResearchSection({
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto text-xs text-stone-500 font-mono bg-stone-50 px-3 py-1 rounded-full border border-stone-200">
-          <span>{data.rating_date ? (isThai ? `อัปเดต: ${data.rating_date}` : `Updated: ${data.rating_date}`) : 'Live Coverage'}</span>
+          <span>{data.rating_date ? (isThai ? `อัปเดต: ${data.rating_date}` : `Updated: ${data.rating_date}`) : unavailable}</span>
         </div>
       </div>
 
@@ -191,17 +195,18 @@ export function MorningstarResearchSection({
             <span className="text-[11px] text-stone-500 font-mono block mb-1">
               {isThai ? 'เรตติ้ง (Rating)' : 'Star Rating'}
             </span>
-            <div className="flex items-center gap-1 my-1">
-              {[1, 2, 3, 4, 5].map(i => (
-                <Star 
-                  key={i} 
-                  className={`w-4 h-4 ${i <= stars ? 'text-amber-500 fill-amber-400' : 'text-stone-300'}`} 
-                />
-              ))}
-            </div>
-            <span className="text-[10px] text-stone-500 font-mono font-medium">
-              {stars <= 2 ? (isThai ? 'ราคาสูงกว่ามูลค่า' : 'Overvalued') : stars >= 4 ? (isThai ? 'ราคาต่ำกว่ามูลค่า' : 'Undervalued') : (isThai ? 'ราคายุติธรรม' : 'Fair Value')}
-            </span>
+            {stars !== null ? (
+              <>
+                <div className="flex items-center gap-1 my-1">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <Star key={i} className={`w-4 h-4 ${i <= stars ? 'text-amber-500 fill-amber-400' : 'text-stone-300'}`} />
+                  ))}
+                </div>
+                <span className="text-[10px] text-stone-500 font-mono font-medium">
+                  {stars <= 2 ? (isThai ? 'ราคาสูงกว่ามูลค่า' : 'Overvalued') : stars >= 4 ? (isThai ? 'ราคาต่ำกว่ามูลค่า' : 'Undervalued') : (isThai ? 'ราคายุติธรรม' : 'Fair Value')}
+                </span>
+              </>
+            ) : <span className="text-xs text-stone-400 my-2">{unavailable}</span>}
           </div>
 
           {/* Fair Value Estimate */}
@@ -215,7 +220,7 @@ export function MorningstarResearchSection({
               )}
             </div>
             <div className="text-xl sm:text-2xl font-extrabold font-mono text-stone-900">
-              ${fv ? fv.toFixed(2) : '-'}
+              {typeof fv === 'number' ? `$${fv.toFixed(2)}` : unavailable}
             </div>
             <div className="mt-1">
               <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border inline-block ${
@@ -225,7 +230,7 @@ export function MorningstarResearchSection({
                   ? 'bg-rose-50 text-rose-700 border-rose-200' 
                   : 'bg-stone-50 text-stone-700 border-stone-200'
               }`}>
-                {discountPct > 0 ? `+${discountPct.toFixed(2)}%` : `${discountPct.toFixed(2)}%`}
+                {discountPct !== null ? (discountPct > 0 ? `+${discountPct.toFixed(2)}%` : `${discountPct.toFixed(2)}%`) : unavailable}
                 <span className="text-[10px] font-normal ml-1">
                   {isOvervalued ? (isThai ? '(แพง)' : 'Overvalued') : isUndervalued ? (isThai ? '(ถูก)' : 'Undervalued') : ''}
                 </span>
@@ -241,13 +246,13 @@ export function MorningstarResearchSection({
             <div className="flex items-center gap-1.5 my-1">
               <ShieldCheck className="w-4 h-4 text-[#0b5a4b]" />
               <span className="text-base sm:text-lg font-extrabold font-mono text-[#0b5a4b]">
-                {data.economic_moat || 'Wide'}
+                {data.economic_moat || unavailable}
               </span>
             </div>
             <span className="text-[10px] text-stone-500 font-sans">
               {isThai 
-                ? (data.economic_moat_th || (data.economic_moat === 'Wide' ? 'ความได้เปรียบยั่งยืน 20+ ปี' : data.economic_moat === 'Narrow' ? 'ได้เปรียบปานกลาง 10 ปี' : 'ไม่มีคูเมืองชัดเจน'))
-                : (data.economic_moat === 'Wide' ? 'Sustainable 20+ yrs' : data.economic_moat === 'Narrow' ? 'Moderate 10 yrs' : 'None')}
+                ? (data.economic_moat_th || (data.economic_moat === 'Wide' ? 'ความได้เปรียบยั่งยืน 20+ ปี' : data.economic_moat === 'Narrow' ? 'ได้เปรียบปานกลาง 10 ปี' : data.economic_moat === 'None' ? 'ไม่มีคูเมืองชัดเจน' : unavailable))
+                : (data.economic_moat === 'Wide' ? 'Sustainable 20+ yrs' : data.economic_moat === 'Narrow' ? 'Moderate 10 yrs' : data.economic_moat === 'None' ? 'None' : unavailable)}
             </span>
           </div>
 
@@ -257,12 +262,12 @@ export function MorningstarResearchSection({
               {isThai ? 'ระดับความไม่แน่นอน' : 'Uncertainty'}
             </span>
             <div className="text-base sm:text-lg font-extrabold font-mono text-amber-700 my-1">
-              {data.uncertainty || 'Medium'}
+              {data.uncertainty || unavailable}
             </div>
             <span className="text-[10px] text-stone-500 font-sans">
               {isThai 
-                ? (data.uncertainty_th || (data.uncertainty === 'Very High' ? 'ผันผวนสูงมาก' : data.uncertainty === 'High' ? 'ผันผวนสูง' : 'ผันผวนปานกลาง'))
-                : 'Cash flow volatility'}
+                ? (data.uncertainty_th || (data.uncertainty === 'Very High' ? 'ผันผวนสูงมาก' : data.uncertainty === 'High' ? 'ผันผวนสูง' : data.uncertainty === 'Medium' ? 'ผันผวนปานกลาง' : data.uncertainty === 'Low' ? 'ผันผวนต่ำ' : unavailable))
+                : (data.uncertainty ? 'Cash flow volatility' : unavailable)}
             </span>
           </div>
 
@@ -272,12 +277,12 @@ export function MorningstarResearchSection({
               {isThai ? 'การจัดสรรเงินทุน' : 'Capital Allocation'}
             </span>
             <div className="text-base sm:text-lg font-extrabold font-mono text-blue-700 my-1">
-              {data.capital_allocation || 'Exemplary'}
+              {data.capital_allocation || unavailable}
             </div>
             <span className="text-[10px] text-stone-500 font-sans">
               {isThai 
-                ? (data.capital_allocation_th || (data.capital_allocation === 'Exemplary' ? 'บริหารเงินทุนยอดเยี่ยม' : 'ระดับมาตรฐาน'))
-                : (data.capital_allocation === 'Exemplary' ? 'Stewardship: Exemplary' : 'Standard')}
+                ? (data.capital_allocation_th || (data.capital_allocation === 'Exemplary' ? 'บริหารเงินทุนยอดเยี่ยม' : data.capital_allocation ? 'ระดับมาตรฐาน' : unavailable))
+                : (data.capital_allocation === 'Exemplary' ? 'Stewardship: Exemplary' : data.capital_allocation ? 'Standard' : unavailable)}
             </span>
           </div>
         </div>
@@ -463,7 +468,7 @@ export function MorningstarResearchSection({
                     ? 'bg-rose-50 text-rose-700 border-rose-200' 
                     : 'bg-stone-50 text-stone-700 border-stone-200'
                 }`}>
-                  {fv ? fv.toFixed(2) : '-'} {discountPct > 0 ? `+${discountPct.toFixed(2)}%` : `${discountPct.toFixed(2)}%`}
+                  {typeof fv === 'number' ? fv.toFixed(2) : unavailable} {discountPct !== null ? (discountPct > 0 ? `+${discountPct.toFixed(2)}%` : `${discountPct.toFixed(2)}%`) : ''}
                 </span>
                 {openAccordion === 'valuation_thesis' ? (
                   <ChevronUp className="w-4 h-4 text-stone-500" />
@@ -485,25 +490,25 @@ export function MorningstarResearchSection({
                     <span className="text-stone-500 text-[10px] block">
                       {isThai ? 'P/E โดยนัย (Implied P/E)' : 'Implied P/E'}
                     </span>
-                    <strong className="text-stone-900 text-sm">{data.valuation_thesis.implied_pe || 32}x</strong>
+                    <strong className="text-stone-900 text-sm">{data.valuation_thesis.implied_pe !== undefined ? `${data.valuation_thesis.implied_pe}x` : unavailable}</strong>
                   </div>
                   <div>
                     <span className="text-stone-500 text-[10px] block">
                       {isThai ? 'EV/Sales โดยนัย' : 'Implied EV/Sales'}
                     </span>
-                    <strong className="text-stone-900 text-sm">{data.valuation_thesis.implied_ev_revenue || 8}x</strong>
+                    <strong className="text-stone-900 text-sm">{data.valuation_thesis.implied_ev_revenue !== undefined ? `${data.valuation_thesis.implied_ev_revenue}x` : unavailable}</strong>
                   </div>
                   <div>
                     <span className="text-stone-500 text-[10px] block">
                       {isThai ? 'อัตรากำไรขั้นต้นระยะยาว' : 'Terminal Gross Margin'}
                     </span>
-                    <strong className="text-stone-900 text-sm">{data.valuation_thesis.projected_gross_margin_terminal || 68}%</strong>
+                    <strong className="text-stone-900 text-sm">{data.valuation_thesis.projected_gross_margin_terminal !== undefined ? `${data.valuation_thesis.projected_gross_margin_terminal}%` : unavailable}</strong>
                   </div>
                   <div>
                     <span className="text-stone-500 text-[10px] block">
                       {isThai ? 'CAGR รายได้ 5 ปี' : '5-Yr Rev CAGR'}
                     </span>
-                    <strong className="text-[#0b5a4b] text-sm">{data.valuation_thesis.projected_revenue_cagr_5yr || 9}%</strong>
+                    <strong className="text-[#0b5a4b] text-sm">{data.valuation_thesis.projected_revenue_cagr_5yr !== undefined ? `${data.valuation_thesis.projected_revenue_cagr_5yr}%` : unavailable}</strong>
                   </div>
                 </div>
 
@@ -539,7 +544,7 @@ export function MorningstarResearchSection({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-[#0b5a4b] border border-emerald-200">
-                  {isThai ? (data.economic_moat_details?.badge_th || data.economic_moat_th || data.economic_moat || 'Wide') : (data.economic_moat_details?.badge || data.economic_moat || 'Wide')}
+                  {isThai ? (data.economic_moat_details?.badge_th || data.economic_moat_th || data.economic_moat || unavailable) : (data.economic_moat_details?.badge || data.economic_moat || unavailable)}
                 </span>
                 {openAccordion === 'economic_moat' ? (
                   <ChevronUp className="w-4 h-4 text-stone-500" />
@@ -584,7 +589,7 @@ export function MorningstarResearchSection({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  {isThai ? (data.uncertainty_details?.badge_th || data.uncertainty_th || data.uncertainty || 'Very High') : (data.uncertainty_details?.badge || data.uncertainty || 'Very High')}
+                  {isThai ? (data.uncertainty_details?.badge_th || data.uncertainty_th || data.uncertainty || unavailable) : (data.uncertainty_details?.badge || data.uncertainty || unavailable)}
                 </span>
                 {openAccordion === 'uncertainty' ? (
                   <ChevronUp className="w-4 h-4 text-stone-500" />
@@ -629,7 +634,7 @@ export function MorningstarResearchSection({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                  {isThai ? (data.capital_allocation_details?.badge_th || data.capital_allocation_th || data.capital_allocation || 'Exemplary') : (data.capital_allocation_details?.badge || data.capital_allocation || 'Exemplary')}
+                  {isThai ? (data.capital_allocation_details?.badge_th || data.capital_allocation_th || data.capital_allocation || unavailable) : (data.capital_allocation_details?.badge || data.capital_allocation || unavailable)}
                 </span>
                 {openAccordion === 'capital_allocation' ? (
                   <ChevronUp className="w-4 h-4 text-stone-500" />

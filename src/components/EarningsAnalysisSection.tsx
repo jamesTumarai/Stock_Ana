@@ -28,18 +28,19 @@ function formatMillionsToBillion(valInMillions?: number | null): string {
 export function EarningsAnalysisSection({ 
   data, 
   isThai, 
-  ticker = 'STOCK' 
+  ticker
 }: Props) {
   const [metricTab, setMetricTab] = useState<'eps' | 'revenue'>('eps');
 
   if (!data) {
     return (
       <div className="bg-white rounded-2xl p-6 border border-stone-200 text-stone-500 text-center italic">
-        {isThai ? 'ไม่มีข้อมูลการวิเคราะห์ผลประกอบการ (Earnings Analysis)' : 'No earnings analysis data available.'}
+        {isThai ? 'ไม่มีข้อมูลการวิเคราะห์ผลประกอบการ (Data unavailable)' : 'Data unavailable'}
       </div>
     );
   }
 
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
   const pastHistory = data.past_earnings_history || [];
   const streak = data.beat_streak;
   const currentSetup = data.current_quarter_setup;
@@ -61,20 +62,16 @@ export function EarningsAnalysisSection({
   }));
 
   const totalQuarters = pastHistory.length;
-  const beatsCount = pastHistory.filter(q => q.beat_or_miss?.toLowerCase().includes('beat') || (q.eps_actual >= q.eps_estimate)).length;
-  const beatRatePct = totalQuarters > 0 ? Math.round((beatsCount / totalQuarters) * 100) : 100;
-  const avgSurprise = totalQuarters > 0 ? (pastHistory.reduce((acc, curr) => acc + (curr.eps_surprise_pct || 0), 0) / totalQuarters) : 0;
-  const avg1DayMove = totalQuarters > 0 ? (pastHistory.reduce((acc, curr) => acc + (curr.stock_reaction_1d_pct || 0), 0) / totalQuarters) : 0;
+  const comparableQuarters = pastHistory.filter(q => Number.isFinite(q.eps_actual) && Number.isFinite(q.eps_estimate));
+  const beatsCount = comparableQuarters.filter(q => q.beat_or_miss?.toLowerCase().includes('beat') || q.eps_actual >= q.eps_estimate).length;
+  const beatRatePct = comparableQuarters.length > 0 ? Math.round((beatsCount / comparableQuarters.length) * 100) : null;
+  const surpriseValues = pastHistory.map(q => q.eps_surprise_pct).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const reactionValues = pastHistory.map(q => q.stock_reaction_1d_pct).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const avgSurprise = surpriseValues.length > 0 ? surpriseValues.reduce((sum, value) => sum + value, 0) / surpriseValues.length : null;
+  const avg1DayMove = reactionValues.length > 0 ? reactionValues.reduce((sum, value) => sum + value, 0) / reactionValues.length : null;
 
   // Helper for calendar period explanation
   const getCalendarSubtext = (period: string, repDate?: string) => {
-    const p = period.toUpperCase();
-    if (ticker?.toUpperCase() === 'NVDA') {
-      if (p.includes('Q2 FY2027') || p.includes('Q2 2027')) return isThai ? 'พ.ค.–ก.ค. 2026' : 'May–Jul 2026';
-      if (p.includes('Q1 FY2027') || p.includes('Q1 2027')) return isThai ? 'ก.พ.–เม.ย. 2026' : 'Feb–Apr 2026';
-      if (p.includes('Q4 FY2026') || p.includes('Q4 2026')) return isThai ? 'พ.ย. 2025–ม.ค. 2026' : 'Nov 2025–Jan 2026';
-      if (p.includes('Q3 FY2026') || p.includes('Q3 2026')) return isThai ? 'ส.ค.–ต.ค. 2025' : 'Aug–Oct 2025';
-    }
     if (repDate) return `${isThai ? 'งบ ณ' : 'Date:'} ${repDate}`;
     return null;
   };
@@ -109,14 +106,14 @@ export function EarningsAnalysisSection({
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl sm:text-5xl font-extrabold font-mono text-[#0b5a4b]">
-                  {data.days_until_next_earnings !== undefined ? data.days_until_next_earnings : '--'}
+                  {typeof data.days_until_next_earnings === 'number' ? data.days_until_next_earnings : unavailable}
                 </span>
                 <span className="text-lg text-stone-600 font-medium font-sans">
                   {isThai ? 'วันข้างหน้า' : 'days left'}
                 </span>
               </div>
               <span className="text-xs text-stone-500 font-mono mt-1 block">
-                {isThai ? 'วันที่คาดการณ์: ' : 'Expected: '}<strong className="text-stone-800">{data.next_earnings_date || 'TBA'}</strong>
+                {isThai ? 'วันที่คาดการณ์: ' : 'Expected: '}<strong className="text-stone-800">{data.next_earnings_date || unavailable}</strong>
               </span>
             </div>
 
@@ -134,7 +131,7 @@ export function EarningsAnalysisSection({
 
           {currentSetup && (
             <div className="text-xs text-stone-700 bg-stone-50 p-3.5 rounded-2xl flex items-center justify-between font-mono border border-stone-200">
-              <span>{isThai ? 'เป้า Consensus EPS:' : 'Consensus EPS:'} <strong className="text-stone-900">${currentSetup.consensus_estimate_eps || '-'}</strong></span>
+              <span>{isThai ? 'เป้า Consensus EPS:' : 'Consensus EPS:'} <strong className="text-stone-900">{typeof currentSetup.consensus_estimate_eps === 'number' ? `$${currentSetup.consensus_estimate_eps}` : unavailable}</strong></span>
               <span>{isThai ? 'เป้ารายได้:' : 'Consensus Rev:'} <strong className="text-stone-900">{formatMillionsToBillion(currentSetup.consensus_estimate_revenue_musd)}</strong></span>
             </div>
           )}
@@ -155,7 +152,7 @@ export function EarningsAnalysisSection({
                 {isThai ? 'ชนะเป้ากำไร (EPS Beat)' : 'EPS Beat Streak'}
               </span>
               <span className="text-3xl sm:text-4xl font-extrabold font-mono text-[#0b5a4b] mt-1">
-                {streak?.eps_beat_streak_quarters || pastHistory.length} <span className="text-base font-sans font-normal text-stone-600">{isThai ? 'ไตรมาสติด' : 'Qs'}</span>
+                {streak?.eps_beat_streak_quarters ?? unavailable} {typeof streak?.eps_beat_streak_quarters === 'number' && <span className="text-base font-sans font-normal text-stone-600">{isThai ? 'ไตรมาสติด' : 'Qs'}</span>}
               </span>
             </div>
 
@@ -164,13 +161,13 @@ export function EarningsAnalysisSection({
                 {isThai ? 'ชนะเป้ารายได้ (Rev Beat)' : 'Revenue Beat'}
               </span>
               <span className="text-3xl sm:text-4xl font-extrabold font-mono text-[#0b5a4b] mt-1">
-                {streak?.revenue_beat_streak_quarters || pastHistory.length} <span className="text-base font-sans font-normal text-stone-600">{isThai ? 'ไตรมาสติด' : 'Qs'}</span>
+                {streak?.revenue_beat_streak_quarters ?? unavailable} {typeof streak?.revenue_beat_streak_quarters === 'number' && <span className="text-base font-sans font-normal text-stone-600">{isThai ? 'ไตรมาสติด' : 'Qs'}</span>}
               </span>
             </div>
           </div>
 
           <p className="text-xs text-stone-600 leading-relaxed font-sans bg-stone-50 p-3 rounded-2xl border border-stone-100">
-            {streak?.commentary || (isThai ? 'บริษัทมีประวัติการส่งมอบผลงานชนะความคาดหมายนักวิเคราะห์อย่างต่อเนื่อง สะท้อนการให้ Guidance ที่ Conservative และการบริหารจัดการที่มีประสิทธิภาพ' : 'Consistent execution exceeding guidance and consensus estimates.')}
+            {streak?.commentary || unavailable}
           </p>
         </div>
       </div>
@@ -215,23 +212,23 @@ export function EarningsAnalysisSection({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-stone-50 rounded-2xl border border-stone-200 text-center font-mono">
             <div className="flex flex-col items-center justify-center p-1">
               <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{isThai ? 'อัตราทำผลงานชนะเป้า (Beat Rate)' : 'Beat Rate'}</span>
-              <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{beatsCount}/{totalQuarters} ({beatRatePct}%)</span>
+              <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{beatRatePct !== null ? `${beatsCount}/${comparableQuarters.length} (${beatRatePct}%)` : unavailable}</span>
             </div>
             <div className="flex flex-col items-center justify-center p-1 sm:border-x border-stone-200">
               <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{isThai ? 'EPS Surprise เฉลี่ย' : 'Avg. EPS Surprise'}</span>
-              <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{avgSurprise > 0 ? `+${avgSurprise.toFixed(1)}%` : `${avgSurprise.toFixed(1)}%`}</span>
+              <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{avgSurprise !== null ? (avgSurprise > 0 ? `+${avgSurprise.toFixed(1)}%` : `${avgSurprise.toFixed(1)}%`) : unavailable}</span>
             </div>
             <div className="flex flex-col items-center justify-center p-1">
               <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{isThai ? 'ปฏิกิริยาราคา 1 วันเฉลี่ย' : 'Avg. 1-Day Post-Earnings Move'}</span>
-              <span className={`text-sm sm:text-base font-extrabold mt-0.5 ${avg1DayMove >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                {avg1DayMove > 0 ? `+${avg1DayMove.toFixed(2)}%` : `${avg1DayMove.toFixed(2)}%`}
+              <span className={`text-sm sm:text-base font-extrabold mt-0.5 ${avg1DayMove !== null && avg1DayMove >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                {avg1DayMove !== null ? (avg1DayMove > 0 ? `+${avg1DayMove.toFixed(2)}%` : `${avg1DayMove.toFixed(2)}%`) : unavailable}
               </span>
             </div>
           </div>
         )}
 
         {/* Automated Insight Callout: Beat vs Stock Dip Paradox */}
-        {beatsCount >= 3 && avg1DayMove < 0 && (
+        {beatsCount >= 3 && avg1DayMove !== null && avg1DayMove < 0 && (
           <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200 text-xs text-amber-900 flex items-start gap-3 shadow-2xs">
             <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -311,8 +308,8 @@ export function EarningsAnalysisSection({
         {/* Quarter-by-Quarter Surprise & 1-Day Price Reaction Pills */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
           {pastHistory.map((q, idx) => {
-            const rx = q.stock_reaction_1d_pct || 0;
-            const isBeat = q.beat_or_miss?.includes('beat') || (q.eps_actual >= q.eps_estimate);
+            const rx = q.stock_reaction_1d_pct;
+            const isBeat = q.beat_or_miss?.includes('beat') || (Number.isFinite(q.eps_actual) && Number.isFinite(q.eps_estimate) ? q.eps_actual >= q.eps_estimate : null);
             const calSub = getCalendarSubtext(q.period, q.report_date);
             return (
               <div key={idx} className="bg-stone-50 p-3 rounded-2xl border border-stone-200 flex flex-col justify-between gap-1.5">
@@ -323,11 +320,11 @@ export function EarningsAnalysisSection({
                       <span className="text-[10px] text-stone-500 font-normal font-sans">{calSub}</span>
                     )}
                   </div>
-                  {isBeat ? (
+                  {isBeat === true ? (
                     <span className="text-[#0b5a4b] text-[10px] bg-emerald-100 px-1.5 py-0.5 rounded font-bold">BEAT</span>
-                  ) : (
+                  ) : isBeat === false ? (
                     <span className="text-red-600 text-[10px] bg-red-100 px-1.5 py-0.5 rounded font-bold">MISS</span>
-                  )}
+                  ) : <span className="text-stone-400 text-[10px]">{unavailable}</span>}
                 </div>
                 <div className="text-xs text-stone-600 font-mono flex justify-between pt-1">
                   <span>EPS Surprise:</span>
@@ -335,9 +332,9 @@ export function EarningsAnalysisSection({
                 </div>
                 <div className="text-xs text-stone-600 font-mono flex justify-between border-t border-stone-200/60 pt-1">
                   <span>1-Day Move:</span>
-                  <span className={`font-bold flex items-center ${rx >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                    {rx >= 0 ? <ArrowUpRight className="w-3 h-3 inline" /> : <ArrowDownRight className="w-3 h-3 inline" />}
-                    {rx > 0 ? `+${rx}%` : `${rx}%`}
+                  <span className={`font-bold flex items-center ${typeof rx === 'number' && rx >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                    {typeof rx === 'number' ? (rx >= 0 ? <ArrowUpRight className="w-3 h-3 inline" /> : <ArrowDownRight className="w-3 h-3 inline" />) : null}
+                    {typeof rx === 'number' ? (rx > 0 ? `+${rx}%` : `${rx}%`) : unavailable}
                   </span>
                 </div>
               </div>
@@ -357,7 +354,9 @@ export function EarningsAnalysisSection({
                   {isThai ? 'ฉันทามตินักวิเคราะห์ & เป้าหมายราคา (Wall St. Consensus)' : 'Wall Street Analyst Consensus & Price Targets'}
                 </h4>
                 <span className="text-xs text-stone-500">
-                  {isThai ? `รวบรวมจากนักวิเคราะห์ทั้งหมด ${data.analyst_consensus.total_analysts || 24} ราย` : `Aggregated from ${data.analyst_consensus.total_analysts || 24} Wall St. analysts`}
+                  {typeof data.analyst_consensus.total_analysts === 'number'
+                    ? (isThai ? `รวบรวมจากนักวิเคราะห์ทั้งหมด ${data.analyst_consensus.total_analysts} ราย` : `Aggregated from ${data.analyst_consensus.total_analysts} Wall St. analysts`)
+                    : unavailable}
                 </span>
               </div>
             </div>
@@ -379,12 +378,13 @@ export function EarningsAnalysisSection({
                   {isThai ? 'เป้าหมายราคาเฉลี่ย (Mean Target)' : 'Mean Price Target'}
                 </span>
                 <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-full ${
-                  (data.analyst_consensus.price_target.implied_upside_pct || 0) >= 0 
+                  typeof data.analyst_consensus.price_target.implied_upside_pct === 'number' && data.analyst_consensus.price_target.implied_upside_pct >= 0
                     ? 'bg-emerald-100 text-[#0b5a4b]' 
                     : 'bg-red-100 text-red-600'
                 }`}>
-                  {(data.analyst_consensus.price_target.implied_upside_pct || 0) >= 0 ? '+' : ''}
-                  {data.analyst_consensus.price_target.implied_upside_pct}% {isThai ? 'Upside' : 'Upside'}
+                  {typeof data.analyst_consensus.price_target.implied_upside_pct === 'number'
+                    ? `${data.analyst_consensus.price_target.implied_upside_pct >= 0 ? '+' : ''}${data.analyst_consensus.price_target.implied_upside_pct}% Upside`
+                    : unavailable}
                 </span>
               </div>
 
@@ -473,16 +473,16 @@ export function EarningsAnalysisSection({
               <div className="grid grid-cols-2 gap-3 my-4">
                 <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 text-center">
                   <span className="text-[11px] text-emerald-800 font-bold block">{isThai ? 'นักวิเคราะห์ปรับเพิ่ม' : 'Analysts Raised'}</span>
-                  <span className="text-2xl font-bold font-mono text-[#0b5a4b]">{revisions.num_analysts_raised || '-'}</span>
+                  <span className="text-2xl font-bold font-mono text-[#0b5a4b]">{revisions.num_analysts_raised ?? unavailable}</span>
                 </div>
                 <div className="bg-red-50/50 p-3 rounded-xl border border-red-100 text-center">
                   <span className="text-[11px] text-red-800 font-bold block">{isThai ? 'นักวิเคราะห์ปรับลด' : 'Analysts Lowered'}</span>
-                  <span className="text-2xl font-bold font-mono text-red-600">{revisions.num_analysts_lowered || '-'}</span>
+                  <span className="text-2xl font-bold font-mono text-red-600">{revisions.num_analysts_lowered ?? unavailable}</span>
                 </div>
               </div>
 
               <p className="text-xs text-stone-600 leading-relaxed font-sans bg-stone-50 p-3 rounded-xl border border-stone-100">
-                {revisions.commentary || revisions.description || (isThai ? 'การปรับประมาณการขึ้นต่อเนื่องเป็นสัญญาณ Momentum เชิงบวกก่อนการประกาศงบจริง' : 'Positive revision trajectory indicates building momentum.')}
+                {revisions.commentary || revisions.description || unavailable}
               </p>
             </div>
           </div>
@@ -514,7 +514,7 @@ export function EarningsAnalysisSection({
             {guidance && (
               <div className="pt-2 border-t border-stone-100 text-xs text-stone-600 font-mono flex justify-between items-center">
                 <span>{isThai ? 'เป้า Guidance ทั้งปี:' : 'Full Year Guidance:'} {guidance.company_guidance_revenue_musd ? `${formatMillionsToBillion(guidance.company_guidance_revenue_musd[0])} - ${formatMillionsToBillion(guidance.company_guidance_revenue_musd[1])}` : '-'}</span>
-                <span className="font-bold text-[#0b5a4b]">+{guidance.implied_growth_pct || 0}% YoY</span>
+                <span className="font-bold text-[#0b5a4b]">{typeof guidance.implied_growth_pct === 'number' ? `${guidance.implied_growth_pct > 0 ? '+' : ''}${guidance.implied_growth_pct}% YoY` : unavailable}</span>
               </div>
             )}
           </div>

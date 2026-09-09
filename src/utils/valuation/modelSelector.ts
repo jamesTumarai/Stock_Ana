@@ -156,9 +156,9 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
   }
 
   // 5. Check Super Growth / Long Runway Tech / Disruptive Platforms
-  const revGrowthLatest = data?.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[0] || 0;
+  const revGrowthLatest = data?.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[0];
   const isSuperGrowth = 
-    revGrowthLatest >= 25 || 
+    (typeof revGrowthLatest === 'number' && revGrowthLatest >= 25) ||
     ['TSLA', 'NVDA', 'PLTR', 'SNOW', 'CRWD', 'ARM', 'NET', 'DDOG'].includes(symbol);
 
   if (isSuperGrowth) {

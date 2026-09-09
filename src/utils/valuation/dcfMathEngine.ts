@@ -1,7 +1,5 @@
 import { DCFModel, ReportData } from '../../types';
-import { calculateRegionAwareCostOfCapital } from './costOfCapital';
 import {
-  MACRO_TERMINAL_GROWTH_DEFAULT_PCT,
   MACRO_TERMINAL_GROWTH_MAX_CAP_PCT,
   MACRO_TERMINAL_GROWTH_MIN_PCT,
 } from './constants';
@@ -134,14 +132,17 @@ export function buildRigorousDCFModel(
   const currentPrice = data?.intrinsic_value?.current_price ?? data?.company_profile?.stock_price ?? 0;
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) missing.push('current share price');
 
-  const coc = calculateRegionAwareCostOfCapital(data, sym);
-  const waccPct = userWacc ?? original?.assumptions.wacc_pct ?? coc.wacc_pct;
-  const terminalGrowthPct = Math.min(
-    MACRO_TERMINAL_GROWTH_MAX_CAP_PCT,
-    Math.max(MACRO_TERMINAL_GROWTH_MIN_PCT, userGrowth ?? original?.assumptions.terminal_growth_pct ?? MACRO_TERMINAL_GROWTH_DEFAULT_PCT),
-  );
+  const rawWacc = userWacc ?? original?.assumptions.wacc_pct;
+  const rawTerminalGrowth = userGrowth ?? original?.assumptions.terminal_growth_pct;
+  if (!Number.isFinite(rawWacc)) missing.push('discount rate (WACC)');
+  if (!Number.isFinite(rawTerminalGrowth)) missing.push('terminal growth rate');
+  const waccPct = Number.isFinite(rawWacc) ? rawWacc as number : 0;
+  const terminalGrowthPct = Number.isFinite(rawTerminalGrowth)
+    ? Math.min(MACRO_TERMINAL_GROWTH_MAX_CAP_PCT, Math.max(MACRO_TERMINAL_GROWTH_MIN_PCT, rawTerminalGrowth as number))
+    : 0;
   if (!Number.isFinite(waccPct) || terminalGrowthPct >= waccPct) missing.push('discount rate greater than terminal growth');
-  const projectionYears = original?.assumptions.projection_years ?? 5;
+  const projectionYears = original?.assumptions.projection_years ?? 0;
+  if (!Number.isInteger(projectionYears) || projectionYears < 1) missing.push('projection years');
   const scenarios = original?.scenarios;
   if (!scenarios?.bear || !scenarios.base || !scenarios.bull) missing.push('bear, base, and bull DCF assumptions');
   const validScenarioInputs = scenarios && [scenarios.bear, scenarios.base, scenarios.bull].every(scenario =>

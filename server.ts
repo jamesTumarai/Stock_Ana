@@ -872,11 +872,11 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
           - เน้นข้อเท็จจริง ตัวเลข และเหตุผล ห้ามใช้คำเยิ่นเย้อหรือคำชมลอยๆ โดยไม่มีข้อมูลสนับสนุน
           - ตัวเลขประเภท "นับต่อเนื่อง" ต้องแม่นยำเป๊ะ ห้ามประมาณ ถ้านับไม่ได้ให้บอกว่า "ไม่สามารถยืนยันจำนวนไตรมาสที่แน่นอนได้"
           - ข้อมูลราคาหุ้น, Market Cap, Trailing P/E (TTM), Forward P/E, EV/EBITDA, 52-Week Range ต้องใช้ข้อมูลสดล่าสุดของวันนี้เสมอ
-          - ข้อมูล smart_money (13F): total_shares_held ต้องสอดคล้องกับ (shares_outstanding * pct_owned / 100) เช่น สำหรับ NVDA (~24.15B หุ้น, สถาบันถือ ~68.5%) จะต้องได้ ~16.5B หุ้น (ห้ามใช้ 1.28B เด็ดขาด), จำนวนสถาบัน total_institutions_count ต้องตรงกับข้อมูลจริงของหุ้นนั้น (เช่น NVDA ~5,600 แห่ง), ใน major_holders[].shares_held ต้องระบุเป็นจำนวนหุ้น (เช่น "2.98B" หรือ "230M") ห้ามใส่เครื่องหมาย % ซ้ำในช่องจำนวนหุ้น, และ shareholder_activity ต้องใส่ข้อมูลการปรับพอร์ต 13F ทั้งฝั่งซื้อเพิ่ม (increase) และขายลด (decrease) เสมอ ห้ามปล่อยว่าง
+          - ข้อมูล smart_money (13F): ใส่เฉพาะตัวเลขที่ตรวจสอบได้จากเอกสาร 13F/เอกสารบริษัทพร้อมวันที่อ้างอิงเท่านั้น total_shares_held ต้องสอดคล้องกับ shares_outstanding และ pct_owned ในงวดเดียวกัน ห้ามสร้างรายชื่อผู้ถือหุ้น จำนวนสถาบัน จำนวนหุ้น หรือกิจกรรมซื้อขายขึ้นมาเอง หากตรวจสอบไม่ได้ให้ใช้ null หรือ []
           - อธิบายศัพท์ยากเป็นภาษาง่าย ตอบแบบภาษาคนลงทุน`;
         } else {
           finalInstruction += `\n\nCRITICAL: You MUST write ALL string values in the JSON output in English. Please follow the structure covering both Fundamental and Technical aspects completely.
-          - For smart_money (13F): total_shares_held MUST equal (shares_outstanding * pct_owned / 100) (e.g. for NVDA ~24.15B shares, ~68.5% institutional ownership = ~16.5B shares, NOT 1.28B). total_institutions_count must reflect true 13F filers (~5,600 for NVDA). major_holders[].shares_held MUST be in shares (e.g. "2.98B"), NEVER a percent string. shareholder_activity MUST contain both increase and decrease 13F rows.
+          - For smart_money (13F): include only figures verified from dated 13F/company filings. total_shares_held must reconcile with shares_outstanding and pct_owned from the same period. Never invent holders, filer counts, share counts, or activity rows; use null or [] when the source data is unavailable.
           - Technical Analysis MUST rely ONLY on price, volume, and technical indicators. NEVER include or reference fundamental data (e.g., 10-K, 10-Q, annual reports, business models, moats, or credit risks) in the technical analysis section.`;
         }
         
@@ -893,7 +893,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "source": { "document_url": "https://www.sec.gov/...", "document_type": "Form 10-Q", "filing_date": "2026-08-26", "period_end": "2026-07-26", "units": "USD millions" },
     "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
     "income_statement": {
-      "revenue": [726, 828, 884, 1004],
+      "revenue": [],
       "cogs": [146, 164, 150, 160],
       "gross_profit": [580, 664, 734, 844],
       "gross_margin_pct": [79.9, 80.2, 83.0, 84.1],
@@ -909,8 +909,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "balance_sheet": {
-      "cash_and_equivalents": [2150, 2320, 2550, 2800],
-      "short_term_investments": [2450, 2580, 2850, 3200],
+      "cash_and_equivalents": [],
+      "short_term_investments": [],
       "total_current_assets": [5150, 5520, 6050, 6750],
       "accounts_receivable": [390, 410, 435, 460],
       "inventory": [0, 0, 0, 0],
@@ -919,7 +919,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "total_current_liabilities": [680, 720, 780, 850],
       "accounts_payable": [180, 195, 210, 230],
       "short_term_debt": [0, 0, 0, 0],
-      "total_debt": [0, 0, 0, 0],
+      "total_debt": [],
       "total_liabilities": [920, 980, 1050, 1150],
       "total_equity": [4900, 5260, 5730, 6340],
       "current_ratio": [7.57, 7.67, 7.76, 7.94],
@@ -979,52 +979,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "current": 137.5,
     "median_5yr": 95.0
   },
-  "intrinsic_value": {
-    "current_price": 186.38,
-    "as_of_date": "2026-09-01",
-    "dcf_model": {
-      "assumptions": {
-        "wacc_pct": 9.5,
-        "terminal_growth_pct": 3.0,
-        "projection_years": 5
-      },
-      "scenarios": {
-        "bear": {
-          "revenue_cagr_pct": 25,
-          "terminal_margin_pct": 30,
-          "fair_value_per_share": 95.0,
-          "key_assumption_note": "..."
-        },
-        "base": {
-          "revenue_cagr_pct": 40,
-          "terminal_margin_pct": 38,
-          "fair_value_per_share": 165.0,
-          "key_assumption_note": "..."
-        },
-        "bull": {
-          "revenue_cagr_pct": 55,
-          "terminal_margin_pct": 45,
-          "fair_value_per_share": 260.0,
-          "key_assumption_note": "..."
-        }
-      }
-    },
-    "relative_valuation": {
-      "method": "EV/EBITDA multiple ของกลุ่มเทียบ",
-      "peer_multiple_used": 45.0,
-      "metric_applied": "Forward EBITDA",
-      "fair_value_per_share": 175.0
-    },
-    "summary": {
-      "fair_value_range_low": 95.0,
-      "fair_value_range_high": 260.0,
-      "base_case_fair_value": 165.0,
-      "current_price_position_pct": 55,
-      "margin_of_safety_pct": -12.9,
-      "verdict_text": "..."
-    },
-    "disclaimer": "การประเมินมูลค่านี้เป็นแบบจำลองอย่างง่ายจากสมมติฐาน ไม่ใช่คำแนะนำการลงทุน"
-  },
+  "intrinsic_value": null,
   "earnings_analysis": {
     "as_of_date": "2026-09-01",
     "next_earnings_date": "2026-11-03",
@@ -1115,18 +1070,18 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     },
     "analyst_consensus": {
       "consensus_rating": "Moderate Buy",
-      "total_analysts": 24,
+      "total_analysts": null,
       "ratings_breakdown": {
-        "buy_count": 16,
-        "hold_count": 6,
-        "sell_count": 2
+        "buy_count": null,
+        "hold_count": null,
+        "sell_count": null
       },
       "price_target": {
-        "mean": 215.0,
-        "high": 260.0,
-        "low": 140.0,
-        "median": 210.0,
-        "implied_upside_pct": 15.4
+        "mean": null,
+        "high": null,
+        "low": null,
+        "median": null,
+        "implied_upside_pct": null
       },
       "as_of_date": "2026-09-01",
       "commentary": "..."
@@ -1134,20 +1089,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "summary_verdict": "..."
   },
   "morningstar_research": {
-    "has_coverage": true,
-    "status_note": "Covered by Morningstar Senior Equity Analyst",
-    "analyst_name": "...",
-    "analyst_title": "Senior Equity Analyst",
-    "rating_stars": 3,
-    "rating_date": "2026-08-01",
-    "economic_moat": "Wide",
-    "economic_moat_th": "คูเมืองทางธุรกิจกว้างขวาง (Wide Moat)",
-    "uncertainty": "Medium",
-    "capital_allocation": "Exemplary",
-    "capital_allocation_th": "การจัดสรรเงินทุนยอดเยี่ยมระดับ Exemplary",
-    "fair_value_estimate": 285.0,
-    "fair_value_date": "2026-08-01",
-    "discount_premium_pct": -10.94,
+    "has_coverage": false,
+    "status_note": "Data unavailable unless verified from a dated Morningstar source",
+    "analyst_name": null,
+    "analyst_title": null,
+    "rating_stars": null,
+    "rating_date": null,
+    "economic_moat": null,
+    "economic_moat_th": null,
+    "uncertainty": null,
+    "capital_allocation": null,
+    "capital_allocation_th": null,
+    "fair_value_estimate": null,
+    "fair_value_date": null,
+    "discount_premium_pct": null,
     "ai_analysis_summary": "...",
     "bulls_say": ["...", "...", "..."],
     "bears_say": ["...", "...", "..."],
@@ -1160,12 +1115,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "valuation_thesis": {
       "analyst_byline": "...",
       "date": "...",
-      "implied_pe": 32.0,
-      "implied_ev_revenue": 8.0,
-      "implied_fcf_yield_pct": 3.0,
-      "projected_revenue_cagr_5yr": 9.0,
-      "projected_gross_margin_terminal": 50.5,
-      "projected_operating_margin_terminal": 36.0,
+      "implied_pe": null,
+      "implied_ev_revenue": null,
+      "implied_fcf_yield_pct": null,
+      "projected_revenue_cagr_5yr": null,
+      "projected_gross_margin_terminal": null,
+      "projected_operating_margin_terminal": null,
       "content_paragraphs": ["...", "..."]
     }
   },
@@ -1200,90 +1155,21 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     ]
   },
   "insider_activity": {
-    "as_of_date": "2026-09-01",
-    "insider_ownership_pct": 8.5,
-    "institutional_ownership_pct": 45.2,
-    "institutional_qoq_change_pct": 2.4,
-    "recent_transactions": [
-      {
-        "date": "2026-08-15",
-        "insider_name": "...",
-        "title": "Executive",
-        "transaction_type": "sell",
-        "shares_count": 50000,
-        "price_per_share": 180.0,
-        "total_value_usd": 9000000
-      }
-    ],
-    "commentary": "..."
+    "as_of_date": null,
+    "insider_ownership_pct": null,
+    "institutional_ownership_pct": null,
+    "institutional_qoq_change_pct": null,
+    "recent_transactions": [],
+    "commentary": null
   },
   "smart_money": {
-    "as_of_date": "2026-09-01",
-    "institution_overview": {
-      "total_institutions_count": 5600,
-      "institutions_count_change_qoq": 48,
-      "total_shares_held": "16.5B",
-      "shares_held_change_qoq": "+42.5M",
-      "pct_owned": 68.50,
-      "pct_owned_change_qoq": 1.80
-    },
-    "major_holders": [
-      {
-        "name": "The Vanguard Group, Inc.",
-        "shares_held": "2.98B",
-        "pct_owned": 12.33,
-        "change_shares": "+1.2%",
-        "change_pct": 0.21,
-        "holder_type": "Mutual Fund / Index",
-        "filing_date": "2026-06-30",
-        "disclosure": "13F"
-      }
-    ],
-    "shareholder_activity": [
-      {
-        "holder_name": "Citadel Advisors LLC",
-        "change_type": "increase",
-        "change_shares": "+3.10M",
-        "change_amount_usd": "+$645M",
-        "total_pct_held": 1.12,
-        "holder_type": "Hedge Fund",
-        "date": "2026-06-30"
-      },
-      {
-        "holder_name": "Coatue Management, LLC",
-        "change_type": "decrease",
-        "change_shares": "-2.80M",
-        "change_amount_usd": "-$582M",
-        "total_pct_held": 0.85,
-        "holder_type": "Hedge Fund",
-        "date": "2026-06-30"
-      }
-    ],
-    "insiders_overview": {
-      "insider_ownership_pct": 7.42,
-      "bullish_insiders_count": 4,
-      "bearish_insiders_count": 6,
-      "key_insiders": [
-        {
-          "name": "...",
-          "title": "...",
-          "shares_held": "10M",
-          "pct_owned": 1.5
-        }
-      ]
-    },
-    "recent_transactions": [
-      {
-        "date": "2026-08-15",
-        "insider_name": "...",
-        "title": "Executive",
-        "transaction_type": "sell (Rule 10b5-1)",
-        "shares_count": 50000,
-        "price_per_share": 180.0,
-        "total_value_usd": 9000000
-      }
-    ],
-    "commentary": "..."
+    "as_of_date": "...",
+    "institution_overview": null,
+    "major_holders": [],
+    "shareholder_activity": [],
+    "insiders_overview": null,
+    "recent_transactions": [],
+    "commentary": "Omit unavailable figures; never populate this section from examples or estimates."
   },
   "corporate_actions": {
     "as_of_date": "2026-09-01",
@@ -1566,7 +1452,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "source": { "document_url": "https://www.sec.gov/...", "document_type": "Form 10-Q", "filing_date": "2026-08-26", "period_end": "2026-07-26", "units": "USD millions" },
     "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
     "income_statement": {
-      "revenue": [726, 828, 884, 1004],
+      "revenue": [],
       "cogs": [146, 164, 150, 160],
       "gross_profit": [580, 664, 734, 844],
       "gross_margin_pct": [79.9, 80.2, 83.0, 84.1],
@@ -1582,8 +1468,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "commentary": "..."
     },
     "balance_sheet": {
-      "cash_and_equivalents": [2150, 2320, 2550, 2800],
-      "short_term_investments": [2450, 2580, 2850, 3200],
+      "cash_and_equivalents": [],
+      "short_term_investments": [],
       "total_current_assets": [5150, 5520, 6050, 6750],
       "accounts_receivable": [390, 410, 435, 460],
       "inventory": [0, 0, 0, 0],
@@ -1592,7 +1478,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "total_current_liabilities": [680, 720, 780, 850],
       "accounts_payable": [180, 195, 210, 230],
       "short_term_debt": [0, 0, 0, 0],
-      "total_debt": [0, 0, 0, 0],
+      "total_debt": [],
       "total_liabilities": [920, 980, 1050, 1150],
       "total_equity": [4900, 5260, 5730, 6340],
       "current_ratio": [7.57, 7.67, 7.76, 7.94],
@@ -1652,52 +1538,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "current": 137.5,
     "median_5yr": 95.0
   },
-  "intrinsic_value": {
-    "current_price": 186.38,
-    "as_of_date": "2026-09-01",
-    "dcf_model": {
-      "assumptions": {
-        "wacc_pct": 9.5,
-        "terminal_growth_pct": 3.0,
-        "projection_years": 5
-      },
-      "scenarios": {
-        "bear": {
-          "revenue_cagr_pct": 25,
-          "terminal_margin_pct": 30,
-          "fair_value_per_share": 95.0,
-          "key_assumption_note": "..."
-        },
-        "base": {
-          "revenue_cagr_pct": 40,
-          "terminal_margin_pct": 38,
-          "fair_value_per_share": 165.0,
-          "key_assumption_note": "..."
-        },
-        "bull": {
-          "revenue_cagr_pct": 55,
-          "terminal_margin_pct": 45,
-          "fair_value_per_share": 260.0,
-          "key_assumption_note": "..."
-        }
-      }
-    },
-    "relative_valuation": {
-      "method": "EV/EBITDA multiple ของกลุ่มเทียบ",
-      "peer_multiple_used": 45.0,
-      "metric_applied": "Forward EBITDA",
-      "fair_value_per_share": 175.0
-    },
-    "summary": {
-      "fair_value_range_low": 95.0,
-      "fair_value_range_high": 260.0,
-      "base_case_fair_value": 165.0,
-      "current_price_position_pct": 55,
-      "margin_of_safety_pct": -12.9,
-      "verdict_text": "..."
-    },
-    "disclaimer": "การประเมินมูลค่านี้เป็นแบบจำลองอย่างง่ายจากสมมติฐาน ไม่ใช่คำแนะนำการลงทุน"
-  },
+  "intrinsic_value": null,
   "earnings_analysis": {
     "as_of_date": "2026-09-01",
     "next_earnings_date": "2026-11-03",
@@ -1788,18 +1629,18 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     },
     "analyst_consensus": {
       "consensus_rating": "Moderate Buy",
-      "total_analysts": 24,
+      "total_analysts": null,
       "ratings_breakdown": {
-        "buy_count": 16,
-        "hold_count": 6,
-        "sell_count": 2
+        "buy_count": null,
+        "hold_count": null,
+        "sell_count": null
       },
       "price_target": {
-        "mean": 215.0,
-        "high": 260.0,
-        "low": 140.0,
-        "median": 210.0,
-        "implied_upside_pct": 15.4
+        "mean": null,
+        "high": null,
+        "low": null,
+        "median": null,
+        "implied_upside_pct": null
       },
       "as_of_date": "2026-09-01",
       "commentary": "..."
@@ -1807,20 +1648,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "summary_verdict": "..."
   },
   "morningstar_research": {
-    "has_coverage": true,
-    "status_note": "Covered by Morningstar Senior Equity Analyst",
-    "analyst_name": "...",
-    "analyst_title": "Senior Equity Analyst",
-    "rating_stars": 3,
-    "rating_date": "2026-08-01",
-    "economic_moat": "Wide",
-    "economic_moat_th": "คูเมืองทางธุรกิจกว้างขวาง (Wide Moat)",
-    "uncertainty": "Medium",
-    "capital_allocation": "Exemplary",
-    "capital_allocation_th": "การจัดสรรเงินทุนยอดเยี่ยมระดับ Exemplary",
-    "fair_value_estimate": 285.0,
-    "fair_value_date": "2026-08-01",
-    "discount_premium_pct": -10.94,
+    "has_coverage": false,
+    "status_note": "Data unavailable unless verified from a dated Morningstar source",
+    "analyst_name": null,
+    "analyst_title": null,
+    "rating_stars": null,
+    "rating_date": null,
+    "economic_moat": null,
+    "economic_moat_th": null,
+    "uncertainty": null,
+    "capital_allocation": null,
+    "capital_allocation_th": null,
+    "fair_value_estimate": null,
+    "fair_value_date": null,
+    "discount_premium_pct": null,
     "ai_analysis_summary": "...",
     "bulls_say": ["...", "...", "..."],
     "bears_say": ["...", "...", "..."],
@@ -1833,12 +1674,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "valuation_thesis": {
       "analyst_byline": "...",
       "date": "...",
-      "implied_pe": 32.0,
-      "implied_ev_revenue": 8.0,
-      "implied_fcf_yield_pct": 3.0,
-      "projected_revenue_cagr_5yr": 9.0,
-      "projected_gross_margin_terminal": 50.5,
-      "projected_operating_margin_terminal": 36.0,
+      "implied_pe": null,
+      "implied_ev_revenue": null,
+      "implied_fcf_yield_pct": null,
+      "projected_revenue_cagr_5yr": null,
+      "projected_gross_margin_terminal": null,
+      "projected_operating_margin_terminal": null,
       "content_paragraphs": ["...", "..."]
     }
   },
@@ -1873,90 +1714,21 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     ]
   },
   "insider_activity": {
-    "as_of_date": "2026-09-01",
-    "insider_ownership_pct": 8.5,
-    "institutional_ownership_pct": 45.2,
-    "institutional_qoq_change_pct": 2.4,
-    "recent_transactions": [
-      {
-        "date": "2026-08-15",
-        "insider_name": "...",
-        "title": "Executive",
-        "transaction_type": "sell",
-        "shares_count": 50000,
-        "price_per_share": 180.0,
-        "total_value_usd": 9000000
-      }
-    ],
-    "commentary": "..."
+    "as_of_date": null,
+    "insider_ownership_pct": null,
+    "institutional_ownership_pct": null,
+    "institutional_qoq_change_pct": null,
+    "recent_transactions": [],
+    "commentary": null
   },
   "smart_money": {
-    "as_of_date": "2026-09-01",
-    "institution_overview": {
-      "total_institutions_count": 5600,
-      "institutions_count_change_qoq": 48,
-      "total_shares_held": "16.5B",
-      "shares_held_change_qoq": "+42.5M",
-      "pct_owned": 68.50,
-      "pct_owned_change_qoq": 1.80
-    },
-    "major_holders": [
-      {
-        "name": "The Vanguard Group, Inc.",
-        "shares_held": "2.98B",
-        "pct_owned": 12.33,
-        "change_shares": "+1.2%",
-        "change_pct": 0.21,
-        "holder_type": "Mutual Fund / Index",
-        "filing_date": "2026-06-30",
-        "disclosure": "13F"
-      }
-    ],
-    "shareholder_activity": [
-      {
-        "holder_name": "Citadel Advisors LLC",
-        "change_type": "increase",
-        "change_shares": "+3.10M",
-        "change_amount_usd": "+$645M",
-        "total_pct_held": 1.12,
-        "holder_type": "Hedge Fund",
-        "date": "2026-06-30"
-      },
-      {
-        "holder_name": "Coatue Management, LLC",
-        "change_type": "decrease",
-        "change_shares": "-2.80M",
-        "change_amount_usd": "-$582M",
-        "total_pct_held": 0.85,
-        "holder_type": "Hedge Fund",
-        "date": "2026-06-30"
-      }
-    ],
-    "insiders_overview": {
-      "insider_ownership_pct": 7.42,
-      "bullish_insiders_count": 4,
-      "bearish_insiders_count": 6,
-      "key_insiders": [
-        {
-          "name": "...",
-          "title": "...",
-          "shares_held": "10M",
-          "pct_owned": 1.5
-        }
-      ]
-    },
-    "recent_transactions": [
-      {
-        "date": "2026-08-15",
-        "insider_name": "...",
-        "title": "Executive",
-        "transaction_type": "sell (Rule 10b5-1)",
-        "shares_count": 50000,
-        "price_per_share": 180.0,
-        "total_value_usd": 9000000
-      }
-    ],
-    "commentary": "..."
+    "as_of_date": "...",
+    "institution_overview": null,
+    "major_holders": [],
+    "shareholder_activity": [],
+    "insiders_overview": null,
+    "recent_transactions": [],
+    "commentary": "Omit unavailable figures; never populate this section from examples or estimates."
   },
   "corporate_actions": {
     "as_of_date": "2026-09-01",
@@ -2371,7 +2143,7 @@ CRITICAL CHECKS:
 - Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
 - Earnings Analysis 4-Quarter Check: Verify that "past_earnings_history" contains ALL 4 completed quarters matching "financial_statements.periods" in chronological order. It is STRICTLY FORBIDDEN to output only 1 quarter. If the primary analyst provided only 1 quarter, you MUST reconstruct and include all 4 completed quarters with accurate consensus estimates, actuals, surprise %, and stock reaction.
 - Insider Ownership: Must be a numeric percentage.
-- Morningstar Equity Research Check: If ${ticker} is a covered large/mid-cap company (e.g. AAPL, NVDA, TSLA, PLTR, MSFT, SOFI, GOOGL, AMZN, META), ensure "morningstar_research" includes authentic Morningstar coverage: has_coverage = true, rating_stars (1-5), fair_value_estimate, economic_moat (Wide/Narrow/None), uncertainty, capital_allocation, bulls_say (3 points), bears_say (3 points), analyst_note, and valuation_thesis. If ${ticker} is an uncovered micro/small-cap (e.g. EOSE), set has_coverage = false.
+- Morningstar Equity Research Check: include Morningstar fields only when an accessible dated Morningstar source verifies the exact ticker, analyst, rating, fair value, and research text. Company size or ticker identity is never evidence of coverage. If any coverage claim cannot be verified, set has_coverage = false and leave rating, analyst, fair value, moat, uncertainty, allocation, and thesis fields absent.
 
 Primary Analyst Output:
 ${fullText}

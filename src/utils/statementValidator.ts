@@ -124,9 +124,9 @@ export function validateFinancialStatements(
     const eq = bs.total_equity?.[i] ?? null;
     const cs = bs.common_stock?.[i] ?? bs.capital_stock?.[i] ?? null;
     const re = bs.retained_earnings?.[i] ?? null;
-    const aoci = bs.aoci?.[i] ?? 0;
+    const aoci = bs.aoci?.[i] ?? null;
 
-    if (eq !== null && cs !== null && re !== null && eq > 0) {
+    if (eq !== null && cs !== null && re !== null && aoci !== null && eq > 0) {
       const calculatedEq = cs + re + aoci;
       const eqDiff = Math.abs(eq - calculatedEq);
       const eqDiffPct = (eqDiff / eq) * 100;
@@ -182,8 +182,8 @@ export function validateFinancialStatements(
   // -------------------------------------------------------------
   for (let i = 0; i < periodCount; i++) {
     const td = bs.total_debt?.[i];
-    const std = bs.short_term_debt?.[i] || 0;
-    if (td !== null && td !== undefined && td > 0 && std > 0) {
+    const std = bs.short_term_debt?.[i] ?? null;
+    if (td !== null && td !== undefined && td > 0 && std !== null && std > 0) {
       if (td < std) {
         failedGuards.push(`TOTAL_DEBT_UNDERSTATED: ${periods[i]} หนี้สินรวม ($${td}M) ต่ำกว่าหนี้สินระยะสั้น ($${std}M)`);
       }

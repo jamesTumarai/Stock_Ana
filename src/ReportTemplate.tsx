@@ -973,24 +973,26 @@ export default function ReportTemplate({
           })) : [];
           const hasRawPerf = Array.isArray(rawPerf) && rawPerf.length > 0;
           
-          let effectivePerf: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[] = hasStatementPerformance ? statementPerf : (hasRawPerf ? rawPerf : []).map((item, idx) => {
-            let r = typeof item.revenue === 'string' ? (parseFloat(String(item.revenue).replace(/[^0-9.-]/g, '')) || 0) : Number(item.revenue ?? 0);
-            let n = typeof item.net_income === 'string' ? (parseFloat(String(item.net_income).replace(/[^0-9.-]/g, '')) || 0) : Number(item.net_income ?? 0);
+          let effectivePerf: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[] = hasStatementPerformance ? statementPerf : (hasRawPerf ? rawPerf : []).map((item) => {
+            let r = typeof item.revenue === 'string' ? parseFloat(String(item.revenue).replace(/[^0-9.-]/g, '')) : item.revenue;
+            let n = typeof item.net_income === 'string' ? parseFloat(String(item.net_income).replace(/[^0-9.-]/g, '')) : item.net_income;
+            if (!Number.isFinite(r)) r = undefined;
+            if (!Number.isFinite(n)) n = undefined;
 
             // Institutional conversion: Scale from Millions ($M) to Billions ($B)
             // No company on Earth has quarterly net income >= $45B. If |n| >= 45, it is in Millions.
-            if (Math.abs(n) >= 45) n = Number((n / 1000).toFixed(3));
-            if (Math.abs(r) >= 100_000_000) r = Number((r / 1_000_000_000).toFixed(3));
-            else if (Math.abs(r) >= 1_000) r = Number((r / 1000).toFixed(3));
-            if (r > 0 && Math.abs(n) > r * 1.5 && Math.abs(n) > 5) {
+            if (typeof n === 'number' && Math.abs(n) >= 45) n = Number((n / 1000).toFixed(3));
+            if (typeof r === 'number' && Math.abs(r) >= 100_000_000) r = Number((r / 1_000_000_000).toFixed(3));
+            else if (typeof r === 'number' && Math.abs(r) >= 1_000) r = Number((r / 1000).toFixed(3));
+            if (typeof r === 'number' && typeof n === 'number' && r > 0 && Math.abs(n) > r * 1.5 && Math.abs(n) > 5) {
               n = Number((n / 1000).toFixed(3));
             }
 
             return {
               ...item,
-              quarter: item.quarter || `Q${idx + 1}`,
-              revenue: Number(r.toFixed(2)),
-              net_income: Number(n.toFixed(2)),
+              quarter: item.quarter || (isThai ? 'ไม่มีข้อมูล' : 'Data unavailable'),
+              revenue: typeof r === 'number' ? Number(r.toFixed(2)) : undefined,
+              net_income: typeof n === 'number' ? Number(n.toFixed(2)) : undefined,
               distributions: isEtf ? item.distributions : undefined
             };
           });
@@ -998,15 +1000,7 @@ export default function ReportTemplate({
           const showDistributionsOnly = isEtf && effectivePerf.some(p => p.distributions !== undefined && p.distributions > 0);
           const rawHistory = data.financial_charts?.stock_price_history;
           const hasRawHistory = Array.isArray(rawHistory) && rawHistory.length > 0;
-          const curP = data.company_profile?.stock_price || data.intrinsic_value?.current_price || (ticker === 'NVDA' ? 225.0 : 100);
-          const effectiveHistory = hasRawHistory ? rawHistory : [
-            { date: "Wk 1", price: Number((curP * 0.88).toFixed(2)) },
-            { date: "Wk 3", price: Number((curP * 0.91).toFixed(2)) },
-            { date: "Wk 5", price: Number((curP * 0.94).toFixed(2)) },
-            { date: "Wk 7", price: Number((curP * 0.96).toFixed(2)) },
-            { date: "Wk 9", price: Number((curP * 0.98).toFixed(2)) },
-            { date: "Latest", price: Number(curP.toFixed(2)) }
-          ];
+          const effectiveHistory = hasRawHistory ? rawHistory : [];
 
           return (
             <div id="section-financials" className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 scroll-mt-14">

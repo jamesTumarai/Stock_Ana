@@ -60,6 +60,29 @@ export function getFinancialAiInsight(
   }
   const valStr = formattedVal;
 
+  if (numVal === null) {
+    const title = rowTitle || key.replace(/_/g, ' ').toUpperCase();
+    return {
+      key,
+      name: title,
+      name_th: `รายการ ${title}`,
+      category: 'operating',
+      status: 'neutral',
+      status_label_th: 'ไม่มีข้อมูล',
+      status_label_en: 'Data unavailable',
+      what_is_it_th: 'ไม่มีข้อมูลเพียงพอสำหรับอธิบายตัวชี้วัดนี้',
+      what_is_it_en: 'Data unavailable for this metric.',
+      interpretation_th: 'ไม่มีข้อมูล จึงไม่สร้างค่าหรือข้อสรุปทดแทน',
+      interpretation_en: 'Data unavailable; no substitute value or conclusion was generated.',
+      pros_th: [],
+      pros_en: [],
+      benchmark_th: 'ไม่มีข้อมูล',
+      benchmark_en: 'Data unavailable',
+      watchouts_th: 'รอข้อมูลงบการเงินจากแหล่งอ้างอิงก่อนประเมิน',
+      watchouts_en: 'Wait for sourced financial-statement data before evaluating this metric.',
+    };
+  }
+
   // 2. Compute historical trend dynamics
   const validHistory = historyValues.filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
   const validYoYs = yoyPcts.filter((v): v is number => v !== null && v !== undefined && !isNaN(v));

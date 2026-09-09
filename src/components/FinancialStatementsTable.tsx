@@ -150,8 +150,8 @@ export function FinancialStatementsTable({
   const ebitdaMarginVals = rawPeriods.map((_, i) => {
     const rev = income?.revenue?.[i];
     const op = income?.operating_income?.[i];
-    const dep = cashflow?.depreciation?.[i] || 0;
-    if (rev && op !== undefined && op !== null && rev > 0) return Number((((op + dep) / rev) * 100).toFixed(2));
+    const dep = cashflow?.depreciation?.[i];
+    if (rev && op !== undefined && op !== null && dep !== undefined && dep !== null && rev > 0) return Number((((op + dep) / rev) * 100).toFixed(2));
     return opMarginVals[i];
   });
 
@@ -178,10 +178,10 @@ export function FinancialStatementsTable({
   const quickRatioVals = rawPeriods.map((_, i) => {
     const ca = balance?.total_current_assets?.[i];
     const cl = balance?.total_current_liabilities?.[i];
-    const inv = balance?.inventory?.[i] || 0;
-    if (ca && cl && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
+    const inv = balance?.inventory?.[i];
+    if (ca && cl && inv !== undefined && inv !== null && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
     if (balance?.quick_ratio?.[i] !== undefined && balance?.quick_ratio?.[i] !== null) return balance.quick_ratio[i];
-    return currentRatioVals[i];
+    return null;
   });
 
   const debtToEquityVals = rawPeriods.map((_, i) => {
@@ -224,11 +224,12 @@ export function FinancialStatementsTable({
   const roicVals = rawPeriods.map((_, i) => {
     const op = income?.operating_income?.[i];
     const taxRate = taxRateVals[i];
-    const debt = balance?.total_debt?.[i] || 0;
-    const eq = balance?.total_equity?.[i] || 1;
-    const cash = balance?.cash_and_equivalents?.[i] || 0;
-    const investedCap = Math.max(1, debt + eq - cash);
-    if (op !== undefined && op !== null && investedCap > 0 && taxRate !== null && taxRate !== undefined) {
+    const debt = balance?.total_debt?.[i];
+    const eq = balance?.total_equity?.[i];
+    const cash = balance?.cash_and_equivalents?.[i];
+    if (op !== undefined && op !== null && debt !== undefined && debt !== null && eq !== undefined && eq !== null && cash !== undefined && cash !== null && taxRate !== null && taxRate !== undefined) {
+      const investedCap = debt + eq - cash;
+      if (investedCap <= 0) return null;
       const nopat = (op * 4) * (1 - taxRate / 100);
       return Number(((nopat / investedCap) * 100).toFixed(2));
     }
@@ -367,8 +368,8 @@ export function FinancialStatementsTable({
     total_assets: balance?.total_assets || [],
     current_assets: balance?.total_current_assets || [],
     cash_and_investments: (balance?.cash_and_equivalents || []).map((c, i) => {
-      const sti = balance?.short_term_investments?.[i] || 0;
-      return c !== null && c !== undefined ? c + sti : null;
+      const sti = balance?.short_term_investments?.[i];
+      return c !== null && c !== undefined && sti !== null && sti !== undefined ? c + sti : null;
     }),
     cash: balance?.cash_and_equivalents || [],
     short_term_investments: balance?.short_term_investments || [],
@@ -404,8 +405,8 @@ export function FinancialStatementsTable({
       return null;
     }),
     long_term_debt: (balance?.total_debt || []).map((td, i) => {
-      const std = balance?.short_term_debt?.[i] || 0;
-      if (td !== null && td !== undefined) return Math.max(0, td - std);
+      const std = balance?.short_term_debt?.[i];
+      if (td !== null && td !== undefined && std !== null && std !== undefined) return Math.max(0, td - std);
       return null;
     }),
     total_equity: balance?.total_equity || [],

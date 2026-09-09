@@ -8,7 +8,6 @@ import {
 import { IntrinsicValueData, ForecastDashboardData } from '../types';
 
 import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
-import { MACRO_TERMINAL_GROWTH_DEFAULT_PCT } from '../utils/valuation/constants';
 
 
 interface Props {
@@ -60,7 +59,7 @@ export function IntrinsicValueEngine({
   const multiplier = currencyMode === 'THB' ? currencyRate : 1;
 
   const formatPrice = (val: number | null | undefined): string => {
-    if (val === null || val === undefined) return '-';
+    if (val === null || val === undefined || !Number.isFinite(val)) return isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
     return `${currSym}${(val * multiplier).toFixed(2)}`;
   };
 
@@ -77,14 +76,14 @@ export function IntrinsicValueEngine({
   
   // Single Source of Truth: Region-aware CAPM WACC derived from stock Beta
   const effectiveWacc = coc?.wacc_pct ?? dcf.assumptions.wacc_pct;
-  const effectiveGrowth = dcf.assumptions.terminal_growth_pct ?? MACRO_TERMINAL_GROWTH_DEFAULT_PCT;
+  const effectiveGrowth = dcf.assumptions.terminal_growth_pct;
   const [simWacc, setSimWacc] = useState(effectiveWacc);
   const [simGrowth, setSimGrowth] = useState(effectiveGrowth);
   const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct);
 
   React.useEffect(() => {
     setSimWacc(coc?.wacc_pct ?? dcf.assumptions.wacc_pct);
-    setSimGrowth(dcf.assumptions.terminal_growth_pct ?? MACRO_TERMINAL_GROWTH_DEFAULT_PCT);
+    setSimGrowth(dcf.assumptions.terminal_growth_pct);
     setSimCagr(base.revenue_cagr_pct);
   }, [coc?.wacc_pct, dcf.assumptions.wacc_pct, dcf.assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
 
@@ -108,11 +107,11 @@ export function IntrinsicValueEngine({
       || (data.selected_model?.model_type === 'ddm')
       || (data.selected_model?.model_type === 'reit_affo')
       || (data.selected_model?.model_type === 'dcf_cyclical')
-      || (base.fair_value_per_share > 0 && dcf.assumptions.wacc_pct > 14 && (base.revenue_cagr_pct || 0) > 40);
+      || (base.fair_value_per_share > 0 && dcf.assumptions.wacc_pct > 14 && base.revenue_cagr_pct > 40);
 
     if (isSpecializedModel) {
-      const baseCagr = Math.max(1, base.revenue_cagr_pct || 25);
-      const baseWacc = Math.max(1, effectiveWacc || 12.0);
+      const baseCagr = base.revenue_cagr_pct;
+      const baseWacc = effectiveWacc;
       // Revenue CAGR sensitivity (2-year growth compound)
       const cagrFactor = Math.pow((1 + (simCagr / 100)) / (1 + (baseCagr / 100)), 2);
       // WACC discount sensitivity
@@ -134,18 +133,10 @@ export function IntrinsicValueEngine({
       simGrowth,
       simCagr,
       margin,
-      dcf.assumptions.projection_years || 5
+      dcf.assumptions.projection_years
     );
 
-    // Sanity check: Only if DCF produces an invalid number (non-finite or collapsed to zero/negative)
-    // NEVER collapse high-growth simulations artificially with an arbitrary 8x cap!
-    if (!Number.isFinite(dcfVal) || dcfVal <= 0.01) {
-      const baseCagr = Math.max(1, base.revenue_cagr_pct || 25);
-      const scaleFactor = (1 + (simCagr / 100)) / (1 + (baseCagr / 100));
-      return Number((base.fair_value_per_share * scaleFactor).toFixed(2));
-    }
-
-    return dcfVal;
+    return Number.isFinite(dcfVal) && dcfVal > 0 ? dcfVal : Number.NaN;
   }, [simWacc, simGrowth, simCagr, base, dcf, startingRevM, sharesM, netCashM, modelSelector, data.selected_model, effectiveWacc, effectiveGrowth, currentPrice]);
 
   // When simulator is open, synchronize Base price, Upside, and Margin of Safety dynamically!
@@ -157,6 +148,13 @@ export function IntrinsicValueEngine({
   const simMultiplier = base.fair_value_per_share > 0 ? (effectiveBasePrice / base.fair_value_per_share) : 1;
   const effectiveBearPrice = showSimulator ? Number((bear.fair_value_per_share * simMultiplier).toFixed(2)) : bear.fair_value_per_share;
   const effectiveBullPrice = showSimulator ? Number((bull.fair_value_per_share * simMultiplier).toFixed(2)) : bull.fair_value_per_share;
+  const scenarioCagr = (value: number | null | undefined): number | null => {
+    if (!showSimulator) return typeof value === 'number' ? value : null;
+    if (typeof value !== 'number' || typeof base.revenue_cagr_pct !== 'number' || base.revenue_cagr_pct === 0) return null;
+    return Number((simCagr * (value / base.revenue_cagr_pct)).toFixed(0));
+  };
+  const bearCagr = scenarioCagr(bear.revenue_cagr_pct);
+  const bullCagr = scenarioCagr(bull.revenue_cagr_pct);
 
   // Upside/Downside calculations for 3 Scenario Cards
   const bearUpside = ((effectiveBearPrice - currentPrice) / currentPrice) * 100;
@@ -188,7 +186,7 @@ export function IntrinsicValueEngine({
   const getPos = (val: number) => `${Math.max(2, Math.min(98, ((val - rangeMin) / totalSpan) * 100))}%`;
 
   const minCagrLimit = 0.0;
-  const maxCagrLimit = Math.max(200.0, Math.ceil(Math.max(bull.revenue_cagr_pct || 0, (base.revenue_cagr_pct || 22) * 2, 120) / 10) * 10);
+  const maxCagrLimit = Math.max(200.0, Math.ceil(Math.max(bull.revenue_cagr_pct, base.revenue_cagr_pct * 2, 120) / 10) * 10);
   const minWaccLimit = 3.0;
   const maxWaccLimit = Math.max(25.0, Number((effectiveWacc + 8.0).toFixed(1)));
   const minGrowthLimit = 0.5;
@@ -367,7 +365,7 @@ export function IntrinsicValueEngine({
                 {formatPrice(effectiveBearPrice)}
               </div>
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
-                <span>CAGR: {showSimulator ? Number((simCagr * (bear.revenue_cagr_pct / Math.max(1, base.revenue_cagr_pct || 1))).toFixed(0)) : bear.revenue_cagr_pct}%</span>
+                <span>CAGR: {bearCagr === null ? (isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable') : `${bearCagr}%`}</span>
                 <span>•</span>
                 <span>{isThai ? 'FCF Margin' : 'FCF Margin'}: {bear.terminal_margin_pct}%</span>
               </div>
@@ -431,7 +429,7 @@ export function IntrinsicValueEngine({
                 {formatPrice(effectiveBullPrice)}
               </div>
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
-                <span>CAGR: {showSimulator ? Number((simCagr * (bull.revenue_cagr_pct / Math.max(1, base.revenue_cagr_pct || 1))).toFixed(0)) : bull.revenue_cagr_pct}%</span>
+                <span>CAGR: {bullCagr === null ? (isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable') : `${bullCagr}%`}</span>
                 <span>•</span>
                 <span>{isThai ? 'FCF Margin' : 'FCF Margin'}: {bull.terminal_margin_pct}%</span>
               </div>
@@ -637,7 +635,7 @@ export function IntrinsicValueEngine({
                 <span className="text-xs font-bold text-stone-800">{effectiveGrowth.toFixed(1)}%</span>
               </div>
               <div className="bg-stone-50 p-2 rounded-xl border border-stone-100">
-                <span className="text-[10px] text-stone-400 uppercase font-bold block">{dcf.assumptions.projection_years || 5}-Yr Projection</span>
+                <span className="text-[10px] text-stone-400 uppercase font-bold block">{dcf.assumptions.projection_years}-Yr Projection</span>
                 <span className="text-xs font-bold text-stone-800">{base.revenue_cagr_pct}% CAGR</span>
               </div>
             </div>
@@ -663,7 +661,7 @@ export function IntrinsicValueEngine({
                 onClick={() => {
                   setSimWacc(effectiveWacc);
                   setSimGrowth(effectiveGrowth);
-                  setSimCagr(base.revenue_cagr_pct || 22);
+                  setSimCagr(base.revenue_cagr_pct);
                 }}
                 className="text-xs text-stone-500 hover:text-stone-800 underline cursor-pointer"
               >
@@ -674,7 +672,7 @@ export function IntrinsicValueEngine({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
-                  <span>{isThai ? `Revenue CAGR (${dcf.assumptions.projection_years || 5} ปี)` : `${dcf.assumptions.projection_years || 5}-Yr Revenue CAGR`}</span>
+                  <span>{isThai ? `Revenue CAGR (${dcf.assumptions.projection_years} ปี)` : `${dcf.assumptions.projection_years}-Yr Revenue CAGR`}</span>
                   <div className="flex items-center gap-1.5 font-mono text-[#0b5a4b] font-bold text-sm">
                     <button
                       type="button"
@@ -719,7 +717,7 @@ export function IntrinsicValueEngine({
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
                   <span>{minCagrLimit.toFixed(1)}%</span>
-                  <span>{(base.revenue_cagr_pct || 22).toFixed(1)}% (Base)</span>
+                  <span>{base.revenue_cagr_pct.toFixed(1)}% (Base)</span>
                   <span>{Math.max(maxCagrLimit, simCagr).toFixed(1)}%</span>
                 </div>
               </div>
@@ -820,7 +818,7 @@ export function IntrinsicValueEngine({
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
                   <span>{minGrowthLimit.toFixed(1)}%</span>
-                  <span>{(dcf.assumptions.terminal_growth_pct || MACRO_TERMINAL_GROWTH_DEFAULT_PCT).toFixed(1)}% (Base)</span>
+                  <span>{dcf.assumptions.terminal_growth_pct.toFixed(1)}% (Base)</span>
                   <span>{maxGrowthLimit.toFixed(1)}%</span>
                 </div>
               </div>

@@ -14,16 +14,15 @@ export function validateValuationAssumptions(data?: IntrinsicValueData): Valuati
   const selectedModel = data.selected_model?.model_type;
 
   // 1. Terminal Growth vs WACC / Ke Check
-  const waccOrKe = selectedModel === 'ddm' ? (ddm?.assumptions.cost_of_equity_pct || 9.5) : (dcf?.assumptions.wacc_pct || 9.5);
-  const termGrowth = selectedModel === 'ddm' ? (ddm?.assumptions.terminal_growth_pct || 3.0) : (dcf?.assumptions.terminal_growth_pct || 3.0);
-  const rawTermGrowth = (data as any)?.intrinsic_value?.dcf_model?.assumptions?.terminal_growth_pct ?? termGrowth;
+  const waccOrKe = selectedModel === 'ddm' ? ddm?.assumptions.cost_of_equity_pct : dcf?.assumptions.wacc_pct;
+  const termGrowth = selectedModel === 'ddm' ? ddm?.assumptions.terminal_growth_pct : dcf?.assumptions.terminal_growth_pct;
 
-  if (termGrowth >= waccOrKe || rawTermGrowth >= waccOrKe) {
+  if (typeof termGrowth === 'number' && typeof waccOrKe === 'number' && termGrowth >= waccOrKe) {
     alerts.push({
       type: 'error',
       code: 'TERMINAL_GROWTH_EXCEEDS_DISCOUNT_RATE',
-      message_th: `อัตราเติบโตยั่งยืน (${rawTermGrowth}%) ต้องต่ำกว่าต้นทุนเงินทุน (${waccOrKe}%)`,
-      message_en: `Terminal Growth Rate (${rawTermGrowth}%) cannot exceed Discount Rate (${waccOrKe}%)`,
+      message_th: `อัตราเติบโตยั่งยืน (${termGrowth}%) ต้องต่ำกว่าต้นทุนเงินทุน (${waccOrKe}%)`,
+      message_en: `Terminal Growth Rate (${termGrowth}%) cannot exceed Discount Rate (${waccOrKe}%)`,
       detail: 'ในทางคณิตศาสตร์การเงิน Terminal Growth ที่สูงกว่าหรือเท่ากับ Discount Rate จะทำให้มูลค่ากิจการพุ่งเป็นอนันต์'
     });
   }
@@ -55,8 +54,8 @@ export function validateValuationAssumptions(data?: IntrinsicValueData): Valuati
   }
 
   // 4. Fair Value vs Market Price Deviation > 40%
-  const baseFairVal = data.summary?.base_case_fair_value || currentPrice;
-  if (currentPrice > 0) {
+  const baseFairVal = data.summary?.base_case_fair_value;
+  if (typeof baseFairVal === 'number' && currentPrice > 0) {
     const deviationPct = Math.abs((baseFairVal - currentPrice) / currentPrice) * 100;
     if (deviationPct > 40) {
       alerts.push({

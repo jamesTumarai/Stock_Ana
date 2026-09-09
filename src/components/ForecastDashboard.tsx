@@ -24,9 +24,26 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'institutions' | 'analysts'>('institutions');
   const [showInfoTooltip, setShowInfoTooltip] = useState<boolean>(false);
 
-  if (!data) return null;
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
+  if (!data) {
+    return <div className="bg-white rounded-2xl p-6 border border-stone-200 text-stone-500 text-center italic">{unavailable}</div>;
+  }
 
   const { ratings_breakdown, price_target, target_price_chart_data } = data;
+  const institutions = data.institutions ?? [];
+  const analysts = data.analysts ?? [];
+  const hasCoreConsensus = Boolean(
+    ratings_breakdown
+    && price_target
+    && typeof data.total_analysts === 'number'
+    && data.total_analysts > 0
+    && [ratings_breakdown.buy_pct, ratings_breakdown.hold_pct, ratings_breakdown.sell_pct,
+      price_target.high, price_target.mean, price_target.low].every(value => typeof value === 'number' && Number.isFinite(value))
+  );
+
+  if (!hasCoreConsensus) {
+    return <div className="bg-white rounded-2xl p-6 border border-stone-200 text-stone-500 text-center italic">{unavailable}</div>;
+  }
 
   // Rating color badge helper matching Lumina report style
   const getRatingBadge = (rating: string) => {
@@ -180,7 +197,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
 
   // Find Current price point in chart data for ReferenceDot
   const currentPoint = target_price_chart_data?.find(p => p.date === 'Current');
-  const curPrice = price_target.current_price || currentPoint?.price || 18.22;
+  const curPrice = price_target.current_price ?? currentPoint?.price;
 
   // Rating badge color for Center Circle
   const consensusLower = (data.consensus_rating || '').toLowerCase();
@@ -312,7 +329,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                 } ${
                   (data.consensus_rating || '').length > 8 ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'
                 }`}>
-                  {data.consensus_rating || 'Buy'}
+                  {data.consensus_rating || unavailable}
                 </span>
                 {isThai && (
                   <span className="text-[11px] font-sans font-semibold text-stone-500 mt-0.5">
@@ -417,6 +434,9 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
 
           {/* Chart Canvas with Side Badges */}
           <div className="relative h-60 w-full flex items-center">
+            {(!target_price_chart_data || target_price_chart_data.length === 0) && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center text-sm text-stone-400 bg-stone-50/80">{unavailable}</div>
+            )}
             <div className="flex-1 h-full">
               <ResponsiveContainer width="100%" height={240} minHeight={240}>
                 <ComposedChart data={target_price_chart_data} margin={{ top: 25, right: 10, left: -20, bottom: 5 }}>
@@ -488,7 +508,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                   {currentPoint && (
                     <ReferenceDot 
                       x={currentPoint.date} 
-                      y={currentPoint.price || curPrice} 
+                      y={currentPoint.price}
                       r={4} 
                       fill="#2563eb" 
                       stroke="#ffffff" 
@@ -518,7 +538,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
             <span>Past 12 Months</span>
             <div className="flex items-center gap-1.5 font-mono text-xs text-blue-700 font-bold">
               <span>Current:</span>
-              <span>${curPrice.toFixed(2)}</span>
+              <span>{typeof curPrice === 'number' ? `$${curPrice.toFixed(2)}` : unavailable}</span>
             </div>
             <span>12 Months Forecast</span>
           </div>
@@ -573,7 +593,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-xs sm:text-sm font-sans">
-                {data.institutions.map((item, idx) => (
+                {institutions.length > 0 ? institutions.map((item, idx) => (
                   <tr key={idx} className="hover:bg-stone-50/60 transition-colors">
                     <td className="py-3 px-3 flex items-center gap-3 font-bold text-stone-900">
                       {renderInstitutionAvatar(item.name)}
@@ -592,7 +612,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                       {item.date}
                     </td>
                   </tr>
-                ))}
+                )) : <tr><td colSpan={5} className="py-6 text-center text-stone-400">{unavailable}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -613,7 +633,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-xs sm:text-sm font-sans">
-                {data.analysts.map((item, idx) => (
+                {analysts.length > 0 ? analysts.map((item, idx) => (
                   <tr key={idx} className="hover:bg-stone-50/60 transition-colors">
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-3">
@@ -621,9 +641,11 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                         <div>
                           <div className="font-bold text-stone-900 text-xs sm:text-sm">{item.name}</div>
                           <div className="flex items-center gap-0.5 mt-0.5">
-                            {Array.from({ length: item.star_rating || 5 }).map((_, sIdx) => (
-                              <Star key={sIdx} className="w-3 h-3 text-amber-500 fill-amber-500" />
-                            ))}
+                            {typeof item.star_rating === 'number' && item.star_rating > 0
+                              ? Array.from({ length: Math.min(5, item.star_rating) }).map((_, sIdx) => (
+                                <Star key={sIdx} className="w-3 h-3 text-amber-500 fill-amber-500" />
+                              ))
+                              : <span className="text-[10px] text-stone-400">{unavailable}</span>}
                           </div>
                         </div>
                       </div>
@@ -650,7 +672,7 @@ export const ForecastDashboard: React.FC<ForecastDashboardProps> = ({
                       </button>
                     </td>
                   </tr>
-                ))}
+                )) : <tr><td colSpan={6} className="py-6 text-center text-stone-400">{unavailable}</td></tr>}
               </tbody>
             </table>
           </div>

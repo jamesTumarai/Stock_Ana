@@ -62,13 +62,8 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
   const ratioUnit = 'x';
 
   // Slices for Market Distribution Donut
-  const marketDist = currentDetail.market_distribution || [
-    { range_label: '0~10', count: 2075, ratio_pct: 13.63 },
-    { range_label: '10~30', count: 4603, ratio_pct: 30.23 },
-    { range_label: '30~50', count: 1038, ratio_pct: 6.82 },
-    { range_label: 'Over 50', count: 986, ratio_pct: 6.47 },
-    { range_label: 'Loss-Making (ขาดทุน)', count: 6526, ratio_pct: 42.86 }
-  ];
+  const marketDist = currentDetail.market_distribution || [];
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
 
   const currentDistSlice = (activeDistIndex !== null && marketDist[activeDistIndex]) ? marketDist[activeDistIndex] : marketDist[0];
 
@@ -282,10 +277,10 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                 </span>
                 <div className="flex items-center gap-3 mt-1 text-xs font-mono">
                   <span className="text-stone-700">
-                    Net Income (5Y): <strong className="text-blue-600">{earningsGrowth?.net_income_5y_growth || '+1.36x'}</strong>
+                    Net Income (5Y): <strong className="text-blue-600">{earningsGrowth?.net_income_5y_growth || unavailable}</strong>
                   </span>
                   <span className="text-stone-700">
-                    Market Cap (5Y): <strong className="text-amber-700">{earningsGrowth?.market_cap_5y_growth || '+1.75x'}</strong>
+                    Market Cap (5Y): <strong className="text-amber-700">{earningsGrowth?.market_cap_5y_growth || unavailable}</strong>
                   </span>
                 </div>
               </div>
@@ -350,10 +345,10 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                 </span>
                 <div className="flex items-center gap-3 mt-1 text-xs font-mono">
                   <span className="text-stone-700">
-                    Revenue (5Y): <strong className="text-[#0b5a4b]">{revenueGrowth?.revenue_5y_growth || '+1.28x'}</strong>
+                    Revenue (5Y): <strong className="text-[#0b5a4b]">{revenueGrowth?.revenue_5y_growth || unavailable}</strong>
                   </span>
                   <span className="text-stone-700">
-                    Market Cap (5Y): <strong className="text-amber-700">{revenueGrowth?.market_cap_5y_growth || '+1.75x'}</strong>
+                    Market Cap (5Y): <strong className="text-amber-700">{revenueGrowth?.market_cap_5y_growth || unavailable}</strong>
                   </span>
                 </div>
               </div>
@@ -641,6 +636,7 @@ export const ValuationDashboard: React.FC<ValuationDashboardProps> = ({
                     {currentDistSlice.range_label} ({currentDistSlice.ratio_pct}%)
                   </span>
                 )}
+                {!currentDistSlice && <span className="text-[10px] text-stone-500 mt-0.5">{unavailable}</span>}
               </div>
             </div>
 

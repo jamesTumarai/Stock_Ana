@@ -123,7 +123,7 @@ export function PeerComparisonTable({
                     {peer.pe_forward !== null && peer.pe_forward !== undefined ? `${peer.pe_forward}x` : 'N/A'}
                   </td>
                   <td className={`py-3 px-3 text-right font-bold ${
-                    (peer.revenue_growth_yoy_pct || 0) > 20 ? 'text-[#0b5a4b]' : 'text-stone-800'
+                    typeof peer.revenue_growth_yoy_pct === 'number' && peer.revenue_growth_yoy_pct > 20 ? 'text-[#0b5a4b]' : 'text-stone-800'
                   }`}>
                     {peer.revenue_growth_yoy_pct !== null && peer.revenue_growth_yoy_pct !== undefined 
                       ? `${peer.revenue_growth_yoy_pct > 0 ? '+' : ''}${peer.revenue_growth_yoy_pct}%` 

@@ -58,6 +58,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
   };
 
   const result = calculateDeterministicConvictionScore(highQualityStock, 'NVDA');
+  assert.ok(result, 'Complete sourced inputs must produce a conviction score');
   assert.ok(result.conviction_score >= 75, `Expected high conviction >= 75, got ${result.conviction_score}`);
   assert.equal(result.conviction_breakdown.growth.maxScore, 30);
   assert.equal(result.conviction_breakdown.financial_health.maxScore, 30);
@@ -120,6 +121,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
   };
 
   const result = calculateDeterministicConvictionScore(distressedStock, 'WEAK');
+  assert.ok(result, 'Complete sourced inputs must produce a conviction score');
   assert.ok(result.conviction_score < 50, `Expected low conviction < 50, got ${result.conviction_score}`);
   console.log(`✅ Distressed Profile PASSED (Score: ${result.conviction_score}/100)`);
 }
@@ -153,6 +155,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
       fair_value_base: 245,
       margin_of_safety_pct: 2.1
     },
+    valuation_ratios: [{ name: 'PEG Ratio', value: 1.8 }],
     comprehensive_analysis: {
       business_strengths: '1. iOS Ecosystem\n2. Brand loyalty\n3. High Services margins',
       scoring: {
@@ -162,8 +165,10 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
   };
 
   const initial = calculateDeterministicConvictionScore(testStock, 'AAPL');
+  assert.ok(initial, 'Complete sourced inputs must produce a conviction score');
   for (let i = 0; i < 100; i++) {
     const run = calculateDeterministicConvictionScore(testStock, 'AAPL');
+    assert.ok(run, 'Complete sourced inputs must produce a conviction score');
     assert.equal(run.conviction_score, initial.conviction_score, `Run ${i} diverged from initial score!`);
     assert.equal(run.conviction_breakdown.growth.score, initial.conviction_breakdown.growth.score);
     assert.equal(run.conviction_breakdown.financial_health.score, initial.conviction_breakdown.financial_health.score);
@@ -215,6 +220,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
 
   const res1 = calculateDeterministicConvictionScore(run1, 'NVDA');
   const res2 = calculateDeterministicConvictionScore(run2, 'NVDA');
+  assert.ok(res1 && res2, 'Complete sourced inputs must produce conviction scores');
   const delta = Math.abs(res1.conviction_score - res2.conviction_score);
   
   console.log(`   Run 1 Score: ${res1.conviction_score}, Run 2 Score: ${res2.conviction_score}, Delta: ${delta}`);
@@ -222,7 +228,37 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
   console.log(`✅ Cross-Run Stability PASSED (Delta: ${delta} point, strictly within ±1 target)`);
 }
 
-// 5. Harmonizer Integration Test
+// 5. Missing financial inputs must not be replaced with synthetic pillar scores.
+{
+  console.log('➡️ Testing missing-data fail-closed behavior...');
+  const incomplete: any = {
+    ticker: 'MISS',
+    company_profile: { stock_price: 100, sector: 'Technology' },
+    financial_statements: {
+      income_statement: { yoy_revenue_growth_pct: [], net_margin_pct: [], net_income: [] },
+      balance_sheet: {},
+      cash_flow: {}
+    },
+    comprehensive_analysis: {
+      business_strengths: 'Pricing power',
+      scoring: {
+        growth_potential: { score: 10 },
+        revenue_quality: { score: 10 },
+        financial_strength: { score: 10 },
+        risk_level: { score: 2 }
+      }
+    }
+  };
+
+  assert.equal(
+    calculateDeterministicConvictionScore(incomplete, 'MISS'),
+    undefined,
+    'Missing financial inputs must make scoring unavailable instead of using qualitative defaults'
+  );
+  console.log('✅ Missing-data fail-closed behavior PASSED');
+}
+
+// 6. Harmonizer Integration Test
 {
   console.log('➡️ Testing metricsHarmonizer Integration...');
 
@@ -255,12 +291,10 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
 
   const harmonized = harmonizeReportData(rawData, 'TSLA');
   assert.ok(harmonized.verdict, 'verdict must exist');
-  assert.notEqual(harmonized.verdict.conviction_score, 50, 'conviction_score should be recalculated by deterministic engine');
-  assert.ok(harmonized.verdict.conviction_breakdown, 'conviction_breakdown must exist');
-  assert.ok(harmonized.verdict.conviction_breakdown.growth.score > 0);
-  assert.ok(harmonized.verdict.conviction_breakdown.financial_health.score > 0);
+  assert.equal(harmonized.verdict.conviction_score, 50, 'harmonizer must preserve the sourced score');
+  assert.equal(harmonized.verdict.conviction_breakdown, undefined, 'harmonizer must not synthesize a missing score breakdown');
 
-  console.log(`✅ metricsHarmonizer Integration PASSED (Calculated Score: ${harmonized.verdict.conviction_score}/100)`);
+  console.log(`✅ metricsHarmonizer Integration PASSED (Preserved Score: ${harmonized.verdict.conviction_score}/100)`);
 }
 
 console.log('🎉 ALL CONVICTION SCORER TESTS PASSED SUCCESSFULLY!');

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { buildRigorousDCFModel, calculateStrictDCFValue } from '../dcfMathEngine';
 import { buildUniversalValuationData } from '../valuationStore';
+import { calculateRelativeOnlyModel } from '../relativeEngine';
+import { calculateDDMModel } from '../ddmCalculator';
+import { calculateREITModel } from '../reitCalculator';
+import { calculateCyclicalModel } from '../cyclicalNormalizer';
+import { calculateRegionAwareCostOfCapital } from '../costOfCapital';
 
 console.log('Running valuation integrity checks...');
 
@@ -70,8 +75,42 @@ const disclosedReport: any = {
   assert.equal(dcfModel.scenarios.base.fair_value_per_share, 0);
 
   const unavailable = buildUniversalValuationData(missingShares, 'TEST');
-  assert.equal(unavailable.summary.base_case_fair_value, 0);
-  assert.equal(unavailable.validation_alerts?.[0].code, 'VALUATION_INPUTS_INCOMPLETE');
+  assert.equal(unavailable, undefined, 'Universal valuation must fail closed when shares are missing');
+}
+
+{
+  const missingStatements = structuredClone(disclosedReport);
+  delete missingStatements.financial_statements.income_statement.revenue;
+  assert.equal(buildUniversalValuationData(missingStatements, 'TEST'), undefined, 'Missing revenue must not produce a valuation');
+
+  const missingCash = structuredClone(disclosedReport);
+  delete missingCash.financial_statements.balance_sheet.cash_and_equivalents;
+  assert.equal(buildUniversalValuationData(missingCash, 'TEST'), undefined, 'Missing cash must not be treated as zero');
+
+  const missingDebt = structuredClone(disclosedReport);
+  delete missingDebt.financial_statements.balance_sheet.total_debt;
+  assert.equal(buildUniversalValuationData(missingDebt, 'TEST'), undefined, 'Missing debt must not be treated as zero');
+
+  const missingWacc = structuredClone(disclosedReport);
+  delete missingWacc.intrinsic_value.dcf_model.assumptions.wacc_pct;
+  assert.equal(buildUniversalValuationData(missingWacc, 'TEST'), undefined, 'Missing WACC must not use a benchmark fallback');
+}
+
+{
+  assert.equal(calculateRelativeOnlyModel({ ticker: 'TEST' }), undefined);
+  assert.equal(calculateDDMModel({ ticker: 'TEST' }), undefined);
+  assert.equal(calculateREITModel({ ticker: 'TEST' }), undefined);
+  assert.equal(calculateCyclicalModel({ ticker: 'TEST' }), undefined);
+  assert.equal(calculateRegionAwareCostOfCapital({ ticker: 'TEST' }), undefined);
+
+  const placeholderPeer = structuredClone(disclosedReport);
+  placeholderPeer.intrinsic_value.relative_only_model = {
+    primary_metric: 'EV/Revenue', peer_median_multiple: 2.8, applied_company_metric_value: 1,
+    implied_enterprise_value_b: 2.8, implied_equity_value_b: 3, fair_value_per_share: 30,
+    peers_evaluated: [{ ticker: 'PEER_1', name: 'Placeholder', market_cap_b: 5, growth_stage: 'Growth', ev_revenue_multiple: 2.8 }],
+    peer_selection_rationale: 'placeholder', stage_confidence_score: 'Low', pre_revenue_disclaimer: '',
+  };
+  assert.equal(calculateRelativeOnlyModel(placeholderPeer), undefined, 'Placeholder peers must be rejected');
 }
 
 {

@@ -8,7 +8,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ReferenceLine 
 } from 'recharts';
-import { SmartMoneyData, InsiderActivityData, CompanyProfileData, MajorHolderItem, ShareholderActivityItem, InsiderTransaction } from '../types';
+import { SmartMoneyData, InsiderActivityData, CompanyProfileData, MajorHolderItem } from '../types';
 
 interface SmartMoneyCardProps {
   data?: SmartMoneyData;
@@ -20,6 +20,18 @@ interface SmartMoneyCardProps {
 
 const HOLDER_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#475569', '#d97706', '#a8a29e'];
 const TYPE_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#64748b', '#d97706', '#78716c'];
+
+const parseSharesToMillions = (value?: number | string): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value > 100_000 ? value / 1_000_000 : value;
+  }
+  if (typeof value !== 'string') return null;
+  const parsed = Number.parseFloat(value.replace(/,/g, ''));
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  if (/\bB\b/i.test(value)) return parsed * 1_000;
+  if (/\bM\b/i.test(value)) return parsed;
+  return parsed > 100_000 ? parsed / 1_000_000 : parsed;
+};
 
 export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   data,
@@ -38,24 +50,12 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   const [activeHolderIndex, setActiveHolderIndex] = useState<number | null>(0);
   const [activeTypeIndex, setActiveTypeIndex] = useState<number | null>(0);
 
-  // 1. Calculate Real Shares Outstanding (M) for the target company
-  let totalSharesM = 24150; // Default fallback for NVDA (24.15B shares post-split)
-  const sym = ticker.toUpperCase();
-  if (sym === 'NVDA') totalSharesM = 24150;
-  else if (sym === 'TSLA') totalSharesM = 3210;
-  else if (sym === 'AAPL') totalSharesM = 15200;
-  else if (sym === 'MSFT') totalSharesM = 7430;
-  else if (sym === 'AMD') totalSharesM = 1630;
-  else if (sym === 'PLTR') totalSharesM = 2260;
-  else if (sym === 'RKLB') totalSharesM = 505;
-  else if (companyProfile?.shares_outstanding) {
-    totalSharesM = typeof companyProfile.shares_outstanding === 'number' 
-      ? companyProfile.shares_outstanding 
-      : 3000;
-  }
+  const totalSharesM = parseSharesToMillions(companyProfile?.shares_outstanding);
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
 
   // Helper to format share counts cleanly (e.g. 2.98B, 661.7M)
-  const calcHolderShares = (pct: number) => {
+  const calcHolderShares = (pct: number): string | null => {
+    if (totalSharesM === null || !Number.isFinite(pct)) return null;
     const sM = totalSharesM * (pct / 100);
     return sM >= 1000 ? `${(sM / 1000).toFixed(2)}B` : `${sM.toFixed(1)}M`;
   };
@@ -63,50 +63,29 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   // Single Source of Truth for Institutional Ownership %
   const instPct = typeof data?.institution_overview?.pct_owned === 'number'
     ? data.institution_overview.pct_owned
-    : (legacyInsiderData?.institutional_ownership_pct ?? (sym === 'NVDA' ? 68.50 : 56.73));
+    : (legacyInsiderData?.institutional_ownership_pct ?? null);
 
-  // Compute True Institutional Shares Held (Eliminates 1.28B scaling bug)
-  const instSharesM = totalSharesM * (instPct / 100);
-  const formattedTotalInstShares = instSharesM >= 1000 
-    ? `${(instSharesM / 1000).toFixed(2)}B` 
-    : `${instSharesM.toFixed(1)}M`;
-
-  // True 13F Institutional Filer Universe Count (5,605 for NVDA)
-  let verifiedInstCount = data?.institution_overview?.total_institutions_count;
-  if (!verifiedInstCount || (sym === 'NVDA' && verifiedInstCount < 4000)) {
-    if (sym === 'NVDA') verifiedInstCount = 5605;
-    else if (sym === 'AAPL') verifiedInstCount = 5850;
-    else if (sym === 'MSFT') verifiedInstCount = 5720;
-    else if (sym === 'TSLA') verifiedInstCount = 3450;
-    else verifiedInstCount = 3200;
-  }
+  // Derive total institutional shares only when both disclosed inputs are present.
+  const formattedTotalInstShares = data?.institution_overview?.total_shares_held
+    ?? (instPct !== null ? calcHolderShares(instPct) : null);
 
   const instOverview = {
     pct_owned: instPct,
-    pct_owned_change_qoq: data?.institution_overview?.pct_owned_change_qoq ?? legacyInsiderData?.institutional_qoq_change_pct ?? 1.80,
-    total_institutions_count: verifiedInstCount,
-    institutions_count_change_qoq: data?.institution_overview?.institutions_count_change_qoq ?? 48,
+    pct_owned_change_qoq: data?.institution_overview?.pct_owned_change_qoq ?? legacyInsiderData?.institutional_qoq_change_pct ?? null,
+    total_institutions_count: data?.institution_overview?.total_institutions_count ?? null,
+    institutions_count_change_qoq: data?.institution_overview?.institutions_count_change_qoq ?? null,
     total_shares_held: formattedTotalInstShares,
-    shares_held_change_qoq: data?.institution_overview?.shares_held_change_qoq ?? (totalSharesM > 10000 ? '+42.5M' : '+12.5M')
+    shares_held_change_qoq: data?.institution_overview?.shares_held_change_qoq ?? null
   };
 
-  const insiderPct = data?.insiders_overview?.insider_ownership_pct ?? legacyInsiderData?.insider_ownership_pct ?? 3.94;
-
-  const fallbackHolders: MajorHolderItem[] = [
-    { name: 'The Vanguard Group, Inc.', pct_owned: 12.33, shares_held: calcHolderShares(12.33), change_shares: '+1.2%', filing_date: '2026-06-30', disclosure: '13F', holder_type: 'Mutual Fund / Index' },
-    { name: 'BlackRock Fund Advisors', pct_owned: 9.59, shares_held: calcHolderShares(9.59), change_shares: '+2.5%', filing_date: '2026-06-30', disclosure: '13F', holder_type: 'Mutual Fund / ETF' },
-    { name: 'State Street Global Advisors', pct_owned: 5.48, shares_held: calcHolderShares(5.48), change_shares: '-0.4%', filing_date: '2026-06-30', disclosure: '13F', holder_type: 'Mutual Fund' },
-    { name: 'Geode Capital Management, LLC', pct_owned: 2.74, shares_held: calcHolderShares(2.74), change_shares: '+0.8%', filing_date: '2026-06-30', disclosure: '13F', holder_type: 'Mutual Fund / Index' },
-    { name: 'Morgan Stanley & Co. LLC', pct_owned: 2.05, shares_held: calcHolderShares(2.05), change_shares: '-1.1%', filing_date: '2026-06-30', disclosure: '13F', holder_type: 'Investment Bank' }
-  ];
-  
-  const rawMajorHolders = (data?.major_holders && data.major_holders.length > 0) ? data.major_holders : fallbackHolders;
+  const insiderPct = data?.insiders_overview?.insider_ownership_pct ?? legacyInsiderData?.insider_ownership_pct ?? null;
+  const rawMajorHolders = data?.major_holders ?? [];
   
   // Sanitize Major Holders to ensure shares_held is in shares, NEVER % strings!
   const majorHolders: MajorHolderItem[] = rawMajorHolders.map(h => {
     let cleanShares = h.shares_held;
-    if (typeof cleanShares === 'string' && (cleanShares.endsWith('%') || parseFloat(cleanShares) < 100)) {
-      cleanShares = calcHolderShares(h.pct_owned);
+    if (typeof cleanShares === 'string' && cleanShares.endsWith('%')) {
+      cleanShares = calcHolderShares(h.pct_owned) ?? unavailable;
     } else if (typeof cleanShares === 'number') {
       cleanShares = cleanShares >= 1_000_000_000 
         ? `${(cleanShares / 1_000_000_000).toFixed(2)}B` 
@@ -118,94 +97,18 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
     };
   });
 
-  const fallbackActivity: ShareholderActivityItem[] = [
-    {
-      holder_name: 'The Vanguard Group, Inc.',
-      change_type: 'increase',
-      change_shares: totalSharesM > 10000 ? '+18.5M' : '+2.4M',
-      change_amount_usd: '+$3.85B',
-      total_pct_held: 12.33,
-      holder_type: 'Mutual Fund / Index',
-      date: '2026-06-30'
-    },
-    {
-      holder_name: 'BlackRock Fund Advisors',
-      change_type: 'increase',
-      change_shares: totalSharesM > 10000 ? '+14.2M' : '+1.8M',
-      change_amount_usd: '+$2.95B',
-      total_pct_held: 9.59,
-      holder_type: 'Mutual Fund / ETF',
-      date: '2026-06-30'
-    },
-    {
-      holder_name: 'Fidelity Management & Research (FMR)',
-      change_type: 'increase',
-      change_shares: totalSharesM > 10000 ? '+8.4M' : '+950K',
-      change_amount_usd: '+$1.75B',
-      total_pct_held: 4.15,
-      holder_type: 'Investment Advisor',
-      date: '2026-06-30'
-    },
-    {
-      holder_name: 'Citadel Advisors LLC',
-      change_type: 'increase',
-      change_shares: totalSharesM > 10000 ? '+3.1M' : '+450K',
-      change_amount_usd: '+$645M',
-      total_pct_held: 1.12,
-      holder_type: 'Hedge Fund',
-      date: '2026-06-30'
-    },
-    {
-      holder_name: 'State Street Global Advisors',
-      change_type: 'decrease',
-      change_shares: totalSharesM > 10000 ? '-4.2M' : '-620K',
-      change_amount_usd: '-$874M',
-      total_pct_held: 5.48,
-      holder_type: 'Mutual Fund / Index',
-      date: '2026-06-30'
-    },
-    {
-      holder_name: 'Coatue Management, LLC',
-      change_type: 'decrease',
-      change_shares: totalSharesM > 10000 ? '-2.8M' : '-310K',
-      change_amount_usd: '-$582M',
-      total_pct_held: 0.85,
-      holder_type: 'Hedge Fund',
-      date: '2026-06-30'
-    },
-    {
-      holder_name: 'Appaloosa Management L.P.',
-      change_type: 'decrease',
-      change_shares: totalSharesM > 10000 ? '-1.5M' : '-180K',
-      change_amount_usd: '-$312M',
-      total_pct_held: 0.42,
-      holder_type: 'Hedge Fund',
-      date: '2026-06-30'
-    }
-  ];
-
-  const rawActivity = (data?.shareholder_activity && data.shareholder_activity.length > 0)
-    ? data.shareholder_activity 
-    : fallbackActivity;
+  const rawActivity = data?.shareholder_activity ?? [];
 
   const recentTransactions = (data?.recent_transactions && data.recent_transactions.length > 0) 
     ? data.recent_transactions 
     : ((legacyInsiderData?.recent_transactions && legacyInsiderData.recent_transactions.length > 0) ? legacyInsiderData.recent_transactions : []);
     
-  // Derive key insiders from current company's actual executives to prevent cross-company contamination!
-  const keyInsiders = (data?.insiders_overview?.key_insiders && data.insiders_overview.key_insiders.length > 0)
-    ? data.insiders_overview.key_insiders
-    : (companyProfile?.executives && companyProfile.executives.length > 0)
-    ? companyProfile.executives.map(e => ({
-        name: e.name,
-        title: e.title,
-        shares_held: isThai ? 'ตาม 10-K' : 'Disclosed in 10-K',
-        pct_owned: undefined
-      }))
-    : [];
+  const keyInsiders = data?.insiders_overview?.key_insiders ?? [];
 
-  const bullishCount = data?.insiders_overview?.bullish_insiders_count ?? (recentTransactions.filter(t => !t.transaction_type?.toLowerCase().includes('sell')).length || 2);
-  const bearishCount = data?.insiders_overview?.bearish_insiders_count ?? (recentTransactions.filter(t => t.transaction_type?.toLowerCase().includes('sell')).length || 3);
+  const bullishTransactions = recentTransactions.filter(t => !t.transaction_type?.toLowerCase().includes('sell'));
+  const bearishTransactions = recentTransactions.filter(t => t.transaction_type?.toLowerCase().includes('sell'));
+  const bullishCount = data?.insiders_overview?.bullish_insiders_count ?? (recentTransactions.length > 0 ? bullishTransactions.length : null);
+  const bearishCount = data?.insiders_overview?.bearish_insiders_count ?? (recentTransactions.length > 0 ? bearishTransactions.length : null);
 
   // Donut chart data: Major Holders
   const topHoldersChartData = majorHolders.slice(0, 5).map(h => ({
@@ -221,38 +124,16 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
       name: isThai ? 'ผู้ถือหุ้นอื่น ๆ (Other)' : 'Other',
       fullName: isThai ? 'ผู้ถือหุ้นรายย่อยและสถาบันอื่น ๆ' : 'Other Holders',
       value: Number(otherPct.toFixed(2)),
-      shares: calcHolderShares(otherPct)
+      shares: calcHolderShares(otherPct) ?? unavailable
     });
   }
 
   // Donut chart data: Holder Types
-  const typeChartData = data?.holder_type_breakdown || [
-    { type: isThai ? 'Mutual Fund (กองทุนรวม)' : 'Mutual Fund', label: 'Mutual Fund', pct: 45.2 },
-    { type: isThai ? 'Index / ETF (กองทุนดัชนี)' : 'Public Company / ETF', label: 'Public / ETF', pct: 28.6 },
-    { type: isThai ? 'Hedge Fund (เฮดจ์ฟันด์)' : 'Hedge Fund', label: 'Hedge Fund', pct: 11.4 },
-    { type: isThai ? 'Sovereign Wealth (กองทุนรัฐ)' : 'Sovereign Wealth', label: 'Sovereign Wealth', pct: 8.5 },
-    { type: isThai ? 'Pension Fund (กองทุนบำเหน็จ)' : 'Pension Fund', label: 'Pension Fund', pct: 6.3 }
-  ];
+  const typeChartData = data?.holder_type_breakdown ?? [];
 
   // Quarterly Trend History Data (Harmonized with instPct Single Source of Truth and true share scaling)
-  const baseQuarterly = (data?.quarterly_history && data.quarterly_history.length > 0 && !String(data.quarterly_history[0].shares_held).includes('1.14B'))
-    ? data.quarterly_history
-    : [
-        { date: '2025/Q1', no_of_institutions: Math.round(verifiedInstCount * 0.88), shares_held: calcHolderShares(instPct - 5.5), pct_owned: Math.max(10, Number((instPct - 5.5).toFixed(2))), change_shares: '+35.2M', stock_price: 112.5 },
-        { date: '2025/Q2', no_of_institutions: Math.round(verifiedInstCount * 0.91), shares_held: calcHolderShares(instPct - 3.9), pct_owned: Math.max(10, Number((instPct - 3.9).toFixed(2))), change_shares: '+40.1M', stock_price: 128.0 },
-        { date: '2025/Q3', no_of_institutions: Math.round(verifiedInstCount * 0.94), shares_held: calcHolderShares(instPct - 2.6), pct_owned: Math.max(10, Number((instPct - 2.6).toFixed(2))), change_shares: '+30.5M', stock_price: 145.2 },
-        { date: '2025/Q4', no_of_institutions: Math.round(verifiedInstCount * 0.97), shares_held: calcHolderShares(instPct - 1.4), pct_owned: Math.max(10, Number((instPct - 1.4).toFixed(2))), change_shares: '+28.4M', stock_price: 158.4 },
-        { date: '2026/Q1', no_of_institutions: Math.round(verifiedInstCount * 0.99), shares_held: calcHolderShares(instPct - 0.8), pct_owned: Math.max(10, Number((instPct - 0.8).toFixed(2))), change_shares: '+22.0M', stock_price: 172.1 },
-        { date: 'Latest', no_of_institutions: verifiedInstCount, shares_held: formattedTotalInstShares, pct_owned: instPct, change_shares: instOverview.shares_held_change_qoq, stock_price: companyProfile?.stock_price || 217.44 }
-      ];
-  const quarterlyHistory = baseQuarterly.map((row, idx) => {
-    if (idx === baseQuarterly.length - 1 || row.date === 'Latest') {
-      return { ...row, pct_owned: instPct };
-    }
-    return row;
-  });
-
-  const availableQuarters = ['Latest', '2026/Q2', '2026/Q1', '2025/Q4', '2025/Q3', '2025/Q2'];
+  const quarterlyHistory = data?.quarterly_history ?? [];
+  const availableQuarters = ['Latest', ...Array.from(new Set(rawActivity.map(item => item.date).filter((date): date is string => Boolean(date))))];
 
   const filteredActivity = rawActivity.filter(item => {
     if (activityFilter === 'increase') return item.change_type === 'increase' || item.change_type === 'new';
@@ -344,9 +225,9 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl sm:text-2xl font-bold font-mono text-[#0b5a4b]">
-              {instOverview.pct_owned.toFixed(2)}%
+              {instOverview.pct_owned !== null ? `${instOverview.pct_owned.toFixed(2)}%` : unavailable}
             </span>
-            {instOverview.pct_owned_change_qoq !== undefined && (
+            {instOverview.pct_owned_change_qoq !== null && (
               <span className={`text-xs font-mono font-bold flex items-center ${
                 instOverview.pct_owned_change_qoq >= 0 ? 'text-emerald-700' : 'text-rose-700'
               }`}>
@@ -362,9 +243,9 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900">
-              {instOverview.total_institutions_count.toLocaleString()}
+              {instOverview.total_institutions_count !== null ? instOverview.total_institutions_count.toLocaleString() : unavailable}
             </span>
-            {instOverview.institutions_count_change_qoq !== undefined && (
+            {instOverview.institutions_count_change_qoq !== null && (
               <span className="text-xs font-mono font-bold text-emerald-700">
                 +{instOverview.institutions_count_change_qoq} QoQ
               </span>
@@ -378,7 +259,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900">
-              {insiderPct.toFixed(2)}%
+              {insiderPct !== null ? `${insiderPct.toFixed(2)}%` : unavailable}
             </span>
             <span className="text-xs text-stone-400 font-sans">
               {isThai ? 'ผู้ก่อตั้ง/บอร์ด' : 'founders/execs'}
@@ -392,7 +273,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl sm:text-2xl font-bold font-mono text-stone-800">
-              {instOverview.total_shares_held || '1.28B'}
+              {instOverview.total_shares_held ?? unavailable}
             </span>
             {instOverview.shares_held_change_qoq && (
               <span className="text-xs font-mono font-bold text-emerald-700">
@@ -517,7 +398,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                         </span>
                       </>
                     ) : (
-                      <span className="text-xs font-bold text-stone-500">Holders</span>
+                      <span className="text-xs font-bold text-stone-500">{unavailable}</span>
                     )}
                   </div>
                 </div>
@@ -597,7 +478,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                         </span>
                       </>
                     ) : (
-                      <span className="text-xs font-bold text-stone-500">Types</span>
+                      <span className="text-xs font-bold text-stone-500">{unavailable}</span>
                     )}
                   </div>
                 </div>
@@ -672,11 +553,11 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className="text-[10px] font-sans font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">
-                            {holder.holder_type || 'Mutual Fund'}
+                          {holder.holder_type || unavailable}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-stone-400 text-xs">
-                          {holder.disclosure || '13F'}
+                          {holder.disclosure || unavailable}
                         </td>
                       </tr>
                     );
@@ -705,10 +586,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-lg sm:text-xl font-bold font-mono text-stone-900">
-                  {instOverview.total_institutions_count.toLocaleString()}
+                  {instOverview.total_institutions_count !== null ? instOverview.total_institutions_count.toLocaleString() : unavailable}
                 </span>
                 <span className="text-xs font-mono font-bold text-emerald-700">
-                  +{instOverview.institutions_count_change_qoq || 48} QoQ
+                  {instOverview.institutions_count_change_qoq !== null ? `${instOverview.institutions_count_change_qoq > 0 ? '+' : ''}${instOverview.institutions_count_change_qoq} QoQ` : unavailable}
                 </span>
               </div>
             </div>
@@ -719,10 +600,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-lg sm:text-xl font-bold font-mono text-stone-900">
-                  {instOverview.total_shares_held || '1.28B'}
+                  {instOverview.total_shares_held ?? unavailable}
                 </span>
                 <span className="text-xs font-mono font-bold text-emerald-700">
-                  {instOverview.shares_held_change_qoq || '+42.5M'}
+                  {instOverview.shares_held_change_qoq ?? unavailable}
                 </span>
               </div>
             </div>
@@ -733,10 +614,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-lg sm:text-xl font-bold font-mono text-[#0b5a4b]">
-                  {instOverview.pct_owned.toFixed(2)}%
+                  {instOverview.pct_owned !== null ? `${instOverview.pct_owned.toFixed(2)}%` : unavailable}
                 </span>
                 <span className="text-xs font-mono font-bold text-emerald-700">
-                  +{instOverview.pct_owned_change_qoq || 2.40}%
+                  {instOverview.pct_owned_change_qoq !== null ? `${instOverview.pct_owned_change_qoq > 0 ? '+' : ''}${instOverview.pct_owned_change_qoq}%` : unavailable}
                 </span>
               </div>
             </div>
@@ -849,10 +730,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold font-mono flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5" /> {bullishCount} Bullish
+                <TrendingUp className="w-3.5 h-3.5" /> {bullishCount ?? unavailable} Bullish
               </span>
               <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-xl text-xs font-bold font-mono flex items-center gap-1">
-                <TrendingDown className="w-3.5 h-3.5" /> {bearishCount} Bearish / Planned
+                <TrendingDown className="w-3.5 h-3.5" /> {bearishCount ?? unavailable} Bearish / Planned
               </span>
             </div>
           </div>
@@ -1058,7 +939,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                           {act.holder_name}
                         </td>
                         <td className="py-3 px-3 text-center font-mono text-stone-500 text-xs">
-                          {act.date || '2026-06-30'}
+                          {act.date || unavailable}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold">
                           <span className={isIncrease ? 'text-emerald-700' : 'text-rose-700'}>
@@ -1075,7 +956,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className="text-[10px] font-sans font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">
-                            {act.holder_type || 'Mutual Fund'}
+                            {act.holder_type || unavailable}
                           </span>
                         </td>
                       </tr>
