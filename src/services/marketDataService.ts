@@ -35,6 +35,10 @@ export interface LiveQuotesResponse {
   isRealtime?: boolean;
 }
 
+// `/api/live-quotes` is currently implemented exclusively with Yahoo Finance quote/chart endpoints.
+// Keep this explicit at the provider boundary instead of making downstream report code guess the source.
+export const MARKET_QUOTE_PROVIDER = 'Yahoo Finance';
+
 /**
  * Fetches market quote data from the Lumina backend for a list of ticker symbols.
  * The backend may return delayed/session-dependent data, so callers must not label it guaranteed real-time.
@@ -50,11 +54,14 @@ export async function fetchLiveQuotes(symbols: string[]): Promise<LiveQuotesResp
     }
 
     const raw = await res.json() as LiveQuotesResponse;
+    const provider = typeof raw.provider === 'string' && raw.provider.trim()
+      ? raw.provider.trim()
+      : MARKET_QUOTE_PROVIDER;
     const retrievedAt = new Date().toISOString();
     const quotes = Object.fromEntries(
       Object.entries(raw.quotes || {}).map(([symbol, quote]) => [symbol, {
         ...quote,
-        provider: raw.provider,
+        provider,
         asOf: raw.asOf,
         retrievedAt,
       }]),
@@ -62,6 +69,10 @@ export async function fetchLiveQuotes(symbols: string[]): Promise<LiveQuotesResp
 
     return {
       ...raw,
+      provider,
+      dataType: raw.dataType ?? 'market_quote',
+      // The current provider does not guarantee exchange-real-time delivery.
+      isRealtime: false,
       quotes,
     };
   } catch (error) {
