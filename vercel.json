@@ -2,8 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "fluid": true,
   "functions": {
-    "api/index.ts": {
-      "maxDuration": 300
+    "api/index.js": {
+      "maxDuration": 300,
+      "includeFiles": [
+        "dist/server.cjs",
+        "agent/**"
+      ]
     }
   },
   "rewrites": [
