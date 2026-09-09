@@ -21,7 +21,7 @@ jobs:
       - name: Reassemble and verify patch
         shell: bash
         run: |
-          cat .phase2/chunk.* | base64 -d | gzip -dc > /tmp/phase2.patch
+          cat .phase2/chunk.00 .phase2/chunk.01 .phase2/chunk.02 .phase2/chunk.03 .phase2/chunk.04 | tr -d '\r\n ' | base64 -d | gzip -dc > /tmp/phase2.patch
           echo "bbbb54bed2f8b191b500b6a0b6240d00f21fa088b4123dc9e90c26d9dc888b67  /tmp/phase2.patch" | sha256sum -c -
           git apply --check /tmp/phase2.patch
 
