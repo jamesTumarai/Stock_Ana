@@ -1,0 +1,90 @@
+name: Verify Phase 2.1 production API
+
+on:
+  push:
+    branches:
+      - phase2-1-production-analyze
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Verify bundled Express export and API routes
+        shell: bash
+        run: |
+          VERCEL=1 node --input-type=module <<'NODE'
+          import { createRequire } from 'node:module';
+          const require = createRequire(import.meta.url);
+          const backend = require('./dist/server.cjs');
+          if (typeof backend.createApp !== 'function') {
+            throw new Error('dist/server.cjs does not export createApp');
+          }
+
+          const app = await backend.createApp({ serveFrontend: false });
+          const server = app.listen(0, '127.0.0.1');
+          await new Promise((resolve) => server.once('listening', resolve));
+          const address = server.address();
+          const port = typeof address === 'object' && address ? address.port : 0;
+
+          const logsResponse = await fetch(`http://127.0.0.1:${port}/api/download_jsonl?ticker=TEST`);
+          if (logsResponse.status !== 404) {
+            throw new Error(`Expected /api/download_jsonl to return 404 without logs, got ${logsResponse.status}`);
+          }
+
+          const analyzeResponse = await fetch(`http://127.0.0.1:${port}/api/analyze`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ticker: 'AAPL' }),
+          });
+          if (analyzeResponse.status !== 503) {
+            throw new Error(`Expected /api/analyze to fail closed with 503 when GEMINI_API_KEY is absent, got ${analyzeResponse.status}`);
+          }
+
+          server.close();
+          NODE
+
+      - name: Verify Vercel health handler
+        shell: bash
+        run: |
+          VERCEL=1 node --input-type=module <<'NODE'
+          const { default: handler } = await import('./api/index.js');
+          const req = { method: 'GET', url: '/api/health' };
+          let statusCode = 0;
+          let body;
+          const res = {
+            status(code) { statusCode = code; return this; },
+            json(value) { body = value; return value; },
+          };
+          await handler(req, res);
+          if (statusCode !== 200 || !body?.ok || body?.runtime !== 'vercel-function') {
+            throw new Error(`Health handler failed: ${statusCode} ${JSON.stringify(body)}`);
+          }
+          NODE
+
+      - name: Whitespace check
+        run: git diff --check origin/main...HEAD
