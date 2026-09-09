@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 let appPromise;
 let secPreviewHandler;
+let secCompareHandler;
 
 export const config = {
   maxDuration: 300,
@@ -23,6 +24,13 @@ export default async function handler(req, res) {
       ({ handleSecPreview: secPreviewHandler } = require('../dist/sec-preview.cjs'));
     }
     return secPreviewHandler(req, res);
+  }
+
+  if ((req.url || '').startsWith('/api/sec-compare')) {
+    if (!secCompareHandler) {
+      ({ handleSecCompare: secCompareHandler } = require('../dist/sec-preview.cjs'));
+    }
+    return secCompareHandler(req, res);
   }
 
   if (!appPromise) {
