@@ -298,6 +298,7 @@ export default function ReportTemplate({
   const validation = data.validation;
   const criticalValidationIssues = validation?.issues?.filter(issue => issue.severity === 'critical') ?? [];
   const warningValidationIssues = validation?.issues?.filter(issue => issue.severity === 'warning') ?? [];
+  const provenance = data.report_provenance;
 
   const [activeNav, setActiveNav] = useState('section-summary');
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -539,6 +540,62 @@ export default function ReportTemplate({
             {isThai ? 'ข้อมูล ณ ' : 'As of '}{reportDate}
           </div>
         </div>
+
+        {provenance && (
+          <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 flex flex-col gap-3 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#0b5a4b] shrink-0" />
+                <strong className="text-sm text-stone-900">{isThai ? 'แหล่งข้อมูลของรายงาน (Data Provenance)' : 'Report Data Provenance'}</strong>
+              </div>
+              <span className="text-[10px] font-mono text-stone-500 bg-stone-100 border border-stone-200 rounded-full px-2 py-0.5">
+                {provenance.report_generated_by_version}
+              </span>
+            </div>
+            <p className="text-xs text-stone-600 leading-relaxed">
+              {isThai
+                ? 'คำว่า SEC Verified ใช้เฉพาะส่วนที่ระบบระบุไว้เท่านั้น ไม่ได้หมายความว่า Narrative หรือตารางงบทั้งรายงานได้รับการรับรองจาก SEC'
+                : 'SEC Verified applies only to explicitly labeled sections; it does not certify the report narrative or displayed statement snapshot.'}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-violet-900"><Sparkles className="w-3.5 h-3.5" />{isThai ? 'บทวิเคราะห์' : 'Research Narrative'}</div>
+                <div className="text-xs mt-1 text-violet-800">AI Research Snapshot</div>
+                <div className="text-[10px] mt-1 text-violet-700/80">{isThai ? 'สังเคราะห์โดย AI • ไม่ใช่ SEC Certified' : 'AI synthesis • not SEC certified'}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900"><FileText className="w-3.5 h-3.5" />{isThai ? 'ตารางงบการเงิน' : 'Financial Statements'}</div>
+                <div className="text-xs mt-1 text-amber-800">{provenance.financial_statements.source === 'report_snapshot' ? 'Report Snapshot' : (isThai ? 'ไม่มีข้อมูล' : 'Unavailable')}</div>
+                <div className="text-[10px] mt-1 text-amber-700/80">
+                  {isThai ? 'ผ่าน runtime checks แต่ไม่ถูกยกระดับเป็น SEC Verified' : 'Runtime-checked, but not promoted to SEC Verified'}
+                </div>
+              </div>
+              <div className={`rounded-xl border p-3 ${provenance.dcf_financial_inputs.source === 'sec_verified' ? 'border-emerald-200 bg-emerald-50/70' : provenance.dcf_financial_inputs.source === 'report_snapshot' ? 'border-amber-200 bg-amber-50/60' : 'border-stone-200 bg-stone-50'}`}>
+                <div className={`flex items-center gap-1.5 text-xs font-bold ${provenance.dcf_financial_inputs.source === 'sec_verified' ? 'text-emerald-900' : provenance.dcf_financial_inputs.source === 'report_snapshot' ? 'text-amber-900' : 'text-stone-700'}`}>
+                  <ShieldCheck className="w-3.5 h-3.5" />DCF Financial Inputs
+                </div>
+                <div className="text-xs mt-1 font-semibold">
+                  {provenance.dcf_financial_inputs.source === 'sec_verified'
+                    ? 'SEC Verified Financial Inputs'
+                    : provenance.dcf_financial_inputs.source === 'report_snapshot'
+                    ? 'Report Snapshot Financial Inputs'
+                    : (isThai ? 'ยังไม่มีชุดข้อมูล DCF ที่ใช้ได้' : 'DCF input set unavailable')}
+                </div>
+                {(provenance.dcf_financial_inputs.source_period || provenance.dcf_financial_inputs.as_of) && (
+                  <div className="text-[10px] mt-1 font-mono opacity-70">
+                    {[provenance.dcf_financial_inputs.source_period, provenance.dcf_financial_inputs.as_of].filter(Boolean).join(' • ')}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="text-[10px] sm:text-[11px] text-stone-500 border-t border-stone-100 pt-2 flex flex-wrap items-center gap-1.5">
+              <span className="font-bold">SEC cross-check:</span>
+              <span className="font-mono">{provenance.sec_cross_check.status}</span>
+              <span>•</span>
+              <span>{isThai ? 'สถานะนี้ไม่ใช่การรับรองรายงานทั้งฉบับ' : 'This status is not a certification of the full report.'}</span>
+            </div>
+          </div>
+        )}
 
         {validation && validation.status !== 'valid' && (
           <div className={`rounded-2xl border p-4 sm:p-5 ${validation.status === 'invalid' ? 'bg-red-50 border-red-200 text-red-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>

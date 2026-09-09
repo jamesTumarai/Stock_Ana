@@ -1,4 +1,5 @@
 import type { SecVerificationEnvelope } from './domain/secVerification';
+import type { ReportProvenanceManifest } from './domain/reportProvenance';
 
 export interface IncomeStatementData {
   revenue: (number | null)[];
@@ -1159,6 +1160,7 @@ export interface AnalysisReport {
   generated_by_version?: string;
   validation?: ReportValidationResult;
   sec_verification?: SecVerificationEnvelope;
+  report_provenance?: ReportProvenanceManifest;
   verdict?: {
     summary: string;
     conviction_score: number | null;
