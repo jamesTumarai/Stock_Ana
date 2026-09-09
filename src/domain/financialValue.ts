@@ -4,6 +4,7 @@ export type FinancialStatementSection = 'income_statement' | 'balance_sheet' | '
 export type FinancialValueType = 'reported' | 'derived' | 'estimated' | 'unclassified';
 export type FinancialVerificationStatus = 'unverified' | 'source_linked' | 'verified';
 export type FinancialUnit = 'USD_M' | 'percent' | 'per_share' | 'shares_M' | 'x' | 'count' | 'unknown';
+export type FinancialProvenanceStatus = 'unverified' | 'partially_source_linked' | 'source_linked' | 'verified';
 
 export interface FinancialSourceMetadata {
   provider?: string;
@@ -28,14 +29,24 @@ export interface CanonicalFinancialValue {
   derivation?: string;
 }
 
+export interface FinancialProvenanceWarning {
+  code: string;
+  severity: 'info' | 'warning';
+  message: string;
+}
+
 export interface CanonicalFinancialDataset {
   ticker?: string;
   currency?: string;
   periods: string[];
   values: Record<string, CanonicalFinancialValue[]>;
+  provenanceStatus: FinancialProvenanceStatus;
+  provenanceWarnings: FinancialProvenanceWarning[];
   sourceCoverage: {
     sourceLinkedValues: number;
     verifiedValues: number;
+    nonNullValues: number;
+    missingValues: number;
     totalValues: number;
   };
 }
@@ -77,7 +88,9 @@ const inferType = (metric: string): FinancialValueType =>
 const inferProvider = (url?: string): string | undefined => {
   if (!url) return undefined;
   try {
-    const host = new URL(url).hostname.toLowerCase();
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return undefined;
+    const host = parsed.hostname.toLowerCase();
     if (host === 'sec.gov' || host.endsWith('.sec.gov')) return 'SEC EDGAR';
     return host || undefined;
   } catch {
@@ -85,9 +98,19 @@ const inferProvider = (url?: string): string | undefined => {
   }
 };
 
+const isHttpUrl = (url?: string) => {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 const toLatestSource = (fs: FinancialStatementsData): FinancialSourceMetadata | undefined => {
   const source = fs.source;
-  if (!source?.document_url) return undefined;
+  if (!source?.document_url || !isHttpUrl(source.document_url)) return undefined;
   return {
     provider: inferProvider(source.document_url),
     documentUrl: source.document_url,
@@ -95,6 +118,64 @@ const toLatestSource = (fs: FinancialStatementsData): FinancialSourceMetadata | 
     filingDate: source.filing_date,
     periodEnd: source.period_end,
   };
+};
+
+const deriveProvenanceWarnings = (
+  fs: FinancialStatementsData,
+  coverage: CanonicalFinancialDataset['sourceCoverage'],
+): FinancialProvenanceWarning[] => {
+  const warnings: FinancialProvenanceWarning[] = [];
+  const source = fs.source;
+
+  if (!source?.document_url) {
+    warnings.push({
+      code: 'FINANCIAL_SOURCE_UNLINKED',
+      severity: 'info',
+      message: 'Financial values are not linked to a filing document yet.',
+    });
+  } else if (!isHttpUrl(source.document_url)) {
+    warnings.push({
+      code: 'FINANCIAL_SOURCE_URL_INVALID',
+      severity: 'warning',
+      message: 'The supplied financial-statement source URL is invalid and was not trusted as provenance.',
+    });
+  } else {
+    warnings.push({
+      code: 'FINANCIAL_SOURCE_LINKED_NOT_VERIFIED',
+      severity: 'info',
+      message: 'A filing document is linked to the latest period, but values are not independently SEC/XBRL verified yet.',
+    });
+    if (!source.period_end) {
+      warnings.push({
+        code: 'FINANCIAL_SOURCE_PERIOD_END_MISSING',
+        severity: 'warning',
+        message: 'The linked filing does not include period_end metadata, so period provenance cannot be fully checked.',
+      });
+    }
+    if (!source.filing_date) {
+      warnings.push({
+        code: 'FINANCIAL_SOURCE_FILING_DATE_MISSING',
+        severity: 'warning',
+        message: 'The linked filing does not include filing_date metadata.',
+      });
+    }
+    if (source.period_end && fs.as_of_date && source.period_end !== fs.as_of_date) {
+      warnings.push({
+        code: 'FINANCIAL_SOURCE_DATE_CONFLICT',
+        severity: 'warning',
+        message: `Financial statement as_of_date (${fs.as_of_date}) does not match linked filing period_end (${source.period_end}).`,
+      });
+    }
+  }
+
+  if (coverage.nonNullValues > 0 && coverage.sourceLinkedValues < coverage.nonNullValues) {
+    warnings.push({
+      code: 'FINANCIAL_PROVENANCE_PARTIAL',
+      severity: 'info',
+      message: 'Only part of the non-null financial dataset has document-level provenance.',
+    });
+  }
+  return warnings;
 };
 
 /**
@@ -124,7 +205,10 @@ export function buildCanonicalFinancialDataset(report: Pick<ReportData, 'ticker'
       values[key] = periods.map((period, index) => {
         const candidate = raw[index];
         const value = typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
-        const source = index === latestIndex ? latestSource : undefined;
+        // Document-level provenance is meaningful only for an actual value. Missing values
+        // must remain unverified rather than being counted as source-backed simply because
+        // the latest filing URL exists.
+        const source = index === latestIndex && value !== null ? latestSource : undefined;
         return {
           metric,
           statement,
@@ -146,15 +230,32 @@ export function buildCanonicalFinancialDataset(report: Pick<ReportData, 'ticker'
   collect('cash_flow', fs.cash_flow as unknown as Record<string, unknown>);
 
   const flattened = Object.values(values).flat();
+  const nonNullValues = flattened.filter(item => item.value !== null).length;
+  const sourceLinkedValues = flattened.filter(item => item.value !== null && item.verification === 'source_linked').length;
+  const verifiedValues = flattened.filter(item => item.value !== null && item.verification === 'verified').length;
+  const coverage: CanonicalFinancialDataset['sourceCoverage'] = {
+    sourceLinkedValues,
+    verifiedValues,
+    nonNullValues,
+    missingValues: flattened.length - nonNullValues,
+    totalValues: flattened.length,
+  };
+
+  const provenanceStatus: FinancialProvenanceStatus = verifiedValues > 0 && verifiedValues === nonNullValues
+    ? 'verified'
+    : sourceLinkedValues > 0 && sourceLinkedValues === nonNullValues
+      ? 'source_linked'
+      : sourceLinkedValues > 0
+        ? 'partially_source_linked'
+        : 'unverified';
+
   return {
     ticker: report.ticker,
     currency: fs.currency,
     periods,
     values,
-    sourceCoverage: {
-      sourceLinkedValues: flattened.filter(item => item.verification === 'source_linked').length,
-      verifiedValues: 0,
-      totalValues: flattened.length,
-    },
+    provenanceStatus,
+    provenanceWarnings: deriveProvenanceWarnings(fs, coverage),
+    sourceCoverage: coverage,
   };
 }
