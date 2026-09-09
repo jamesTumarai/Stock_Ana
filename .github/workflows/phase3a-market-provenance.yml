@@ -1,0 +1,81 @@
+name: Phase 3A market provenance
+
+on:
+  push:
+    branches:
+      - phase3a-working
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: "!contains(github.event.head_commit.message, '[phase3a-applied]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Add provider provenance to live quote response
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('server.ts')
+          s = p.read_text(encoding='utf-8')
+          old = '''      return res.json({
+        quotes,
+        asOf: new Date().toISOString()
+      });'''
+          new = '''      const asOf = new Date().toISOString();
+      return res.json({
+        quotes,
+        asOf,
+        provider: 'Yahoo Finance',
+        dataType: 'market_quote',
+        // Yahoo quote endpoints may be delayed or session-dependent; do not claim guaranteed real-time data.
+        isRealtime: false
+      });'''
+          if old not in s:
+              raise SystemExit('live quote response block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Financial integrity tests
+        run: |
+          node --import tsx src/utils/reportIntegrity.test.ts
+          node --import tsx src/utils/reportValidation.test.ts
+          node --import tsx src/utils/serverPromptIntegrity.test.ts
+          node --import tsx src/utils/valuation/__tests__/marketSnapshotDCF.test.ts
+          node --import tsx src/utils/valuation/__tests__/universalValuation.test.ts
+          node --import tsx src/utils/valuation/__tests__/statementValidator.test.ts
+          node --import tsx src/utils/valuation/__tests__/convictionScorer.test.ts
+
+      - name: Whitespace check
+        run: git diff --check origin/main...HEAD
+
+      - name: Commit server provenance change
+        shell: bash
+        run: |
+          git add server.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: expose market quote provenance [phase3a-applied]"
+          git push origin HEAD:phase3a-working
