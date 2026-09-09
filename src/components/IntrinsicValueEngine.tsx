@@ -36,6 +36,26 @@ export function IntrinsicValueEngine({
     );
   }
 
+  if (data.dcf_model.inputs?.isValid === false) {
+    const missing = data.dcf_model.inputs.missingFields?.join(', ');
+    return (
+      <div className="bg-amber-50 rounded-2xl p-6 border border-amber-200 text-amber-950">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="font-bold">{isThai ? 'ยังไม่แสดงราคาเหมาะสม' : 'Fair value is unavailable'}</h3>
+            <p className="text-sm mt-1 leading-relaxed">
+              {isThai
+                ? 'รายงานนี้ไม่มีข้อมูล DCF ที่ครบและอยู่ในงวดเดียวกัน จึงไม่ใช้ค่าประมาณหรือข้อมูลแทนเพื่อสร้างราคาเป้าหมาย'
+                : 'This report lacks a complete, same-period DCF input set, so no substitute values are used to create a price target.'}
+            </p>
+            {missing && <p className="text-xs mt-2 font-mono opacity-80">{missing}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const currSym = currencyMode === 'THB' ? '฿' : '$';
   const multiplier = currencyMode === 'THB' ? currencyRate : 1;
 
@@ -56,28 +76,23 @@ export function IntrinsicValueEngine({
   const [showSimulator, setShowSimulator] = useState(false);
   
   // Single Source of Truth: Region-aware CAPM WACC derived from stock Beta
-  const effectiveWacc = coc?.wacc_pct || dcf.assumptions.wacc_pct || 11.5;
-  const effectiveGrowth = dcf.assumptions.terminal_growth_pct || MACRO_TERMINAL_GROWTH_DEFAULT_PCT;
+  const effectiveWacc = coc?.wacc_pct ?? dcf.assumptions.wacc_pct;
+  const effectiveGrowth = dcf.assumptions.terminal_growth_pct ?? MACRO_TERMINAL_GROWTH_DEFAULT_PCT;
   const [simWacc, setSimWacc] = useState(effectiveWacc);
   const [simGrowth, setSimGrowth] = useState(effectiveGrowth);
-  const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct || 22);
+  const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct);
 
   React.useEffect(() => {
-    setSimWacc(coc?.wacc_pct || dcf.assumptions.wacc_pct || 11.5);
-    setSimGrowth(dcf.assumptions.terminal_growth_pct || MACRO_TERMINAL_GROWTH_DEFAULT_PCT);
-    setSimCagr(base.revenue_cagr_pct || 22);
+    setSimWacc(coc?.wacc_pct ?? dcf.assumptions.wacc_pct);
+    setSimGrowth(dcf.assumptions.terminal_growth_pct ?? MACRO_TERMINAL_GROWTH_DEFAULT_PCT);
+    setSimCagr(base.revenue_cagr_pct);
   }, [coc?.wacc_pct, dcf.assumptions.wacc_pct, dcf.assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
 
   // Dynamic DCF inputs from verified engine
-  const dcfInputs = (dcf as any)?.inputs;
-  const startingRevM = dcfInputs?.startingRevenueM 
-    || (Array.isArray((data as any).financial_statements?.income_statement?.revenue) ? ((data as any).financial_statements.income_statement.revenue.filter((v: any): v is number => typeof v === 'number' && v > 0).reduce((a: number, b: number) => a + b, 0)) : 0)
-    || (currentPrice > 0 ? (currentPrice < 10 ? 500 : currentPrice * 250) : 500);
-  const sharesM = dcfInputs?.sharesOutstandingM 
-    || (data as any)?.shares_outstanding_m
-    || (data as any)?.metrics?.shares_outstanding
-    || (currentPrice > 0 ? Math.max(10, Math.round(((data as any)?.market_cap_m || (currentPrice * 3000)) / currentPrice)) : 1000);
-  const netCashM = dcfInputs?.netCashM || (data as any)?.net_cash_m || 0;
+  const dcfInputs = dcf.inputs;
+  const startingRevM = dcfInputs?.startingRevenueM ?? Number.NaN;
+  const sharesM = dcfInputs?.sharesOutstandingM ?? Number.NaN;
+  const netCashM = dcfInputs?.netCashM ?? Number.NaN;
 
   // Exact closed-form live calculation based on user adjustments
   const recalculatedBaseFairValue = useMemo(() => {
@@ -109,7 +124,7 @@ export function IntrinsicValueEngine({
     }
 
     // 2. Standard DCF Model
-    const margin = base.terminal_margin_pct || 18.0;
+    const margin = base.terminal_margin_pct;
 
     const dcfVal = calculateStrictDCFValue(
       startingRevM,
@@ -149,25 +164,23 @@ export function IntrinsicValueEngine({
   const bullUpside = ((effectiveBullPrice - currentPrice) / currentPrice) * 100;
 
   // Wall Street Consensus vs DCF Divergence Metrics
-  const isTsla = ticker?.toUpperCase() === 'TSLA';
-  const consensusMean = forecastDashboard?.price_target?.mean 
-    || (isTsla ? 405.00 : undefined);
-  const consensusTotalAnalysts = forecastDashboard?.total_analysts || (isTsla ? 42 : undefined);
-  const consensusRating = forecastDashboard?.consensus_rating || (isTsla ? 'Buy' : undefined);
+  const consensusMean = forecastDashboard?.price_target?.mean;
+  const consensusTotalAnalysts = forecastDashboard?.total_analysts;
+  const consensusRating = forecastDashboard?.consensus_rating;
   const consensusUpside = consensusMean && currentPrice > 0 
     ? Number((((consensusMean - currentPrice) / currentPrice) * 100).toFixed(1))
-    : (isTsla ? 14.4 : undefined);
+    : undefined;
 
   // Compute valuation gap multiple and percentage relative to DCF Base
   const valuationGapMultiple = consensusMean && effectiveBasePrice > 0 
     ? Number((consensusMean / effectiveBasePrice).toFixed(1))
-    : (isTsla ? 3.2 : null);
+    : null;
 
   const valuationGapPct = consensusMean && effectiveBasePrice > 0
     ? Number((((effectiveBasePrice - consensusMean) / consensusMean) * 100).toFixed(1))
-    : (isTsla ? -68.3 : null);
+    : null;
 
-  const shouldShowDivergenceAlert = baseUpside < -20 || (valuationGapMultiple !== null && valuationGapMultiple >= 1.5) || isTsla;
+  const shouldShowDivergenceAlert = consensusMean !== undefined && (baseUpside < -20 || (valuationGapMultiple !== null && valuationGapMultiple >= 1.5));
 
   const rangeMin = Math.min(effectiveBearPrice * 0.85, currentPrice * 0.85, effectiveBasePrice * 0.85);
   const rangeMax = Math.max(effectiveBullPrice * 1.15, currentPrice * 1.15, effectiveBasePrice * 1.15);
@@ -356,7 +369,7 @@ export function IntrinsicValueEngine({
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
                 <span>CAGR: {showSimulator ? Number((simCagr * (bear.revenue_cagr_pct / Math.max(1, base.revenue_cagr_pct || 1))).toFixed(0)) : bear.revenue_cagr_pct}%</span>
                 <span>•</span>
-                <span>Margin: {bear.terminal_margin_pct}%</span>
+                <span>{isThai ? 'FCF Margin' : 'FCF Margin'}: {bear.terminal_margin_pct}%</span>
               </div>
             </div>
 
@@ -390,7 +403,7 @@ export function IntrinsicValueEngine({
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
                 <span>CAGR: {showSimulator ? simCagr : base.revenue_cagr_pct}%</span>
                 <span>•</span>
-                <span>Margin: {base.terminal_margin_pct}%</span>
+                <span>{isThai ? 'FCF Margin' : 'FCF Margin'}: {base.terminal_margin_pct}%</span>
               </div>
             </div>
 
@@ -420,7 +433,7 @@ export function IntrinsicValueEngine({
               <div className="flex gap-3 text-xs text-stone-500 font-mono mt-1">
                 <span>CAGR: {showSimulator ? Number((simCagr * (bull.revenue_cagr_pct / Math.max(1, base.revenue_cagr_pct || 1))).toFixed(0)) : bull.revenue_cagr_pct}%</span>
                 <span>•</span>
-                <span>Margin: {bull.terminal_margin_pct}%</span>
+                <span>{isThai ? 'FCF Margin' : 'FCF Margin'}: {bull.terminal_margin_pct}%</span>
               </div>
             </div>
 
@@ -484,7 +497,7 @@ export function IntrinsicValueEngine({
                   {formatPrice(effectiveBasePrice)}
                 </div>
                 <div className="text-[11px] text-stone-500 font-sans mt-0.5">
-                  {isThai ? `FCFE คิดลดด้วย WACC ${effectiveWacc.toFixed(1)}%` : `FCFE discounted at WACC ${effectiveWacc.toFixed(1)}%`}
+                  {isThai ? `FCF คิดลดด้วย WACC ${effectiveWacc.toFixed(1)}%` : `FCF discounted at WACC ${effectiveWacc.toFixed(1)}%`}
                 </div>
               </div>
             </div>
@@ -511,8 +524,8 @@ export function IntrinsicValueEngine({
                 </div>
                 <div className="text-[11px] text-stone-500 font-sans mt-0.5">
                   {isThai 
-                    ? `ฉันทามติ: ${consensusRating || 'Buy'} (จาก ${consensusTotalAnalysts || 42} สำนัก)`
-                    : `Consensus: ${consensusRating || 'Buy'} (${consensusTotalAnalysts || 42} analysts)`}
+                    ? `ฉันทามติ: ${consensusRating || '-'} (จาก ${consensusTotalAnalysts || '-'} สำนัก)`
+                    : `Consensus: ${consensusRating || '-'} (${consensusTotalAnalysts || '-'} analysts)`}
                 </div>
               </div>
             </div>
@@ -535,8 +548,8 @@ export function IntrinsicValueEngine({
                 </div>
                 <div className="text-[11px] text-amber-800 font-sans mt-0.5">
                   {isThai 
-                    ? `DCF ต่ำกว่าเป้าหมาย Consensus ${Math.abs(valuationGapPct || 68.3)}%`
-                    : `DCF is ${Math.abs(valuationGapPct || 68.3)}% below Consensus`}
+                    ? `DCF ต่างจากเป้าหมาย Consensus ${Math.abs(valuationGapPct || 0)}%`
+                    : `DCF differs from the Consensus target by ${Math.abs(valuationGapPct || 0)}%`}
                 </div>
               </div>
             </div>
@@ -545,23 +558,9 @@ export function IntrinsicValueEngine({
           {/* Detailed Sector Context */}
           <div className="bg-white/80 rounded-2xl p-4 border border-amber-200/70 text-[11.5px] leading-relaxed text-stone-700 font-sans flex flex-col gap-2">
             <p>
-              {isTsla ? (
-                isThai ? (
-                  <>
-                    <strong>มุมมองการประเมินมูลค่า TSLA:</strong> แบบจำลอง DCF ของเราคำนวณบนพื้นฐานกระแสเงินสดอิสระ (FCFE) เชิงอนุรักษ์นิยมตามกำลังผลิตและอัตรากำไรของธุรกิจยานยนต์และพลังงานในปัจจุบัน จึงให้มูลค่ากรณีฐาน <strong className="font-mono text-stone-900">{formatPrice(effectiveBasePrice)}</strong> ซึ่งต่ำกว่าฉันทามติเฉลี่ยของ Wall Street (<strong className="font-mono text-stone-900">{formatPrice(consensusMean || 405)}</strong>) ถึง <strong className="text-amber-900 font-mono">~{valuationGapMultiple || '3.2'} เท่า ({valuationGapPct || '-68.3'}%)</strong> เนื่องจากนักวิเคราะห์กระแสหลักใน Wall Street ส่วนใหญ่ (เช่น Wedbush, Morgan Stanley, Piper Sandler) ให้มูลค่าแบบ Sum-of-the-Parts (SOTP) โดยบวก Valuation Premium ล่วงหน้าให้กับโครงข่าย AI Autonomous FSD, ธุรกิจ Robotaxi เชิงพาณิชย์ และหุ่นยนต์ Humanoid (Optimus) ในฐานะ Tech/AI Platform Multiple มากกว่าบริษัทผลิตฮาร์ดแวร์ยานยนต์ทั่วไป
-                  </>
-                ) : (
-                  <>
-                    <strong>TSLA Valuation Insight:</strong> Our DCF model rigorously discounts fundamental free cash flows (FCFE) at WACC {effectiveWacc.toFixed(1)}% reflecting current automotive and energy production margins, yielding a conservative base target of <strong className="font-mono text-stone-900">{formatPrice(effectiveBasePrice)}</strong>. This is <strong className="text-amber-900 font-mono">~{valuationGapMultiple || '3.2'}x ({valuationGapPct || '-68.3'}%)</strong> lower than the Wall Street consensus mean target (<strong className="font-mono text-stone-900">{formatPrice(consensusMean || 405)}</strong>). Wall Street analysts (such as Wedbush and Morgan Stanley) assign significant forward SOTP premiums to Tesla's autonomous AI ecosystem (FSD Unsupervised, commercial Robotaxi network, and Optimus robotics), treating TSLA as an AI platform rather than a conventional automotive OEM.
-                  </>
-                )
-              ) : (
-                isThai ? (
-                  'แบบจำลอง DCF และปัจจัยพื้นฐานสะท้อนมุมมองเชิงอนุรักษ์นิยมตามกระแสเงินสดแท้จริงที่คิดลดด้วยต้นทุนเงินทุน (Cost of Capital / WACC) จึงอาจให้ราคาประเมินต่ำกว่าราคาตลาดปัจจุบันอย่างมีนัยสำคัญ ในขณะที่นักวิเคราะห์กระแสหลักในวอลล์สตรีทส่วนใหญ่อิงตามโมเมนตัมส่วนแบ่งการตลาดและ Multiple พรีเมียมล่วงหน้าในอนาคต ทำให้ราคาเป้าหมายเฉลี่ยของตลาดสูงกว่าแบบจำลอง DCF ดั้งเดิม'
-                ) : (
-                  'The DCF model reflects conservative cash-flow fundamentals discounted at the cost of capital, which can yield valuations significantly below prevailing market prices. In contrast, Wall Street consensus often prices high-growth platforms on market-share expansion and forward multiple premiums.'
-                )
-              )}
+              {isThai
+                ? 'DCF สะท้อนกระแสเงินสดตามสมมติฐานที่แสดงไว้ ส่วนฉันทามติตลาดอาจสะท้อน multiple และความคาดหวังการเติบโตที่ต่างออกไป จึงควรอ่านสองค่าควบคู่กับแหล่งที่มาและงวดข้อมูล'
+                : 'DCF reflects the disclosed cash-flow assumptions, while market consensus can reflect different multiples and growth expectations. Read both alongside their sources and reporting periods.'}
             </p>
             <div className="pt-2 border-t border-amber-100 flex items-center gap-1.5 text-[11px] text-amber-900 font-medium">
               <span>💡</span>
@@ -587,7 +586,7 @@ export function IntrinsicValueEngine({
             <div className="my-3 flex items-baseline justify-between">
               <div>
                 <div className="text-2xl sm:text-3xl font-extrabold font-mono text-stone-900">
-                  {formatPrice(data.relative_valuation?.fair_value_per_share || (currentPrice * 0.92))}
+                  {formatPrice(data.relative_valuation?.fair_value_per_share)}
                 </div>
                 <div className="text-xs text-stone-500 font-sans mt-0.5">
                   {isThai ? 'มูลค่าประเมินจากตัวคูณกลุ่ม' : 'Implied Value from Peer Multiple'}
@@ -596,7 +595,7 @@ export function IntrinsicValueEngine({
               <div className="text-right">
                 <span className="text-xs font-mono text-stone-400 block">{isThai ? 'ตัวคูณที่ใช้' : 'Multiple'}</span>
                 <span className="text-base font-extrabold font-mono text-stone-800">
-                  {data.relative_valuation?.peer_multiple_used || 45}x
+                  {data.relative_valuation?.peer_multiple_used !== undefined ? `${data.relative_valuation.peer_multiple_used}x` : '-'}
                 </span>
               </div>
             </div>

@@ -199,7 +199,10 @@ export function validateFinancialStatements(
     const fcf = cf.free_cash_flow?.[i] ?? null;
 
     if (ocf !== null && capex !== null && fcf !== null) {
-      const expectedFcf = ocf - capex;
+      // Filings commonly report CapEx as a negative cash outflow, while the report
+      // schema stores it as either a positive spend or that signed cash-flow value.
+      // Normalize the sign before checking the FCF identity.
+      const expectedFcf = ocf - Math.abs(capex);
       const fcfDiff = Math.abs(fcf - expectedFcf);
       // Tolerance 5M or 2%
       if (fcfDiff > 5 && (Math.abs(expectedFcf) > 0 && (fcfDiff / Math.abs(expectedFcf)) > 0.05)) {

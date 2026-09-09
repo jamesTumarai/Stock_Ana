@@ -86,7 +86,7 @@ async function createInteractionWithRetry(res: any, opts: any) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   app.use(express.json({ limit: '50mb' }));
 
@@ -561,6 +561,12 @@ Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matchin
       if (!ticker) {
         return res.status(400).json({ error: "Missing ticker." });
       }
+      if (!process.env.GEMINI_API_KEY?.trim()) {
+        return res.status(503).json({
+          error: "ยังไม่ได้ตั้งค่า GEMINI_API_KEY กรุณาเพิ่มคีย์ในไฟล์ .env แล้วเริ่มเซิร์ฟเวอร์ใหม่",
+          code: "GEMINI_API_KEY_MISSING"
+        });
+      }
 
       console.log(`[analyze] Starting analysis for ${ticker} using model ${model || 'default'}, language ${language || 'English'}, type ${analysisType || 'fundamental'}`);
       
@@ -574,7 +580,20 @@ Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matchin
       const todayISO = now.toISOString().split('T')[0];
       const currentYear = now.getFullYear();
 
-      let finalInstruction = `Find and analyze the absolute latest real-time public information, official SEC filings, verified financial statements, and live market data for ${ticker}.
+      let finalInstruction = `DATA INTEGRITY REQUIREMENTS (apply to every ticker and every section):
+- Never invent values to complete a table, price history, analyst consensus, institutional holdings, or citations. If unavailable, omit the optional section/field or use null for a missing numeric observation. Never use 0 as a missing-data placeholder.
+- Financial statements: extract the exact fiscal period and GAAP/non-GAAP basis from the original filing column. Do not confuse prior-year adjusted EPS with current-year GAAP EPS. Keep cash flow YTD separate from standalone quarters. Preserve USD millions and per-share units.
+- financial_statements.source is required: copy the exact primary filing URL, document type, filing date, period-end date, and the literal unit "USD millions" from the retrieved filing. It must match findings[0].sourceUrl. If the filing cannot be retrieved, omit financial_statements rather than filling estimates.
+- Attach source URL and as-of date to each available section; cite the actual filing URL returned by retrieval, never construct guessed SEC accession numbers or label HTML as PDF.
+- YoY compares the same fiscal quarter one year earlier. QoQ compares adjacent fiscal quarters. Do not substitute QoQ when YoY history is unavailable.
+- Cash plus short-term investments minus interest-bearing debt defines net cash for this report. Use the same balance sheet date; do not substitute current assets for cash. Negative values mean net debt. Disclose any different treatment of long-term investments.
+- If a filing separates marketable debt securities from marketable equity securities, put only cash/cash equivalents and marketable debt securities in cash_and_equivalents plus short_term_investments and in Net Cash. Do not silently include marketable equity securities, goodwill, or other current assets.
+- Regional and product revenue must be extracted independently and reconcile to total revenue within rounding tolerance. Do not rescale or invent regional values to force totals to match.
+- Use one dated source/population for analyst consensus across sections. If sources differ, label the provider, date and analyst count explicitly. Never attribute invented text to Morningstar or another analyst.
+- Benchmarks require identified peer constituents, source and calculation date. Missing benchmarks stay unavailable. Never claim SEC reconciliation or auditing solely because accounting identities balance.
+- DCF and technical indicators must identify inputs and dates. Do not manufacture OHLC history, RSI, MACD or forecasts. Distinguish estimates from observed values.
+
+Find and analyze the absolute latest real-time public information, official SEC filings, verified financial statements, and live market data for ${ticker}.
 
 CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 1. TODAY'S EXACT DATE: Today is ${todayISO} (Year ${currentYear}). ALL DATA MUST BE AS CURRENT AS POSSIBLE (UP TO TODAY ${todayISO}).
@@ -871,6 +890,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "currency": "USD",
     "fiscal_period_type": "quarterly",
     "as_of_date": "2026-09-01",
+    "source": { "document_url": "https://www.sec.gov/...", "document_type": "Form 10-Q", "filing_date": "2026-08-26", "period_end": "2026-07-26", "units": "USD millions" },
     "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
     "income_statement": {
       "revenue": [726, 828, 884, 1004],
@@ -880,6 +900,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "operating_expenses": [385, 382, 345, 371],
       "operating_income": [195, 282, 389, 473],
       "operating_margin_pct": [26.8, 34.0, 44.0, 47.1],
+      "income_before_tax": [170, 100, 260, 380],
+      "income_tax_expense": [27, 21, 46, 54],
       "net_income": [143, 79, 214, 326],
       "net_margin_pct": [19.7, 9.5, 24.2, 32.5],
       "eps_diluted": [0.06, 0.03, 0.08, 0.13],
@@ -1541,6 +1563,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "currency": "USD",
     "fiscal_period_type": "quarterly",
     "as_of_date": "2026-09-01",
+    "source": { "document_url": "https://www.sec.gov/...", "document_type": "Form 10-Q", "filing_date": "2026-08-26", "period_end": "2026-07-26", "units": "USD millions" },
     "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
     "income_statement": {
       "revenue": [726, 828, 884, 1004],
@@ -1550,6 +1573,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "operating_expenses": [385, 382, 345, 371],
       "operating_income": [195, 282, 389, 473],
       "operating_margin_pct": [26.8, 34.0, 44.0, 47.1],
+      "income_before_tax": [170, 100, 260, 380],
+      "income_tax_expense": [27, 21, 46, 54],
       "net_income": [143, 79, 214, 326],
       "net_margin_pct": [19.7, 9.5, 24.2, 32.5],
       "eps_diluted": [0.06, 0.03, 0.08, 0.13],
@@ -2294,7 +2319,12 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
           const resAgent = await createInteractionWithRetry(res, { prompt, inlineSources: agentFiles, tools: [{ type: "google_search" }], model: actualModel });
           if (!resAgent.ok) {
               const errTxt = await resAgent.text();
-              res.write(`data: ${JSON.stringify({ type: 'error', message: "Primary agent failed: " + errTxt })}\n\n`);
+              const authError = resAgent.status === 401 || resAgent.status === 403;
+              const message = authError
+                ? "Gemini ปฏิเสธการเชื่อมต่อ กรุณาตรวจว่า GEMINI_API_KEY ถูกต้อง เปิดใช้งาน API แล้ว และคีย์อนุญาตให้ใช้โมเดล/Agent นี้"
+                : `Gemini analysis failed (HTTP ${resAgent.status}). Please retry.`;
+              console.error(`[analyze] Primary agent failed (${resAgent.status}): ${errTxt.slice(0, 500)}`);
+              res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
               res.write(`data: [DONE]\n\n`);
               res.end();
               return;
@@ -2333,6 +2363,7 @@ CRITICAL CHECKS:
 - Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest Form 10-Q (or latest Form 10-K) for the most recent completed quarter (2025/2026). Ensure the document date and key insights in "findings[0]" reflect this latest filing's balance sheet (Cash, ST Investments, Total Debt, Diluted Shares) and revenue growth. If the primary analyst cited an outdated 2023 or 2024 filing, update the citation to the latest available Form 10-Q so document findings and valuation calculations are 100% synchronized!
 - Peer Comparison Grounding: Verify that Market Caps and P/E multiples for the target company (${ticker}) and ALL peer companies in "peer_comparison" are accurate as of today (${todayISO}). For example, TSLA market cap is ~$1.40T (stock price ~$353), AMD is ~$745B (stock price ~$457), HOOD is ~$95.3B (stock price ~$106), AFRM is ~$25.0B (stock price ~$74), SOFI is ~$23.1B (stock price ~$17.89), XYZ/Block is ~$49.5B, AVGO is ~$1.72T, TSM is ~$2.14T. DO NOT accept old 2023/2024 figures (such as HOOD at $19.8B, AFRM at $14.2B, AMD at $255B, or TSLA at $1.14T).
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
+- DCF input integrity: All financial-statement money values are USD millions. Provide exactly four completed quarterly periods in chronological order, the latest diluted shares outstanding in company_profile.shares_outstanding, and cash, short-term investments, total debt, revenue, and free cash flow for matching periods. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default, a market-cap-derived share count, or a price-derived revenue estimate. If a primary source cannot supply an input, state that it is unavailable instead of inventing a fair value.
   * Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn (e.g. EOSE, RIVN, PLUG, QS):
     - WACC MUST reflect size and distress premiums (16%–22%+), NEVER use a single-digit mega-cap WACC (7%–10%).
     - Base Case terminal margin MUST NOT be unrealistically high (e.g. 12%–16%) when current gross margin is negative; it must reflect conservative turnaround execution (3%–6%) with dilution risk factored in.

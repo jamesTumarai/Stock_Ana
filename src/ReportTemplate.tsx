@@ -335,11 +335,11 @@ export default function ReportTemplate({
 
   // Auto-sync live market data from Yahoo Finance on report mount
   useEffect(() => {
-    handleRefreshLiveQuotes(false);
+    setLiveOverrides({});
   }, [ticker]);
 
   // Default USD to THB rate
-  const currencyRate = 35.5;
+  const currencyRate = 35.5; // Indicative only; never label this as a live FX rate.
 
   const formatPrice = (val?: number | string) => {
     if (val === undefined || val === null || val === '') return '-';
@@ -511,11 +511,14 @@ export default function ReportTemplate({
 
       <div id="report-content" className="flex-1 py-4 sm:py-8 px-2.5 sm:px-6 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-6 md:gap-8 bg-[#F6F4F0] print:max-w-full print:gap-6 print:bg-white">
         
+        <div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {isThai ? 'ข้อมูลในรายงานเป็น snapshot จากการวิเคราะห์ ไม่ได้รับรองว่าเทียบเอกสารต้นทางแล้ว รายงานเก่าอาจมีข้อมูลผิดงวดหรือข้อมูลที่ AI สร้างขึ้น โปรดตรวจแหล่งอ้างอิงก่อนใช้ ตัวเลขประเมินมูลค่าและคะแนนเป็นผลวิเคราะห์ ไม่ใช่ข้อเท็จจริง' : 'This report is a research snapshot, not source-verified data. Older reports may contain incorrect periods or AI-generated values. Verify citations; valuations and scores are estimates.'}
+        </div>
         {refreshSuccessMessage && (
           <div className="bg-emerald-600 text-white text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-between shadow-md transition-all animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center gap-2 font-medium">
               <Zap className="w-4 h-4 text-emerald-200" />
-              <span>{refreshSuccessMessage} {isThai ? `(ซิงค์ราคาตลาดและ Market Cap ล่าสุดสำเร็จ)` : '(Synchronized live market quotes & market caps)'}</span>
+              <span>{refreshSuccessMessage} {isThai ? `(อัปเดตเฉพาะราคาที่แสดง เนื้อหาและมูลค่าประเมินยังเป็น snapshot เดิม)` : '(Displayed quote updated; research and valuation remain the original snapshot)'}</span>
             </div>
             <button onClick={() => setRefreshSuccessMessage(null)} className="text-white/80 hover:text-white cursor-pointer">
               <X className="w-4 h-4" />
@@ -954,20 +957,31 @@ export default function ReportTemplate({
         {/* SECTION 7: HISTORICAL CHARTS */}
         {(() => {
           const rawPerf = data.financial_charts?.financial_performance_4q;
-          const hasRawPerf = Array.isArray(rawPerf) && rawPerf.length > 0;
           const isEtf = (data.company_profile as any)?.asset_type === 'ETF' || (data as any)?.asset_class === 'etf';
+          const statementPeriods = data.financial_statements?.periods || [];
+          const statementRevenue = data.financial_statements?.income_statement?.revenue || [];
+          const statementNetIncome = data.financial_statements?.income_statement?.net_income || [];
+          const hasStatementPerformance = !isEtf && statementPeriods.some((_, i) =>
+            Number.isFinite(statementRevenue[i]) || Number.isFinite(statementNetIncome[i])
+          );
+          // Money values in financial_statements are USD millions. Prefer them over an
+          // independent AI chart summary so the chart, statements, and DCF share one source.
+          const statementPerf = hasStatementPerformance ? statementPeriods.map((quarter, i) => ({
+            quarter,
+            revenue: typeof statementRevenue[i] === 'number' ? Number((statementRevenue[i] / 1000).toFixed(3)) : undefined,
+            net_income: typeof statementNetIncome[i] === 'number' ? Number((statementNetIncome[i] / 1000).toFixed(3)) : undefined,
+          })) : [];
+          const hasRawPerf = Array.isArray(rawPerf) && rawPerf.length > 0;
           
-          let effectivePerf: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[] = (hasRawPerf ? rawPerf : []).map((item, idx) => {
+          let effectivePerf: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[] = hasStatementPerformance ? statementPerf : (hasRawPerf ? rawPerf : []).map((item, idx) => {
             let r = typeof item.revenue === 'string' ? (parseFloat(String(item.revenue).replace(/[^0-9.-]/g, '')) || 0) : Number(item.revenue ?? 0);
             let n = typeof item.net_income === 'string' ? (parseFloat(String(item.net_income).replace(/[^0-9.-]/g, '')) || 0) : Number(item.net_income ?? 0);
 
             // Institutional conversion: Scale from Millions ($M) to Billions ($B)
             // No company on Earth has quarterly net income >= $45B. If |n| >= 45, it is in Millions.
             if (Math.abs(n) >= 45) n = Number((n / 1000).toFixed(3));
-            const symUpper = ticker?.toUpperCase();
-            const megaCaps = ['AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'WMT', 'XOM'];
-            const revThreshold = symUpper && megaCaps.includes(symUpper) ? 160 : 40;
-            if (r >= revThreshold) r = Number((r / 1000).toFixed(3));
+            if (Math.abs(r) >= 100_000_000) r = Number((r / 1_000_000_000).toFixed(3));
+            else if (Math.abs(r) >= 1_000) r = Number((r / 1000).toFixed(3));
             if (r > 0 && Math.abs(n) > r * 1.5 && Math.abs(n) > 5) {
               n = Number((n / 1000).toFixed(3));
             }
@@ -980,62 +994,6 @@ export default function ReportTemplate({
               distributions: isEtf ? item.distributions : undefined
             };
           });
-
-          // Fallback if empty or if non-ETF lacks valid revenue so the chart is NEVER blank, missing, or replaced
-          const hasRevenue = effectivePerf.some(p => typeof p.revenue === 'number' && p.revenue > 0);
-          if (effectivePerf.length === 0 || (!isEtf && !hasRevenue)) {
-            const symUpper = ticker?.toUpperCase();
-            if (symUpper === 'NVDA') {
-              effectivePerf = [
-                { quarter: 'Q3 FY26', revenue: 57.0, net_income: 31.8 },
-                { quarter: 'Q4 FY26', revenue: 68.1, net_income: 43.2 },
-                { quarter: 'Q1 FY27', revenue: 82.5, net_income: 58.0 },
-                { quarter: 'Q2 FY27', revenue: 98.4, net_income: 62.1 }
-              ];
-            } else if (symUpper === 'TSLA') {
-              effectivePerf = [
-                { quarter: 'Q3 2025', revenue: 25.18, net_income: 2.17 },
-                { quarter: 'Q4 2025', revenue: 27.80, net_income: 2.45 },
-                { quarter: 'Q1 2026', revenue: 29.50, net_income: 2.80 },
-                { quarter: 'Q2 2026', revenue: 32.10, net_income: 3.25 }
-              ];
-            } else if (symUpper === 'AMD') {
-              effectivePerf = [
-                { quarter: 'Q3 2025', revenue: 6.82, net_income: 0.77 },
-                { quarter: 'Q4 2025', revenue: 7.55, net_income: 0.95 },
-                { quarter: 'Q1 2026', revenue: 8.20, net_income: 1.15 },
-                { quarter: 'Q2 2026', revenue: 9.10, net_income: 1.42 }
-              ];
-            } else if (symUpper === 'AAPL') {
-              effectivePerf = [
-                { quarter: 'Q4 2025', revenue: 94.9, net_income: 14.7 },
-                { quarter: 'Q1 2026', revenue: 124.3, net_income: 36.3 },
-                { quarter: 'Q2 2026', revenue: 95.8, net_income: 24.1 },
-                { quarter: 'Q3 2026', revenue: 109.4, net_income: 28.5 }
-              ];
-            } else if (symUpper === 'MSFT') {
-              effectivePerf = [
-                { quarter: 'Q1 FY26', revenue: 65.6, net_income: 24.7 },
-                { quarter: 'Q2 FY26', revenue: 69.6, net_income: 26.8 },
-                { quarter: 'Q3 FY26', revenue: 74.2, net_income: 29.1 },
-                { quarter: 'Q4 FY26', revenue: 78.5, net_income: 31.4 }
-              ];
-            } else if (symUpper === 'PLTR') {
-              effectivePerf = [
-                { quarter: 'Q3 2025', revenue: 1.18, net_income: 0.37 },
-                { quarter: 'Q4 2025', revenue: 1.28, net_income: 0.41 },
-                { quarter: 'Q1 2026', revenue: 1.42, net_income: 0.48 },
-                { quarter: 'Q2 2026', revenue: 1.58, net_income: 0.55 }
-              ];
-            } else {
-              effectivePerf = [
-                { quarter: 'Q1', revenue: 15.2, net_income: 3.4 },
-                { quarter: 'Q2', revenue: 16.8, net_income: 3.9 },
-                { quarter: 'Q3', revenue: 18.5, net_income: 4.5 },
-                { quarter: 'Q4', revenue: 20.4, net_income: 5.2 }
-              ];
-            }
-          }
 
           const showDistributionsOnly = isEtf && effectivePerf.some(p => p.distributions !== undefined && p.distributions > 0);
           const rawHistory = data.financial_charts?.stock_price_history;
@@ -1090,7 +1048,11 @@ export default function ReportTemplate({
                 subtext={showDistributionsOnly ? (isThai ? "แผนภูมินี้แสดงการจ่ายปันผลรายไตรมาส (เงินปันผล/ผลตอบแทนต่อหุ้น) สำหรับสี่ไตรมาสที่ผ่านมา" : "This chart shows the quarterly distributions for the past four completed quarters.") : (isThai ? "แผนภูมินี้แสดงรายได้และกำไรสุทธิสำหรับสี่ไตรมาสที่ผ่านมา" : "This chart shows the revenue and net income for the past four completed quarters.")}
               >
                 <div className="h-64 mt-4 min-h-[256px]">
-                  <ResponsiveContainer width="100%" height={256} minHeight={256}>
+                  {effectivePerf.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-center text-sm text-stone-500 px-8">
+                      {isThai ? 'ไม่มีข้อมูลผลประกอบการจากงบการเงิน จึงไม่แสดงตัวเลขตัวอย่าง' : 'No filing-based financial performance data is available, so no sample values are displayed.'}
+                    </div>
+                  ) : <ResponsiveContainer width="100%" height={256} minHeight={256}>
                     <BarChart data={effectivePerf}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e4" />
                       <XAxis dataKey="quarter" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#78716c' }} dy={10} />
@@ -1139,7 +1101,7 @@ export default function ReportTemplate({
                         </>
                       )}
                     </BarChart>
-                  </ResponsiveContainer>
+                  </ResponsiveContainer>}
                 </div>
               </AnalysisCard>
             </div>
@@ -1484,8 +1446,8 @@ export default function ReportTemplate({
              </h2>
              <p className="text-xs sm:text-sm text-stone-500 mt-1">
                {isThai 
-                 ? "เอกสารอ้างอิงทางการและรายงานงบการเงินไตรมาสล่าสุดจาก SEC EDGAR สำหรับใช้คำนวณมูลค่าและสอดคล้องกับราคาตลาดปัจจุบัน (Real-Time Synchronized)" 
-                 : "Official SEC EDGAR regulatory filings and latest quarterly statements used for valuation modeling and live market alignment."}
+                 ? "เอกสารอ้างอิงที่รายงานระบุไว้ โปรดตรวจงวด ตัวเลข และลิงก์เอกสารต้นทางก่อนใช้คำนวณมูลค่า"
+                 : "Sources listed by this report. Verify the filing period, figures, and original document before using them for valuation."}
              </p>
            </div>
            

@@ -20,64 +20,16 @@ export function FivePillarsAnalysis({
 }: Props) {
   const [activePillarTab, setActivePillarTab] = useState<'all' | 'growth' | 'profit' | 'solvency' | 'yield' | 'peer'>('all');
 
-  // Fallback / default data safely derived from active data
-  const growth = data?.growth || {
-    revenue_growth_yoy_pct: 20.0,
-    revenue_cagr_3yr_pct: 18.5,
-    revenue_cagr_5yr_pct: 16.0,
-    eps_growth_yoy_pct: 25.0,
-    eps_cagr_3yr_pct: 22.0,
-    fcf_growth_yoy_pct: 20.0,
-    peg_ratio: 1.5,
-    peg_interpretation: isThai ? 'ประเมินความคุ้มค่าของการเติบโตเทียบกับราคา (PEG Ratio)' : 'PEG Ratio Valuation'
-  };
-
-  const profit = data?.profitability || {
-    roic_pct: 18.5,
-    roe_pct: 20.0,
-    gross_margin_pct: 25.0,
-    operating_margin_pct: 12.0,
-    net_margin_pct: 8.5,
-    fcf_margin_pct: 10.0,
-    capital_efficiency_verdict: isThai ? 'ประสิทธิภาพการสร้างผลตอบแทนจากเงินลงทุน (Capital Efficiency)' : 'Capital Compounding & Efficiency'
-  };
-
-  const balance = data?.balance_sheet || {
-    total_cash_and_investments_b: 10.0,
-    total_debt_b: 2.0,
-    net_cash_or_debt_b: 8.0,
-    is_net_cash: true,
-    debt_to_equity: 0.2,
-    net_debt_to_ebitda: -1.5,
-    interest_coverage: 25.0,
-    solvency_score_label: isThai ? 'โครงสร้างงบดุลและสภาพคล่องทางการเงิน' : 'Balance Sheet Solvency & Liquidity'
-  };
-
-  const yields = data?.yields || {
-    pe_multiple: 25.0,
-    earnings_yield_pct: 4.0,
-    pfcf_multiple: 20.0,
-    fcf_yield_pct: 5.0,
-    dividend_yield_pct: 0.0,
-    treasury_10yr_yield_pct: 4.25,
-    yield_spread_vs_treasury: 0.75,
-    yield_interpretation: isThai ? 'อัตราผลตอบแทนกระแสเงินสดและกำไรเทียบกับผลตอบแทนพันธบัตร' : 'Cash Flow & Earnings Yield vs Treasury'
-  };
-
-  const peerMatrix: PeerBenchmarkRow[] = data?.peer_matrix || [
-    { metric_name: 'P/E (TTM)', metric_name_th: 'ค่า P/E ย้อนหลัง', target_value: `${yields.pe_multiple}x`, sector_median: '25.0x', direct_peer_value: '28.0x', status: 'neutral', status_label_th: 'พรีเมียมตามการเติบโต' },
-    { metric_name: 'Forward P/E', metric_name_th: 'ค่า Forward P/E', target_value: `${(yields.pe_multiple * 0.8).toFixed(1)}x`, sector_median: '22.0x', direct_peer_value: '24.0x', status: 'better', status_label_th: 'สมเหตุสมผลล่วงหน้า' },
-    { metric_name: 'PEG Ratio', metric_name_th: 'ค่า PEG Ratio', target_value: `${growth.peg_ratio}x`, sector_median: '1.50x', direct_peer_value: '1.40x', status: 'better', status_label_th: 'อัตราส่วนราคาต่อการเติบโต' },
-    { metric_name: 'EV / EBITDA', metric_name_th: 'ค่า EV / EBITDA', target_value: '18.5x', sector_median: '16.0x', direct_peer_value: '20.0x', status: 'neutral', status_label_th: 'อยู่ในกรอบคู่แข่งชั้นนำ' },
-    { metric_name: 'FCF Yield (%)', metric_name_th: 'อัตราผลตอบแทนกระแสเงินสด', target_value: `${yields.fcf_yield_pct}%`, sector_median: '3.50%', direct_peer_value: '3.00%', status: 'better', status_label_th: 'ผลตอบแทนกระแสเงินสด' },
-    { metric_name: 'ROIC (%)', metric_name_th: 'ผลตอบแทนเงินลงทุน (ROIC)', target_value: `${profit.roic_pct}%`, sector_median: '12.0%', direct_peer_value: '14.0%', status: 'better', status_label_th: 'ประสิทธิภาพเงินทุน' },
-    { metric_name: 'Revenue Growth YoY (%)', metric_name_th: 'รายได้เติบโต YoY', target_value: `+${growth.revenue_growth_yoy_pct}%`, sector_median: '+12.0%', direct_peer_value: '+15.0%', status: 'better', status_label_th: 'อัตราเติบโตรายได้' },
-    { metric_name: 'Net Margin (%)', metric_name_th: 'อัตรากำไรสุทธิ', target_value: `${profit.net_margin_pct}%`, sector_median: '10.0%', direct_peer_value: '12.0%', status: 'better', status_label_th: 'ความสามารถทำกำไร' },
-    { metric_name: 'Net Debt / EBITDA', metric_name_th: 'หนี้สินสุทธิต่อ EBITDA', target_value: `${balance.net_debt_to_ebitda}x`, sector_median: '+1.5x', direct_peer_value: '+0.5x', status: 'better', status_label_th: 'โครงสร้างหนี้สิน' }
-  ];
+  const metric = (v: number | undefined, unit = '', prefix = '') => typeof v === 'number' && Number.isFinite(v) ? `${prefix}${v}${unit}` : 'N/A';
+  const growth = data?.growth || {};
+  const profit = data?.profitability || {};
+  const balance = data?.balance_sheet || {};
+  const yields = data?.yields || {};
+  const peerMatrix: PeerBenchmarkRow[] = data?.peer_matrix || [];
 
   return (
     <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col gap-6 w-full">
+      {peerMatrix.length === 0 && <p className="text-xs text-amber-800">{isThai ? 'ยังไม่มีข้อมูล benchmark ที่ตรวจสอบแหล่งที่มาได้' : 'Source-verified benchmarks are not available.'}</p>}
       {/* 1. Header with Badge & Info */}
       <div className="flex flex-col gap-4 border-b border-stone-100 pb-5">
         <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
@@ -142,32 +94,32 @@ export function FivePillarsAnalysis({
                 </span>
               </div>
               <span className="px-2.5 py-1 rounded-xl bg-white text-stone-800 font-mono text-xs sm:text-sm font-bold border border-stone-200 shadow-2xs">
-                PEG {growth.peg_ratio}x
+                PEG {metric(growth.peg_ratio, 'x', '')}
               </span>
             </div>
 
             <div className="space-y-2.5 font-mono">
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'รายได้เติบโต YoY (Revenue Growth):' : 'Revenue YoY Growth:'}</span>
-                <span className="font-bold text-emerald-700 text-base sm:text-lg">+{growth.revenue_growth_yoy_pct}%</span>
+                <span className="font-bold text-emerald-700 text-base sm:text-lg">{metric(growth.revenue_growth_yoy_pct, '%', '+')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'กำไร EPS เติบโต YoY (EPS Growth):' : 'EPS YoY Growth:'}</span>
-                <span className="font-bold text-emerald-700 text-base sm:text-lg">+{growth.eps_growth_yoy_pct}%</span>
+                <span className="font-bold text-emerald-700 text-base sm:text-lg">{metric(growth.eps_growth_yoy_pct, '%', '+')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'กระแสเงินสด FCF เติบโต YoY:' : 'FCF YoY Growth:'}</span>
-                <span className="font-bold text-emerald-700 text-base sm:text-lg">+{growth.fcf_growth_yoy_pct}%</span>
+                <span className="font-bold text-emerald-700 text-base sm:text-lg">{metric(growth.fcf_growth_yoy_pct, '%', '+')}</span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-stone-500 font-sans text-xs sm:text-sm">{isThai ? 'การเติบโตเฉลี่ย 3 ปี (3Y Rev CAGR):' : '3Y Revenue CAGR:'}</span>
-                <span className="font-bold text-stone-800 text-sm sm:text-base">+{growth.revenue_cagr_3yr_pct}%</span>
+                <span className="font-bold text-stone-800 text-sm sm:text-base">{metric(growth.revenue_cagr_3yr_pct, '%', '+')}</span>
               </div>
             </div>
 
             <div className="text-xs sm:text-sm text-stone-700 font-sans leading-relaxed bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/70 shadow-2xs flex items-start gap-2">
               <Lightbulb className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" />
-              <span>{growth.peg_interpretation}</span>
+              <span>{growth.peg_interpretation ?? 'N/A'}</span>
             </div>
           </div>
         )}
@@ -185,32 +137,32 @@ export function FivePillarsAnalysis({
                 </span>
               </div>
               <span className="px-2.5 py-1 rounded-xl bg-white text-stone-800 font-mono text-xs sm:text-sm font-bold border border-stone-200 shadow-2xs">
-                ROIC {profit.roic_pct}%
+                ROIC {metric(profit.roic_pct, '%', '')}
               </span>
             </div>
 
             <div className="space-y-2.5 font-mono">
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'ผลตอบแทนจากเงินลงทุน (ROIC):' : 'Return on Invested Capital (ROIC):'}</span>
-                <span className="font-bold text-stone-900 text-base sm:text-lg">{profit.roic_pct}%</span>
+                <span className="font-bold text-stone-900 text-base sm:text-lg">{metric(profit.roic_pct, '%', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):' : 'Return on Equity (ROE):'}</span>
-                <span className="font-bold text-stone-900 text-base sm:text-lg">{profit.roe_pct}%</span>
+                <span className="font-bold text-stone-900 text-base sm:text-lg">{metric(profit.roe_pct, '%', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'อัตรากำไรขั้นต้น (Gross Margin):' : 'Gross Margin:'}</span>
-                <span className="font-bold text-stone-800 text-base sm:text-lg">{profit.gross_margin_pct}%</span>
+                <span className="font-bold text-stone-800 text-base sm:text-lg">{metric(profit.gross_margin_pct, '%', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-stone-500 font-sans text-xs sm:text-sm">{isThai ? 'อัตรากำไรสุทธิ (Net Margin):' : 'Net Margin:'}</span>
-                <span className="font-bold text-stone-800 text-sm sm:text-base">{profit.net_margin_pct}%</span>
+                <span className="font-bold text-stone-800 text-sm sm:text-base">{metric(profit.net_margin_pct, '%', '')}</span>
               </div>
             </div>
 
             <div className="text-xs sm:text-sm text-stone-700 font-sans leading-relaxed bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/70 shadow-2xs flex items-start gap-2">
               <Sparkles className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" />
-              <span>{profit.capital_efficiency_verdict}</span>
+              <span>{profit.capital_efficiency_verdict ?? 'N/A'}</span>
             </div>
           </div>
         )}
@@ -228,32 +180,32 @@ export function FivePillarsAnalysis({
                 </span>
               </div>
               <span className="px-2.5 py-1 rounded-xl bg-white text-stone-800 font-mono text-xs sm:text-sm font-bold border border-stone-200 shadow-2xs">
-                Net Cash +${balance.net_cash_or_debt_b}B
+                {balance.is_net_cash === undefined ? 'N/A' : `${balance.is_net_cash ? 'Net Cash +' : 'Net Debt '}${metric(balance.net_cash_or_debt_b, 'B', '$')}`}
               </span>
             </div>
 
             <div className="space-y-2.5 font-mono">
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'เงินสด & เงินลงทุนระยะสั้น:' : 'Total Cash & ST Investments:'}</span>
-                <span className="font-bold text-stone-900 text-base sm:text-lg">${balance.total_cash_and_investments_b}B</span>
+                <span className="font-bold text-stone-900 text-base sm:text-lg">{metric(balance.total_cash_and_investments_b, 'B', '$')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'หนี้สินที่มีภาระดอกเบี้ย (Total Debt):' : 'Total Interest-Bearing Debt:'}</span>
-                <span className="font-bold text-stone-700 text-base sm:text-lg">${balance.total_debt_b}B</span>
+                <span className="font-bold text-stone-700 text-base sm:text-lg">{metric(balance.total_debt_b, 'B', '$')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'อัตราส่วนหนี้สินต่อทุน (Debt / Equity):' : 'Debt / Equity Ratio:'}</span>
-                <span className="font-bold text-stone-800 text-base sm:text-lg">{balance.debt_to_equity}x</span>
+                <span className="font-bold text-stone-800 text-base sm:text-lg">{metric(balance.debt_to_equity, 'x', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-stone-500 font-sans text-xs sm:text-sm">{isThai ? 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):' : 'Interest Coverage Ratio:'}</span>
-                <span className="font-bold text-stone-800 text-sm sm:text-base">{balance.interest_coverage}x</span>
+                <span className="font-bold text-stone-800 text-sm sm:text-base">{metric(balance.interest_coverage, 'x', '')}</span>
               </div>
             </div>
 
             <div className="text-xs sm:text-sm text-stone-700 font-sans leading-relaxed bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/70 shadow-2xs flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" />
-              <span>{balance.solvency_score_label}</span>
+              <span>{balance.solvency_score_label ?? 'N/A'}</span>
             </div>
           </div>
         )}
@@ -271,32 +223,32 @@ export function FivePillarsAnalysis({
                 </span>
               </div>
               <span className="px-2.5 py-1 rounded-xl bg-white text-stone-800 font-mono text-xs sm:text-sm font-bold border border-stone-200 shadow-2xs">
-                FCF Yield {yields.fcf_yield_pct}%
+                FCF Yield {metric(yields.fcf_yield_pct, '%', '')}
               </span>
             </div>
 
             <div className="space-y-2.5 font-mono">
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'ผลตอบแทนกระแสเงินสดอิสระ (FCF Yield):' : 'FCF Yield (FCF / MCap):'}</span>
-                <span className="font-bold text-stone-900 text-base sm:text-lg">{yields.fcf_yield_pct}%</span>
+                <span className="font-bold text-stone-900 text-base sm:text-lg">{metric(yields.fcf_yield_pct, '%', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'ผลตอบแทนจากกำไร (Earnings Yield = 1/PE):' : 'Earnings Yield (1 / PE):'}</span>
-                <span className="font-bold text-stone-800 text-base sm:text-lg">{yields.earnings_yield_pct}%</span>
+                <span className="font-bold text-stone-800 text-base sm:text-lg">{metric(yields.earnings_yield_pct, '%', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">{isThai ? 'ผลตอบแทนพันธบัตรสหรัฐฯ 10 ปี (10Y US Treasury):' : '10Y US Treasury Benchmark:'}</span>
-                <span className="font-bold text-stone-700 text-base sm:text-lg">{yields.treasury_10yr_yield_pct}%</span>
+                <span className="font-bold text-stone-700 text-base sm:text-lg">{metric(yields.treasury_10yr_yield_pct, '%', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-stone-500 font-sans text-xs sm:text-sm">Price / Free Cash Flow Multiple:</span>
-                <span className="font-bold text-stone-800 text-sm sm:text-base">{yields.pfcf_multiple}x</span>
+                <span className="font-bold text-stone-800 text-sm sm:text-base">{metric(yields.pfcf_multiple, 'x', '')}</span>
               </div>
             </div>
 
             <div className="text-xs sm:text-sm text-stone-700 font-sans leading-relaxed bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/80 shadow-2xs flex items-start gap-2">
               <BarChart3 className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" />
-              <span>{yields.yield_interpretation}</span>
+              <span>{yields.yield_interpretation ?? 'N/A'}</span>
             </div>
           </div>
         )}
@@ -381,9 +333,7 @@ export function FivePillarsAnalysis({
         <Info className="w-4 h-4 text-[#0b5a4b] mt-0.5 shrink-0" />
         <p className="text-xs text-stone-700 leading-relaxed font-sans">
           <strong>{isThai ? 'สรุปมุมมองนักวิเคราะห์:' : 'Analyst Synthesis:'} </strong>
-          {data?.analyst_takeaway || (isThai
-            ? `แม้ค่า P/E ของ ${ticker} (${yields.pe_multiple}x) จะเทรดที่ระดับพรีเมียมตามการเติบโต แต่เมื่อพิจารณาครบทั้ง 5 มิติ (สถานะ Net Cash $${balance.net_cash_or_debt_b}B, ROIC ระดับ ${profit.roic_pct}%, และ FCF Yield ${yields.fcf_yield_pct}%) สะท้อนความแข็งแกร่งของฐานทุนและงบการเงิน`
-            : `While multiples for ${ticker} (${yields.pe_multiple}x P/E) trade at a growth premium, the 5-pillar composite ($${balance.net_cash_or_debt_b}B Net Cash, ${profit.roic_pct}% ROIC, and ${yields.fcf_yield_pct}% FCF Yield) reflects strong balance sheet solvency.`)}
+          {data?.analyst_takeaway || (isThai ? 'ยังไม่มีบทสรุปที่ตรวจสอบแหล่งข้อมูล' : 'No source-verified summary available')}
         </p>
       </div>
     </div>

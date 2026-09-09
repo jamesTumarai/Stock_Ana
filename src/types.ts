@@ -7,6 +7,8 @@ export interface IncomeStatementData {
   operating_income?: (number | null)[];
   operating_margin_pct?: (number | null)[];
   other_income?: (number | null)[];
+  income_before_tax?: (number | null)[];
+  income_tax_expense?: (number | null)[];
   net_income: (number | null)[];
   net_margin_pct?: (number | null)[];
   eps_diluted?: (number | null)[];
@@ -170,6 +172,14 @@ export interface FinancialStatementsData {
   income_statement: IncomeStatementData;
   balance_sheet: BalanceSheetData;
   cash_flow: CashFlowData;
+  /** Primary filing used for the latest reported balance-sheet date. */
+  source?: {
+    document_url?: string;
+    document_type?: string;
+    filing_date?: string;
+    period_end?: string;
+    units?: string;
+  };
   statement_template?: StatementTemplateType;
   validation_summary?: StatementValidationSummary;
   red_flags?: string[];
@@ -269,6 +279,11 @@ export interface DCFModel {
     waccPct: number;
     terminalGrowthPct: number;
     projectionYears: number;
+    /** True only when all inputs came from the four disclosed quarters in this report. */
+    isValid?: boolean;
+    sourcePeriod?: string;
+    missingFields?: string[];
+    derivedFields?: string[];
   };
   scenarios: {
     bear: DCFScenario;

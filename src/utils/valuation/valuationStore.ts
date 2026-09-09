@@ -87,7 +87,7 @@ export function initValuationStore(data?: Partial<ReportData>, ticker?: string):
  */
 export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?: string): IntrinsicValueData {
   const sym = (ticker || data?.ticker || 'STOCK').toUpperCase();
-  const currentPrice = data?.intrinsic_value?.current_price || data?.company_profile?.stock_price || 100;
+  const currentPrice = data?.intrinsic_value?.current_price ?? data?.company_profile?.stock_price ?? 0;
   
   // 1. Detect Model
   const modelSelector = detectValuationModel(data, sym);
@@ -103,6 +103,31 @@ export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?:
 
   // 4. Standard / Multi-stage DCF: Build mathematically rigorous DCF with verified inputs
   const { dcfModel, inputs } = buildRigorousDCFModel(data, sym);
+
+  if (!inputs.isValid) {
+    return {
+      current_price: currentPrice,
+      as_of_date: data?.intrinsic_value?.as_of_date,
+      selected_model: modelSelector,
+      cost_of_capital: costOfCapital,
+      dcf_model: dcfModel,
+      summary: {
+        fair_value_range_low: 0,
+        fair_value_range_high: 0,
+        base_case_fair_value: 0,
+        margin_of_safety_pct: 0,
+        verdict_text: 'Valuation unavailable until required filing inputs are supplied.',
+      },
+      validation_alerts: [{
+        type: 'error',
+        code: 'VALUATION_INPUTS_INCOMPLETE',
+        message_th: 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูล DCF จากงบยังไม่ครบหรือไม่อยู่ในงวดเดียวกัน',
+        message_en: 'Valuation is unavailable because the required DCF inputs are missing or are not from the same reporting period.',
+        detail: inputs.missingFields?.join('; '),
+      }],
+      disclaimer: 'This valuation requires four disclosed quarterly financial statements in the same unit and period.',
+    };
+  }
 
   // 5. Harmonize Fair Values with the Primary Selected Model
   let baseFairVal = dcfModel.scenarios.base.fair_value_per_share;

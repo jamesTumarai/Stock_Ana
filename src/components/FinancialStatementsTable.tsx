@@ -1,3 +1,4 @@
+import { periodChanges } from '../utils/reportIntegrity';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -113,53 +114,8 @@ export function FinancialStatementsTable({
     values: (number | null | undefined)[],
     metricKey?: string
   ): (number | null)[] => {
-    if (compareMode === 'hide') return values.map(() => null);
-
-    if (compareMode === 'qoq') {
-      // Quarter-over-Quarter: (Current - Previous Quarter) / Previous Quarter * 100
-      return values.map((val, idx) => {
-        if (val === null || val === undefined || idx === 0) return null;
-        const prev = values[idx - 1];
-        if (prev === null || prev === undefined || prev === 0) return null;
-        return Number((((val - prev) / Math.abs(prev)) * 100).toFixed(2));
-      });
-    }
-
-    // compareMode === 'yoy'
-    // 1. True 4-quarter lag (Q[t] vs Q[t-4]) if 5+ quarters available
-    if (values.length >= 5) {
-      return values.map((val, idx) => {
-        if (val === null || val === undefined || idx < 4) return null;
-        const prev = values[idx - 4];
-        if (prev === null || prev === undefined || prev === 0) return null;
-        return Number((((val - prev) / Math.abs(prev)) * 100).toFixed(2));
-      });
-    }
-
-    // 2. Explicit reported revenue YoY growth
-    if (metricKey === 'revenue' && data.income_statement?.yoy_revenue_growth_pct) {
-      const yoy = data.income_statement.yoy_revenue_growth_pct;
-      return values.map((_, idx) => yoy[idx] !== undefined && yoy[idx] !== null ? Number(yoy[idx]) : null);
-    }
-
-    // 3. For quarter-by-quarter datasets: calculate percentage change for each quarter based on this specific line item
-    return values.map((val, idx) => {
-      if (val === null || val === undefined) return null;
-
-      // When prior quarter exists, calculate authentic delta for this exact line item
-      if (idx > 0 && values[idx - 1] !== null && values[idx - 1] !== undefined && values[idx - 1] !== 0) {
-        const prev = values[idx - 1]!;
-        const delta = ((val - prev) / Math.abs(prev)) * 100;
-        return Number(delta.toFixed(2));
-      }
-
-      // First point (idx = 0): No prior baseline quarter exists in this window
-      if (metricKey === 'revenue' && data.income_statement?.yoy_revenue_growth_pct?.[0] !== undefined) {
-        return Number(data.income_statement.yoy_revenue_growth_pct[0]);
-      }
-
-      return null;
-    });
+    return periodChanges(values, rawPeriods, compareMode,
+      metricKey === 'revenue' ? data.income_statement?.yoy_revenue_growth_pct : undefined);
   };
 
   const income = data.income_statement;
@@ -203,13 +159,10 @@ export function FinancialStatementsTable({
     if (income?.tax_rate?.[i] !== undefined && income?.tax_rate?.[i] !== null) {
       return income.tax_rate[i];
     }
-    const ni = income?.net_income?.[i];
-    const op = income?.operating_income?.[i];
-    if (op && ni !== undefined && ni !== null && op > 0 && op >= ni) {
-      const impliedRate = ((op - ni) / op) * 100;
-      if (impliedRate >= 0 && impliedRate <= 40) {
-        return Number(impliedRate.toFixed(2));
-      }
+    const preTax = income?.income_before_tax?.[i];
+    const taxExpense = income?.income_tax_expense?.[i];
+    if (preTax !== undefined && preTax !== null && preTax > 0 && taxExpense !== undefined && taxExpense !== null) {
+      return Number(((taxExpense / preTax) * 100).toFixed(2));
     }
     return null;
   });
@@ -253,7 +206,7 @@ export function FinancialStatementsTable({
     return null;
   });
 
-  // Annualized quarterly returns (Net Income * 4) for institutional consistency with Five Pillars & DCF
+  // These are annualized from the reported quarter; they are not management-reported annual ratios.
   const roeVals = rawPeriods.map((_, i) => {
     const ni = income?.net_income?.[i];
     const eq = balance?.total_equity?.[i];
@@ -270,13 +223,13 @@ export function FinancialStatementsTable({
 
   const roicVals = rawPeriods.map((_, i) => {
     const op = income?.operating_income?.[i];
+    const taxRate = taxRateVals[i];
     const debt = balance?.total_debt?.[i] || 0;
     const eq = balance?.total_equity?.[i] || 1;
     const cash = balance?.cash_and_equivalents?.[i] || 0;
     const investedCap = Math.max(1, debt + eq - cash);
-    if (op !== undefined && op !== null && investedCap > 0) {
-      // Annualized NOPAT = (Operating Income * 4) * (1 - 0.21 effective tax rate)
-      const nopat = (op * 4) * 0.79;
+    if (op !== undefined && op !== null && investedCap > 0 && taxRate !== null && taxRate !== undefined) {
+      const nopat = (op * 4) * (1 - taxRate / 100);
       return Number(((nopat / investedCap) * 100).toFixed(2));
     }
     return null;
@@ -390,7 +343,7 @@ export function FinancialStatementsTable({
         category_key: 'banking_metrics',
         category_title: isThai ? '4. ดัชนีชี้วัดเฉพาะธุรกิจธนาคาร & FinTech (Banking & FinTech Key Metrics)' : '4. Banking & FinTech Metrics',
         metrics: [
-          { key: 'nim', name: 'Net Interest Margin (NIM)', name_th: 'อัตราส่วนต่างดอกเบี้ยสุทธิ (NIM %)', category: 'banking_metrics', unit: '%', values: rawPeriods.map((_, i) => income?.net_interest_margin_pct?.[i] ?? 4.2) },
+          { key: 'nim', name: 'Net Interest Margin (NIM)', name_th: 'อัตราส่วนต่างดอกเบี้ยสุทธิ (NIM %)', category: 'banking_metrics', unit: '%', values: rawPeriods.map((_, i) => income?.net_interest_margin_pct?.[i] ?? null) },
           { key: 'deposit_growth', name: 'Total Deposits', name_th: 'ฐานเงินฝากรวมของลูกค้า ($M)', category: 'banking_metrics', unit: '$', values: rawPeriods.map((_, i) => balance?.deposits?.[i] ?? null) },
           { key: 'loan_deposit_ratio', name: 'Loan-to-Deposit Ratio (LDR)', name_th: 'อัตราส่วนสินเชื่อต่อเงินฝาก (LDR %)', category: 'banking_metrics', unit: '%', values: rawPeriods.map((_, i) => {
             const loans = balance?.loans_held_for_investment?.[i];
@@ -900,6 +853,22 @@ export function FinancialStatementsTable({
         {/* Sector Template & Statement Audit Strip */}
         <div className="px-4 sm:px-6 py-3 bg-stone-50/90 border-b border-stone-200 flex items-center justify-between gap-3 flex-wrap text-xs">
           <div className="flex items-center gap-2 flex-wrap">
+            {data.source?.document_url ? (
+              <a
+                href={data.source.document_url}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-xl bg-sky-50 text-sky-800 border border-sky-200 font-medium hover:bg-sky-100"
+              >
+                {isThai
+                  ? `แหล่งงบ: ${data.source.document_type || 'เอกสารต้นทาง'}${data.source.period_end ? ` · สิ้นงวด ${data.source.period_end}` : ''}`
+                  : `Statement source: ${data.source.document_type || 'primary filing'}${data.source.period_end ? ` · period ended ${data.source.period_end}` : ''}`}
+              </a>
+            ) : (
+              <span className="px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 font-medium">
+                {isThai ? 'ยังไม่มีลิงก์เอกสารต้นทาง: ตัวเลขนี้ยังไม่ยืนยันกับ filing' : 'No primary filing link: figures are not filing-verified'}
+              </span>
+            )}
             {/* Sector Template Badge */}
             <span className="px-2.5 py-1 rounded-xl bg-stone-900 text-white font-medium flex items-center gap-1.5 shadow-2xs">
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
@@ -961,7 +930,7 @@ export function FinancialStatementsTable({
 
           <div className="flex items-center gap-2 text-stone-500 text-[11px] font-mono">
             <Shield className="w-3.5 h-3.5 text-[#0b5a4b]" />
-            <span>SEC EDGAR XBRL Reconciled</span>
+            <span>Source reconciliation not verified</span>
           </div>
         </div>
 
