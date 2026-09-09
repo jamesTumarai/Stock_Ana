@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply-and-verify:
-    if: "!contains(github.event.head_commit.message, '[phase3a-applied]')"
+    if: ${{ !contains(github.event.head_commit.message, '[phase3a-applied]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
