@@ -17,6 +17,8 @@ const baseDataset = (): CanonicalFinancialDataset => ({
     nonNullValues: 0,
     missingValues: 0,
   },
+  provenanceStatus: 'verified',
+  provenanceWarnings: [],
 });
 
 const fact = (fy: number, fp: 'Q1' | 'Q2' | 'Q3' | 'FY', val: number, accn: string) => ({
