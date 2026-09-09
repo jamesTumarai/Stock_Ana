@@ -1,8 +1,11 @@
 import type { ReportData } from '../types';
+import { buildMarketSnapshot, type MarketSnapshot } from '../domain/marketSnapshot';
 import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * 100) / 100;
+
+type ReportWithMarketSnapshot = ReportData & { market_snapshot?: MarketSnapshot };
 
 /** Match fiscal labels, not adjacent array positions; incomplete history stays unavailable. */
 export function periodChanges(values: (number | null | undefined)[], periods: string[], mode: string, reported?: (number | null)[]): (number | null)[] {
@@ -27,7 +30,7 @@ export function periodChanges(values: (number | null | undefined)[], periods: st
 /** No ticker-specific overrides, fabricated history, forced balancing or synthetic forecasts. */
 export function normalizeReport(input?: ReportData, ticker?: string, live?: Record<string, any>): ReportData {
   if (!input) return {} as ReportData;
-  const result: ReportData = structuredClone(input);
+  const result = structuredClone(input) as ReportWithMarketSnapshot;
   const fs = result.financial_statements;
   const lastIndex = (fs?.periods?.length || 0) - 1;
   const at = (a?: (number | null)[]) => finite(a?.[lastIndex]) ? a![lastIndex]! : undefined;
@@ -69,11 +72,37 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
     };
     result.five_pillars.analyst_takeaway = 'ข้อมูลจากรายงานที่บันทึกไว้ ไม่ใช่การรับรองจาก SEC; ควรตรวจงวดบัญชีและเอกสารต้นทางก่อนใช้ประเมินมูลค่า';
   }
+
+  // Keep dated research intact. Explicit quote refresh updates only current market fields.
+  // All current-price consumers use the same canonical snapshot so DCF cannot remain on a stale AI-supplied price.
+  const symbol = (ticker || result.ticker || '').toUpperCase();
+  const quote = live?.[symbol];
+  const marketSnapshot = buildMarketSnapshot(symbol, quote);
+  if (marketSnapshot) {
+    result.market_snapshot = marketSnapshot;
+
+    if (result.company_profile) {
+      result.company_profile.stock_price = marketSnapshot.price;
+      if (finite(marketSnapshot.change)) result.company_profile.price_change = marketSnapshot.change;
+      if (finite(marketSnapshot.changePercent)) result.company_profile.price_change_pct = marketSnapshot.changePercent;
+      if (typeof quote?.marketCap === 'string' && quote.marketCap.trim()) result.company_profile.market_cap = quote.marketCap;
+      if (finite(marketSnapshot.fiftyTwoWeekHigh)) result.company_profile.fifty_two_week_high = marketSnapshot.fiftyTwoWeekHigh;
+      if (finite(marketSnapshot.fiftyTwoWeekLow)) result.company_profile.fifty_two_week_low = marketSnapshot.fiftyTwoWeekLow;
+    }
+
+    if (result.intrinsic_value) result.intrinsic_value.current_price = marketSnapshot.price;
+    if (result.technical_analysis?.key_levels) result.technical_analysis.key_levels.current_price = marketSnapshot.price;
+    if (result.forecast_dashboard?.price_target) {
+      result.forecast_dashboard.price_target.current_price = marketSnapshot.price;
+      const mean = result.forecast_dashboard.price_target.mean;
+      result.forecast_dashboard.price_target.implied_upside_pct = finite(mean)
+        ? rounded((mean - marketSnapshot.price) / marketSnapshot.price * 100)
+        : undefined;
+    }
+  }
+
   // Preserve deterministic validation_summary when it was produced by the production validator.
   // Its filing_source remains unset unless real source metadata exists.
-  // Keep dated research intact. Explicit refresh updates only the displayed quote, never historical narratives.
-  const quote = live?.[(ticker || result.ticker || '').toUpperCase()];
-  if (quote && result.company_profile && finite(quote.price)) result.company_profile.stock_price = quote.price;
 
   // Recalculate DCF from the disclosed four-quarter dataset. Historical AI price targets
   // are never retained when the report cannot supply every required input.

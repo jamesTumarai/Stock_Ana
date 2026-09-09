@@ -34,6 +34,49 @@ const zero = structuredClone(source);
 zero.financial_statements!.balance_sheet!.cash_and_equivalents![3]=0;
 zero.financial_statements!.balance_sheet!.short_term_investments![3]=0;
 assert.equal(normalizeReport(zero).five_pillars!.balance_sheet.total_cash_and_investments_b,0);
-assert.equal(normalizeReport(source,'AAPL',{AAPL:{price:330}}).company_profile!.stock_price,330);
+
+const marketSynced = normalizeReport({
+  ticker: 'AAPL',
+  generated_at: '2026-09-09T00:00:00Z',
+  summary: 'test',
+  company_profile: { stock_price: 100, price_change: 0, price_change_pct: 0 },
+  intrinsic_value: {
+    current_price: 101,
+    summary: { fair_value_range_low: null, fair_value_range_high: null, base_case_fair_value: null, margin_of_safety_pct: null },
+  },
+  technical_analysis: { key_levels: { current_price: 102, support: [], resistance: [] } },
+  forecast_dashboard: {
+    total_analysts: 1,
+    consensus_rating: 'Hold',
+    ratings_breakdown: { buy_count: 0, buy_pct: 0, hold_count: 1, hold_pct: 100, sell_count: 0, sell_pct: 0 },
+    price_target: { high: 140, mean: 120, low: 90, current_price: 103 },
+    institutions: [],
+    analysts: [],
+  },
+} as unknown as ReportData, 'AAPL', {
+  AAPL: {
+    symbol: 'AAPL',
+    price: 110,
+    change: 2,
+    changePercent: 1.85,
+    marketCap: '$3.20T',
+    marketCapRaw: 3_200_000_000_000,
+    provider: 'Yahoo Finance',
+    asOf: '2026-09-09T16:00:00.000Z',
+    retrievedAt: '2026-09-09T16:00:01.000Z',
+  },
+});
+
+assert.equal(marketSynced.company_profile!.stock_price, 110);
+assert.equal(marketSynced.company_profile!.price_change, 2);
+assert.equal(marketSynced.company_profile!.price_change_pct, 1.85);
+assert.equal(marketSynced.intrinsic_value!.current_price, 110);
+assert.equal(marketSynced.technical_analysis!.key_levels.current_price, 110);
+assert.equal(marketSynced.forecast_dashboard!.price_target.current_price, 110);
+assert.equal(marketSynced.forecast_dashboard!.price_target.implied_upside_pct, 9.09);
+const snapshot = (marketSynced as ReportData & { market_snapshot?: { price: number; provider?: string; isRealtime: boolean } }).market_snapshot;
+assert.equal(snapshot?.price, 110);
+assert.equal(snapshot?.provider, 'Yahoo Finance');
+assert.equal(snapshot?.isRealtime, false);
 assert.equal(source.company_profile!.stock_price,319.97);
 console.log('Report integrity regression checks passed');

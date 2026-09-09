@@ -1,4 +1,5 @@
 import { DCFModel, ReportData } from '../../types';
+import type { MarketSnapshot } from '../../domain/marketSnapshot';
 import {
   MACRO_TERMINAL_GROWTH_MAX_CAP_PCT,
   MACRO_TERMINAL_GROWTH_MIN_PCT,
@@ -17,7 +18,10 @@ export interface DCFEngineInputs {
   sourcePeriod?: string;
   missingFields?: string[];
   derivedFields?: string[];
+  priceSource?: 'market_snapshot' | 'intrinsic_value' | 'company_profile';
 }
+
+type ReportWithMarketSnapshot = Partial<ReportData> & { market_snapshot?: MarketSnapshot };
 
 const numberAt = (values: (number | null | undefined)[] | undefined, index: number) => {
   const value = values?.[index];
@@ -77,7 +81,7 @@ const unavailableScenario = (note: string) => ({
  * It never substitutes ticker-specific, price-derived, or market-cap-derived data.
  */
 export function buildRigorousDCFModel(
-  data?: Partial<ReportData>,
+  data?: ReportWithMarketSnapshot,
   ticker?: string,
   userWacc?: number,
   userGrowth?: number,
@@ -125,14 +129,25 @@ export function buildRigorousDCFModel(
     const dilutedEps = numberAt(inc?.eps_diluted, latestIndex);
     if (netIncome !== undefined && dilutedEps !== undefined && dilutedEps > 0) {
       sharesOutstandingM = netIncome / dilutedEps;
-      derivedFields.push('diluted shares derived from latest net income divided by diluted EPS');
+      derivedFields.push('diluted shares (weighted-average) derived from latest net income divided by diluted EPS; not current shares outstanding');
     }
   }
   if (!sharesOutstandingM || sharesOutstandingM <= 0) missing.push('shares outstanding');
-  const rawCurrentPrice = data?.intrinsic_value?.current_price ?? data?.company_profile?.stock_price;
+
+  const snapshotPrice = data?.market_snapshot?.price;
+  const intrinsicPrice = data?.intrinsic_value?.current_price;
+  const profilePrice = data?.company_profile?.stock_price;
+  const rawCurrentPrice = snapshotPrice ?? intrinsicPrice ?? profilePrice;
   const currentPrice = typeof rawCurrentPrice === 'number' && Number.isFinite(rawCurrentPrice) && rawCurrentPrice > 0
     ? rawCurrentPrice
     : null;
+  const priceSource: DCFEngineInputs['priceSource'] = currentPrice === null
+    ? undefined
+    : snapshotPrice === currentPrice
+      ? 'market_snapshot'
+      : intrinsicPrice === currentPrice
+        ? 'intrinsic_value'
+        : 'company_profile';
   if (currentPrice === null) missing.push('current share price');
 
   const rawWacc = userWacc ?? original?.assumptions.wacc_pct;
@@ -176,6 +191,7 @@ export function buildRigorousDCFModel(
     sourcePeriod: lastFourPeriods.length ? `${lastFourPeriods[0]}–${lastFourPeriods[3]}` : undefined,
     missingFields: missing,
     derivedFields,
+    priceSource,
   };
 
   if (!inputs.isValid) {
@@ -215,7 +231,7 @@ export function buildRigorousDCFModel(
   return {
     inputs,
     dcfModel: {
-      assumptions: { wacc_pct: waccPct, terminal_growth_pct: terminalGrowthPct, projection_years: projectionYears },
+      assumptions: { wacc_pct: waccPct, terminal_growth_pct: validTerminalGrowthPct, projection_years: validProjectionYears },
       inputs,
       scenarios: { bear, base, bull },
     },
