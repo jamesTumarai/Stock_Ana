@@ -46,7 +46,8 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'income_statement', metric: 'net_income', concepts: ['NetIncomeLoss', 'ProfitLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'eps_diluted', concepts: ['EarningsPerShareDiluted'], unit: 'USD/shares', canonicalUnit: 'per_share', factKind: 'duration' },
 
-  { statement: 'balance_sheet', metric: 'cash_and_equivalents', concepts: ['CashAndCashEquivalentsAtCarryingValue', 'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  // Restricted cash is not interchangeable with cash available for valuation/net-cash calculations.
+  { statement: 'balance_sheet', metric: 'cash_and_equivalents', concepts: ['CashAndCashEquivalentsAtCarryingValue'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'short_term_investments', concepts: ['ShortTermInvestments', 'MarketableSecuritiesCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'total_current_assets', concepts: ['AssetsCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'accounts_receivable', concepts: ['AccountsReceivableNetCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
@@ -219,9 +220,7 @@ const deriveFreeCashFlow = (
         derivation: 'Requires verified operating cash flow and capital expenditures for the same fiscal quarter.',
       };
     }
-    // SEC capex is usually disclosed as a positive cash outflow. If a filer reports a negative
-    // value, preserve the accounting sign rather than double-subtracting it.
-    const capexOutflow = investment.value >= 0 ? investment.value : -investment.value;
+    const capexOutflow = Math.abs(investment.value);
     return {
       metric: 'free_cash_flow',
       statement: 'cash_flow',
