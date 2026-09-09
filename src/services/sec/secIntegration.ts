@@ -1,6 +1,7 @@
 import type { CanonicalFinancialDataset } from '../../domain/financialValue';
 import type { FinancialStatementsData } from '../../types';
 import { createSecEdgarClientFromEnv, type SecEdgarClient } from './secClient';
+import { buildSecCoverageDiagnostics, type SecCoverageDiagnostics } from './secCoverageDiagnostics';
 import { attachVerifiedTotalDebtFromSec } from './secDebtResolver';
 import { mapSecBundleToCanonicalFinancials, type SecCompanyBundleLike } from './secFinancialMapper';
 import { adaptSecCanonicalToFinancialStatements, assessSecDcfCoverage, type SecDcfCoverageAssessment } from './secLegacyAdapter';
@@ -12,6 +13,7 @@ export interface SecVerifiedIntegrationPackage {
   financialStatements: FinancialStatementsData | null;
   shareSnapshot: SecShareSnapshot | null;
   dcfCoverage: SecDcfCoverageAssessment;
+  coverageDiagnostics?: SecCoverageDiagnostics;
   retrievedAt?: string;
 }
 
@@ -39,6 +41,7 @@ export function buildSecVerifiedIntegrationPackage(
     };
   }
 
+  const coverageDiagnostics = buildSecCoverageDiagnostics(bundle);
   const mapped = mapSecBundleToCanonicalFinancials(bundle);
   if (!mapped) {
     return {
@@ -47,6 +50,7 @@ export function buildSecVerifiedIntegrationPackage(
       financialStatements: null,
       shareSnapshot: buildSecShareSnapshot(bundle.identity, bundle.submissions, bundle.companyFacts, bundle.retrievedAt),
       dcfCoverage: unavailableCoverage('SEC_CANONICAL_MAPPING_UNAVAILABLE', 'SEC company facts could not be mapped into canonical financials.'),
+      coverageDiagnostics,
       retrievedAt: bundle.retrievedAt,
     };
   }
@@ -62,6 +66,7 @@ export function buildSecVerifiedIntegrationPackage(
     financialStatements,
     shareSnapshot,
     dcfCoverage,
+    coverageDiagnostics,
     retrievedAt: bundle.retrievedAt,
   };
 }
