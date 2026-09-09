@@ -19,7 +19,7 @@ jobs:
           ref: phase3k-sec-guarded-dcf
           fetch-depth: 0
       - name: Wire SEC verification into final report pipeline
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
