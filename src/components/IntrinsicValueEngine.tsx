@@ -26,7 +26,7 @@ export function IntrinsicValueEngine({
   forecastDashboard,
   isThai,
   currencyMode = 'USD',
-  currencyRate = 35.5
+  currencyRate
 }: Props) {
   if (!data || !data.dcf_model) {
     return (
@@ -79,10 +79,12 @@ export function IntrinsicValueEngine({
   }
 
   const currSym = currencyMode === 'THB' ? '฿' : '$';
-  const multiplier = currencyMode === 'THB' ? currencyRate : 1;
+  const hasFxRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
+  const multiplier = currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
 
   const formatPrice = (val: number | null | undefined): string => {
     if (val === null || val === undefined || !Number.isFinite(val)) return isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
+    if (currencyMode === 'THB' && !hasFxRate) return isThai ? 'FX ไม่พร้อมใช้งาน' : 'FX unavailable';
     return `${currSym}${(val * multiplier).toFixed(2)}`;
   };
 

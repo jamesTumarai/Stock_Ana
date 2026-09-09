@@ -26,7 +26,7 @@ interface Props {
 export function FinancialStatementsTable({
   data,
   isThai,
-  currencyRate = 35.5,
+  currencyRate,
   currencyMode = 'USD',
   ticker = '',
   companyName = ''
@@ -73,7 +73,8 @@ export function FinancialStatementsTable({
   const statementTemplate = data.statement_template || 'standard';
   const validation = data.validation_summary;
   const currSym = currencyMode === 'THB' ? '฿' : '$';
-  const multiplier = currencyMode === 'THB' ? currencyRate : 1;
+  const hasFxRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
+  const multiplier = currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
 
   // Filter periods based on user selection
   const periodIndices = rawPeriods.map((_, i) => i).filter((i) => {
@@ -100,6 +101,7 @@ export function FinancialStatementsTable({
   const formatNum = (rawVal: number | null | undefined, isCurrency = true, decimals = 2): string => {
     if (rawVal === null || rawVal === undefined) return '-';
     if (!isCurrency) return rawVal.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    if (currencyMode === 'THB' && !hasFxRate) return isThai ? 'FX ไม่พร้อม' : 'FX N/A';
 
     const val = (normalizeToMillions(rawVal) ?? 0);
     const converted = val * multiplier;
