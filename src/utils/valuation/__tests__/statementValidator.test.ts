@@ -22,7 +22,23 @@ const balancedRes = validateFinancialStatements(balancedFs, 'standard');
 assert.equal(balancedRes.is_balanced, true);
 assert.equal(balancedRes.impossible_guards_passed, true);
 assert.equal(balancedRes.ratio_reliability_warning, false);
+assert.equal(balancedRes.filing_source, undefined, 'Accounting checks alone must not claim SEC provenance');
+assert.equal(balancedRes.filing_date, undefined, 'Missing filing metadata must remain unavailable');
 console.log('✅ Balanced Balance Sheet Identity PASSED!');
+
+const sourcedFs: FinancialStatementsData = {
+  ...balancedFs,
+  source: {
+    document_url: 'https://www.sec.gov/Archives/example-filing.htm',
+    document_type: 'Form 10-Q',
+    filing_date: '2026-08-01',
+    period_end: '2026-06-30',
+    units: 'USD millions'
+  }
+};
+const sourcedRes = validateFinancialStatements(sourcedFs, 'standard');
+assert.equal(sourcedRes.filing_source, 'Form 10-Q · https://www.sec.gov/Archives/example-filing.htm');
+assert.equal(sourcedRes.filing_date, '2026-08-01');
 
 // 2. Test Imbalanced Balance Sheet Detection
 console.log('➡️ Testing Imbalanced Balance Sheet Identity Detection...');

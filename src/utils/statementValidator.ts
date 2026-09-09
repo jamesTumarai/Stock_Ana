@@ -340,6 +340,10 @@ export function validateFinancialStatements(
     flaggedMetrics['net_margin'] = 'ตัวเลขรายได้หรือกำไรสุทธิดิบมีข้อสงสัยทางบัญชีหรือขัดแย้งกับส่วนอื่นของรายงาน';
   }
 
+  const filingSource = fs.source?.document_url
+    ? [fs.source.document_type, fs.source.document_url].filter(Boolean).join(' · ')
+    : undefined;
+
   return {
     is_balanced: isBalanced,
     discrepancy_pct: discrepancyPct,
@@ -349,7 +353,8 @@ export function validateFinancialStatements(
     passed_guards: passedGuards,
     flagged_metrics: flaggedMetrics,
     ratio_reliability_warning: ratioReliabilityWarning,
-    filing_source: fs.as_of_date ? `SEC Form 10-Q/10-K (${fs.as_of_date})` : 'SEC EDGAR XBRL Verified'
+    filing_source: filingSource,
+    filing_date: filingSource ? fs.source?.filing_date : undefined
   };
 }
 

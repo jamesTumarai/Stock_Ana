@@ -248,8 +248,8 @@ ${contextSummary ? `- Wider Financial Statement Context (recent 4 quarters in $M
 ${redFlagsSummary ? `- Related Red Flags from 10-K/10-Q filings: ${redFlagsSummary}` : ''}
 
 CRITICAL INSTITUTIONAL ANALYSIS RULES:
-1. STRICT DATA FIDELITY: Never produce generic canned praise (e.g. do NOT say 'ยอดเยี่ยม' or 'ลงทุนเพื่ออนาคต' if CapEx surged > 100% causing FCF to turn negative, or if EBIT contracted by > 50% from price wars).
-2. CROSS-STATEMENT SYNTHESIS: Connect this line item directly to the rest of the financial statements (e.g. explain how a massive CapEx outflow of -$5.79B in investing cash flow outpaced operating cash flow of ~$4.7B, plunging Free Cash Flow into negative -$1.09B; or how SG&A overhead and price cuts caused operating de-leverage).
+1. STRICT DATA FIDELITY: Never produce generic canned praise. Tie every conclusion to retrieved, dated figures from this report and explain when deterioration in revenue, margins, or cash flow changes the conclusion.
+2. CROSS-STATEMENT SYNTHESIS: Connect this line item directly to the other retrieved financial statements. Compare CapEx with operating cash flow, explain the resulting free cash flow, and connect operating expenses with operating leverage without importing numerical examples from this prompt.
 3. CAUSALITY & DRIVERS: Ground the explanation in ${companyName}'s actual business operations (e.g. for Tesla: AI training clusters / Cortex compute, Gigafactory tooling, Robotaxi/FSD development, EV price competition, energy storage margins).
 4. PROFESSIONAL TONE: ${isThai ? 'ตอบเป็นภาษาไทยระดับนักวิเคราะห์การเงินสถาบัน (IB/Equity Research) ชัดเจน กระชับ ตรงประเด็น' : 'Respond in professional Wall Street Equity Research English.'}
 
@@ -598,20 +598,20 @@ Find and analyze the absolute latest real-time public information, official SEC 
 CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 1. TODAY'S EXACT DATE: Today is ${todayISO} (Year ${currentYear}). ALL DATA MUST BE AS CURRENT AS POSSIBLE (UP TO TODAY ${todayISO}).
 2. LIVE MARKET REALITY: The current stock price, market cap, valuation multiples (TTM P/E, Forward P/E, EV/EBITDA, P/S, P/B), 52-week high/low, and technical indicators MUST be fetched from live searches (Yahoo Finance, Google Finance, Bloomberg, TradingView) as of TODAY (${todayISO}). NEVER use outdated past years or placeholder example values from the schema.
-   - For Forward P/E: Always use standard NTM (Next Twelve Months / FY+1) consensus EPS estimates from mainstream financial aggregators (e.g., for TSLA, NTM consensus EPS is ~$1.95–$2.05 giving Forward P/E ~175x–185x; avoid mixing in far-out FY+2/FY2027 estimates which artificially distort Forward P/E to ~125x).
-   - For EV/EBITDA & PEG: Extract live EV/EBITDA directly from current market statistics (e.g., for TSLA EV/EBITDA is ~120x–132x; and PEG Ratio is based on 5-year expected EPS growth ~6.5x–8.5x).
+   - For Forward P/E: Retrieve the current standard NTM (Next Twelve Months / FY+1) consensus EPS from an identified, dated financial source. Do not mix it with a later fiscal-year estimate, and never use numerical examples from the prompt as market data.
+   - For EV/EBITDA and PEG: Retrieve the current figures and their calculation basis from identified, dated market sources. If the provider does not publish a value, leave it unavailable.
 3. 100% REAL DATA & ZERO HALLUCINATIONS: Every single metric, revenue number, margin percentage, cash flow, debt level, institutional holder name, and insider transaction MUST come from verified, authentic public records (SEC Form 10-K, 10-Q, 8-K, Form 4, 13F filings, and official investor relations).
 4. EXHAUST ALL SEARCH EFFORTS: You MUST execute multiple thorough web searches to locate authentic figures for all required fields.
 5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.
 6. PEER BENCHMARK & TARGET TICKER LIVE SEARCH MANDATE:
    - SELECT DIRECT, MODERN PURE-PLAY PEERS: Always select the most direct, relevant, and modern public peers in the same niche industry:
-     * For Space & Orbital Launch (e.g., RKLB): You MUST compare with pure-play space companies like ASTS (AST SpaceMobile), LUNR (Intuitive Machines), RDW (Redwire), PL (Planet Labs), and explicitly benchmark and compare against SpaceX (Launch dominance, Starlink, private market cap ~$210B–$350B) in the commentary and key takeaways!
+     * For Space & Orbital Launch (e.g., RKLB): You may compare with pure-play space companies such as ASTS, LUNR, RDW, and PL. Compare a private company such as SpaceX only when a dated, identified private-market source supports the comparison; never assume a private valuation.
      * For AI Infrastructure & Chips (e.g., NVDA): Compare with AMD, AVGO (Broadcom), TSM (TSMC), INTC.
      * For Enterprise AI & Data Platforms (e.g., PLTR): Compare with SNOW, MDB, DDOG, C3.ai (AI).
      * For Digital Banking & Fintech (e.g., SOFI): Compare with HOOD (Robinhood), UPST (Upstart), NU (Nu Holdings), AFRM (Affirm).
      * For EV & Clean Energy (e.g., TSLA): Compare with BYDDF (BYD), RIVN (Rivian), GM, LCID.
    - For ${ticker} AND all peer companies listed in "peer_comparison" (e.g., ASTS, RDW, PL, AMD, TSM, BYD, etc.), you MUST execute dedicated live web searches to retrieve their LIVE current stock price, Market Cap, and P/E ratios (Trailing and Forward) as of TODAY (${todayISO}).
-   - For example: TSLA Market Cap is ~$1.40 Trillion (stock price ~$353, NOT $1.14T from past quarters); RKLB Market Cap is ~$38B–$41B (stock price ~$62–$64); ASTS Market Cap is ~$24B (stock price ~$62); AMD is ~$745B–$770B; EOSE is ~$1.32B (stock price ~$3.65).
+   - Retrieve the current price, market capitalization, and valuation multiples independently for every selected peer from identified sources dated as of ${todayISO}. Never use a ticker-specific price or market-cap figure embedded in a prompt.
    - NEVER rely on static memory or outdated pre-training knowledge. All Market Caps, P/E multiples, and margins in "peer_comparison" MUST match live financial reality as of TODAY (${todayISO}).
    - STRICT GAAP ACCOUNTING IDENTITIES:
      * Gross Profit = Revenue - COGS
@@ -620,37 +620,27 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
      * Free Cash Flow = Operating Cash Flow - CapEx
    - CROSS-SECTION MARGIN & FINANCIAL STATEMENTS CONSISTENCY (อัตรากำไรในงบการเงินต้องตรงกับ Peer Comparison และ Five Pillars ทุกจุด ห้ามขัดแย้งกันเองเด็ดขาด):
      * The Gross Margin, Operating Margin, and Net Margin reported in the 4th (latest) quarter of "financial_statements" MUST match the target ticker metrics in "peer_comparison" and "five_pillars.profitability".
-     * For Tesla (TSLA): The authentic SEC Form 8-K / 10-Q figures are: Q2 2026 Revenue $28,236M ($28.24B), Gross Profit $4,750M (Gross Margin 16.8%), Operating Income $398M (Operating Margin 1.4%), Net Income $1,114M (Net Margin ~3.95%), EPS $0.32, CapEx $5,790M, Free Cash Flow -$1,090M (deficit). NEVER report inflated Net Income ($3.12B) or Operating Income ($3.84B / 12.75%), as this is nearly 10x higher than reality and causes severe cross-section contradiction!
-     * BANNED HISTORICAL EXTRAPOLATION: NEVER synthesize historical quarters (Q3 2025, Q4 2025, Q1 2026) using artificial fixed linear slope steps from the latest quarter. Every quarter must reflect actual 10-Q/8-K results.
+     * Retrieve every target-company statement figure directly from its identified filing for the exact fiscal period. Cross-check all derived margins against those retrieved figures; never treat ticker-specific numbers in a prompt as reference truth.
+     * BANNED HISTORICAL EXTRAPOLATION: NEVER synthesize historical quarters using artificial trends or fixed linear steps from the latest quarter. Retrieve and independently verify each quarter from a dated filing or earnings release; leave an unverified quarter unavailable and flag the history as incomplete.
 8. MANDATORY LATEST QUARTER SEC FILINGS IN FINDINGS & VALUATION CONSISTENCY (เอกสารและงบการเงินต้องเป็นไตรมาสล่าสุดเสมอเพื่อให้คำนวณตรงกัน):
    - PRIMARY CITATION MANDATE: The first document in "findings" (findings[0]) MUST ALWAYS be the latest SEC Form 10-Q (or latest Form 10-K if the company recently completed its fiscal year-end).
-   - In "findings[0]", explicitly label "documentType" with the quarter period (e.g., "Form 10-Q (Q1 2026)" or "Form 10-Q (ไตรมาสล่าสุด)"), provide the exact filing date, and include key insights summarizing the latest balance sheet liquidity (Cash & ST Investments), total debt, dilution/shares outstanding, and revenue performance.
+   - In "findings[0]", explicitly label "documentType" with the retrieved fiscal quarter or annual period, provide the exact filing date, and include key insights summarizing the latest balance sheet liquidity, total debt, diluted shares outstanding, and revenue performance.
    - 100% MATHEMATICAL ALIGNMENT (คำนวณตรงกัน): The balance sheet figures (Cash, Short-Term Investments, Total Debt, Diluted Shares Outstanding) from this latest quarter filing MUST directly align with:
      * The 4th (latest) quarter in "financial_statements"
      * Enterprise Value calculation (EV = Market Cap + Total Debt - Cash)
      * DCF Intrinsic Value starting balance sheet (Net Cash = Cash - Debt)
      * Diluted shares count used for Per Share metrics.
-   - Do NOT cite an old 2023 or 2024 filing as the primary finding when 2025/2026 quarterly filings have been published. Citing outdated documents while calculating against live 2026 market prices causes severe calculation discrepancies (คำนวณไม่ตรงกัน) and is STRICTLY PROHIBITED.
-9. MANDATORY 4 QUARTERS IN EARNINGS ANALYSIS (ประวัติผลประกอบการต้องมีครบ 4 ไตรมาส ห้ามมีอันเดียวเด็ดขาด):
-   - In "earnings_analysis.past_earnings_history", you MUST provide EXACTLY the last 4 completed quarters (e.g., Q3 2025 -> Q4 2025 -> Q1 2026 -> Q2 2026), matching the chronological order of "financial_statements.periods".
-   - NEVER output only 1 single quarter! Outputting only 1 quarter ruins the beat streak chart and will be severely penalized.
-   - For all 4 quarters, provide: "period", "report_date", "eps_estimate", "eps_actual", "eps_surprise_pct", "revenue_estimate_musd", "revenue_actual_musd", "revenue_surprise_pct", "stock_reaction_1d_pct", "guidance_change", and "beat_or_miss".
-10. TESLA (TSLA) AUTONOMY & DCF SCENARIO NARRATIVE GROUNDING (สมมติฐาน DCF ต้องอิงข้อเท็จจริง ไม่เขียนล้าหลัง):
-    - Current Reality: Tesla has ALREADY launched unsupervised commercial Robotaxi operations in Austin (mid-2025) and expanded to Dallas and Houston in 2026.
-    - Bear Case: NEVER write "Robotaxi ล่าช้าไปถึงปี 2028" or "ยังไม่เปิดให้บริการ" because it is already operational. The Bear risk is commercial scaling bottlenecks: "กรณี Robotaxi ขยายสเกลเชิงพาณิชย์ได้ช้ากว่าที่บริษัทเคยประกาศไว้มาก (ยังจำกัดอยู่ในวงแคบไม่กี่พันคันภายในปี 2028 จากข้อจำกัดทางกฎหมายและความปลอดภัย) และการแข่งขันด้านราคา EV ยังคงกดดันอัตรากำไร".
-    - Base Case: Aligns with Elon Musk's Q1 2026 guidance (revenue material in 2027) ➡️ "กรณี Robotaxi เริ่มสร้างกระแสเงินสดที่มีนัยสำคัญใน 10-15 เมืองใหญ่ของสหรัฐฯ ตั้งแต่ปี 2027".
-    - Bull Case: "กรณี Cybercab ผลิตเชิงพาณิชย์เต็มกำลัง และ Optimus เริ่มส่งมอบเชิงอุตสาหกรรมช่วงปลายปี 2027 พร้อม FSD Unsupervised ปลดล็อคทั่วประเทศ" (ถ่วงน้ำหนักความน่าจะเป็นต่ำตาม track record การเลื่อนแผน).
+   - Do not cite an older filing as the primary finding when a newer quarterly or annual filing is available. Mixing stale filing inputs with current market data is prohibited.
+9. EARNINGS HISTORY VERIFICATION (ประวัติผลประกอบการต้องตรวจสอบแยกทีละไตรมาส):
+   - Attempt to retrieve the last four completed quarters for "earnings_analysis.past_earnings_history" in chronological order, aligned with "financial_statements.periods".
+   - Independently verify each quarter's report date, consensus estimates, actual results, surprise percentages, and one-day reaction from identified dated sources. Never reconstruct or extrapolate a missing quarter from trends.
+   - If any quarter cannot be verified, use null for its unavailable observations, flag the history as incomplete, and calculate streaks or averages only from verified observations.
+10. COMPANY-SPECIFIC PRODUCT AND FORECAST GROUNDING:
+    - Retrieve current product launches, operating status, management guidance, and scenario assumptions for ${ticker} from identified dated sources. Do not embed or reuse ticker-specific narrative facts from this prompt.
 11. MANDATORY AUTHENTIC SEGMENT REVENUE BREAKDOWN (สัดส่วนรายได้ตามสายธุรกิจและภูมิภาคต้องดึงจาก 10-Q/10-K จริง ห้ามเดาหรือใช้สัดส่วนเก่า):
      - In "business_analysis.revenue_breakdown.by_business":
        * You MUST search and extract the authentic segment revenue breakdown from the latest Form 10-Q or 10-K "Product and Service Information" or Segment Footnote table for the latest reported quarter.
-       * For Apple (AAPL): The breakdown MUST report Apple's 5 official segments for the latest quarter (Q3 FY2026 ended June 27, 2026):
-         1) iPhone: ~$54,250M (~49.58% of total revenue)
-         2) Services: ~$30,739M (~28.09% of total revenue)
-         3) Mac: ~$10,350M (~9.46% of total revenue, +28.7% YoY)
-         4) Wearables, Home & Accessories: ~$7,890M (~7.21% of total revenue)
-         5) iPad: ~$6,190M (~5.66% of total revenue)
-         Total Products (Hardware) = $54,250M + $10,350M + $7,890M + $6,190M = $78,680M (~$78.68B), Total Net Sales = $109,419M (~$109.4B).
-         STRICTLY FORBIDDEN to inflate Wearables (e.g. to $14B+ which is holiday Q1) or deflate iPhone (e.g. to $47B)!
+       * Use the issuer's exact segment names for the selected fiscal period. Retrieve each segment value from the same identified filing table; do not carry product figures across quarters.
        * For Tesla (TSLA): Automotive, Energy Storage & Generation, Services & Other.
        * For NVIDIA (NVDA): Data Center, Gaming, Professional Visualization, Automotive, OEM.
        * For Microsoft (MSFT): Intelligent Cloud, Productivity & Business Processes, More Personal Computing.
@@ -662,7 +652,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
        * High Target Price (Street-High / Bullish outlier target)
        * Low Target Price (Street-Low / Bearish downside target)
      - STRICT SCENARIO MAPPING (CRITICAL FOR DETERMINISTIC ACCURACY ACROSS ALL STOCKS & SECTORS):
-       * Base Case ("scenarios.base" & "summary.base_case_fair_value"): MUST ALWAYS be anchored to the Wall Street Mean/Median Consensus Target Price (or the mathematically consistent fundamental DCF baseline). It represents the most probable baseline expectations of institutional consensus. NEVER assign the Street-High outlier (e.g., $28 for SOFI, $160 for PLTR, $105 for HOOD, $275 for NVDA) to the Base Case, as doing so causes erratic swings between runs!
+       * Base Case ("scenarios.base" & "summary.base_case_fair_value"): Anchor it to a dated Wall Street mean/median consensus target or a mathematically consistent fundamental DCF baseline. Do not map a retrieved Street-High outlier into the Base Case.
        * Bull Case ("scenarios.bull" & "summary.fair_value_range_high"): This is the designated home for the Street-High Target (Optimistic / Blue Sky / Best Execution scenario).
        * Bear Case ("scenarios.bear" & "summary.fair_value_range_low"): This is the designated home for the Street-Low Target (Downside risk / Execution bottleneck scenario).
      - UNIVERSAL SECTOR COVERAGE: This rule applies unconditionally to all tickers and sectors — Tech, FinTech, Banking, Healthcare, Consumer, Energy, Utilities, Space, and CleanTech.
@@ -738,7 +728,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         dynamicSchema = `{
   "verdict": {
     "summary": "...",
-    "conviction_score": 85,
+    "conviction_score": null,
     "key_takeaways": ["...", "..."]
   },
   "technical_analysis": {
@@ -750,7 +740,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
        "confluence_score": "..."
     },
     "key_levels": {
-       "current_price": 150.5,
+       "current_price": null,
        "support": ["...", "...", "..."],
        "resistance": ["...", "...", "..."]
     },
@@ -777,12 +767,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "suitable_trade_style": "..."
     },
     "scoring": {
-      "trend_clarity": { "score": 8, "reason": "..." },
-      "momentum_strength": { "score": 8, "reason": "..." },
-      "risk_reward": { "score": 8, "reason": "..." },
-      "signal_confluence": { "score": 8, "reason": "..." },
-      "false_signal_risk": { "score": 8, "reason": "..." },
-      "overall_attractiveness": { "score": 8, "reason": "..." }
+      "trend_clarity": { "score": null, "reason": "..." },
+      "momentum_strength": { "score": null, "reason": "..." },
+      "risk_reward": { "score": null, "reason": "..." },
+      "signal_confluence": { "score": null, "reason": "..." },
+      "false_signal_risk": { "score": null, "reason": "..." },
+      "overall_attractiveness": { "score": null, "reason": "..." }
     },
     "final_verdict_summary": {
       "is_good_timing": "...",
@@ -795,24 +785,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "category": "Risk Assessment",
       "title": "...",
       "description": "...",
-      "impact_score": 8
+      "impact_score": null
     }
   ],` : ''}
   "findings": [
     {
       "documentType": "Form 10-Q (Latest Completed Quarter)",
       "keyInsights": ["...", "..."],
-      "date": "2026-05-15",
+      "date": "...",
       "sourceUrl": "..."
     }
   ],
   "financial_charts": {
-    "stock_price_history": [
-      { "date": "Aug '26", "price": 150.5 }
-    ],
-    "financial_performance_4q": [
-      { "quarter": "Q2 2026", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
-    ]
+    "stock_price_history": [],
+    "financial_performance_4q": []
   }
 }`;
       } else if (analysisType === 'combined') {
@@ -883,65 +869,65 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         dynamicSchema = `{
   "verdict": {
     "summary": "...",
-    "conviction_score": 85,
+    "conviction_score": null,
     "key_takeaways": ["...", "..."]
   },
   "financial_statements": {
     "currency": "USD",
     "fiscal_period_type": "quarterly",
-    "as_of_date": "2026-09-01",
-    "source": { "document_url": "https://www.sec.gov/...", "document_type": "Form 10-Q", "filing_date": "2026-08-26", "period_end": "2026-07-26", "units": "USD millions" },
-    "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
+    "as_of_date": null,
+    "source": { "document_url": null, "document_type": null, "filing_date": null, "period_end": null, "units": "USD millions" },
+    "periods": [],
     "income_statement": {
       "revenue": [],
-      "cogs": [146, 164, 150, 160],
-      "gross_profit": [580, 664, 734, 844],
-      "gross_margin_pct": [79.9, 80.2, 83.0, 84.1],
-      "operating_expenses": [385, 382, 345, 371],
-      "operating_income": [195, 282, 389, 473],
-      "operating_margin_pct": [26.8, 34.0, 44.0, 47.1],
-      "income_before_tax": [170, 100, 260, 380],
-      "income_tax_expense": [27, 21, 46, 54],
-      "net_income": [143, 79, 214, 326],
-      "net_margin_pct": [19.7, 9.5, 24.2, 32.5],
-      "eps_diluted": [0.06, 0.03, 0.08, 0.13],
-      "yoy_revenue_growth_pct": [63, 70, 85, 93],
+      "cogs": [],
+      "gross_profit": [],
+      "gross_margin_pct": [],
+      "operating_expenses": [],
+      "operating_income": [],
+      "operating_margin_pct": [],
+      "income_before_tax": [],
+      "income_tax_expense": [],
+      "net_income": [],
+      "net_margin_pct": [],
+      "eps_diluted": [],
+      "yoy_revenue_growth_pct": [],
       "commentary": "..."
     },
     "balance_sheet": {
       "cash_and_equivalents": [],
       "short_term_investments": [],
-      "total_current_assets": [5150, 5520, 6050, 6750],
-      "accounts_receivable": [390, 410, 435, 460],
-      "inventory": [0, 0, 0, 0],
-      "net_ppe": [280, 310, 335, 360],
-      "total_assets": [5820, 6240, 6780, 7490],
-      "total_current_liabilities": [680, 720, 780, 850],
-      "accounts_payable": [180, 195, 210, 230],
-      "short_term_debt": [0, 0, 0, 0],
+      "total_current_assets": [],
+      "accounts_receivable": [],
+      "inventory": [],
+      "net_ppe": [],
+      "total_assets": [],
+      "total_current_liabilities": [],
+      "accounts_payable": [],
+      "short_term_debt": [],
       "total_debt": [],
-      "total_liabilities": [920, 980, 1050, 1150],
-      "total_equity": [4900, 5260, 5730, 6340],
-      "current_ratio": [7.57, 7.67, 7.76, 7.94],
-      "quick_ratio": [7.57, 7.67, 7.76, 7.94],
-      "debt_to_equity": [0, 0, 0, 0],
-      "debt_to_ebitda": [0, 0, 0, 0],
+      "total_liabilities": [],
+      "total_equity": [],
+      "current_ratio": [],
+      "quick_ratio": [],
+      "debt_to_equity": [],
+      "debt_to_ebitda": [],
       "commentary": "..."
     },
     "cash_flow": {
-      "operating_cash_flow": [420, 480, 510, 620],
-      "depreciation": [22, 24, 25, 26],
-      "change_working_capital": [114, 127, 116, 108],
-      "capex": [5, 6, 7, 8],
-      "investing_cash_flow": [-180, -210, -240, -280],
-      "free_cash_flow": [415, 474, 503, 612],
-      "fcf_margin_pct": [57.2, 57.2, 56.9, 61.0],
-      "fcf_vs_net_income_ratio": [2.88, 2.65, 2.35, 1.88],
-      "financing_cash_flow": [-45, -50, -55, -60],
-      "stock_issuance_repurchase": [-45, -50, -55, -60],
-      "dividends_paid": [0, 0, 0, 0],
-      "ending_cash": [2150, 2320, 2550, 2800],
-      "net_change_cash": [195, 170, 230, 250],
+      "operating_cash_flow": [],
+      "depreciation": [],
+      "change_working_capital": [],
+      "capex": [],
+      "investing_cash_flow": [],
+      "free_cash_flow": [],
+      "fcf_margin_pct": [],
+      "fcf_vs_net_income_ratio": [],
+      "financing_cash_flow": [],
+      "stock_issuance_repurchase": [],
+      "dividends_paid": [],
+      "ending_cash": [],
+      "net_change_cash": [],
       "commentary": "..."
     },
     "red_flags": ["..."]
@@ -950,122 +936,69 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     {
       "name": "P/E (Trailing)",
       "formula": "ราคาหุ้นปัจจุบัน / EPS ย้อนหลัง 12 เดือน",
-      "value": 137.5,
+      "value": null,
       "unit": "x",
-      "peer_avg": 30.7,
-      "own_5yr_percentile": 82,
+      "peer_avg": null,
+      "own_5yr_percentile": null,
       "interpretation": "...",
       "verdict": "expensive"
     },
     {
       "name": "PEG Ratio",
       "formula": "P/E ÷ อัตราการเติบโตกำไรคาดการณ์ (%)",
-      "value": 1.8,
+      "value": null,
       "unit": "x",
-      "peer_avg": 2.1,
-      "own_5yr_percentile": 65,
+      "peer_avg": null,
+      "own_5yr_percentile": null,
       "interpretation": "...",
       "verdict": "fair"
     },
-    { "name": "EV/EBITDA", "formula": "Enterprise Value / EBITDA (TTM)", "value": 85.2, "unit": "x", "peer_avg": 25.4, "own_5yr_percentile": 78, "interpretation": "...", "verdict": "expensive" },
-    { "name": "EV/Sales", "formula": "Enterprise Value / Revenue (TTM)", "value": 38.4, "unit": "x", "peer_avg": 12.1, "own_5yr_percentile": 85, "interpretation": "...", "verdict": "expensive" },
-    { "name": "P/FCF", "formula": "Market Cap / Free Cash Flow (TTM)", "value": 65.0, "unit": "x", "peer_avg": 28.0, "own_5yr_percentile": 70, "interpretation": "...", "verdict": "expensive" },
-    { "name": "P/B", "formula": "ราคาหุ้น / มูลค่าทางบัญชีต่อหุ้น", "value": 24.5, "unit": "x", "peer_avg": 8.5, "own_5yr_percentile": 75, "interpretation": "...", "verdict": "expensive" }
+    { "name": "EV/EBITDA", "formula": "Enterprise Value / EBITDA (TTM)", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null },
+    { "name": "EV/Sales", "formula": "Enterprise Value / Revenue (TTM)", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null },
+    { "name": "P/FCF", "formula": "Market Cap / Free Cash Flow (TTM)", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null },
+    { "name": "P/B", "formula": "ราคาหุ้น / มูลค่าทางบัญชีต่อหุ้น", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null }
   ],
   "valuation_percentile_chart": {
     "description": "ตำแหน่ง P/E ปัจจุบันเทียบกับช่วง 5 ปี",
-    "min_5yr": 45.2,
-    "max_5yr": 210.8,
-    "current": 137.5,
-    "median_5yr": 95.0
+    "min_5yr": null,
+    "max_5yr": null,
+    "current": null,
+    "median_5yr": null
   },
   "intrinsic_value": null,
   "earnings_analysis": {
-    "as_of_date": "2026-09-01",
-    "next_earnings_date": "2026-11-03",
+    "as_of_date": null,
+    "next_earnings_date": null,
     "next_earnings_date_confirmed": false,
-    "days_until_next_earnings": 63,
-    "past_earnings_history": [
-      {
-        "period": "Q3 2025",
-        "report_date": "2025-11-04",
-        "eps_estimate": 0.08,
-        "eps_actual": 0.09,
-        "eps_surprise_pct": 12.5,
-        "revenue_estimate_musd": 710,
-        "revenue_actual_musd": 726,
-        "revenue_surprise_pct": 2.3,
-        "stock_reaction_1d_pct": 4.2,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      },
-      {
-        "period": "Q4 2025",
-        "report_date": "2026-02-10",
-        "eps_estimate": 0.09,
-        "eps_actual": 0.10,
-        "eps_surprise_pct": 11.1,
-        "revenue_estimate_musd": 810,
-        "revenue_actual_musd": 828,
-        "revenue_surprise_pct": 2.2,
-        "stock_reaction_1d_pct": 3.5,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      },
-      {
-        "period": "Q1 2026",
-        "report_date": "2026-05-05",
-        "eps_estimate": 0.10,
-        "eps_actual": 0.12,
-        "eps_surprise_pct": 20.0,
-        "revenue_estimate_musd": 860,
-        "revenue_actual_musd": 884,
-        "revenue_surprise_pct": 2.8,
-        "stock_reaction_1d_pct": 5.8,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      },
-      {
-        "period": "Q2 2026",
-        "report_date": "2026-08-04",
-        "eps_estimate": 0.11,
-        "eps_actual": 0.13,
-        "eps_surprise_pct": 18.2,
-        "revenue_estimate_musd": 940,
-        "revenue_actual_musd": 1004,
-        "revenue_surprise_pct": 6.8,
-        "stock_reaction_1d_pct": 8.5,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      }
-    ],
+    "days_until_next_earnings": null,
+    "past_earnings_history": [],
     "beat_streak": {
-      "eps_beat_streak_quarters": 14,
-      "revenue_beat_streak_quarters": 10,
+      "eps_beat_streak_quarters": null,
+      "revenue_beat_streak_quarters": null,
       "commentary": "..."
     },
-    "average_earnings_day_move_pct": 12.4,
+    "average_earnings_day_move_pct": null,
     "current_quarter_setup": {
-      "period": "Q3 2026",
-      "company_guidance_revenue_musd": [1050, 1060],
-      "consensus_estimate_revenue_musd": 1055,
-      "consensus_estimate_eps": 0.14,
+      "period": null,
+      "company_guidance_revenue_musd": [],
+      "consensus_estimate_revenue_musd": null,
+      "consensus_estimate_eps": null,
       "whisper_vs_consensus": "...",
       "key_things_to_watch": ["...", "..."]
     },
     "estimate_revisions_trend": {
       "description": "ทิศทางการปรับประมาณการของนักวิเคราะห์ในช่วง 90 วันที่ผ่านมา",
-      "eps_estimate_90d_ago": 0.12,
-      "eps_estimate_current": 0.14,
+      "eps_estimate_90d_ago": null,
+      "eps_estimate_current": null,
       "direction": "upward",
-      "num_analysts_raised": 18,
-      "num_analysts_lowered": 2,
+      "num_analysts_raised": null,
+      "num_analysts_lowered": null,
       "commentary": "..."
     },
     "full_year_guidance": {
-      "fiscal_year": 2026,
-      "company_guidance_revenue_musd": [8150, 8158],
-      "implied_growth_pct": 82,
+      "fiscal_year": null,
+      "company_guidance_revenue_musd": [],
+      "implied_growth_pct": null,
       "consensus_vs_guidance": "..."
     },
     "analyst_consensus": {
@@ -1083,7 +1016,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         "median": null,
         "implied_upside_pct": null
       },
-      "as_of_date": "2026-09-01",
+      "as_of_date": null,
       "commentary": "..."
     },
     "summary_verdict": "..."
@@ -1125,29 +1058,29 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     }
   },
   "peer_comparison": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "industry_name": "Sector / Industry",
     "peers": [
       {
         "ticker": "...",
         "company_name": "...",
-        "market_cap": "$180B",
-        "pe_trailing": 137.5,
-        "pe_forward": 75.2,
-        "revenue_growth_yoy_pct": 93.0,
-        "gross_margin_pct": 84.1,
-        "net_margin_pct": 32.5,
-        "ev_ebitda": 85.2
+        "market_cap": null,
+        "pe_trailing": null,
+        "pe_forward": null,
+        "revenue_growth_yoy_pct": null,
+        "gross_margin_pct": null,
+        "net_margin_pct": null,
+        "ev_ebitda": null
       }
     ],
     "key_takeaway": "..."
   },
   "catalysts_and_events": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "items": [
       {
         "title": "...",
-        "date": "2026-11-03",
+        "date": null,
         "expected_impact": "high",
         "description": "...",
         "category": "earnings"
@@ -1172,102 +1105,84 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "commentary": "Omit unavailable figures; never populate this section from examples or estimates."
   },
   "corporate_actions": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "dividends": {
       "summary": {
         "has_dividend": false,
-        "dividend_yield_pct": 0.0,
-        "annual_payout_usd": 0.0,
-        "payout_ratio_pct": 0.0,
-        "frequency": "ไม่มีการจ่ายเงินปันผล",
+        "dividend_yield_pct": null,
+        "annual_payout_usd": null,
+        "payout_ratio_pct": null,
+        "frequency": null,
         "policy_note": "..."
       },
       "history": [
         {
-          "announced_date": "2026-07-31",
-          "allocation_plan": "Cash Dividend: 0.27 USD Per Share",
-          "amount_usd": 0.27,
-          "record_date": "2026-08-10",
-          "ex_date": "2026-08-10",
-          "pay_date": "2026-08-13"
+          "announced_date": null,
+          "allocation_plan": null,
+          "amount_usd": null,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null
         }
       ]
     },
     "stock_splits": [
       {
-        "effective_date": "2020-08-31",
-        "split_type": "Split",
-        "ratio": "1:4"
+        "effective_date": null,
+        "split_type": null,
+        "ratio": null
       }
     ],
     "buybacks": {
-      "authorized_amount_musd": 1000,
-      "remaining_amount_musd": 850,
-      "shares_repurchased_last_12m": 1500000,
-      "net_share_reduction_pct": 0.8,
+      "authorized_amount_musd": null,
+      "remaining_amount_musd": null,
+      "shares_repurchased_last_12m": null,
+      "net_share_reduction_pct": null,
       "commentary": "..."
     }
   },
   "company_profile": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "overview": {
       "company_name": "...",
       "symbol": "...",
-      "listing_date": "2020-09-30",
-      "issue_price": 10.0,
-      "isin": "US69608A1088",
-      "founded_year": 2003,
-      "ceo": "Dr. Alexander C. Karp",
-      "exchange": "NASDAQ",
-      "employees_count": 3850,
-      "fiscal_year_end": "12-31",
-      "address": "1200 17th Street, Floor 15",
-      "city": "Denver",
-      "province_state": "Colorado",
-      "country": "United States of America",
-      "zip_code": "80202",
-      "phone": "1-720-358-3679",
-      "website_url": "https://www.palantir.com",
+      "listing_date": null,
+      "issue_price": null,
+      "isin": null,
+      "founded_year": null,
+      "ceo": null,
+      "exchange": null,
+      "employees_count": null,
+      "fiscal_year_end": null,
+      "address": null,
+      "city": null,
+      "province_state": null,
+      "country": null,
+      "zip_code": null,
+      "phone": null,
+      "website_url": null,
       "description": "..."
     },
     "executives": [
       {
-        "name": "Dr. Alexander C. Karp",
-        "title": "Co-Founder, Chief Executive Officer & Director",
-        "salary_usd": 5430000,
-        "age": 58,
-        "gender": "male",
+        "name": null,
+        "title": null,
+        "salary_usd": null,
+        "age": null,
+        "gender": null,
         "bio": "...",
-        "updated_date": "2026-06-03"
+        "updated_date": null
       }
     ]
   },
   "business_analysis": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "revenue_breakdown": {
-      "period": "2026/Q2",
-      "by_business": [
-        { "name": "Commercial - AIP / Foundry", "revenue_usd": "$520M", "ratio_pct": 52.0, "growth_yoy_pct": 55.4 },
-        { "name": "Government - Gotham Defense", "revenue_usd": "$340M", "ratio_pct": 34.0, "growth_yoy_pct": 28.2 }
-      ],
-      "by_region": [
-        { "name": "United States", "revenue_usd": "$860M", "ratio_pct": 86.0, "growth_yoy_pct": 44.0 },
-        { "name": "International", "revenue_usd": "$140M", "ratio_pct": 14.0, "growth_yoy_pct": 18.0 }
-      ]
+      "period": null,
+      "by_business": [],
+      "by_region": []
     },
-    "operational_efficiency": [
-      {
-        "period": "2025/FY",
-        "headcount": 3750,
-        "headcount_yoy_pct": 2.7,
-        "revenue_per_employee_k_usd": 945.0,
-        "revenue_per_employee_yoy_pct": 21.0,
-        "operating_profit_per_employee_k_usd": 215.0,
-        "op_profit_per_employee_yoy_pct": 48.1,
-        "net_income_per_employee_k_usd": 165.0,
-        "net_income_per_employee_yoy_pct": 34.8
-      }
-    ],
+    "operational_efficiency": [],
     "key_takeaways": "..."
   },
   "comprehensive_analysis": {
@@ -1354,14 +1269,14 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "category": "Risk Assessment",
       "title": "...",
       "description": "...",
-      "impact_score": 8
+      "impact_score": null
     }
   ],
   "findings": [
     {
       "documentType": "Form 10-Q (Latest Completed Quarter)",
       "keyInsights": ["...", "..."],
-      "date": "2026-05-15",
+      "date": null,
       "sourceUrl": "..."
     }
   ],
@@ -1369,21 +1284,15 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "stock_price_history": [
       { "date": "Aug '26", "price": 150.5 }
     ],
-    "financial_performance_4q": [
-      { "quarter": "Q2 2026", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
-    ]
+    "financial_performance_4q": []
   }
 }`;
       } else {
         finalInstruction += `\n\nCRITICAL SEARCH FOR 3 FINANCIAL STATEMENTS (INCOME, BALANCE SHEET, CASH FLOW):
 1. For ${ticker}, you MUST search and locate the official SEC Form 10-Q and 10-K "CONSOLIDATED BALANCE SHEETS" and "CONSOLIDATED STATEMENTS OF CASH FLOWS" tables for all 4 reporting periods.
 2. In "financial_statements.balance_sheet":
-   - "total_assets": exact Total Assets reported for each quarter (e.g., For TSLA: 2025/Q3: $133.74B, 2025/Q4: $137.81B, 2026/Q1: $143.72B, 2026/Q2: $148.52B in millions, i.e., [133740, 137810, 143720, 148520]). NEVER shift older 2024 numbers ($112B-$125B) into 2025/2026!
-   - "total_current_assets": exact Total Current Assets for each quarter (e.g. For TSLA: [64650, 68640, 69750, 68760]).
-   - "cash_and_equivalents": exact cash and cash equivalents (e.g. For TSLA: [18290, 16510, 16600, 15220]).
-   - "short_term_investments": exact short-term investments/marketable securities (e.g. For TSLA: [23360, 27550, 28140, 28310]).
-   - "accounts_receivable" & "receivables": exact accounts receivable (e.g. For TSLA: [4700, 4580, 3960, 4090]).
-   - "inventory": exact inventory reported on the 10-Q/10-K balance sheet (e.g. For TSLA: [13100, 13400, 13800, 14200]).
+   - "total_assets", "total_current_assets", "cash_and_equivalents", "short_term_investments", "accounts_receivable", "receivables", and "inventory" must contain exact values independently retrieved for each fiscal period from identified dated filings.
+   - Never shift a value from another period, reconstruct a missing balance-sheet observation, or use numerical examples from a prompt as reference data. An unverified observation must remain null/unavailable.
    - "total_liabilities", "total_current_liabilities", "accounts_payable", "short_term_debt", "total_debt", "total_equity".
 3. In "financial_statements.cash_flow":
    - "operating_cash_flow": exact net cash provided by operating activities for each quarter.
@@ -1393,7 +1302,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
 4. Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.
 5. In "business_analysis.revenue_breakdown":
    - You MUST extract authentic segment revenues from the official SEC Form 10-Q/10-K "Product and Service Information" or Segment Footnote table for the latest completed quarter.
-   - For Apple (AAPL): MUST report iPhone (~$54.25B / ~49.6%), Services (~$30.74B / ~28.1%), Mac (~$10.35B / ~9.5%, +28.7% YoY), Wearables Home & Acc (~$7.89B / ~7.2%), iPad (~$6.19B / ~5.7%) summing to Total Revenue ~$109.4B and Total Products ~$78.68B.
+   - Use the issuer's segment names and exact values from the same retrieved filing period. Never import ticker-specific segment values from this prompt.
    - All segment revenues must sum to total company revenue, and ratio_pct must sum to 100%.`;
         if (instruction) {
           finalInstruction += `\n\nAdditional Instructions from user:\n${instruction}`;
@@ -1436,71 +1345,71 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
           - For Topic 5 (fundamentals_check): This field MUST NEVER BE EMPTY. You MUST use a markdown bulleted list to assess these 8 areas: 1.Revenue growth 2.Profit growth 3.Cash flow 4.Debt 5.Margin 6.ROIC/ROE/ROA 7.Growth runway 8.Final verdict (Strong, Caution, or Weak).
           - For Topic 8 (key_risks): You MUST cover at least 8 risk categories (Competition, Customer concentration, Regulatory, Economic, Margin, Valuation, Hidden risks, Dilution/SBC). EACH must have 2-3 sentences and numerical backing.
           - For Topic 9 (management): You MUST provide the exact numerical percentage (%) for insider ownership. If not found, explicitly state "Insider ownership data not found in documents." You must analyze capital allocation and evaluate management statements critically.
-          - Never use vague adjectives without numbers. Back every claim with exact numbers and quarters (e.g. "Revenue grew 24% YoY in Q1 2026").`;
+          - Never use vague adjectives without retrieved evidence. Back every claim with exact figures and fiscal periods from identified dated sources; do not copy numerical examples from the prompt.`;
         }
         
         dynamicSchema = `{
   "verdict": {
     "summary": "...",
-    "conviction_score": 85,
+    "conviction_score": null,
     "key_takeaways": ["...", "..."]
   },
   "financial_statements": {
     "currency": "USD",
     "fiscal_period_type": "quarterly",
-    "as_of_date": "2026-09-01",
-    "source": { "document_url": "https://www.sec.gov/...", "document_type": "Form 10-Q", "filing_date": "2026-08-26", "period_end": "2026-07-26", "units": "USD millions" },
-    "periods": ["Q3 2025", "Q4 2025", "Q1 2026", "Q2 2026"],
+    "as_of_date": null,
+    "source": { "document_url": null, "document_type": null, "filing_date": null, "period_end": null, "units": "USD millions" },
+    "periods": [],
     "income_statement": {
       "revenue": [],
-      "cogs": [146, 164, 150, 160],
-      "gross_profit": [580, 664, 734, 844],
-      "gross_margin_pct": [79.9, 80.2, 83.0, 84.1],
-      "operating_expenses": [385, 382, 345, 371],
-      "operating_income": [195, 282, 389, 473],
-      "operating_margin_pct": [26.8, 34.0, 44.0, 47.1],
-      "income_before_tax": [170, 100, 260, 380],
-      "income_tax_expense": [27, 21, 46, 54],
-      "net_income": [143, 79, 214, 326],
-      "net_margin_pct": [19.7, 9.5, 24.2, 32.5],
-      "eps_diluted": [0.06, 0.03, 0.08, 0.13],
-      "yoy_revenue_growth_pct": [63, 70, 85, 93],
+      "cogs": [],
+      "gross_profit": [],
+      "gross_margin_pct": [],
+      "operating_expenses": [],
+      "operating_income": [],
+      "operating_margin_pct": [],
+      "income_before_tax": [],
+      "income_tax_expense": [],
+      "net_income": [],
+      "net_margin_pct": [],
+      "eps_diluted": [],
+      "yoy_revenue_growth_pct": [],
       "commentary": "..."
     },
     "balance_sheet": {
       "cash_and_equivalents": [],
       "short_term_investments": [],
-      "total_current_assets": [5150, 5520, 6050, 6750],
-      "accounts_receivable": [390, 410, 435, 460],
-      "inventory": [0, 0, 0, 0],
-      "net_ppe": [280, 310, 335, 360],
-      "total_assets": [5820, 6240, 6780, 7490],
-      "total_current_liabilities": [680, 720, 780, 850],
-      "accounts_payable": [180, 195, 210, 230],
-      "short_term_debt": [0, 0, 0, 0],
+      "total_current_assets": [],
+      "accounts_receivable": [],
+      "inventory": [],
+      "net_ppe": [],
+      "total_assets": [],
+      "total_current_liabilities": [],
+      "accounts_payable": [],
+      "short_term_debt": [],
       "total_debt": [],
-      "total_liabilities": [920, 980, 1050, 1150],
-      "total_equity": [4900, 5260, 5730, 6340],
-      "current_ratio": [7.57, 7.67, 7.76, 7.94],
-      "quick_ratio": [7.57, 7.67, 7.76, 7.94],
-      "debt_to_equity": [0, 0, 0, 0],
-      "debt_to_ebitda": [0, 0, 0, 0],
+      "total_liabilities": [],
+      "total_equity": [],
+      "current_ratio": [],
+      "quick_ratio": [],
+      "debt_to_equity": [],
+      "debt_to_ebitda": [],
       "commentary": "..."
     },
     "cash_flow": {
-      "operating_cash_flow": [420, 480, 510, 620],
-      "depreciation": [22, 24, 25, 26],
-      "change_working_capital": [114, 127, 116, 108],
-      "capex": [5, 6, 7, 8],
-      "investing_cash_flow": [-180, -210, -240, -280],
-      "free_cash_flow": [415, 474, 503, 612],
-      "fcf_margin_pct": [57.2, 57.2, 56.9, 61.0],
-      "fcf_vs_net_income_ratio": [2.88, 2.65, 2.35, 1.88],
-      "financing_cash_flow": [-45, -50, -55, -60],
-      "stock_issuance_repurchase": [-45, -50, -55, -60],
-      "dividends_paid": [0, 0, 0, 0],
-      "ending_cash": [2150, 2320, 2550, 2800],
-      "net_change_cash": [195, 170, 230, 250],
+      "operating_cash_flow": [],
+      "depreciation": [],
+      "change_working_capital": [],
+      "capex": [],
+      "investing_cash_flow": [],
+      "free_cash_flow": [],
+      "fcf_margin_pct": [],
+      "fcf_vs_net_income_ratio": [],
+      "financing_cash_flow": [],
+      "stock_issuance_repurchase": [],
+      "dividends_paid": [],
+      "ending_cash": [],
+      "net_change_cash": [],
       "commentary": "..."
     },
     "red_flags": ["..."]
@@ -1509,122 +1418,69 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     {
       "name": "P/E (Trailing)",
       "formula": "ราคาหุ้นปัจจุบัน / EPS ย้อนหลัง 12 เดือน",
-      "value": 137.5,
+      "value": null,
       "unit": "x",
-      "peer_avg": 30.7,
-      "own_5yr_percentile": 82,
+      "peer_avg": null,
+      "own_5yr_percentile": null,
       "interpretation": "...",
       "verdict": "expensive"
     },
     {
       "name": "PEG Ratio",
       "formula": "P/E ÷ อัตราการเติบโตกำไรคาดการณ์ (%)",
-      "value": 1.8,
+      "value": null,
       "unit": "x",
-      "peer_avg": 2.1,
-      "own_5yr_percentile": 65,
+      "peer_avg": null,
+      "own_5yr_percentile": null,
       "interpretation": "...",
       "verdict": "fair"
     },
-    { "name": "EV/EBITDA", "formula": "Enterprise Value / EBITDA (TTM)", "value": 85.2, "unit": "x", "peer_avg": 25.4, "own_5yr_percentile": 78, "interpretation": "...", "verdict": "expensive" },
-    { "name": "EV/Sales", "formula": "Enterprise Value / Revenue (TTM)", "value": 38.4, "unit": "x", "peer_avg": 12.1, "own_5yr_percentile": 85, "interpretation": "...", "verdict": "expensive" },
-    { "name": "P/FCF", "formula": "Market Cap / Free Cash Flow (TTM)", "value": 65.0, "unit": "x", "peer_avg": 28.0, "own_5yr_percentile": 70, "interpretation": "...", "verdict": "expensive" },
-    { "name": "P/B", "formula": "ราคาหุ้น / มูลค่าทางบัญชีต่อหุ้น", "value": 24.5, "unit": "x", "peer_avg": 8.5, "own_5yr_percentile": 75, "interpretation": "...", "verdict": "expensive" }
+    { "name": "EV/EBITDA", "formula": "Enterprise Value / EBITDA (TTM)", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null },
+    { "name": "EV/Sales", "formula": "Enterprise Value / Revenue (TTM)", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null },
+    { "name": "P/FCF", "formula": "Market Cap / Free Cash Flow (TTM)", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null },
+    { "name": "P/B", "formula": "ราคาหุ้น / มูลค่าทางบัญชีต่อหุ้น", "value": null, "unit": "x", "peer_avg": null, "own_5yr_percentile": null, "interpretation": "...", "verdict": null }
   ],
   "valuation_percentile_chart": {
     "description": "ตำแหน่ง P/E ปัจจุบันเทียบกับช่วง 5 ปี",
-    "min_5yr": 45.2,
-    "max_5yr": 210.8,
-    "current": 137.5,
-    "median_5yr": 95.0
+    "min_5yr": null,
+    "max_5yr": null,
+    "current": null,
+    "median_5yr": null
   },
   "intrinsic_value": null,
   "earnings_analysis": {
-    "as_of_date": "2026-09-01",
-    "next_earnings_date": "2026-11-03",
+    "as_of_date": null,
+    "next_earnings_date": null,
     "next_earnings_date_confirmed": false,
-    "days_until_next_earnings": 63,
-    "past_earnings_history": [
-      {
-        "period": "Q3 2025",
-        "report_date": "2025-11-04",
-        "eps_estimate": 0.08,
-        "eps_actual": 0.09,
-        "eps_surprise_pct": 12.5,
-        "revenue_estimate_musd": 710,
-        "revenue_actual_musd": 726,
-        "revenue_surprise_pct": 2.3,
-        "stock_reaction_1d_pct": 4.2,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      },
-      {
-        "period": "Q4 2025",
-        "report_date": "2026-02-10",
-        "eps_estimate": 0.09,
-        "eps_actual": 0.10,
-        "eps_surprise_pct": 11.1,
-        "revenue_estimate_musd": 810,
-        "revenue_actual_musd": 828,
-        "revenue_surprise_pct": 2.2,
-        "stock_reaction_1d_pct": 3.5,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      },
-      {
-        "period": "Q1 2026",
-        "report_date": "2026-05-05",
-        "eps_estimate": 0.10,
-        "eps_actual": 0.12,
-        "eps_surprise_pct": 20.0,
-        "revenue_estimate_musd": 860,
-        "revenue_actual_musd": 884,
-        "revenue_surprise_pct": 2.8,
-        "stock_reaction_1d_pct": 5.8,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      },
-      {
-        "period": "Q2 2026",
-        "report_date": "2026-08-04",
-        "eps_estimate": 0.11,
-        "eps_actual": 0.13,
-        "eps_surprise_pct": 18.2,
-        "revenue_estimate_musd": 940,
-        "revenue_actual_musd": 1004,
-        "revenue_surprise_pct": 6.8,
-        "stock_reaction_1d_pct": 8.5,
-        "guidance_change": "raised",
-        "beat_or_miss": "beat_both"
-      }
-    ],
+    "days_until_next_earnings": null,
+    "past_earnings_history": [],
     "beat_streak": {
-      "eps_beat_streak_quarters": 14,
-      "revenue_beat_streak_quarters": 10,
+      "eps_beat_streak_quarters": null,
+      "revenue_beat_streak_quarters": null,
       "commentary": "..."
     },
-    "average_earnings_day_move_pct": 12.4,
+    "average_earnings_day_move_pct": null,
     "current_quarter_setup": {
-      "period": "Q3 2026",
-      "company_guidance_revenue_musd": [1050, 1060],
-      "consensus_estimate_revenue_musd": 1055,
-      "consensus_estimate_eps": 0.14,
+      "period": null,
+      "company_guidance_revenue_musd": [],
+      "consensus_estimate_revenue_musd": null,
+      "consensus_estimate_eps": null,
       "whisper_vs_consensus": "...",
       "key_things_to_watch": ["...", "..."]
     },
     "estimate_revisions_trend": {
       "description": "ทิศทางการปรับประมาณการของนักวิเคราะห์ในช่วง 90 วันที่ผ่านมา",
-      "eps_estimate_90d_ago": 0.12,
-      "eps_estimate_current": 0.14,
+      "eps_estimate_90d_ago": null,
+      "eps_estimate_current": null,
       "direction": "upward",
-      "num_analysts_raised": 18,
-      "num_analysts_lowered": 2,
+      "num_analysts_raised": null,
+      "num_analysts_lowered": null,
       "commentary": "..."
     },
     "full_year_guidance": {
-      "fiscal_year": 2026,
-      "company_guidance_revenue_musd": [8150, 8158],
-      "implied_growth_pct": 82,
+      "fiscal_year": null,
+      "company_guidance_revenue_musd": [],
+      "implied_growth_pct": null,
       "consensus_vs_guidance": "..."
     },
     "analyst_consensus": {
@@ -1642,7 +1498,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         "median": null,
         "implied_upside_pct": null
       },
-      "as_of_date": "2026-09-01",
+      "as_of_date": null,
       "commentary": "..."
     },
     "summary_verdict": "..."
@@ -1684,29 +1540,29 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     }
   },
   "peer_comparison": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "industry_name": "Sector / Industry",
     "peers": [
       {
         "ticker": "...",
         "company_name": "...",
-        "market_cap": "$180B",
-        "pe_trailing": 137.5,
-        "pe_forward": 75.2,
-        "revenue_growth_yoy_pct": 93.0,
-        "gross_margin_pct": 84.1,
-        "net_margin_pct": 32.5,
-        "ev_ebitda": 85.2
+        "market_cap": null,
+        "pe_trailing": null,
+        "pe_forward": null,
+        "revenue_growth_yoy_pct": null,
+        "gross_margin_pct": null,
+        "net_margin_pct": null,
+        "ev_ebitda": null
       }
     ],
     "key_takeaway": "..."
   },
   "catalysts_and_events": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "items": [
       {
         "title": "...",
-        "date": "2026-11-03",
+        "date": null,
         "expected_impact": "high",
         "description": "...",
         "category": "earnings"
@@ -1731,102 +1587,84 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "commentary": "Omit unavailable figures; never populate this section from examples or estimates."
   },
   "corporate_actions": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "dividends": {
       "summary": {
         "has_dividend": false,
-        "dividend_yield_pct": 0.0,
-        "annual_payout_usd": 0.0,
-        "payout_ratio_pct": 0.0,
-        "frequency": "No Dividend (Growth Reinvestment)",
+        "dividend_yield_pct": null,
+        "annual_payout_usd": null,
+        "payout_ratio_pct": null,
+        "frequency": null,
         "policy_note": "..."
       },
       "history": [
         {
-          "announced_date": "2026-07-31",
-          "allocation_plan": "Cash Dividend: 0.27 USD Per Share",
-          "amount_usd": 0.27,
-          "record_date": "2026-08-10",
-          "ex_date": "2026-08-10",
-          "pay_date": "2026-08-13"
+          "announced_date": null,
+          "allocation_plan": null,
+          "amount_usd": null,
+          "record_date": null,
+          "ex_date": null,
+          "pay_date": null
         }
       ]
     },
     "stock_splits": [
       {
-        "effective_date": "2020-08-31",
-        "split_type": "Split",
-        "ratio": "1:4"
+        "effective_date": null,
+        "split_type": null,
+        "ratio": null
       }
     ],
     "buybacks": {
-      "authorized_amount_musd": 1000,
-      "remaining_amount_musd": 850,
-      "shares_repurchased_last_12m": 1500000,
-      "net_share_reduction_pct": 0.8,
+      "authorized_amount_musd": null,
+      "remaining_amount_musd": null,
+      "shares_repurchased_last_12m": null,
+      "net_share_reduction_pct": null,
       "commentary": "..."
     }
   },
   "company_profile": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "overview": {
       "company_name": "...",
       "symbol": "...",
-      "listing_date": "2020-09-30",
-      "issue_price": 10.0,
-      "isin": "US69608A1088",
-      "founded_year": 2003,
-      "ceo": "Dr. Alexander C. Karp",
-      "exchange": "NASDAQ",
-      "employees_count": 3850,
-      "fiscal_year_end": "12-31",
-      "address": "1200 17th Street, Floor 15",
-      "city": "Denver",
-      "province_state": "Colorado",
-      "country": "United States of America",
-      "zip_code": "80202",
-      "phone": "1-720-358-3679",
-      "website_url": "https://www.palantir.com",
+      "listing_date": null,
+      "issue_price": null,
+      "isin": null,
+      "founded_year": null,
+      "ceo": null,
+      "exchange": null,
+      "employees_count": null,
+      "fiscal_year_end": null,
+      "address": null,
+      "city": null,
+      "province_state": null,
+      "country": null,
+      "zip_code": null,
+      "phone": null,
+      "website_url": null,
       "description": "..."
     },
     "executives": [
       {
-        "name": "Dr. Alexander C. Karp",
-        "title": "Co-Founder, Chief Executive Officer & Director",
-        "salary_usd": 5430000,
-        "age": 58,
-        "gender": "male",
+        "name": null,
+        "title": null,
+        "salary_usd": null,
+        "age": null,
+        "gender": null,
         "bio": "...",
-        "updated_date": "2026-06-03"
+        "updated_date": null
       }
     ]
   },
   "business_analysis": {
-    "as_of_date": "2026-09-01",
+    "as_of_date": null,
     "revenue_breakdown": {
-      "period": "2026/Q2",
-      "by_business": [
-        { "name": "Commercial - AIP / Foundry", "revenue_usd": "$520M", "ratio_pct": 52.0, "growth_yoy_pct": 55.4 },
-        { "name": "Government - Gotham Defense", "revenue_usd": "$340M", "ratio_pct": 34.0, "growth_yoy_pct": 28.2 }
-      ],
-      "by_region": [
-        { "name": "United States", "revenue_usd": "$860M", "ratio_pct": 86.0, "growth_yoy_pct": 44.0 },
-        { "name": "International", "revenue_usd": "$140M", "ratio_pct": 14.0, "growth_yoy_pct": 18.0 }
-      ]
+      "period": null,
+      "by_business": [],
+      "by_region": []
     },
-    "operational_efficiency": [
-      {
-        "period": "2025/FY",
-        "headcount": 3750,
-        "headcount_yoy_pct": 2.7,
-        "revenue_per_employee_k_usd": 945.0,
-        "revenue_per_employee_yoy_pct": 21.0,
-        "operating_profit_per_employee_k_usd": 215.0,
-        "op_profit_per_employee_yoy_pct": 48.1,
-        "net_income_per_employee_k_usd": 165.0,
-        "net_income_per_employee_yoy_pct": 34.8
-      }
-    ],
+    "operational_efficiency": [],
     "key_takeaways": "..."
   },
   "comprehensive_analysis": {
@@ -1865,24 +1703,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "category": "Risk Assessment",
       "title": "...",
       "description": "...",
-      "impact_score": 8
+      "impact_score": null
     }
   ],
   "findings": [
     {
       "documentType": "Form 10-Q (Latest Completed Quarter)",
       "keyInsights": ["...", "..."],
-      "date": "2026-05-15",
+      "date": null,
       "sourceUrl": "..."
     }
   ],
   "financial_charts": {
-    "stock_price_history": [
-      { "date": "Aug '26", "price": 150.5 }
-    ],
-    "financial_performance_4q": [
-      { "quarter": "Q2 2026", "revenue": 10.5, "net_income": 2.1, "distributions": 0.5 }
-    ]
+    "stock_price_history": [],
+    "financial_performance_4q": []
   }
 }`;
       }
@@ -2036,7 +1870,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         }
 
         if (lines.length > 0) {
-          liveMarketPromptSection = `\n\nREAL-TIME VERIFIED 2026 LIVE MARKET MULTIPLES & VALUATION MEASURES (GROUND TRUTH FROM YAHOO FINANCE AS OF TODAY):\n${lines.join('\n')}\nCRITICAL: You MUST use these exact real-time live stock prices, market caps, and Valuation Measures (Trailing P/E, Forward P/E, PEG Ratio, Price/Sales, Price/Book, EV/Revenue, EV/EBITDA) in 'company_profile', 'valuation_ratios', and 'peer_comparison'. DO NOT hallucinate outdated numbers. For FinTechs/Banks like SOFI, EV/EBITDA is '--' / N/A on Yahoo Finance because customer deposits are operating items, NOT standard corporate debt.`;
+          liveMarketPromptSection = `\n\nLIVE MARKET MULTIPLES & VALUATION MEASURES RETRIEVED FROM YAHOO FINANCE AS OF ${todayISO}:\n${lines.join('\n')}\nUse only these retrieved values in 'company_profile', 'valuation_ratios', and 'peer_comparison'. Preserve unavailable values as N/A and do not replace them with prompt examples or memory. For banks and similar financial institutions, keep EV/EBITDA unavailable when the source does not report a meaningful value.`;
         }
       } catch (e) {
         console.warn("Could not pre-fetch live quotes:", e);
@@ -2131,18 +1965,18 @@ CRITICAL CHECKS:
 - Formatting Checks: Make sure 'business_overview', 'target_customers', 'revenue_model', and 'financial_overview' are formatted as Markdown bullet points (-), NOT large paragraphs. Make sure the R:R calculation in 'trade_plan' is nicely formatted as a Markdown table (Target | Formula | Result) using proper \n newlines.
 - Fundamental Fundamentals Check: Must have exactly 8 numbered points.
 - Fundamental Key Risks: Must have exactly 8 risk categories.
-- Financial Statements & Latest Quarter Grounding: Verify that the 4 quarters in "financial_statements" strictly include the absolute latest public SEC 10-Q or 10-K filing available as of today (${todayISO}). The latest (4th) quarter must reflect this most recent filing's Balance Sheet Total Assets, Current Assets, Cash & Short-Term Investments, Total Liabilities, Total Debt, Total Equity, and Cash Flow (OCF, CapEx, FCF). DO NOT accept shifted or delayed numbers from 2023/2024 representing 2025/2026. This is CRITICAL so that Intrinsic Value (DCF), Net Debt, and Valuation multiples calculate against the true current financial health of the company. Ensure revenue, net income, margins %, and growth % are mathematically consistent across quarters.
-- Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest Form 10-Q (or latest Form 10-K) for the most recent completed quarter (2025/2026). Ensure the document date and key insights in "findings[0]" reflect this latest filing's balance sheet (Cash, ST Investments, Total Debt, Diluted Shares) and revenue growth. If the primary analyst cited an outdated 2023 or 2024 filing, update the citation to the latest available Form 10-Q so document findings and valuation calculations are 100% synchronized!
-- Peer Comparison Grounding: Verify that Market Caps and P/E multiples for the target company (${ticker}) and ALL peer companies in "peer_comparison" are accurate as of today (${todayISO}). For example, TSLA market cap is ~$1.40T (stock price ~$353), AMD is ~$745B (stock price ~$457), HOOD is ~$95.3B (stock price ~$106), AFRM is ~$25.0B (stock price ~$74), SOFI is ~$23.1B (stock price ~$17.89), XYZ/Block is ~$49.5B, AVGO is ~$1.72T, TSM is ~$2.14T. DO NOT accept old 2023/2024 figures (such as HOOD at $19.8B, AFRM at $14.2B, AMD at $255B, or TSLA at $1.14T).
+- Financial Statements & Latest Quarter Grounding: Attempt to retrieve four completed fiscal quarters, including the latest public Form 10-Q or Form 10-K available as of ${todayISO}. Every period must reflect its own identified filing. Never shift a value between periods or reconstruct a missing period. If a period cannot be verified, leave its observations null and flag the history as incomplete. Ensure all available revenue, net income, margins, growth, balance-sheet, and cash-flow figures are mathematically consistent.
+- Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest available Form 10-Q or Form 10-K for the most recent completed period. Ensure its URL, filing date, period end, and key figures agree with the report. Replace an older citation only after retrieving and verifying the newer filing; otherwise flag the source as unavailable.
+- Peer Comparison Grounding: Independently retrieve and verify current prices, market capitalizations, and valuation multiples for ${ticker} and every company in "peer_comparison" from identified sources dated as of ${todayISO}. Never use numerical examples from this prompt as market data, and leave unavailable values null.
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
-- DCF input integrity: All financial-statement money values are USD millions. Provide exactly four completed quarterly periods in chronological order, the latest diluted shares outstanding in company_profile.shares_outstanding, and cash, short-term investments, total debt, revenue, and free cash flow for matching periods. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default, a market-cap-derived share count, or a price-derived revenue estimate. If a primary source cannot supply an input, state that it is unavailable instead of inventing a fair value.
+- DCF input integrity: All financial-statement money values are USD millions. Attempt to retrieve four completed quarterly periods in chronological order, the latest diluted shares outstanding in company_profile.shares_outstanding, and cash, short-term investments, total debt, revenue, and free cash flow for matching periods. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default, a market-cap-derived share count, or a price-derived revenue estimate. If a primary source cannot supply an input, leave it unavailable and do not produce a fair value.
   * Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn (e.g. EOSE, RIVN, PLUG, QS):
     - WACC MUST reflect size and distress premiums (16%–22%+), NEVER use a single-digit mega-cap WACC (7%–10%).
     - Base Case terminal margin MUST NOT be unrealistically high (e.g. 12%–16%) when current gross margin is negative; it must reflect conservative turnaround execution (3%–6%) with dilution risk factored in.
     - Check Wall Street consensus targets and Relative Valuation (EV/Sales): DCF Base Case must NOT disconnect wildly (e.g. > 2x consensus or > 2.5x Relative Valuation).
 - Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
-- Earnings Analysis 4-Quarter Check: Verify that "past_earnings_history" contains ALL 4 completed quarters matching "financial_statements.periods" in chronological order. It is STRICTLY FORBIDDEN to output only 1 quarter. If the primary analyst provided only 1 quarter, you MUST reconstruct and include all 4 completed quarters with accurate consensus estimates, actuals, surprise %, and stock reaction.
-- Insider Ownership: Must be a numeric percentage.
+- Earnings Analysis History Check: Attempt to retrieve the last four completed quarters matching "financial_statements.periods" in chronological order. Independently verify every missing quarter from identified dated filings, earnings releases, and consensus sources. Never extrapolate or reconstruct a quarter from trends. If a quarter cannot be verified, leave its observations null/unavailable, flag the history as incomplete, and calculate streaks and averages only from verified quarters.
+- Insider Ownership: Use a numeric percentage only when an identified dated source supplies it; otherwise leave it null/unavailable.
 - Morningstar Equity Research Check: include Morningstar fields only when an accessible dated Morningstar source verifies the exact ticker, analyst, rating, fair value, and research text. Company size or ticker identity is never evidence of coverage. If any coverage claim cannot be verified, set has_coverage = false and leave rating, analyst, fair value, moat, uncertainty, allocation, and thesis fields absent.
 
 Primary Analyst Output:
