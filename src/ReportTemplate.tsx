@@ -10,6 +10,8 @@ import {
 import { ReportData } from './types';
 import { harmonizeReportData, extractCleanRsi } from './utils/metricsHarmonizer';
 import { fetchLiveQuotes } from './services/marketDataService';
+import { fetchUsdThbFxSnapshot } from './services/fxDataService';
+import type { FxSnapshot } from './domain/fxSnapshot';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 import { FinancialStatementsTable } from './components/FinancialStatementsTable';
@@ -290,6 +292,8 @@ export default function ReportTemplate({
   const [liveOverrides, setLiveOverrides] = useState<Record<string, any>>({});
   const [isRefreshingLive, setIsRefreshingLive] = useState(false);
   const [refreshSuccessMessage, setRefreshSuccessMessage] = useState<string | null>(null);
+  const [fxSnapshot, setFxSnapshot] = useState<FxSnapshot | null>(null);
+  const [isLoadingFx, setIsLoadingFx] = useState(false);
 
   const data = React.useMemo(() => harmonizeReportData(rawData, ticker, liveOverrides), [rawData, ticker, liveOverrides]);
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
@@ -305,6 +309,25 @@ export default function ReportTemplate({
   const [isTradePlanCopied, setIsTradePlanCopied] = useState(false);
   const [currencyMode, setCurrencyMode] = useState<'USD' | 'THB'>('USD');
   const [showScoreModal, setShowScoreModal] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoadingFx(true);
+    fetchUsdThbFxSnapshot()
+      .then((snapshot) => {
+        if (!cancelled) setFxSnapshot(snapshot);
+      })
+      .catch((error) => {
+        console.warn('[ReportTemplate] USD/THB FX snapshot unavailable:', error);
+        if (!cancelled) setFxSnapshot(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingFx(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
 
   const handleRefreshLiveQuotes = async (isManual: boolean | React.MouseEvent = true) => {
     const manualFlag = typeof isManual === 'boolean' ? isManual : true;
@@ -342,14 +365,15 @@ export default function ReportTemplate({
     setLiveOverrides({});
   }, [ticker]);
 
-  // Default USD to THB rate
-  const currencyRate = 35.5; // Indicative only; never label this as a live FX rate.
+  const currencyRate = fxSnapshot?.rate;
+  const hasUsdThbRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
 
   const formatPrice = (val?: number | string) => {
     if (val === undefined || val === null || val === '') return '-';
     const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.-]/g, ''));
     if (isNaN(num)) return typeof val === 'string' ? val : '-';
     if (currencyMode === 'THB') {
+      if (!hasUsdThbRate || currencyRate === undefined) return isThai ? 'FX ไม่พร้อมใช้งาน' : 'FX unavailable';
       return `฿${(num * currencyRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -464,8 +488,23 @@ export default function ReportTemplate({
               </div>
               <div className="flex items-center bg-stone-200/80 p-0.5 rounded-full border border-stone-300 text-xs font-mono">
                 <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2.5 py-0.5 rounded-full font-bold transition-all ${currencyMode === 'USD' ? 'bg-stone-900 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}>USD ($)</button>
-                <button type="button" onClick={() => setCurrencyMode('THB')} className={`px-2.5 py-0.5 rounded-full font-bold transition-all ${currencyMode === 'THB' ? 'bg-[#0b5a4b] text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'}`}>THB (฿)</button>
+                <button
+                  type="button"
+                  onClick={() => hasUsdThbRate && setCurrencyMode('THB')}
+                  disabled={!hasUsdThbRate}
+                  title={!hasUsdThbRate ? (isLoadingFx ? (isThai ? 'กำลังโหลด USD/THB...' : 'Loading USD/THB...') : (isThai ? 'USD/THB ไม่พร้อมใช้งาน' : 'USD/THB unavailable')) : undefined}
+                  className={`px-2.5 py-0.5 rounded-full font-bold transition-all ${currencyMode === 'THB' ? 'bg-[#0b5a4b] text-white shadow-xs' : hasUsdThbRate ? 'text-stone-600 hover:text-stone-900' : 'text-stone-400 cursor-not-allowed opacity-60'}`}
+                >
+                  THB (฿)
+                </button>
               </div>
+              {(fxSnapshot || isLoadingFx) && (
+                <span className="hidden lg:inline text-[9px] font-mono text-stone-500 bg-white/70 border border-stone-200 rounded-full px-2 py-0.5" title={isThai ? 'อัตราแปลงเพื่อการแสดงผล ไม่รับประกัน real-time' : 'Display conversion snapshot; not guaranteed real-time'}>
+                  {fxSnapshot
+                    ? `USD/THB ${fxSnapshot.rate.toFixed(3)} • ${fxSnapshot.provider || 'Provider'} • snapshot`
+                    : (isThai ? 'กำลังโหลด USD/THB...' : 'Loading USD/THB...')}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 print:hidden shrink-0">
               <button 
