@@ -57,6 +57,8 @@ const dataset = (): CanonicalFinancialDataset => {
       nonNullValues: flat.filter(item => item.value !== null).length,
       missingValues: flat.filter(item => item.value === null).length,
     },
+    provenanceStatus: 'verified',
+    provenanceWarnings: [],
   };
 };
 
