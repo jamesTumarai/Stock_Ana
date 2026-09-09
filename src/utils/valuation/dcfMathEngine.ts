@@ -129,7 +129,7 @@ export function buildRigorousDCFModel(
     const dilutedEps = numberAt(inc?.eps_diluted, latestIndex);
     if (netIncome !== undefined && dilutedEps !== undefined && dilutedEps > 0) {
       sharesOutstandingM = netIncome / dilutedEps;
-      derivedFields.push('diluted weighted-average shares derived from latest net income divided by diluted EPS; not current shares outstanding');
+      derivedFields.push('diluted shares (weighted-average) derived from latest net income divided by diluted EPS; not current shares outstanding');
     }
   }
   if (!sharesOutstandingM || sharesOutstandingM <= 0) missing.push('shares outstanding');
