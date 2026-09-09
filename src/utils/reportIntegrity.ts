@@ -1,11 +1,15 @@
 import type { ReportData } from '../types';
 import { buildMarketSnapshot, type MarketSnapshot } from '../domain/marketSnapshot';
+import { buildCanonicalFinancialDataset, type CanonicalFinancialDataset } from '../domain/financialValue';
 import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * 100) / 100;
 
-type ReportWithMarketSnapshot = ReportData & { market_snapshot?: MarketSnapshot };
+type ReportWithCanonicalData = ReportData & {
+  market_snapshot?: MarketSnapshot;
+  canonical_financials?: CanonicalFinancialDataset;
+};
 
 /** Match fiscal labels, not adjacent array positions; incomplete history stays unavailable. */
 export function periodChanges(values: (number | null | undefined)[], periods: string[], mode: string, reported?: (number | null)[]): (number | null)[] {
@@ -30,7 +34,7 @@ export function periodChanges(values: (number | null | undefined)[], periods: st
 /** No ticker-specific overrides, fabricated history, forced balancing or synthetic forecasts. */
 export function normalizeReport(input?: ReportData, ticker?: string, live?: Record<string, any>): ReportData {
   if (!input) return {} as ReportData;
-  const result = structuredClone(input) as ReportWithMarketSnapshot;
+  const result = structuredClone(input) as ReportWithCanonicalData;
   const fs = result.financial_statements;
   const lastIndex = (fs?.periods?.length || 0) - 1;
   const at = (a?: (number | null)[]) => finite(a?.[lastIndex]) ? a![lastIndex]! : undefined;
@@ -72,6 +76,12 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
     };
     result.five_pillars.analyst_takeaway = 'ข้อมูลจากรายงานที่บันทึกไว้ ไม่ใช่การรับรองจาก SEC; ควรตรวจงวดบัญชีและเอกสารต้นทางก่อนใช้ประเมินมูลค่า';
   }
+
+  // Build a non-destructive provenance view over the statement arrays. This does not
+  // rewrite financial values and does not promote linked sources to independently verified data.
+  const canonicalFinancials = buildCanonicalFinancialDataset(result);
+  if (canonicalFinancials) result.canonical_financials = canonicalFinancials;
+  else delete result.canonical_financials;
 
   // Keep dated research intact. Explicit quote refresh updates only current market fields.
   // All current-price consumers use the same canonical snapshot so DCF cannot remain on a stale AI-supplied price.

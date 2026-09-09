@@ -20,12 +20,18 @@ assert.equal(result.five_pillars!.balance_sheet.is_net_cash, false);
 assert.equal(result.five_pillars!.balance_sheet.net_cash_or_debt_b, 21.95);
 assert.equal(result.five_pillars!.balance_sheet.total_cash_and_investments_b, 62.4);
 assert.deepEqual(result.financial_statements!.income_statement,source.financial_statements!.income_statement);
+const canonical = (result as ReportData & { canonical_financials?: any }).canonical_financials;
+assert.ok(canonical, 'Normalization should attach canonical financial provenance when statements exist');
+assert.equal(canonical.values['balance_sheet.cash_and_equivalents'][3].value, 39544);
+assert.equal(canonical.values['balance_sheet.cash_and_equivalents'][3].verification, 'unverified');
+assert.equal(canonical.sourceCoverage.verifiedValues, 0);
 assert.deepEqual(source,before);
 for (const ticker of ['AAPL','SOFI','NVDA','TSLA','UNKNOWN']) {
   const empty = normalizeReport({ticker} as ReportData);
   assert.equal(empty.financial_statements,undefined);
   assert.equal(empty.morningstar_research,undefined);
   assert.equal(empty.forecast_dashboard,undefined);
+  assert.equal((empty as ReportData & { canonical_financials?: any }).canonical_financials, undefined);
 }
 const missing = structuredClone(source);
 missing.financial_statements!.balance_sheet!.cash_and_equivalents![3] = null;
