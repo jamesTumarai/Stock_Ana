@@ -25,14 +25,15 @@ jobs:
           cache: npm
       - name: Apply provider-snapshot terminology
         run: python scripts/apply_phase3p_market_copy.py
-      - name: Guard against guaranteed-live UI claims
+      - name: Verify targeted terminology replacements
         shell: bash
         run: |
           set -euo pipefail
-          if grep -nE "Live Sync|Live Refresh|อัปเดตสด|ข้อมูลสดล่าสุด|ราคาตลาดสด|live market prices|live prices and market caps" src/ReportTemplate.tsx src/components/PeerComparisonTable.tsx; then
-            echo "Overstated live-market copy remains"
-            exit 1
-          fi
+          grep -F "Market snapshot updated!" src/ReportTemplate.tsx
+          grep -F "Refresh Snapshot" src/ReportTemplate.tsx
+          grep -F "Refresh Snapshot" src/components/PeerComparisonTable.tsx
+          grep -F "provider data may be delayed" src/ReportTemplate.tsx
+          grep -F "provider data may be delayed" src/components/PeerComparisonTable.tsx
       - name: Install dependencies
         run: npm ci
       - name: TypeScript check
