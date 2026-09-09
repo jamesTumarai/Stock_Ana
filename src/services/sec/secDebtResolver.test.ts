@@ -166,4 +166,39 @@ const four = (values: [number, number, number, number], prefix: string) => [
   assert.equal(resolved.values['balance_sheet.total_debt'], undefined, 'Incomplete/overlapping components must not synthesize total debt');
 }
 
+
+{
+  // MSFT-like shape: the current and non-current portions reconcile to LongTermDebt,
+  // while older short-term borrowing / commercial-paper facts must not be carried forward.
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 10_000_000, 9_500_000, 9_227_000_000], 'msft-ltc')),
+    LongTermDebtNoncurrent: unit(four([40_000_000, 38_000_000, 35_000_000, 31_067_000_000], 'msft-ltnc')),
+    LongTermDebt: unit(four([50_000_000, 48_000_000, 44_500_000, 40_294_000_000], 'msft-lta')),
+    ShortTermBorrowings: unit([fact(2018, 'FY', 4_000_000_000, 'stale-stb')]),
+    CommercialPaper: unit([fact(2025, 'FY', 6_000_000_000, 'stale-cp')]),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.equal(total[3].value, 40294);
+  assert.equal(total[3].verification, 'verified');
+  assert.match(total[3].derivation || '', /no stale short-term debt was carried forward/i);
+  assert.doesNotMatch(total[3].derivation || '', /\+ separately reported us-gaap:CommercialPaper/);
+}
+
+{
+  // AAPL-like shape: current + non-current term debt reconcile to the aggregate and
+  // same-period commercial paper is a separate current liability, so it is added once.
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([11_000_000_000, 11_100_000_000, 11_007_000_000, 11_007_000_000], 'aapl-ltc')),
+    LongTermDebtNoncurrent: unit(four([75_000_000_000, 73_000_000_000, 71_340_000_000, 71_340_000_000], 'aapl-ltnc')),
+    LongTermDebt: unit(four([86_000_000_000, 84_100_000_000, 82_347_000_000, 82_347_000_000], 'aapl-lta')),
+    CommercialPaper: unit(four([4_000_000_000, 3_000_000_000, 1_997_000_000, 1_997_000_000], 'aapl-cp')),
+    // A stale prior-year lease fact must not poison the current-period borrowing family.
+    FinanceLeaseLiabilityCurrent: unit([fact(2025, 'FY', 1_000_000_000, 'stale-lease')]),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.equal(total[3].value, 84344);
+  assert.equal(total[3].verification, 'verified');
+  assert.match(total[3].derivation || '', /CommercialPaper was reported for the same instant and added exactly once/);
+}
+
 console.log('SEC total debt resolution checks passed');
