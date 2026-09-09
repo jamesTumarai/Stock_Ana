@@ -1,0 +1,62 @@
+name: Apply Phase 3L SEC Types
+
+on:
+  push:
+    branches:
+      - phase3l-sec-provenance-types
+    paths:
+      - .github/workflows/apply-phase3l-types.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase3l-sec-provenance-types
+          fetch-depth: 0
+      - name: Make SEC provenance explicit in report types
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/types.ts')
+          text = path.read_text()
+
+          import_line = "import type { SecVerificationEnvelope } from './domain/secVerification';\n\n"
+          if not text.startswith(import_line):
+              text = import_line + text
+
+          dcf_anchor = "    missingFields?: string[];\n    derivedFields?: string[];\n  };"
+          dcf_replacement = "    missingFields?: string[];\n    derivedFields?: string[];\n    priceSource?: 'market_snapshot' | 'intrinsic_value' | 'company_profile';\n    financialDataSource?: 'sec_verified' | 'report_statements';\n    financialDataAsOf?: string;\n    sharesAsOf?: string;\n  };"
+          if "financialDataSource?: 'sec_verified' | 'report_statements';" not in text:
+              if text.count(dcf_anchor) != 1:
+                  raise SystemExit('DCF input type anchor mismatch')
+              text = text.replace(dcf_anchor, dcf_replacement, 1)
+
+          report_anchor = "  validation?: ReportValidationResult;\n  verdict?: {"
+          report_replacement = "  validation?: ReportValidationResult;\n  sec_verification?: SecVerificationEnvelope;\n  verdict?: {"
+          if "sec_verification?: SecVerificationEnvelope;" not in text:
+              if text.count(report_anchor) != 1:
+                  raise SystemExit('AnalysisReport anchor mismatch')
+              text = text.replace(report_anchor, report_replacement, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit type model
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/types.ts; then
+            echo "Type wiring already present"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/types.ts
+          git commit -m "refactor: type SEC verification and DCF provenance"
+          git push origin HEAD:phase3l-sec-provenance-types
