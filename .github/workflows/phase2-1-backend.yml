@@ -1,0 +1,132 @@
+name: Phase 2.1 backend migration
+
+on:
+  push:
+    branches:
+      - phase2-1-production-analyze
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: "!contains(github.event.head_commit.message, '[phase2.1-applied]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refactor Express server for Vercel Functions
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server.ts')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''async function startServer() {
+  const app = express();
+  const PORT = Number(process.env.PORT || 3000);
+'''
+          new = '''export async function createApp(options: { serveFrontend?: boolean } = {}) {
+  const app = express();
+'''
+          if old not in s:
+              raise SystemExit('startServer header not found')
+          s = s.replace(old, new, 1)
+
+          marker = "  const distPath = path.join(process.cwd(), 'dist');"
+          if marker not in s:
+              raise SystemExit('frontend marker not found')
+          s = s.replace(marker, "  if (options.serveFrontend !== false) {\n" + marker, 1)
+
+          old_tail = '''  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+startServer();
+'''
+          new_tail = '''  }
+
+  return app;
+}
+
+if (process.env.VERCEL !== "1") {
+  createApp({ serveFrontend: true })
+    .then((app) => {
+      const PORT = Number(process.env.PORT || 3000);
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Failed to start server", error);
+      process.exitCode = 1;
+    });
+}
+'''
+          if old_tail not in s:
+              raise SystemExit('server tail not found')
+          s = s.replace(old_tail, new_tail, 1)
+
+          # Vercel Functions have a read-only project filesystem. Keep transient run logs in /tmp.
+          s = s.replace("const runLogsDir = path.join(process.cwd(), 'run_logs');", "const runLogsDir = process.env.VERCEL === '1' ? path.join('/tmp', 'run_logs') : path.join(process.cwd(), 'run_logs');")
+
+          p.write_text(s, encoding='utf-8')
+
+      - name: Add Vercel function entrypoint and routing
+        shell: bash
+        run: |
+          mkdir -p api
+          cat > api/index.ts <<'EOF'
+          import { createApp } from '../server.ts';
+
+          let appPromise: ReturnType<typeof createApp> | undefined;
+
+          export const config = {
+            maxDuration: 300,
+          };
+
+          export default async function handler(req: any, res: any) {
+            appPromise ??= createApp({ serveFrontend: false });
+            const app = await appPromise;
+            return app(req, res);
+          }
+          EOF
+
+          cat > vercel.json <<'EOF'
+          {
+            "$schema": "https://openapi.vercel.sh/vercel.json",
+            "fluid": true,
+            "functions": {
+              "api/index.ts": {
+                "maxDuration": 300
+              }
+            },
+            "rewrites": [
+              {
+                "source": "/api/:path*",
+                "destination": "/api"
+              }
+            ]
+          }
+          EOF
+
+      - name: Verify
+        shell: bash
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          node --import tsx src/utils/serverPromptIntegrity.test.ts
+          git diff --check
+
+      - name: Commit migration
+        shell: bash
+        run: |
+          git add server.ts api/index.ts vercel.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: expose Express API on Vercel [phase2.1-applied]"
+          git push origin HEAD:phase2-1-production-analyze
