@@ -7,11 +7,16 @@ const handler = fs.readFileSync('server/secPreviewHandler.ts', 'utf8');
 
 assert.match(apiIndex, /secConfigured:\s*Boolean\(process\.env\.SEC_USER_AGENT/);
 assert.match(apiIndex, /\/api\/sec-preview/);
+assert.match(apiIndex, /\/api\/sec-compare/);
+assert.match(apiIndex, /handleSecCompare/);
 assert.match(apiIndex, /dist\/sec-preview\.cjs/);
 assert.match(packageJson.scripts.build, /server\/secPreviewHandler\.ts/);
 assert.match(packageJson.scripts.build, /dist\/sec-preview\.cjs/);
 assert.match(handler, /SEC_USER_AGENT_MISSING/);
 assert.match(handler, /fetchSecVerifiedIntegrationPackage/);
+assert.match(handler, /compareSecCanonicalToReport/);
+assert.match(handler, /mutationApplied:\s*false/);
+assert.match(handler, /INVALID_FINANCIAL_STATEMENTS/);
 assert.doesNotMatch(handler, /GEMINI_API_KEY/);
 
-console.log('SEC diagnostics route wiring checks passed');
+console.log('SEC diagnostics and comparison route wiring checks passed');
