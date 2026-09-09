@@ -8,6 +8,7 @@ import {
 import { IntrinsicValueData, ForecastDashboardData, DCFScenario } from '../types';
 
 import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
+import { describeDcfFinancialSource } from '../utils/valuation/dcfSourceDescriptor';
 
 
 interface Props {
@@ -35,6 +36,27 @@ export function IntrinsicValueEngine({
     );
   }
 
+  const dcfSource = describeDcfFinancialSource(data.dcf_model.inputs);
+  const dcfSourceLabel = isThai ? dcfSource.labelTh : dcfSource.labelEn;
+  const dcfSourceDetail = isThai ? dcfSource.detailTh : dcfSource.detailEn;
+  const dcfSourceMeta = [
+    dcfSource.sourcePeriod ? `${isThai ? 'งวด' : 'Period'}: ${dcfSource.sourcePeriod}` : null,
+    dcfSource.financialDataAsOf ? `${isThai ? 'งบ ณ' : 'Financials as of'}: ${dcfSource.financialDataAsOf}` : null,
+    dcfSource.sharesAsOf ? `${isThai ? 'หุ้นคงค้าง ณ' : 'Shares as of'}: ${dcfSource.sharesAsOf}` : null,
+  ].filter(Boolean).join(' • ');
+  const dcfSourceBadge = (
+    <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 ${dcfSource.kind === 'sec_verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>
+      {dcfSource.kind === 'sec_verified'
+        ? <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-emerald-700" />
+        : <Info className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />}
+      <div className="min-w-0">
+        <div className="text-xs font-bold">{dcfSourceLabel}</div>
+        <div className="text-[11px] mt-0.5 leading-relaxed opacity-80">{dcfSourceDetail}</div>
+        {dcfSourceMeta && <div className="text-[10px] mt-1 font-mono opacity-70">{dcfSourceMeta}</div>}
+      </div>
+    </div>
+  );
+
   if (data.dcf_model.inputs?.isValid === false) {
     const missing = data.dcf_model.inputs.missingFields?.join(', ');
     return (
@@ -49,6 +71,7 @@ export function IntrinsicValueEngine({
                 : 'This report lacks a complete, same-period DCF input set, so no substitute values are used to create a price target.'}
             </p>
             {missing && <p className="text-xs mt-2 font-mono opacity-80">{missing}</p>}
+            <div className="mt-3">{dcfSourceBadge}</div>
           </div>
         </div>
       </div>
@@ -296,6 +319,7 @@ export function IntrinsicValueEngine({
               <span>{isThai ? 'คำนวณล่าสุดเมื่อ:' : 'Model Date:'} <strong className="font-mono text-stone-800">{data.as_of_date || new Date().toISOString().split('T')[0]}</strong></span>
             </div>
           </div>
+          {dcfSourceBadge}
           {(modelSelector?.reason_th || modelSelector?.reason_en) && (
             <div className="pt-2 border-t border-stone-200/60 text-[11px] font-sans text-stone-500 leading-relaxed flex items-start gap-1.5">
               <Info className="w-3.5 h-3.5 text-[#0b5a4b] shrink-0 mt-0.5" />
