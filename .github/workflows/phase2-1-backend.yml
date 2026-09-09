@@ -18,19 +18,15 @@ jobs:
           fetch-depth: 0
 
       - name: Refactor Express server for Vercel Functions
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
           p = Path('server.ts')
           s = p.read_text(encoding='utf-8')
 
-          old = '''async function startServer() {
-  const app = express();
-  const PORT = Number(process.env.PORT || 3000);
-'''
-          new = '''export async function createApp(options: { serveFrontend?: boolean } = {}) {
-  const app = express();
-'''
+          old = "async function startServer() {\n  const app = express();\n  const PORT = Number(process.env.PORT || 3000);\n"
+          new = "export async function createApp(options: { serveFrontend?: boolean } = {}) {\n  const app = express();\n"
           if old not in s:
               raise SystemExit('startServer header not found')
           s = s.replace(old, new, 1)
@@ -40,40 +36,15 @@ jobs:
               raise SystemExit('frontend marker not found')
           s = s.replace(marker, "  if (options.serveFrontend !== false) {\n" + marker, 1)
 
-          old_tail = '''  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
-
-startServer();
-'''
-          new_tail = '''  }
-
-  return app;
-}
-
-if (process.env.VERCEL !== "1") {
-  createApp({ serveFrontend: true })
-    .then((app) => {
-      const PORT = Number(process.env.PORT || 3000);
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    })
-    .catch((error) => {
-      console.error("Failed to start server", error);
-      process.exitCode = 1;
-    });
-}
-'''
+          old_tail = "  app.listen(PORT, \"0.0.0.0\", () => {\n    console.log(`Server running on port ${PORT}`);\n  });\n}\n\nstartServer();\n"
+          new_tail = "  }\n\n  return app;\n}\n\nif (process.env.VERCEL !== \"1\") {\n  createApp({ serveFrontend: true })\n    .then((app) => {\n      const PORT = Number(process.env.PORT || 3000);\n      app.listen(PORT, \"0.0.0.0\", () => {\n        console.log(`Server running on port ${PORT}`);\n      });\n    })\n    .catch((error) => {\n      console.error(\"Failed to start server\", error);\n      process.exitCode = 1;\n    });\n}\n"
           if old_tail not in s:
               raise SystemExit('server tail not found')
           s = s.replace(old_tail, new_tail, 1)
 
-          # Vercel Functions have a read-only project filesystem. Keep transient run logs in /tmp.
           s = s.replace("const runLogsDir = path.join(process.cwd(), 'run_logs');", "const runLogsDir = process.env.VERCEL === '1' ? path.join('/tmp', 'run_logs') : path.join(process.cwd(), 'run_logs');")
-
           p.write_text(s, encoding='utf-8')
+          PY
 
       - name: Add Vercel function entrypoint and routing
         shell: bash
