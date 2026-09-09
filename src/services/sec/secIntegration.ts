@@ -4,6 +4,7 @@ import { createSecEdgarClientFromEnv, type SecEdgarClient } from './secClient';
 import { buildSecCoverageDiagnostics, type SecCoverageDiagnostics } from './secCoverageDiagnostics';
 import { attachVerifiedTotalDebtFromSec } from './secDebtResolver';
 import { mapSecBundleToCanonicalFinancials, type SecCompanyBundleLike } from './secFinancialMapper';
+import { attachVerifiedShortTermInvestmentsFromSec } from './secInvestmentResolver';
 import { adaptSecCanonicalToFinancialStatements, assessSecDcfCoverage, type SecDcfCoverageAssessment } from './secLegacyAdapter';
 import { buildSecShareSnapshot, type SecShareSnapshot } from './secShareSnapshot';
 
@@ -55,7 +56,8 @@ export function buildSecVerifiedIntegrationPackage(
     };
   }
 
-  const canonicalFinancials = attachVerifiedTotalDebtFromSec(mapped, bundle);
+  const withInvestments = attachVerifiedShortTermInvestmentsFromSec(mapped, bundle);
+  const canonicalFinancials = attachVerifiedTotalDebtFromSec(withInvestments, bundle);
   const shareSnapshot = buildSecShareSnapshot(bundle.identity, bundle.submissions, bundle.companyFacts, bundle.retrievedAt);
   const financialStatements = adaptSecCanonicalToFinancialStatements(canonicalFinancials);
   const dcfCoverage = assessSecDcfCoverage(canonicalFinancials, shareSnapshot);
