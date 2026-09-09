@@ -35,6 +35,7 @@ const durationDays = (fact: SecCompanyFact) => {
 };
 
 const filedRank = (fact: SecCompanyFact) => dateMs(fact.filed) || 0;
+const endRank = (fact: SecCompanyFact) => dateMs(fact.end) || 0;
 
 const validFact = (fact: SecCompanyFact) =>
   isFiniteNumber(fact.val)
@@ -46,17 +47,30 @@ const validFact = (fact: SecCompanyFact) =>
 const newest = (facts: SecCompanyFact[]) => [...facts].sort((a, b) => filedRank(b) - filedRank(a))[0];
 
 /**
+ * SEC companyfacts frequently repeats prior-year comparative facts inside the current filing while
+ * tagging them with the filing's fy/fp. Prefer the latest period-end first, then resolve duplicates
+ * or amendments by filed date. Without this guard a newly-filed comparative fact can be mistaken
+ * for the current fiscal period and corrupt both values and provenance dates.
+ */
+const latestPeriodFacts = (facts: SecCompanyFact[]) => {
+  if (facts.length === 0) return [];
+  const maxEnd = Math.max(...facts.map(endRank));
+  return facts.filter(fact => endRank(fact) === maxEnd);
+};
+
+/**
  * Select the cumulative/YTD duration fact for a fiscal period.
- * SEC companyfacts can contain both quarter-only and YTD contexts for Q2/Q3.
- * For deterministic normalization we deliberately choose the longest duration for the period,
- * then the latest-filed duplicate/restatement of that same duration.
+ * SEC companyfacts can contain both quarter-only and YTD contexts for Q2/Q3, plus prior-year
+ * comparative contexts carried in the current filing. We first select the latest period-end,
+ * then the longest duration for that period, then the latest-filed duplicate/restatement.
  */
 const selectYtdFact = (facts: SecCompanyFact[], fiscalYear: number, fp: SecFiscalPeriod) => {
   const candidates = facts.filter(fact => validFact(fact) && fact.fy === fiscalYear && fact.fp === fp && typeof fact.start === 'string');
   if (candidates.length === 0) return undefined;
-  const maxDuration = Math.max(...candidates.map(durationDays));
+  const currentPeriodCandidates = latestPeriodFacts(candidates);
+  const maxDuration = Math.max(...currentPeriodCandidates.map(durationDays));
   if (maxDuration < 1) return undefined;
-  return newest(candidates.filter(fact => durationDays(fact) === maxDuration));
+  return newest(currentPeriodCandidates.filter(fact => durationDays(fact) === maxDuration));
 };
 
 const accessionList = (facts: SecCompanyFact[]) => Array.from(new Set(
@@ -139,7 +153,8 @@ export function normalizeDurationFactsToStandaloneQuarters(facts: SecCompanyFact
 
 /**
  * Balance-sheet concepts are instant facts, so no YTD subtraction is required.
- * FY is treated as fiscal Q4 ending balance. Latest-filed restatements win for the same FY/FP.
+ * FY is treated as fiscal Q4 ending balance. The latest period-end wins over comparative facts;
+ * latest-filed restatements then win for the same current-period end date.
  */
 export function normalizeInstantFactsToFiscalQuarters(facts: SecCompanyFact[]): NormalizedSecQuarterFact[] {
   const groups = new Map<string, SecCompanyFact[]>();
@@ -154,7 +169,7 @@ export function normalizeInstantFactsToFiscalQuarters(facts: SecCompanyFact[]): 
 
   const output: NormalizedSecQuarterFact[] = [];
   for (const group of groups.values()) {
-    const fact = newest(group);
+    const fact = newest(latestPeriodFacts(group));
     if (!fact || !isFiniteNumber(fact.val) || !fact.end || !fact.fy || !isFiscalPeriod(fact.fp)) continue;
     const quarter = fact.fp === 'Q1' ? 1 : fact.fp === 'Q2' ? 2 : fact.fp === 'Q3' ? 3 : 4;
     output.push({
