@@ -36,6 +36,40 @@ const disclosedReport: any = {
   },
 };
 
+const eligibleSecEnvelope = () => ({
+  status: 'verified_eligible',
+  ticker: 'TEST',
+  retrieved_at: '2026-09-10T00:00:00.000Z',
+  provenance_status: 'verified',
+  provenance_warnings: [],
+  dcf_coverage: {
+    eligible: true,
+    periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
+    current_shares_outstanding_m: 80,
+    issues: [],
+  },
+  dcf_financial_inputs: {
+    version: 1,
+    generated_by: 'sec-verified-financial-inputs-v1',
+    eligible: true,
+    ticker: 'TEST',
+    periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
+    source_period: 'Q1 2026–Q4 2026',
+    latest_balance_sheet_period_end: '2026-12-31',
+    share_as_of: '2027-01-20',
+    starting_revenue_m: 1000,
+    trailing_four_free_cash_flow_m: 160,
+    historical_fcf_margin_pct: 16,
+    cash_and_equivalents_m: 100,
+    short_term_investments_m: 30,
+    total_debt_m: 110,
+    net_cash_m: 20,
+    current_shares_outstanding_m: 80,
+    issues: [],
+  },
+  latest_statements_source: null,
+});
+
 {
   const { inputs, dcfModel } = buildRigorousDCFModel(disclosedReport, 'TEST');
   assert.equal(inputs.isValid, true);
@@ -43,8 +77,73 @@ const disclosedReport: any = {
   assert.equal(inputs.sharesOutstandingM, 100);
   assert.equal(inputs.netCashM, -4);
   assert.equal(inputs.sourcePeriod, 'Q1 2025–Q4 2025');
+  assert.equal(inputs.financialDataSource, 'report_statements');
   assert.notEqual(dcfModel.scenarios.base.fair_value_per_share, 999, 'DCF must be recomputed rather than retain an AI target');
   assert.ok(typeof dcfModel.scenarios.base.fair_value_per_share === 'number' && Number.isFinite(dcfModel.scenarios.base.fair_value_per_share));
+}
+
+{
+  const secBacked = structuredClone(disclosedReport);
+  secBacked.sec_verification = eligibleSecEnvelope();
+  // Deliberately make report financials different. An eligible SEC envelope must be used as one
+  // complete financial source rather than mixing these statement values into the DCF.
+  secBacked.financial_statements.income_statement.revenue = [1, 1, 1, 1];
+  secBacked.financial_statements.balance_sheet.cash_and_equivalents = [1, 1, 1, 1];
+  secBacked.financial_statements.balance_sheet.short_term_investments = [1, 1, 1, 1];
+  secBacked.financial_statements.balance_sheet.total_debt = [999, 999, 999, 999];
+  secBacked.company_profile.shares_outstanding = '999M';
+  const { inputs } = buildRigorousDCFModel(secBacked, 'TEST');
+  assert.equal(inputs.isValid, true);
+  assert.equal(inputs.financialDataSource, 'sec_verified');
+  assert.equal(inputs.startingRevenueM, 1000);
+  assert.equal(inputs.sharesOutstandingM, 80);
+  assert.equal(inputs.netCashM, 20);
+  assert.equal(inputs.sourcePeriod, 'Q1 2026–Q4 2026');
+  assert.equal(inputs.financialDataAsOf, '2026-12-31');
+  assert.equal(inputs.sharesAsOf, '2027-01-20');
+}
+
+{
+  const partialSec = structuredClone(disclosedReport);
+  const envelope = eligibleSecEnvelope();
+  envelope.status = 'verified_partial';
+  envelope.dcf_coverage.eligible = false;
+  envelope.dcf_financial_inputs.eligible = false;
+  envelope.dcf_financial_inputs.issues = [{ code: 'SEC_TOTAL_DEBT_UNAVAILABLE', field: 'balance_sheet.total_debt', message: 'Missing debt.' }];
+  partialSec.sec_verification = envelope;
+  const { inputs } = buildRigorousDCFModel(partialSec, 'TEST');
+  assert.equal(inputs.isValid, true, 'Partial SEC coverage should use the existing complete report-statement path without mixing SEC values');
+  assert.equal(inputs.financialDataSource, 'report_statements');
+  assert.equal(inputs.startingRevenueM, 460);
+  assert.equal(inputs.sharesOutstandingM, 100);
+  assert.equal(inputs.netCashM, -4);
+}
+
+{
+  const malformedEligible = structuredClone(disclosedReport);
+  const envelope = eligibleSecEnvelope();
+  envelope.dcf_financial_inputs.net_cash_m = 999; // no longer reconciles with cash + investments - debt
+  malformedEligible.sec_verification = envelope;
+  const { inputs, dcfModel } = buildRigorousDCFModel(malformedEligible, 'TEST');
+  assert.equal(inputs.isValid, false, 'Malformed SEC data that claims eligibility must fail closed rather than silently fall back');
+  assert.equal(inputs.financialDataSource, 'sec_verified');
+  assert.ok(inputs.missingFields?.includes('runtime-valid SEC verified DCF financial inputs'));
+  assert.equal(dcfModel.scenarios.base.fair_value_per_share, null);
+}
+
+{
+  const secWithMarketPrice = structuredClone(disclosedReport);
+  secWithMarketPrice.sec_verification = eligibleSecEnvelope();
+  secWithMarketPrice.market_snapshot = {
+    ticker: 'TEST',
+    price: 55,
+    currency: 'USD',
+    provider: 'TEST',
+    asOf: '2026-09-10T00:00:00.000Z',
+  };
+  const { inputs } = buildRigorousDCFModel(secWithMarketPrice, 'TEST');
+  assert.equal(inputs.currentPrice, 55);
+  assert.equal(inputs.priceSource, 'market_snapshot', 'SEC financials must not replace the independent live market-price source');
 }
 
 {
