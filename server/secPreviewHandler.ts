@@ -1,4 +1,5 @@
 import { fetchSecVerifiedIntegrationPackage } from '../src/services/sec/secIntegration';
+import { buildSecDcfFinancialInputs } from '../src/services/sec/secDcfInputs';
 import { compareSecCanonicalToReport } from '../src/services/sec/secReportComparison';
 import { SecDataError } from '../src/services/sec/secClient';
 
@@ -50,6 +51,11 @@ export async function handleSecPreview(req: any, res: any) {
 
   try {
     const pkg = await fetchSecVerifiedIntegrationPackage(ticker);
+    const dcfFinancialInputs = buildSecDcfFinancialInputs(
+      pkg.canonicalFinancials,
+      pkg.shareSnapshot,
+      pkg.dcfCoverage,
+    );
     return res.status(200).json({
       ok: true,
       ticker: pkg.ticker,
@@ -60,6 +66,7 @@ export async function handleSecPreview(req: any, res: any) {
       provenanceStatus: pkg.canonicalFinancials?.provenanceStatus ?? null,
       provenanceWarnings: pkg.canonicalFinancials?.provenanceWarnings ?? [],
       dcfCoverage: pkg.dcfCoverage,
+      dcfFinancialInputs,
       coverageDiagnostics: presentCoverageDiagnostics(pkg.coverageDiagnostics),
       shareSnapshot: pkg.shareSnapshot ? {
         currentCommonSharesOutstandingM: pkg.shareSnapshot.currentCommonSharesOutstanding?.sharesM ?? null,
