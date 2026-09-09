@@ -8,7 +8,7 @@ const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.E
 
 type ReportWithCanonicalData = ReportData & {
   market_snapshot?: MarketSnapshot;
-  financial_dataset?: CanonicalFinancialDataset;
+  canonical_financials?: CanonicalFinancialDataset;
 };
 
 /** Match fiscal labels, not adjacent array positions; incomplete history stays unavailable. */
@@ -36,13 +36,6 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   if (!input) return {} as ReportData;
   const result = structuredClone(input) as ReportWithCanonicalData;
   const fs = result.financial_statements;
-
-  // Build a provenance-aware representation without changing the legacy statement arrays used by the UI.
-  // This is the migration bridge for the SEC/XBRL source engine: linked sources stay source-linked,
-  // never automatically promoted to independently verified data.
-  const financialDataset = buildCanonicalFinancialDataset(result);
-  if (financialDataset) result.financial_dataset = financialDataset;
-
   const lastIndex = (fs?.periods?.length || 0) - 1;
   const at = (a?: (number | null)[]) => finite(a?.[lastIndex]) ? a![lastIndex]! : undefined;
   const bs = fs?.balance_sheet;
@@ -83,6 +76,12 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
     };
     result.five_pillars.analyst_takeaway = 'ข้อมูลจากรายงานที่บันทึกไว้ ไม่ใช่การรับรองจาก SEC; ควรตรวจงวดบัญชีและเอกสารต้นทางก่อนใช้ประเมินมูลค่า';
   }
+
+  // Build a non-destructive provenance view over the statement arrays. This does not
+  // rewrite financial values and does not promote linked sources to independently verified data.
+  const canonicalFinancials = buildCanonicalFinancialDataset(result);
+  if (canonicalFinancials) result.canonical_financials = canonicalFinancials;
+  else delete result.canonical_financials;
 
   // Keep dated research intact. Explicit quote refresh updates only current market fields.
   // All current-price consumers use the same canonical snapshot so DCF cannot remain on a stale AI-supplied price.
