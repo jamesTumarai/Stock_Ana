@@ -28,6 +28,12 @@ const secErrorResponse = (res: any, error: unknown, route: string) => {
   return res.status(500).json({ error: 'Unexpected SEC diagnostics error.', code: 'SEC_PREVIEW_ERROR' });
 };
 
+const presentCoverageDiagnostics = (diagnostics: any) => diagnostics ? {
+  debt: diagnostics.debt?.filter((item: any) => item.present) ?? [],
+  investments: diagnostics.investments?.filter((item: any) => item.present) ?? [],
+  cash_flow: diagnostics.cash_flow?.filter((item: any) => item.present) ?? [],
+} : null;
+
 export async function handleSecPreview(req: any, res: any) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -54,6 +60,7 @@ export async function handleSecPreview(req: any, res: any) {
       provenanceStatus: pkg.canonicalFinancials?.provenanceStatus ?? null,
       provenanceWarnings: pkg.canonicalFinancials?.provenanceWarnings ?? [],
       dcfCoverage: pkg.dcfCoverage,
+      coverageDiagnostics: presentCoverageDiagnostics(pkg.coverageDiagnostics),
       shareSnapshot: pkg.shareSnapshot ? {
         currentCommonSharesOutstandingM: pkg.shareSnapshot.currentCommonSharesOutstanding?.sharesM ?? null,
         currentSharesAsOf: pkg.shareSnapshot.currentCommonSharesOutstanding?.end ?? null,
