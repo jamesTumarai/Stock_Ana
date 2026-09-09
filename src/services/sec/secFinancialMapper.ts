@@ -61,7 +61,10 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'balance_sheet', metric: 'total_equity', concepts: ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
 
   { statement: 'cash_flow', metric: 'operating_cash_flow', concepts: ['NetCashProvidedByUsedInOperatingActivities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'cash_flow', metric: 'capex', concepts: ['PaymentsToAcquirePropertyPlantAndEquipment'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  // PaymentsToAcquireProductiveAssets is an SEC standard-taxonomy capex concept that includes
+  // purchases/capital improvements of PPE, software and other productive intangible assets.
+  // It is a fallback only for fiscal periods where the narrower PPE concept is unavailable.
+  { statement: 'cash_flow', metric: 'capex', concepts: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'cash_flow', metric: 'dividends_paid', concepts: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
 ];
 
