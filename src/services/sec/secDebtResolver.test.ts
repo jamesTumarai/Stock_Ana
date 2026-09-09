@@ -99,15 +99,28 @@ const four = (values: [number, number, number, number], prefix: string) => [
   const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
     LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc')),
     LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc')),
-    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 100_000_000], 'lta')),
+    LongTermDebt: unit(four([105_000_000, 106_000_000, 107_000_000, 108_000_000], 'lta')),
     CommercialPaper: unit(four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp')),
   }));
   const total = resolved.values['balance_sheet.total_debt'];
   assert.deepEqual(total.map(item => item.value), [105, 106, 107, 108]);
   assert.ok(total.every(item => item.verification === 'verified'));
-  assert.match(total[3].derivation || '', /reconciled us-gaap:LongTermDebt \+ separately reported us-gaap:CommercialPaper/);
-  assert.match(total[3].derivation || '', /LongTermDebtCurrent \+ LongTermDebtNoncurrent/);
+  assert.match(total[3].derivation || '', /LongTermDebtCurrent \+ LongTermDebtNoncurrent \+ separately tagged us-gaap:CommercialPaper/);
+  assert.match(total[3].derivation || '', /CommercialPaper was not added again/);
 }
+
+{
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc-nodouble')),
+    LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc-nodouble')),
+    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 100_000_000], 'lta-nodouble')),
+    CommercialPaper: unit(four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp-nodouble')),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.deepEqual(total.map(item => item.value), [100, 100, 100, 100]);
+  assert.match(total[3].derivation || '', /CommercialPaper was not added again/);
+}
+
 
 {
   const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
@@ -180,17 +193,17 @@ const four = (values: [number, number, number, number], prefix: string) => [
   const total = resolved.values['balance_sheet.total_debt'];
   assert.equal(total[3].value, 40294);
   assert.equal(total[3].verification, 'verified');
-  assert.match(total[3].derivation || '', /no stale short-term debt was carried forward/i);
+  assert.match(total[3].derivation || '', /stale debt facts were not carried forward/i);
   assert.doesNotMatch(total[3].derivation || '', /\+ separately reported us-gaap:CommercialPaper/);
 }
 
 {
-  // AAPL-like shape: current + non-current term debt reconcile to the aggregate and
-  // same-period commercial paper is a separate current liability, so it is added once.
+  // AAPL-like shape: LongTermDebt is the aggregate and reconciles to current + non-current
+  // term debt + separately tagged commercial paper. The aggregate must be used once, not CP added twice.
   const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
     LongTermDebtCurrent: unit(four([11_000_000_000, 11_100_000_000, 11_007_000_000, 11_007_000_000], 'aapl-ltc')),
     LongTermDebtNoncurrent: unit(four([75_000_000_000, 73_000_000_000, 71_340_000_000, 71_340_000_000], 'aapl-ltnc')),
-    LongTermDebt: unit(four([86_000_000_000, 84_100_000_000, 82_347_000_000, 82_347_000_000], 'aapl-lta')),
+    LongTermDebt: unit(four([90_000_000_000, 87_100_000_000, 84_344_000_000, 84_344_000_000], 'aapl-lta')),
     CommercialPaper: unit(four([4_000_000_000, 3_000_000_000, 1_997_000_000, 1_997_000_000], 'aapl-cp')),
     // A stale prior-year lease fact must not poison the current-period borrowing family.
     FinanceLeaseLiabilityCurrent: unit([fact(2025, 'FY', 1_000_000_000, 'stale-lease')]),
@@ -198,7 +211,7 @@ const four = (values: [number, number, number, number], prefix: string) => [
   const total = resolved.values['balance_sheet.total_debt'];
   assert.equal(total[3].value, 84344);
   assert.equal(total[3].verification, 'verified');
-  assert.match(total[3].derivation || '', /CommercialPaper was reported for the same instant and added exactly once/);
+  assert.match(total[3].derivation || '', /CommercialPaper was not added again/);
 }
 
 console.log('SEC total debt resolution checks passed');

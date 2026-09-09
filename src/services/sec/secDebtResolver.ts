@@ -115,11 +115,12 @@ const directTotalDebtSeries = (bundle: SecCompanyBundleLike) => {
  * Priority:
  * 1. A single SEC aggregate debt concept, if disclosed.
  * 2. `DebtCurrent + LongTermDebtNoncurrent` only when both are present for the exact same instant.
- * 3. A reconciled long-term debt family when `LongTermDebtCurrent + LongTermDebtNoncurrent`
- *    exactly reconciles to `LongTermDebt` for the same instant. If same-period `CommercialPaper` is
- *    separately reported, it is added once; stale historical commercial-paper facts are never carried forward.
- *    A same-period `ShortTermBorrowings` fact or finance-lease liability keeps the family fail-closed because
- *    it could make the borrowing-only total incomplete or overlapping.
+ * 3. A reconciled `LongTermDebt` aggregate. US-GAAP `LongTermDebt` is itself the aggregate
+ *    carrying amount including current and noncurrent long-term debt and may include commercial paper, so
+ *    `CommercialPaper` is never blindly added on top. When components are available, the aggregate must
+ *    reconcile either to `LongTermDebtCurrent + LongTermDebtNoncurrent` or to those components plus a
+ *    same-period separately tagged `CommercialPaper` fact. A same-period `ShortTermBorrowings` fact or
+ *    finance-lease liability keeps this borrowing-only family fail-closed.
  *
  * Missing facts are never converted to zero, stale debt is never carried into a newer balance sheet, and
  * overlapping aliases are never summed. If a current-period family is internally inconsistent, total debt stays null.
@@ -198,16 +199,39 @@ export function attachVerifiedTotalDebtFromSec(
     const separateLeaseCurrent = financeLeaseCurrent.get(key);
     const separateLeaseNoncurrent = financeLeaseNoncurrent.get(key);
 
-    const reconciledLongTermDebt = ltCurrent
+    const familyEnd = ltAggregate?.end;
+    const componentsShareInstant = Boolean(
+      ltCurrent
       && ltNoncurrent
       && ltAggregate
       && finite(ltCurrent.value)
       && finite(ltNoncurrent.value)
       && finite(ltAggregate.value)
       && samePeriodEnd(ltCurrent, ltNoncurrent, ltAggregate)
-      && approximatelyEqual(ltCurrent.value + ltNoncurrent.value, ltAggregate.value);
+    );
+    const samePeriodPaper = Boolean(
+      componentsShareInstant
+      && paper
+      && finite(paper.value)
+      && samePeriodEnd(ltCurrent, ltNoncurrent, ltAggregate, paper)
+    );
+    const componentTotal = componentsShareInstant && ltCurrent && ltNoncurrent
+      ? ltCurrent.value + ltNoncurrent.value
+      : null;
+    const reconcilesWithoutSeparatePaper = Boolean(
+      componentTotal !== null
+      && ltAggregate
+      && approximatelyEqual(componentTotal, ltAggregate.value)
+    );
+    const reconcilesWithSeparatePaper = Boolean(
+      componentTotal !== null
+      && samePeriodPaper
+      && paper
+      && ltAggregate
+      && approximatelyEqual(componentTotal + paper.value, ltAggregate.value)
+    );
+    const aggregateReconciled = reconcilesWithoutSeparatePaper || reconcilesWithSeparatePaper;
 
-    const familyEnd = ltAggregate?.end;
     const samePeriodShortTerm = Boolean(
       familyEnd
       && overlappingShortTerm
@@ -219,32 +243,26 @@ export function attachVerifiedTotalDebtFromSec(
       && ((separateLeaseCurrent && finite(separateLeaseCurrent.value) && separateLeaseCurrent.end === familyEnd)
         || (separateLeaseNoncurrent && finite(separateLeaseNoncurrent.value) && separateLeaseNoncurrent.end === familyEnd))
     );
-    const samePeriodPaper = Boolean(
-      reconciledLongTermDebt
-      && ltAggregate
+    const nearCurrentPaperMismatch = Boolean(
+      familyEnd
       && paper
       && finite(paper.value)
-      && samePeriodEnd(ltCurrent, ltNoncurrent, ltAggregate, paper)
-    );
-    const mismatchedPaperForFiscalQuarter = Boolean(
-      reconciledLongTermDebt
-      && paper
-      && finite(paper.value)
-      && ltAggregate
-      && paper.end !== ltAggregate.end
+      && paper.end !== familyEnd
+      && Number.isFinite(Date.parse(paper.end))
+      && Number.isFinite(Date.parse(familyEnd))
+      && Math.abs(Date.parse(paper.end) - Date.parse(familyEnd)) <= 120 * 86_400_000
     );
 
-    // A reconciled current/non-current long-term debt family is already a complete authoritative
-    // long-term borrowing amount for the instant. Commercial paper is added only when SEC reports
-    // it for that exact same instant. Historical paper is not carried forward and is not treated as zero.
+    // LongTermDebt is the authoritative aggregate and can already contain commercial paper.
+    // CommercialPaper is therefore used only to prove reconciliation, never added on top of the aggregate.
     if (
-      reconciledLongTermDebt
+      aggregateReconciled
       && ltAggregate
       && ltCurrent
       && ltNoncurrent
       && !samePeriodShortTerm
       && !samePeriodLease
-      && !mismatchedPaperForFiscalQuarter
+      && !nearCurrentPaperMismatch
     ) {
       const paperFact = samePeriodPaper && paper ? paper : undefined;
       const accessions = Array.from(new Set([
@@ -253,24 +271,20 @@ export function attachVerifiedTotalDebtFromSec(
         ...ltAggregate.accessionNumbers,
         ...(paperFact?.accessionNumbers ?? []),
       ]));
-      const totalValue = ltAggregate.value + (paperFact?.value ?? 0);
-      const paperNote = paperFact
-        ? ` + separately reported us-gaap:${RECONCILED_COMMERCIAL_PAPER_FAMILY.commercialPaper}`
-        : '';
-      const absenceNote = paperFact
-        ? 'CommercialPaper was reported for the same instant and added exactly once.'
-        : 'No CommercialPaper fact was reported for this fiscal-quarter instant; no stale short-term debt was carried forward.';
+      const reconciliationNote = reconcilesWithSeparatePaper
+        ? `LongTermDebt reconciled to LongTermDebtCurrent + LongTermDebtNoncurrent + separately tagged us-gaap:${RECONCILED_COMMERCIAL_PAPER_FAMILY.commercialPaper}. CommercialPaper was not added again.`
+        : `LongTermDebt reconciled to LongTermDebtCurrent + LongTermDebtNoncurrent. Any separately tagged CommercialPaper was not added again because the aggregate is authoritative.`;
       return {
         metric: 'total_debt',
         statement: 'balance_sheet',
-        value: round(totalValue / 1_000_000),
+        value: round(ltAggregate.value / 1_000_000),
         unit: 'USD_M',
         period,
         periodEnd: ltAggregate.end,
         type: 'derived',
         verification: 'verified',
         source: sourceForFact(bundle, ltAggregate, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate),
-        derivation: `Deterministic SEC total debt = reconciled us-gaap:${RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate}${paperNote}. LongTermDebt was verified to equal LongTermDebtCurrent + LongTermDebtNoncurrent for the same instant; accessions: ${accessions.join(', ')}. ${absenceNote} No same-period ShortTermBorrowings or finance-lease liability fact was present.`,
+        derivation: `Deterministic SEC total debt = reconciled us-gaap:${RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate}. ${reconciliationNote} Accessions: ${accessions.join(', ')}. Stale debt facts were not carried forward; no same-period ShortTermBorrowings or finance-lease liability fact was present.`,
       };
     }
 
