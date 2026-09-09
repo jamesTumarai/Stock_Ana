@@ -1,5 +1,5 @@
 import type { CanonicalFinancialDataset, CanonicalFinancialValue } from '../../domain/financialValue';
-import type { SecCompanyConcept, SecCompanyFact } from './secClient';
+import type { SecCompanyFact } from './secClient';
 import type { SecCompanyBundleLike } from './secFinancialMapper';
 import { normalizeInstantFactsToFiscalQuarters, type NormalizedSecQuarterFact } from './xbrlNormalizer';
 
@@ -14,12 +14,37 @@ const SAFE_COMPONENT_FAMILY = {
   noncurrent: 'LongTermDebtNoncurrent',
 } as const;
 
+const RECONCILED_COMMERCIAL_PAPER_FAMILY = {
+  longTermCurrent: 'LongTermDebtCurrent',
+  longTermNoncurrent: 'LongTermDebtNoncurrent',
+  longTermAggregate: 'LongTermDebt',
+  commercialPaper: 'CommercialPaper',
+} as const;
+
+const EXCLUSION_CONCEPTS = {
+  shortTermBorrowings: 'ShortTermBorrowings',
+  financeLeaseCurrent: 'FinanceLeaseLiabilityCurrent',
+  financeLeaseNoncurrent: 'FinanceLeaseLiabilityNoncurrent',
+} as const;
+
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const round = (value: number) => Math.round((value + Number.EPSILON) * 1e8) / 1e8;
 const quarterKey = (fact: Pick<NormalizedSecQuarterFact, 'fiscalYear' | 'fiscalQuarter'>) => `${fact.fiscalYear}-Q${fact.fiscalQuarter}`;
 const periodKey = (period: string) => {
   const match = period.match(/^Q([1-4])\s+(\d{4})$/i);
   return match ? `${match[2]}-Q${match[1]}` : null;
+};
+
+const samePeriodEnd = (...facts: Array<NormalizedSecQuarterFact | undefined>) => {
+  const present = facts.filter((fact): fact is NormalizedSecQuarterFact => Boolean(fact));
+  if (present.length === 0) return false;
+  const end = present[0].end;
+  return present.every(fact => fact.end === end);
+};
+
+const approximatelyEqual = (left: number, right: number) => {
+  const scale = Math.max(Math.abs(left), Math.abs(right), 1);
+  return Math.abs(left - right) <= scale * 1e-6;
 };
 
 const conceptFacts = (bundle: SecCompanyBundleLike, concept: string): SecCompanyFact[] =>
@@ -89,10 +114,14 @@ const directTotalDebtSeries = (bundle: SecCompanyBundleLike) => {
  *
  * Priority:
  * 1. A single SEC aggregate debt concept, if disclosed.
- * 2. `DebtCurrent + LongTermDebtNoncurrent` only when both are present for the same quarter.
+ * 2. `DebtCurrent + LongTermDebtNoncurrent` only when both are present for the exact same instant.
+ * 3. A reconciled commercial-paper family only when all of the following are true for the same instant:
+ *    - `LongTermDebtCurrent + LongTermDebtNoncurrent` exactly reconciles to `LongTermDebt`,
+ *    - `CommercialPaper` is separately reported,
+ *    - no same-period `ShortTermBorrowings` fact exists that could overlap with commercial paper,
+ *    - no same-period finance-lease liability facts exist that would make this borrowing-only family incomplete.
  *
- * We deliberately do not add `ShortTermBorrowings` to `DebtCurrent`, or mix finance-lease/current
- * aliases, because those concepts can overlap. If the safe family is incomplete, total debt stays null.
+ * Missing facts are never treated as zero. If a family is incomplete or ambiguous, total debt stays null.
  */
 export function attachVerifiedTotalDebtFromSec(
   dataset: CanonicalFinancialDataset,
@@ -102,6 +131,14 @@ export function attachVerifiedTotalDebtFromSec(
   const direct = directTotalDebtSeries(bundle);
   const debtCurrent = normalizedConceptMap(bundle, SAFE_COMPONENT_FAMILY.current);
   const debtNoncurrent = normalizedConceptMap(bundle, SAFE_COMPONENT_FAMILY.noncurrent);
+
+  const longTermCurrent = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermCurrent);
+  const longTermNoncurrent = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermNoncurrent);
+  const longTermAggregate = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate);
+  const commercialPaper = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.commercialPaper);
+  const shortTermBorrowings = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.shortTermBorrowings);
+  const financeLeaseCurrent = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.financeLeaseCurrent);
+  const financeLeaseNoncurrent = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.financeLeaseNoncurrent);
 
   const series: CanonicalFinancialValue[] = next.periods.map(period => {
     const key = periodKey(period);
@@ -130,7 +167,13 @@ export function attachVerifiedTotalDebtFromSec(
 
     const current = debtCurrent.get(key);
     const noncurrent = debtNoncurrent.get(key);
-    if (current && noncurrent && finite(current.value) && finite(noncurrent.value)) {
+    if (
+      current
+      && noncurrent
+      && finite(current.value)
+      && finite(noncurrent.value)
+      && samePeriodEnd(current, noncurrent)
+    ) {
       const accessions = Array.from(new Set([...current.accessionNumbers, ...noncurrent.accessionNumbers]));
       return {
         metric: 'total_debt',
@@ -138,11 +181,57 @@ export function attachVerifiedTotalDebtFromSec(
         value: round((current.value + noncurrent.value) / 1_000_000),
         unit: 'USD_M',
         period,
-        periodEnd: current.end === noncurrent.end ? current.end : undefined,
+        periodEnd: current.end,
         type: 'derived',
         verification: 'verified',
         source: sourceForFact(bundle, current, SAFE_COMPONENT_FAMILY.current),
         derivation: `Deterministic SEC total debt = us-gaap:${SAFE_COMPONENT_FAMILY.current} + us-gaap:${SAFE_COMPONENT_FAMILY.noncurrent}; accessions: ${accessions.join(', ')}. No short-term borrowing alias was added separately.`,
+      };
+    }
+
+    const ltCurrent = longTermCurrent.get(key);
+    const ltNoncurrent = longTermNoncurrent.get(key);
+    const ltAggregate = longTermAggregate.get(key);
+    const paper = commercialPaper.get(key);
+    const overlappingShortTerm = shortTermBorrowings.get(key);
+    const separateLeaseCurrent = financeLeaseCurrent.get(key);
+    const separateLeaseNoncurrent = financeLeaseNoncurrent.get(key);
+
+    const reconciledLongTermDebt = ltCurrent
+      && ltNoncurrent
+      && ltAggregate
+      && finite(ltCurrent.value)
+      && finite(ltNoncurrent.value)
+      && finite(ltAggregate.value)
+      && samePeriodEnd(ltCurrent, ltNoncurrent, ltAggregate)
+      && approximatelyEqual(ltCurrent.value + ltNoncurrent.value, ltAggregate.value);
+
+    const commercialPaperFamilySafe = reconciledLongTermDebt
+      && paper
+      && finite(paper.value)
+      && samePeriodEnd(ltCurrent, ltNoncurrent, ltAggregate, paper)
+      && !(overlappingShortTerm && finite(overlappingShortTerm.value) && overlappingShortTerm.end === paper.end)
+      && !(separateLeaseCurrent && finite(separateLeaseCurrent.value) && separateLeaseCurrent.end === paper.end)
+      && !(separateLeaseNoncurrent && finite(separateLeaseNoncurrent.value) && separateLeaseNoncurrent.end === paper.end);
+
+    if (commercialPaperFamilySafe && ltAggregate && paper && ltCurrent && ltNoncurrent) {
+      const accessions = Array.from(new Set([
+        ...ltCurrent.accessionNumbers,
+        ...ltNoncurrent.accessionNumbers,
+        ...ltAggregate.accessionNumbers,
+        ...paper.accessionNumbers,
+      ]));
+      return {
+        metric: 'total_debt',
+        statement: 'balance_sheet',
+        value: round((ltAggregate.value + paper.value) / 1_000_000),
+        unit: 'USD_M',
+        period,
+        periodEnd: paper.end,
+        type: 'derived',
+        verification: 'verified',
+        source: sourceForFact(bundle, ltAggregate, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate),
+        derivation: `Deterministic SEC total debt = reconciled us-gaap:${RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate} + separately reported us-gaap:${RECONCILED_COMMERCIAL_PAPER_FAMILY.commercialPaper}. LongTermDebt was verified to equal LongTermDebtCurrent + LongTermDebtNoncurrent for the same instant; accessions: ${accessions.join(', ')}. No same-period ShortTermBorrowings or finance-lease liability fact was present.`,
       };
     }
 
@@ -154,7 +243,7 @@ export function attachVerifiedTotalDebtFromSec(
       period,
       type: 'derived',
       verification: 'unverified',
-      derivation: 'No non-overlapping SEC total-debt aggregate or complete DebtCurrent + LongTermDebtNoncurrent pair was available for this quarter.',
+      derivation: 'No non-overlapping SEC total-debt aggregate or complete reconciled debt family was available for this quarter.',
     };
   });
 

@@ -47,6 +47,12 @@ const bundle = (facts: Record<string, any>): SecCompanyBundleLike => ({
 });
 
 const unit = (items: any[]) => ({ units: { USD: items } });
+const four = (values: [number, number, number, number], prefix: string) => [
+  fact(2026, 'Q1', values[0], 'a1'),
+  fact(2026, 'Q2', values[1], 'a2'),
+  fact(2026, 'Q3', values[2], 'a3'),
+  fact(2026, 'FY', values[3], 'a4'),
+].map((item, index) => ({ ...item, accn: `${prefix}-${index + 1}` }));
 
 {
   const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
@@ -87,6 +93,69 @@ const unit = (items: any[]) => ({ units: { USD: items } });
   assert.deepEqual(total.map(item => item.value), [100, 100, 100, 100]);
   assert.match(total[3].derivation || '', /DebtCurrent \+ us-gaap:LongTermDebtNoncurrent/);
   assert.doesNotMatch(total[3].derivation || '', /ShortTermBorrowings/);
+}
+
+{
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc')),
+    LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc')),
+    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 100_000_000], 'lta')),
+    CommercialPaper: unit(four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp')),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.deepEqual(total.map(item => item.value), [105, 106, 107, 108]);
+  assert.ok(total.every(item => item.verification === 'verified'));
+  assert.match(total[3].derivation || '', /reconciled us-gaap:LongTermDebt \+ separately reported us-gaap:CommercialPaper/);
+  assert.match(total[3].derivation || '', /LongTermDebtCurrent \+ LongTermDebtNoncurrent/);
+}
+
+{
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc')),
+    LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc')),
+    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 100_000_000], 'lta')),
+    CommercialPaper: unit(four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp')),
+    ShortTermBorrowings: unit([fact(2026, 'FY', 9_000_000, 'a4')]),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.equal(total[3].value, null, 'Same-period ShortTermBorrowings makes CommercialPaper overlap ambiguous');
+  assert.equal(total[3].verification, 'unverified');
+}
+
+{
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc')),
+    LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc')),
+    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 100_000_000], 'lta')),
+    CommercialPaper: unit(four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp')),
+    FinanceLeaseLiabilityCurrent: unit([fact(2026, 'FY', 2_000_000, 'a4')]),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.equal(total[3].value, null, 'Separate same-period lease debt keeps borrowing-only family fail-closed');
+}
+
+{
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc')),
+    LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc')),
+    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 101_000_000], 'lta')),
+    CommercialPaper: unit(four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp')),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.equal(total[3].value, null, 'LongTermDebt must reconcile to current plus noncurrent components');
+}
+
+{
+  const paperFacts = four([5_000_000, 6_000_000, 7_000_000, 8_000_000], 'cp');
+  paperFacts[3] = { ...paperFacts[3], end: '2026-12-30' };
+  const resolved = attachVerifiedTotalDebtFromSec(baseDataset(), bundle({
+    LongTermDebtCurrent: unit(four([10_000_000, 11_000_000, 12_000_000, 13_000_000], 'ltc')),
+    LongTermDebtNoncurrent: unit(four([90_000_000, 89_000_000, 88_000_000, 87_000_000], 'ltnc')),
+    LongTermDebt: unit(four([100_000_000, 100_000_000, 100_000_000, 100_000_000], 'lta')),
+    CommercialPaper: unit(paperFacts),
+  }));
+  const total = resolved.values['balance_sheet.total_debt'];
+  assert.equal(total[3].value, null, 'Debt-family components must share the exact same balance-sheet instant');
 }
 
 {
