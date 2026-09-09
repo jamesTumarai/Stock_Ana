@@ -34,50 +34,22 @@ jobs:
                   raise SystemExit('DCF import anchor mismatch')
               text = text.replace(import_anchor, import_anchor + import_line, 1)
 
-          descriptor_anchor = """  if (data.dcf_model.inputs?.isValid === false) {
-"""
-          descriptor_block = """  const dcfSource = describeDcfFinancialSource(data.dcf_model.inputs);
-  const dcfSourceLabel = isThai ? dcfSource.labelTh : dcfSource.labelEn;
-  const dcfSourceDetail = isThai ? dcfSource.detailTh : dcfSource.detailEn;
-  const dcfSourceMeta = [
-    dcfSource.sourcePeriod ? `${isThai ? 'งวด' : 'Period'}: ${dcfSource.sourcePeriod}` : null,
-    dcfSource.financialDataAsOf ? `${isThai ? 'งบ ณ' : 'Financials as of'}: ${dcfSource.financialDataAsOf}` : null,
-    dcfSource.sharesAsOf ? `${isThai ? 'หุ้นคงค้าง ณ' : 'Shares as of'}: ${dcfSource.sharesAsOf}` : null,
-  ].filter(Boolean).join(' • ');
-  const dcfSourceBadge = (
-    <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 ${dcfSource.kind === 'sec_verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>
-      {dcfSource.kind === 'sec_verified'
-        ? <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-emerald-700" />
-        : <Info className="w-4 h-4 mt-0.5 shrink-0 text-amber-700" />}
-      <div className="min-w-0">
-        <div className="text-xs font-bold">{dcfSourceLabel}</div>
-        <div className="text-[11px] mt-0.5 leading-relaxed opacity-80">{dcfSourceDetail}</div>
-        {dcfSourceMeta && <div className="text-[10px] mt-1 font-mono opacity-70">{dcfSourceMeta}</div>}
-      </div>
-    </div>
-  );
-
-  if (data.dcf_model.inputs?.isValid === false) {
-"""
+          descriptor_anchor = "  if (data.dcf_model.inputs?.isValid === false) {\n"
+          descriptor_block = "  const dcfSource = describeDcfFinancialSource(data.dcf_model.inputs);\n  const dcfSourceLabel = isThai ? dcfSource.labelTh : dcfSource.labelEn;\n  const dcfSourceDetail = isThai ? dcfSource.detailTh : dcfSource.detailEn;\n  const dcfSourceMeta = [\n    dcfSource.sourcePeriod ? `${isThai ? 'งวด' : 'Period'}: ${dcfSource.sourcePeriod}` : null,\n    dcfSource.financialDataAsOf ? `${isThai ? 'งบ ณ' : 'Financials as of'}: ${dcfSource.financialDataAsOf}` : null,\n    dcfSource.sharesAsOf ? `${isThai ? 'หุ้นคงค้าง ณ' : 'Shares as of'}: ${dcfSource.sharesAsOf}` : null,\n  ].filter(Boolean).join(' • ');\n  const dcfSourceBadge = (\n    <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 ${dcfSource.kind === 'sec_verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>\n      {dcfSource.kind === 'sec_verified'\n        ? <ShieldCheck className=\"w-4 h-4 mt-0.5 shrink-0 text-emerald-700\" />\n        : <Info className=\"w-4 h-4 mt-0.5 shrink-0 text-amber-700\" />}\n      <div className=\"min-w-0\">\n        <div className=\"text-xs font-bold\">{dcfSourceLabel}</div>\n        <div className=\"text-[11px] mt-0.5 leading-relaxed opacity-80\">{dcfSourceDetail}</div>\n        {dcfSourceMeta && <div className=\"text-[10px] mt-1 font-mono opacity-70\">{dcfSourceMeta}</div>}\n      </div>\n    </div>\n  );\n\n  if (data.dcf_model.inputs?.isValid === false) {\n"
           if "const dcfSource = describeDcfFinancialSource" not in text:
               if text.count(descriptor_anchor) != 1:
                   raise SystemExit('descriptor anchor mismatch')
               text = text.replace(descriptor_anchor, descriptor_block, 1)
 
-          missing_anchor = """            {missing && <p className="text-xs mt-2 font-mono opacity-80">{missing}</p>}
-"""
-          missing_replacement = missing_anchor + """            <div className="mt-3">{dcfSourceBadge}</div>
-"""
+          missing_anchor = "            {missing && <p className=\"text-xs mt-2 font-mono opacity-80\">{missing}</p>}\n"
+          missing_replacement = missing_anchor + "            <div className=\"mt-3\">{dcfSourceBadge}</div>\n"
           if "<div className=\"mt-3\">{dcfSourceBadge}</div>" not in text:
               if text.count(missing_anchor) != 1:
                   raise SystemExit('invalid-card source anchor mismatch')
               text = text.replace(missing_anchor, missing_replacement, 1)
 
-          valid_anchor = """          {(modelSelector?.reason_th || modelSelector?.reason_en) && (
-"""
-          valid_replacement = """          {dcfSourceBadge}
-          {(modelSelector?.reason_th || modelSelector?.reason_en) && (
-"""
+          valid_anchor = "          {(modelSelector?.reason_th || modelSelector?.reason_en) && (\n"
+          valid_replacement = "          {dcfSourceBadge}\n          {(modelSelector?.reason_th || modelSelector?.reason_en) && (\n"
           if text.count("{dcfSourceBadge}") < 2:
               if text.count(valid_anchor) != 1:
                   raise SystemExit('valid-card source anchor mismatch')
