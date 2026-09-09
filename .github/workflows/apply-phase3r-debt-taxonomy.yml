@@ -1,0 +1,47 @@
+name: Apply Phase 3R SEC Debt Taxonomy
+
+on:
+  push:
+    branches:
+      - phase3r-sec-debt-taxonomy-semantics
+    paths:
+      - .github/workflows/apply-phase3r-debt-taxonomy.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-debt-taxonomy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase3r-sec-debt-taxonomy-semantics
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply debt taxonomy correction
+        run: python scripts/apply_phase3r_debt_taxonomy.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Run debt resolver regression tests
+        run: npx tsx src/services/sec/secDebtResolver.test.ts
+      - name: TypeScript check
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+      - name: Diff whitespace check
+        run: git diff --check
+      - name: Commit Phase 3R
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/apply-phase3r-debt-taxonomy.yml scripts/apply_phase3r_debt_taxonomy.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/sec/secDebtResolver.ts src/services/sec/secDebtResolver.test.ts
+          git commit -m "fix: honor LongTermDebt aggregate semantics without CP double count"
+          git push origin HEAD:phase3r-sec-debt-taxonomy-semantics
