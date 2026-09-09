@@ -84,9 +84,8 @@ async function createInteractionWithRetry(res: any, opts: any) {
 }
 
 
-async function startServer() {
+export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const app = express();
-  const PORT = Number(process.env.PORT || 3000);
 
   app.use(express.json({ limit: '50mb' }));
 
@@ -354,7 +353,7 @@ Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matchin
       return res.status(400).send("Missing ticker");
     }
     
-    const runLogsDir = path.join(process.cwd(), 'run_logs');
+    const runLogsDir = process.env.VERCEL === '1' ? path.join('/tmp', 'run_logs') : path.join(process.cwd(), 'run_logs');
     if (!fs.existsSync(runLogsDir)) {
       return res.status(404).send("No logs found");
     }
@@ -1913,7 +1912,7 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
       res.flushHeaders();
       
       const startTime = Date.now();
-      const runLogsDir = path.join(process.cwd(), 'run_logs');
+      const runLogsDir = process.env.VERCEL === '1' ? path.join('/tmp', 'run_logs') : path.join(process.cwd(), 'run_logs');
       if (!fs.existsSync(runLogsDir)) {
           fs.mkdirSync(runLogsDir, { recursive: true });
       }
@@ -2179,6 +2178,7 @@ ${event.message}
     }
   });
 
+  if (options.serveFrontend !== false) {
   const distPath = path.join(process.cwd(), 'dist');
   const indexHtmlExists = fs.existsSync(path.join(distPath, 'index.html'));
   app.use('/artifacts', express.static(path.join(process.cwd(), 'workspace', 'artifacts')));
@@ -2198,9 +2198,21 @@ ${event.message}
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  }
+
+  return app;
 }
 
-startServer();
+if (process.env.VERCEL !== "1") {
+  createApp({ serveFrontend: true })
+    .then((app) => {
+      const PORT = Number(process.env.PORT || 3000);
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Failed to start server", error);
+      process.exitCode = 1;
+    });
+}
