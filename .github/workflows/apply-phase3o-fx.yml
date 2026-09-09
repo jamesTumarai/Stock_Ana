@@ -1,0 +1,61 @@
+name: Apply Phase 3O Live FX
+
+on:
+  push:
+    branches:
+      - phase3o-live-fx-provenance
+    paths:
+      - .github/workflows/apply-phase3o-fx.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-fx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase3o-live-fx-provenance
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply live FX patch
+        run: python scripts/apply_phase3o_fx.py
+
+      - name: Ensure hardcoded display FX fallback is gone
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -n "35\.5" src/ReportTemplate.tsx src/components/FinancialStatementsTable.tsx src/components/IntrinsicValueEngine.tsx; then
+            echo "Hardcoded USD/THB fallback remains"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run FX regression test
+        run: node --import tsx src/domain/fxSnapshot.test.ts
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit Phase 3O
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/apply-phase3o-fx.yml scripts/apply_phase3o_fx.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ReportTemplate.tsx src/components/FinancialStatementsTable.tsx src/components/IntrinsicValueEngine.tsx
+          git commit -m "feat: replace hardcoded THB conversion with provider FX snapshot"
+          git push origin HEAD:phase3o-live-fx-provenance
