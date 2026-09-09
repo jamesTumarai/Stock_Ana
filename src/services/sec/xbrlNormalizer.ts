@@ -19,6 +19,7 @@ export interface NormalizedSecQuarterFact {
 const VALID_FORMS = new Set(['10-Q', '10-Q/A', '10-K', '10-K/A']);
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const isFiscalPeriod = (value: unknown): value is SecFiscalPeriod => value === 'Q1' || value === 'Q2' || value === 'Q3' || value === 'FY';
+const stableDifference = (a: number, b: number) => Math.round((a - b) * 1e10) / 1e10;
 
 const dateMs = (value?: string) => {
   if (!value) return Number.NaN;
@@ -82,7 +83,7 @@ const makeDifference = (
 ): NormalizedSecQuarterFact => ({
   fiscalYear: current.fy as number,
   fiscalQuarter: quarter,
-  value: (current.val as number) - (prior.val as number),
+  value: stableDifference(current.val as number, prior.val as number),
   start: prior.end,
   end: current.end as string,
   filed: current.filed,
@@ -95,7 +96,7 @@ const makeDifference = (
 const makeQ4Difference = (annual: SecCompanyFact, q3Ytd: SecCompanyFact): NormalizedSecQuarterFact => ({
   fiscalYear: annual.fy as number,
   fiscalQuarter: 4,
-  value: (annual.val as number) - (q3Ytd.val as number),
+  value: stableDifference(annual.val as number, q3Ytd.val as number),
   start: q3Ytd.end,
   end: annual.end as string,
   filed: annual.filed,
