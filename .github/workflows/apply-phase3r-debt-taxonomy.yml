@@ -25,6 +25,19 @@ jobs:
           cache: npm
       - name: Apply debt taxonomy correction
         run: python scripts/apply_phase3r_debt_taxonomy.py
+      - name: Align regression wording with aggregate semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/services/sec/secDebtResolver.test.ts')
+          text = path.read_text()
+          old = "assert.match(total[3].derivation || '', /no stale short-term debt was carried forward/i);"
+          new = "assert.match(total[3].derivation || '', /stale debt facts were not carried forward/i);"
+          if old not in text:
+              raise SystemExit('Phase 3R wording assertion anchor not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Run debt resolver regression tests
