@@ -44,7 +44,7 @@ const disclosedReport: any = {
   assert.equal(inputs.netCashM, -4);
   assert.equal(inputs.sourcePeriod, 'Q1 2025–Q4 2025');
   assert.notEqual(dcfModel.scenarios.base.fair_value_per_share, 999, 'DCF must be recomputed rather than retain an AI target');
-  assert.ok(Number.isFinite(dcfModel.scenarios.base.fair_value_per_share));
+  assert.ok(typeof dcfModel.scenarios.base.fair_value_per_share === 'number' && Number.isFinite(dcfModel.scenarios.base.fair_value_per_share));
 }
 
 {
@@ -72,7 +72,7 @@ const disclosedReport: any = {
   const { inputs, dcfModel } = buildRigorousDCFModel(missingShares, 'TEST');
   assert.equal(inputs.isValid, false);
   assert.ok(inputs.missingFields?.includes('shares outstanding'));
-  assert.equal(dcfModel.scenarios.base.fair_value_per_share, 0);
+  assert.equal(dcfModel.scenarios.base.fair_value_per_share, null);
 
   const unavailable = buildUniversalValuationData(missingShares, 'TEST');
   assert.equal(unavailable, undefined, 'Universal valuation must fail closed when shares are missing');

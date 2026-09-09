@@ -295,6 +295,9 @@ export default function ReportTemplate({
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
   const findings = data.findings || [];
   const reportDate = data.as_of_date || new Date().toISOString().split('T')[0];
+  const validation = data.validation;
+  const criticalValidationIssues = validation?.issues?.filter(issue => issue.severity === 'critical') ?? [];
+  const warningValidationIssues = validation?.issues?.filter(issue => issue.severity === 'warning') ?? [];
 
   const [activeNav, setActiveNav] = useState('section-summary');
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -537,6 +540,53 @@ export default function ReportTemplate({
           </div>
         </div>
 
+        {validation && validation.status !== 'valid' && (
+          <div className={`rounded-2xl border p-4 sm:p-5 ${validation.status === 'invalid' ? 'bg-red-50 border-red-200 text-red-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className={`w-5 h-5 mt-0.5 shrink-0 ${validation.status === 'invalid' ? 'text-red-600' : 'text-amber-600'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-sm sm:text-base">
+                    {validation.status === 'invalid'
+                      ? (isThai ? 'ไม่ผ่านการตรวจสอบข้อมูลสำคัญ' : 'Critical data validation failed')
+                      : (isThai ? 'มีคำเตือนด้านคุณภาพข้อมูล' : 'Data quality warning')}
+                  </strong>
+                  <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                    schema v{validation.schema_version}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm mt-1 leading-relaxed opacity-85">
+                  {validation.status === 'invalid'
+                    ? (isThai
+                        ? 'ระบบระงับ Valuation และ Conviction ที่พึ่งข้อมูลส่วนที่ผิดปกติ รายงานนี้จะไม่ถูกบันทึกเป็นรายงานที่ผ่านการตรวจสอบ'
+                        : 'Dependent valuation and conviction outputs are blocked, and this report is not saved as a validated report.')
+                    : (isThai
+                        ? 'รายงานยังใช้ได้ แต่มีข้อมูลบางส่วนที่ไม่ครบหรือควรตรวจสอบเพิ่มเติม'
+                        : 'The report remains usable, but some fields are incomplete or need additional verification.')}
+                </p>
+                {(criticalValidationIssues.length > 0 || warningValidationIssues.length > 0) && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {[...criticalValidationIssues, ...warningValidationIssues].slice(0, 5).map((validationIssue, index) => (
+                      <span
+                        key={`${validationIssue.code}-${index}`}
+                        className="inline-flex rounded-full border border-current/20 bg-white/55 px-2 py-0.5 text-[10px] font-mono"
+                        title={validationIssue.message}
+                      >
+                        {validationIssue.code}
+                      </span>
+                    ))}
+                    {(criticalValidationIssues.length + warningValidationIssues.length) > 5 && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 opacity-70">
+                        +{criticalValidationIssues.length + warningValidationIssues.length - 5}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* EXECUTIVE STOCK SPOTLIGHT HERO */}
         <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 w-full">
           <div className="flex items-center gap-4 sm:gap-5 min-w-0">
@@ -589,7 +639,7 @@ export default function ReportTemplate({
             )}
 
             {/* Conviction Score Pill */}
-            {data.verdict?.conviction_score !== undefined && (
+            {typeof data.verdict?.conviction_score === 'number' && (
               <div className="flex flex-col items-center justify-center px-4 py-2 rounded-2xl bg-stone-900 text-white shadow-xs">
                 <span className="text-[9px] font-mono uppercase font-bold tracking-wider opacity-75">
                   Conviction
@@ -649,7 +699,7 @@ export default function ReportTemplate({
                    <p className="text-xs text-stone-500 mb-2">{isThai ? "อ้างอิงจากงบและเอกสารที่วิเคราะห์" : "Based on filings & model"}</p>
                    
                    <ConvictionGauge 
-                     score={data.verdict?.conviction_score || '-'} 
+                     score={typeof data.verdict?.conviction_score === 'number' ? data.verdict.conviction_score : '-'}
                      isThai={isThai} 
                      onOpenMethodology={() => setShowScoreModal(true)}
                    />
@@ -884,7 +934,7 @@ export default function ReportTemplate({
                         risk_level: isThai ? 'ความเสี่ยง (น้อย=ดี)' : 'Risk Level',
                         overall_attractiveness: isThai ? 'ความน่าสนใจโดยรวม' : 'Overall Attractiveness'
                      };
-                     const scoreData = item as {score: number, reason: string};
+                     const scoreData = item as {score: number | null, reason: string};
                      return (
                       <div key={key} className="flex flex-col p-3.5 border border-stone-100 rounded-xl bg-stone-50">
                          <div className="flex justify-between items-center mb-1">
@@ -1322,8 +1372,10 @@ export default function ReportTemplate({
                   <div className="w-full md:w-1/2 h-[350px]">
                     <ResponsiveContainer width="100%" height={350} minHeight={350}>
                       <RadarChart cx="50%" cy="50%" outerRadius="70%" data={
-                        Object.entries(data.technical_analysis.scoring).map(([key, item]) => {
-                          const scoreItem = item as { score: number; reason: string };
+                        Object.entries(data.technical_analysis.scoring)
+                          .filter(([, item]) => typeof (item as { score?: number | null })?.score === 'number')
+                          .map(([key, item]) => {
+                          const scoreItem = item as { score: number | null; reason: string };
                           const labels: Record<string, string> = {
                             trend_clarity: isThai ? 'เทรนด์' : 'Trend Clarity',
                             momentum_strength: isThai ? 'โมเมนตัม' : 'Momentum Strength',
@@ -1334,7 +1386,7 @@ export default function ReportTemplate({
                           };
                           return {
                             subject: labels[key] || key,
-                            A: Number(scoreItem?.score || 0),
+                            A: scoreItem.score as number,
                             fullMark: 10,
                           };
                         })
@@ -1369,7 +1421,7 @@ export default function ReportTemplate({
                   <div className="w-full md:w-1/2 grid grid-cols-1 gap-4">
                     {Object.entries(data.technical_analysis.scoring).map(([key, item]) => {
                        if (!item) return null;
-                       const scoreItem = item as { score: number; reason: string };
+                       const scoreItem = item as { score: number | null; reason: string };
                        const labels: Record<string, string> = {
                           trend_clarity: isThai ? 'ความชัดเจนของเทรนด์' : 'Trend Clarity',
                           momentum_strength: isThai ? 'ความแข็งแรงของโมเมนตัม' : 'Momentum Strength',
@@ -1382,7 +1434,7 @@ export default function ReportTemplate({
                          <div key={key} className="flex flex-col p-3 rounded-lg border border-stone-100 bg-stone-50">
                            <div className="flex items-center justify-between mb-1">
                              <span className="text-xs font-bold text-stone-500 uppercase">{labels[key] || key}</span>
-                             <span className={`text-sm font-bold ${scoreColor(Number(scoreItem.score) * 10)}`}>{scoreItem.score}/10</span>
+                             <span className={`text-sm font-bold ${typeof scoreItem.score === 'number' ? scoreColor(scoreItem.score * 10) : 'text-stone-400'}`}>{typeof scoreItem.score === 'number' ? `${scoreItem.score}/10` : (isThai ? 'ไม่มีข้อมูล' : 'Unavailable')}</span>
                            </div>
                            <div className="text-sm text-stone-700 leading-snug prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{scoreItem.reason}</Markdown></div>
                          </div>

@@ -150,6 +150,26 @@ export interface KeyIndicatorsData {
 
 export type StatementTemplateType = 'standard' | 'banking' | 'insurance' | 'reit' | 'cyclical' | 'biotech';
 
+export type ValidationSeverity = 'info' | 'warning' | 'critical';
+export type ReportValidationStatus = 'valid' | 'warning' | 'invalid';
+
+export interface ReportValidationIssue {
+  code: string;
+  severity: ValidationSeverity;
+  section: string;
+  message: string;
+  path?: string;
+  detail?: string;
+}
+
+export interface ReportValidationResult {
+  status: ReportValidationStatus;
+  issues: ReportValidationIssue[];
+  checked_at: string;
+  schema_version: number;
+}
+
+
 export interface StatementValidationSummary {
   is_balanced: boolean; // Total Assets = Total Liabilities + Total Equity within tolerance
   discrepancy_pct?: (number | null)[];
@@ -254,9 +274,9 @@ export interface CostOfCapitalResult {
 }
 
 export interface DCFScenario {
-  revenue_cagr_pct: number;
-  terminal_margin_pct: number;
-  fair_value_per_share: number;
+  revenue_cagr_pct: number | null;
+  terminal_margin_pct: number | null;
+  fair_value_per_share: number | null;
   key_assumption_note: string;
   stage_growth_rates?: number[];
 }
@@ -264,21 +284,21 @@ export interface DCFScenario {
 export interface DCFModel {
   model_type?: 'standard_3stage' | 'multistage_4stage' | 'gordon_growth' | 'cyclical_normalized';
   assumptions: {
-    wacc_pct: number;
-    terminal_growth_pct: number;
-    projection_years: number;
+    wacc_pct: number | null;
+    terminal_growth_pct: number | null;
+    projection_years: number | null;
     cost_of_equity_pct?: number;
     stages_count?: number;
   };
   inputs?: {
     ticker: string;
-    currentPrice: number;
-    startingRevenueM: number;
-    sharesOutstandingM: number;
-    netCashM: number;
-    waccPct: number;
-    terminalGrowthPct: number;
-    projectionYears: number;
+    currentPrice: number | null;
+    startingRevenueM: number | null;
+    sharesOutstandingM: number | null;
+    netCashM: number | null;
+    waccPct: number | null;
+    terminalGrowthPct: number | null;
+    projectionYears: number | null;
     /** True only when all inputs came from the four disclosed quarters in this report. */
     isValid?: boolean;
     sourcePeriod?: string;
@@ -398,16 +418,16 @@ export interface ValuationValidationAlert {
 }
 
 export interface IntrinsicValueSummary {
-  fair_value_range_low: number;
-  fair_value_range_high: number;
-  base_case_fair_value: number;
-  current_price_position_pct?: number;
-  margin_of_safety_pct: number;
+  fair_value_range_low: number | null;
+  fair_value_range_high: number | null;
+  base_case_fair_value: number | null;
+  current_price_position_pct?: number | null;
+  margin_of_safety_pct: number | null;
   verdict_text: string;
 }
 
 export interface IntrinsicValueData {
-  current_price: number;
+  current_price: number | null;
   as_of_date?: string;
   selected_model?: ModelSelectorResult;
   cost_of_capital?: CostOfCapitalResult;
@@ -725,7 +745,7 @@ export interface QuarterlyInstitutionalRecord {
   shares_held: string | number;
   pct_owned: number;
   change_shares?: string;
-  stock_price?: number;
+  stock_price?: number | null;
 }
 
 export interface SmartMoneyData {
@@ -829,7 +849,7 @@ export interface CompanyProfileData {
   industry?: string;
   description?: string;
   beta?: number;
-  stock_price?: number;
+  stock_price?: number | null;
   price_change?: number;
   price_change_pct?: number;
   market_cap?: string;
@@ -1022,7 +1042,7 @@ export interface DeepInsight {
   category: string;
   title: string;
   description: string;
-  impact_score: number;
+  impact_score: number | null;
 }
 
 export interface ComprehensiveAnalysis {
@@ -1043,12 +1063,12 @@ export interface ComprehensiveAnalysis {
     further_reading: string;
   };
   scoring: {
-    understandability: { score: number; reason: string };
-    revenue_quality: { score: number; reason: string };
-    financial_strength: { score: number; reason: string };
-    growth_potential: { score: number; reason: string };
-    risk_level: { score: number; reason: string };
-    overall_attractiveness: { score: number; reason: string };
+    understandability: { score: number | null; reason: string };
+    revenue_quality: { score: number | null; reason: string };
+    financial_strength: { score: number | null; reason: string };
+    growth_potential: { score: number | null; reason: string };
+    risk_level: { score: number | null; reason: string };
+    overall_attractiveness: { score: number | null; reason: string };
   };
   final_verdict_summary: {
     worth_further_study: string;
@@ -1093,12 +1113,12 @@ export interface TechnicalAnalysis {
     suitable_trade_style: string;
   };
   scoring: {
-    trend_clarity: { score: number; reason: string };
-    momentum_strength: { score: number; reason: string };
-    risk_reward: { score: number; reason: string };
-    signal_confluence: { score: number; reason: string };
-    false_signal_risk: { score: number; reason: string };
-    overall_attractiveness: { score: number; reason: string };
+    trend_clarity: { score: number | null; reason: string };
+    momentum_strength: { score: number | null; reason: string };
+    risk_reward: { score: number | null; reason: string };
+    signal_confluence: { score: number | null; reason: string };
+    false_signal_risk: { score: number | null; reason: string };
+    overall_attractiveness: { score: number | null; reason: string };
   };
   final_verdict_summary: {
     is_good_timing: string;
@@ -1129,9 +1149,12 @@ export interface AnalysisReport {
   summary: string;
   as_of_date?: string;
   analysis_type?: 'fundamental' | 'technical' | 'combined';
+  schema_version?: number;
+  generated_by_version?: string;
+  validation?: ReportValidationResult;
   verdict?: {
     summary: string;
-    conviction_score: number;
+    conviction_score: number | null;
     key_takeaways: string[];
     conviction_breakdown?: ConvictionBreakdown;
   };
@@ -1157,8 +1180,8 @@ export interface AnalysisReport {
   deep_insights?: DeepInsight[];
   findings?: DocumentFinding[];
   financial_charts?: {
-    stock_price_history: { date: string; price: number }[];
-    financial_performance_4q: { quarter: string; revenue?: number; net_income?: number; distributions?: number }[];
+    stock_price_history: { date: string | null; price: number | null }[];
+    financial_performance_4q: { quarter: string | null; revenue?: number | null; net_income?: number | null; distributions?: number | null }[];
   };
   final_report?: string;
   chartImage?: string;

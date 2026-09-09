@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 import { MotionIntro } from './components/MotionIntro';
 import { UserAvatar } from './components/UserAvatar';
+import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';
 
 import { 
   DocumentFinding, 
@@ -193,7 +194,10 @@ export default function App() {
         where("userId", "==", userId)
       );
       const querySnapshot = await getDocs(q);
-      let reports = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      let reports = querySnapshot.docs.map(docSnap => {
+        const record = { id: docSnap.id, ...docSnap.data() } as any;
+        return { ...record, isLegacy: isLegacyHistoryReport(record) };
+      });
       // Sort client-side to avoid requiring composite index
       reports.sort((a, b) => {
         const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?.toMillis?.() || new Date(a.createdAt).getTime() || 0);
@@ -232,6 +236,9 @@ export default function App() {
         ticker: ticker.toUpperCase(),
         language: selectedLanguage,
         createdAt: serverTimestamp(),
+        schemaVersion: reportData.schema_version ?? CURRENT_REPORT_SCHEMA_VERSION,
+        generatedByVersion: reportData.generated_by_version ?? CURRENT_GENERATED_BY_VERSION,
+        validationStatus: reportData.validation?.status ?? 'warning',
         data: reportData
       });
       console.log("Report saved successfully!");
@@ -446,7 +453,13 @@ export default function App() {
         
         if (accumulatedText) {
             const foundData = parseFinalText(accumulatedText);
-            if (foundData) setRep({ ...foundData, analysis_type: aType, ticker: ticker.trim() });
+            if (foundData) {
+              const prepared = validateAndPrepareReport(
+                { ...foundData, analysis_type: aType, ticker: ticker.trim() },
+                ticker.trim()
+              );
+              if (prepared.report) setRep(prepared.report);
+            }
         }
       }
       
@@ -469,10 +482,19 @@ export default function App() {
       if (accumulatedText) {
           const finalData = parseFinalText(accumulatedText);
           if (finalData) {
-            const finalRep = { ...finalData, analysis_type: aType, ticker: ticker.trim() };
-            setRep(finalRep);
-            if (finalRep) {
-               saveReportToFirebase(finalRep);
+            const prepared = validateAndPrepareReport(
+              { ...finalData, analysis_type: aType, ticker: ticker.trim() },
+              ticker.trim()
+            );
+            if (prepared.report) {
+              setRep(prepared.report);
+              if (prepared.canPersist) {
+                await saveReportToFirebase(prepared.report);
+              } else {
+                console.warn('Report was rendered but not saved because critical validation failed.', prepared.validation.issues);
+              }
+            } else {
+              setErr('The analysis response could not be validated as a report.');
             }
           }
       }
@@ -583,7 +605,22 @@ export default function App() {
             onSelect={(report) => {
               setTicker(report.ticker);
               setSelectedLanguage(report.language || 'English');
-              setCurrentReport({ ...report.data, ticker: report.ticker });
+              const historyData = { ...report.data, ticker: report.ticker } as ReportData;
+              if (isLegacyHistoryReport(report) && !historyData.validation) {
+                historyData.validation = {
+                  status: 'warning',
+                  schema_version: 0,
+                  checked_at: new Date().toISOString(),
+                  issues: [{
+                    code: 'LEGACY_REPORT_UNVERIFIED',
+                    severity: 'warning',
+                    section: 'history',
+                    message: 'Legacy report — generated before financial integrity validation. Re-analyze for verified data.',
+                    path: 'history',
+                  }],
+                };
+              }
+              setCurrentReport(historyData);
               setPastReports([]);
               setIsHistoryModalOpen(false);
               setIsReportOpen(true);

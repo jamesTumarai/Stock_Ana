@@ -244,6 +244,7 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
                 const allSelected = groupIds.length > 0 && groupIds.every(id => selectedIds.includes(id));
                 const someSelected = groupIds.some(id => selectedIds.includes(id)) && !allSelected;
                 const quickMetric = extractQuickMetric(group.latestReport);
+                const latestIsLegacy = Boolean(group.latestReport.isLegacy);
 
                 return (
                   <div 
@@ -299,6 +300,15 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
                             {quickMetric && (
                               <span className="hidden sm:inline-flex text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-full">
                                 {quickMetric}
+                              </span>
+                            )}
+                            {latestIsLegacy && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"
+                                title="Generated before Lumina financial-integrity runtime validation. Re-analyze for verified data."
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                Legacy / unverified
                               </span>
                             )}
                           </div>
@@ -406,6 +416,7 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
                               const isLatest = idx === 0;
                               const isSelected = selectedIds.includes(report.id);
                               const subMetric = extractQuickMetric(report);
+                              const reportIsLegacy = Boolean(report.isLegacy);
 
                               return (
                                 <div 
@@ -451,6 +462,15 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
                                       <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">
                                         {report.language || 'English'}
                                       </span>
+                                      {reportIsLegacy && (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/70"
+                                          title="Legacy report — re-analyze for verified data."
+                                        >
+                                          <AlertTriangle className="w-3 h-3" />
+                                          Legacy
+                                        </span>
+                                      )}
 
                                       {/* Metric if available */}
                                       {subMetric && (

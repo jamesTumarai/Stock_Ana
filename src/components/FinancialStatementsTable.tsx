@@ -28,8 +28,8 @@ export function FinancialStatementsTable({
   isThai,
   currencyRate = 35.5,
   currencyMode = 'USD',
-  ticker = 'TSLA',
-  companyName = 'Tesla, Inc.'
+  ticker = '',
+  companyName = ''
 }: Props) {
   const [statementTab, setStatementTab] = useState<'indicators' | 'income' | 'balance' | 'cashflow'>('income');
   const [selectedRowKey, setSelectedRowKey] = useState<string>('revenue');
@@ -631,6 +631,7 @@ export function FinancialStatementsTable({
 
   // Seamless Background Live AI Financial Analyst Fetching via Gemini 3.6 Flash
   useEffect(() => {
+    if (!ticker.trim()) return;
     const activeCfg = getActiveChartConfig();
     const cacheKey = `${ticker}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${isThai ? 'th' : 'en'}`;
     if (liveAiInsights[cacheKey]) return;

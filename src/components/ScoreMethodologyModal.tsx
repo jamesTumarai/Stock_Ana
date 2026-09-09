@@ -7,7 +7,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   isThai: boolean;
-  convictionScore?: number | string;
+  convictionScore?: number | string | null;
   convictionBreakdown?: ConvictionBreakdown;
 }
 
@@ -61,7 +61,7 @@ export function ScoreMethodologyModal({
           </div>
 
           {/* Current Score Callout */}
-          {convictionScore !== undefined && (
+          {convictionScore !== undefined && convictionScore !== null && (
             <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-stone-500 uppercase tracking-wider block">
