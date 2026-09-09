@@ -13,6 +13,7 @@ import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 import { MotionIntro } from './components/MotionIntro';
 import { UserAvatar } from './components/UserAvatar';
 import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';
+import { fetchSecVerificationEnvelope } from './services/secVerificationService';
 
 import { 
   DocumentFinding, 
@@ -354,6 +355,10 @@ export default function App() {
 
     const controller = new AbortController();
     aRef.current = controller;
+    const requestedTicker = ticker.trim().toUpperCase();
+    const secVerificationPromise = aType === 'technical'
+      ? Promise.resolve(null)
+      : fetchSecVerificationEnvelope(requestedTicker, controller.signal);
     const startTimestamp = Date.now();
     let currentToolRuns = 0;
 
@@ -482,9 +487,15 @@ export default function App() {
       if (accumulatedText) {
           const finalData = parseFinalText(accumulatedText);
           if (finalData) {
+            const secVerification = await secVerificationPromise;
             const prepared = validateAndPrepareReport(
-              { ...finalData, analysis_type: aType, ticker: ticker.trim() },
-              ticker.trim()
+              {
+                ...finalData,
+                ...(secVerification ? { sec_verification: secVerification } : {}),
+                analysis_type: aType,
+                ticker: requestedTicker,
+              },
+              requestedTicker
             );
             if (prepared.report) {
               setRep(prepared.report);
