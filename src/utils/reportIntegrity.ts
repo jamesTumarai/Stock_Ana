@@ -1,11 +1,15 @@
 import type { ReportData } from '../types';
 import { buildMarketSnapshot, type MarketSnapshot } from '../domain/marketSnapshot';
+import { buildCanonicalFinancialDataset, type CanonicalFinancialDataset } from '../domain/financialValue';
 import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * 100) / 100;
 
-type ReportWithMarketSnapshot = ReportData & { market_snapshot?: MarketSnapshot };
+type ReportWithCanonicalData = ReportData & {
+  market_snapshot?: MarketSnapshot;
+  financial_dataset?: CanonicalFinancialDataset;
+};
 
 /** Match fiscal labels, not adjacent array positions; incomplete history stays unavailable. */
 export function periodChanges(values: (number | null | undefined)[], periods: string[], mode: string, reported?: (number | null)[]): (number | null)[] {
@@ -30,8 +34,15 @@ export function periodChanges(values: (number | null | undefined)[], periods: st
 /** No ticker-specific overrides, fabricated history, forced balancing or synthetic forecasts. */
 export function normalizeReport(input?: ReportData, ticker?: string, live?: Record<string, any>): ReportData {
   if (!input) return {} as ReportData;
-  const result = structuredClone(input) as ReportWithMarketSnapshot;
+  const result = structuredClone(input) as ReportWithCanonicalData;
   const fs = result.financial_statements;
+
+  // Build a provenance-aware representation without changing the legacy statement arrays used by the UI.
+  // This is the migration bridge for the SEC/XBRL source engine: linked sources stay source-linked,
+  // never automatically promoted to independently verified data.
+  const financialDataset = buildCanonicalFinancialDataset(result);
+  if (financialDataset) result.financial_dataset = financialDataset;
+
   const lastIndex = (fs?.periods?.length || 0) - 1;
   const at = (a?: (number | null)[]) => finite(a?.[lastIndex]) ? a![lastIndex]! : undefined;
   const bs = fs?.balance_sheet;
