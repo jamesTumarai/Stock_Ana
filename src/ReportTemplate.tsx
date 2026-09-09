@@ -349,7 +349,7 @@ export default function ReportTemplate({
       if (res && res.quotes && Object.keys(res.quotes).length > 0) {
         setLiveOverrides(prev => ({ ...prev, ...res.quotes }));
         if (manualFlag) {
-          setRefreshSuccessMessage(isThai ? 'อัปเดตราคาตลาดสดสำเร็จ!' : 'Live market data updated!');
+          setRefreshSuccessMessage(isThai ? 'อัปเดต Market Snapshot สำเร็จ!' : 'Market snapshot updated!');
           setTimeout(() => setRefreshSuccessMessage(null), 3500);
         }
       }
@@ -360,7 +360,7 @@ export default function ReportTemplate({
     }
   };
 
-  // Auto-sync live market data from Yahoo Finance on report mount
+  // Reset provider market snapshot overrides when the report ticker changes
   useEffect(() => {
     setLiveOverrides({});
   }, [ticker]);
@@ -516,13 +516,13 @@ export default function ReportTemplate({
                     ? 'bg-amber-50 border-amber-300 text-amber-800 animate-pulse' 
                     : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800'
                 }`}
-                title={isThai ? 'ดึงราคาหุ้นและข้อมูลตลาดสดล่าสุดจาก Yahoo Finance' : 'Refresh live market prices & market caps from Yahoo Finance'}
+                title={isThai ? 'ดึง Market Snapshot ล่าสุดจาก Yahoo Finance (อาจล่าช้าตามผู้ให้บริการ)' : 'Refresh the latest Yahoo Finance market snapshot; provider data may be delayed'}
               >
                 <Zap className={`w-3.5 h-3.5 ${isRefreshingLive ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
                 <span className="hidden sm:inline">
                   {isRefreshingLive 
                     ? (isThai ? 'กำลังอัปเดตสด...' : 'Updating...') 
-                    : (isThai ? 'อัปเดตราคาตลาดสด' : 'Live Refresh')}
+                    : (isThai ? 'อัปเดต Market Snapshot' : 'Refresh Snapshot')}
                 </span>
               </button>
 

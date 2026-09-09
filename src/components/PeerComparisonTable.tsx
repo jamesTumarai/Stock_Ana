@@ -53,10 +53,10 @@ export function PeerComparisonTable({
                   ? 'bg-amber-50 border-amber-300 text-amber-700 animate-pulse'
                   : 'bg-stone-50 hover:bg-emerald-50 border-stone-200 hover:border-emerald-300 text-stone-600 hover:text-emerald-700 shadow-2xs'
               }`}
-              title={isThai ? 'ดึงราคาหุ้นและข้อมูลสดล่าสุดจาก Yahoo Finance' : 'Refresh live prices and market caps from Yahoo Finance'}
+              title={isThai ? 'ดึง Market Snapshot ล่าสุดจาก Yahoo Finance (อาจล่าช้าตามผู้ให้บริการ)' : 'Refresh the latest Yahoo Finance market snapshot; provider data may be delayed'}
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
-              <span className="font-sans font-medium">{isRefreshing ? (isThai ? 'กำลังดึง...' : 'Syncing...') : (isThai ? '⚡ อัปเดตสด' : '⚡ Live Sync')}</span>
+              <span className="font-sans font-medium">{isRefreshing ? (isThai ? 'กำลังดึง...' : 'Refreshing...') : (isThai ? '↻ อัปเดต Snapshot' : '↻ Refresh Snapshot')}</span>
             </button>
           )}
           {data.as_of_date && (
