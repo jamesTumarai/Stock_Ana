@@ -6,6 +6,9 @@ export type FinancialVerificationStatus = 'unverified' | 'source_linked' | 'veri
 export type FinancialUnit = 'USD_M' | 'percent' | 'per_share' | 'shares_M' | 'x' | 'count' | 'unknown';
 export type FinancialProvenanceStatus = 'unverified' | 'partially_source_linked' | 'source_linked' | 'verified';
 
+export const CANONICAL_FINANCIAL_SCHEMA_VERSION = 1;
+export const CANONICAL_FINANCIAL_GENERATOR = 'lumina-financial-provenance-v1';
+
 export interface FinancialSourceMetadata {
   provider?: string;
   documentUrl?: string;
@@ -36,6 +39,8 @@ export interface FinancialProvenanceWarning {
 }
 
 export interface CanonicalFinancialDataset {
+  schemaVersion: number;
+  generatedBy: string;
   ticker?: string;
   currency?: string;
   periods: string[];
@@ -250,6 +255,8 @@ export function buildCanonicalFinancialDataset(report: Pick<ReportData, 'ticker'
         : 'unverified';
 
   return {
+    schemaVersion: CANONICAL_FINANCIAL_SCHEMA_VERSION,
+    generatedBy: CANONICAL_FINANCIAL_GENERATOR,
     ticker: report.ticker,
     currency: fs.currency,
     periods,
