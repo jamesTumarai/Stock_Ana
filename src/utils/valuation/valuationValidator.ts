@@ -55,7 +55,7 @@ export function validateValuationAssumptions(data?: IntrinsicValueData): Valuati
 
   // 4. Fair Value vs Market Price Deviation > 40%
   const baseFairVal = data.summary?.base_case_fair_value;
-  if (typeof baseFairVal === 'number' && currentPrice > 0) {
+  if (typeof baseFairVal === 'number' && typeof currentPrice === 'number' && currentPrice > 0) {
     const deviationPct = Math.abs((baseFairVal - currentPrice) / currentPrice) * 100;
     if (deviationPct > 40) {
       alerts.push({
@@ -84,7 +84,7 @@ export function validateValuationAssumptions(data?: IntrinsicValueData): Valuati
 
   // 6. DCF vs Relative Valuation Discrepancy Check (Cross-Model Divergence)
   const relFair = data.relative_valuation?.fair_value_per_share;
-  if (relFair && relFair > 0 && baseFairVal > 0) {
+  if (typeof relFair === 'number' && relFair > 0 && typeof baseFairVal === 'number' && baseFairVal > 0) {
     const ratio = baseFairVal / relFair;
     if (ratio >= 2.5) {
       alerts.push({

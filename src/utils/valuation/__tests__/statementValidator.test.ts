@@ -171,7 +171,7 @@ const lendingNegativeOcfWithLoans: FinancialStatementsData = {
   }
 };
 const verifiedLoansRes = validateFinancialStatements(lendingNegativeOcfWithLoans, 'banking');
-assert.ok(verifiedLoansRes.passed_guards?.some(g => g.includes('LENDING_OCF_LOAN_ORIGINATION_VERIFIED')), 'Must verify negative OCF matches loan originations');
+assert.ok(verifiedLoansRes.passed_guards?.some(g => g.includes('LENDING_OCF_LOAN_ORIGINATION_CONSISTENT')), 'Must flag internal consistency between negative OCF and loan originations');
 console.log('✅ Lending Cash Flow Guard PASSED!');
 
 // 9. Test OCF Sign Inversion & Volatility Guard
@@ -186,7 +186,7 @@ const volatileOcfFs: FinancialStatementsData = {
   }
 };
 const volatileRes = validateFinancialStatements(volatileOcfFs, 'banking');
-assert.ok(volatileRes.passed_guards?.some(g => g.includes('OCF_SIGN_INVERSION_AUDITED')), 'Must audit violent OCF sign flip');
+assert.ok(volatileRes.passed_guards?.some(g => g.includes('OCF_SIGN_INVERSION_OBSERVED')), 'Must observe violent OCF sign flip without claiming source verification');
 console.log('✅ OCF Sign Inversion & Volatility Guard PASSED!');
 
 // 10. Test Cross-Section Margin Consistency Guard (e.g. The TSLA bug: 10.36% vs 3.9%)

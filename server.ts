@@ -179,8 +179,8 @@ async function startServer() {
   app.post("/api/analyze-metric", async (req, res) => {
     try {
       const {
-        ticker = 'TSLA',
-        companyName = 'Tesla, Inc.',
+        ticker,
+        companyName,
         metricKey,
         metricName,
         periods = [],
@@ -194,12 +194,19 @@ async function startServer() {
         model = 'gemini-3.8-flash'
       } = req.body;
 
+      const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
+      if (!normalizedTicker || !/^[A-Z0-9.-]{1,12}$/.test(normalizedTicker)) {
+        return res.status(400).json({ error: "Missing or invalid ticker" });
+      }
       if (!metricKey || !metricName) {
         return res.status(400).json({ error: "Missing metricKey or metricName" });
       }
+      const normalizedCompanyName = typeof companyName === 'string' && companyName.trim()
+        ? companyName.trim()
+        : normalizedTicker;
 
       // Cache lookup key
-      const cacheKey = `${ticker}_${metricKey}_${(historyValues || []).join(',')}_${isThai ? 'th' : 'en'}_${model}`;
+      const cacheKey = `${normalizedTicker}_${metricKey}_${(historyValues || []).join(',')}_${isThai ? 'th' : 'en'}_${model}`;
       if (metricInsightCache.has(cacheKey)) {
         const cached = metricInsightCache.get(cacheKey);
         if (cached && (!cached.what_is_it_th || cached.what_is_it_th.trim() === '')) {
@@ -240,7 +247,7 @@ async function startServer() {
       const redFlagsSummary = (redFlags || []).slice(0, 3).join('; ');
 
       const prompt = `You are an elite Senior Wall Street Equity Research Analyst (CFA Charterholder) known for rigorous, quantitative financial statement dissection.
-Analyze the following financial statement metric for **${companyName} (${ticker})**:
+Analyze the following financial statement metric for **${normalizedCompanyName} (${normalizedTicker})**:
 
 - Metric: ${metricName} (Key: ${metricKey})
 - Historical Sequence across recent periods: ${historySummary}
@@ -250,7 +257,7 @@ ${redFlagsSummary ? `- Related Red Flags from 10-K/10-Q filings: ${redFlagsSumma
 CRITICAL INSTITUTIONAL ANALYSIS RULES:
 1. STRICT DATA FIDELITY: Never produce generic canned praise. Tie every conclusion to retrieved, dated figures from this report and explain when deterioration in revenue, margins, or cash flow changes the conclusion.
 2. CROSS-STATEMENT SYNTHESIS: Connect this line item directly to the other retrieved financial statements. Compare CapEx with operating cash flow, explain the resulting free cash flow, and connect operating expenses with operating leverage without importing numerical examples from this prompt.
-3. CAUSALITY & DRIVERS: Ground the explanation in ${companyName}'s actual business operations (e.g. for Tesla: AI training clusters / Cortex compute, Gigafactory tooling, Robotaxi/FSD development, EV price competition, energy storage margins).
+3. CAUSALITY & DRIVERS: Ground the explanation only in ${normalizedCompanyName}'s actual retrieved business operations and sourced context. Do not import examples from unrelated companies.
 4. PROFESSIONAL TONE: ${isThai ? 'ตอบเป็นภาษาไทยระดับนักวิเคราะห์การเงินสถาบัน (IB/Equity Research) ชัดเจน กระชับ ตรงประเด็น' : 'Respond in professional Wall Street Equity Research English.'}
 
 OUTPUT FORMAT:
@@ -1203,12 +1210,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "further_reading": "..."
     },
     "scoring": {
-      "understandability": { "score": 8, "reason": "..." },
-      "revenue_quality": { "score": 8, "reason": "..." },
-      "financial_strength": { "score": 8, "reason": "..." },
-      "growth_potential": { "score": 8, "reason": "..." },
-      "risk_level": { "score": 8, "reason": "..." },
-      "overall_attractiveness": { "score": 8, "reason": "..." }
+      "understandability": { "score": null, "reason": "..." },
+      "revenue_quality": { "score": null, "reason": "..." },
+      "financial_strength": { "score": null, "reason": "..." },
+      "growth_potential": { "score": null, "reason": "..." },
+      "risk_level": { "score": null, "reason": "..." },
+      "overall_attractiveness": { "score": null, "reason": "..." }
     },
     "final_verdict_summary": {
       "worth_further_study": "...",
@@ -1251,12 +1258,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "suitable_trade_style": "..."
     },
     "scoring": {
-      "trend_clarity": { "score": 8, "reason": "..." },
-      "momentum_strength": { "score": 8, "reason": "..." },
-      "risk_reward": { "score": 8, "reason": "..." },
-      "signal_confluence": { "score": 8, "reason": "..." },
-      "false_signal_risk": { "score": 8, "reason": "..." },
-      "overall_attractiveness": { "score": 8, "reason": "..." }
+      "trend_clarity": { "score": null, "reason": "..." },
+      "momentum_strength": { "score": null, "reason": "..." },
+      "risk_reward": { "score": null, "reason": "..." },
+      "signal_confluence": { "score": null, "reason": "..." },
+      "false_signal_risk": { "score": null, "reason": "..." },
+      "overall_attractiveness": { "score": null, "reason": "..." }
     },
     "final_verdict_summary": {
       "is_good_timing": "...",
@@ -1282,7 +1289,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   ],
   "financial_charts": {
     "stock_price_history": [
-      { "date": "Aug '26", "price": 150.5 }
+      { "date": null, "price": null }
     ],
     "financial_performance_4q": []
   }
@@ -1685,12 +1692,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "further_reading": "..."
     },
     "scoring": {
-      "understandability": { "score": 8, "reason": "..." },
-      "revenue_quality": { "score": 8, "reason": "..." },
-      "financial_strength": { "score": 8, "reason": "..." },
-      "growth_potential": { "score": 8, "reason": "..." },
-      "risk_level": { "score": 8, "reason": "..." },
-      "overall_attractiveness": { "score": 8, "reason": "..." }
+      "understandability": { "score": null, "reason": "..." },
+      "revenue_quality": { "score": null, "reason": "..." },
+      "financial_strength": { "score": null, "reason": "..." },
+      "growth_potential": { "score": null, "reason": "..." },
+      "risk_level": { "score": null, "reason": "..." },
+      "overall_attractiveness": { "score": null, "reason": "..." }
     },
     "final_verdict_summary": {
       "worth_further_study": "...",

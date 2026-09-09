@@ -5,7 +5,7 @@ import {
   TrendingDown, ChevronDown, ChevronUp, Calculator, 
   Scale, Info, AlertCircle
 } from 'lucide-react';
-import { IntrinsicValueData, ForecastDashboardData } from '../types';
+import { IntrinsicValueData, ForecastDashboardData, DCFScenario } from '../types';
 
 import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
 
@@ -63,11 +63,53 @@ export function IntrinsicValueEngine({
     return `${currSym}${(val * multiplier).toFixed(2)}`;
   };
 
-  const currentPrice = data.current_price;
   const dcf = data.dcf_model;
-  const bear = dcf.scenarios.bear;
-  const base = dcf.scenarios.base;
-  const bull = dcf.scenarios.bull;
+  const rawBear = dcf.scenarios.bear;
+  const rawBase = dcf.scenarios.base;
+  const rawBull = dcf.scenarios.bull;
+  const rawAssumptions = dcf.assumptions;
+  const requiredValuationNumbers = [
+    data.current_price,
+    rawAssumptions.wacc_pct,
+    rawAssumptions.terminal_growth_pct,
+    rawAssumptions.projection_years,
+    rawBear.revenue_cagr_pct,
+    rawBear.terminal_margin_pct,
+    rawBear.fair_value_per_share,
+    rawBase.revenue_cagr_pct,
+    rawBase.terminal_margin_pct,
+    rawBase.fair_value_per_share,
+    rawBull.revenue_cagr_pct,
+    rawBull.terminal_margin_pct,
+    rawBull.fair_value_per_share,
+  ];
+  if (!requiredValuationNumbers.every(value => typeof value === 'number' && Number.isFinite(value))) {
+    return (
+      <div className="bg-amber-50 rounded-2xl p-6 border border-amber-200 text-amber-950">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="font-bold">{isThai ? 'ยังไม่แสดงราคาเหมาะสม' : 'Fair value is unavailable'}</h3>
+            <p className="text-sm mt-1 leading-relaxed">
+              {isThai
+                ? 'ข้อมูลสมมติฐานหรือผลลัพธ์ DCF ไม่ครบ จึงไม่แสดงตัวเลขแทนด้วยค่าเริ่มต้น'
+                : 'DCF assumptions or outputs are incomplete, so no default values are shown.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentPrice = data.current_price as number;
+  const assumptions = rawAssumptions as typeof rawAssumptions & {
+    wacc_pct: number;
+    terminal_growth_pct: number;
+    projection_years: number;
+  };
+  const bear = rawBear as DCFScenario & { revenue_cagr_pct: number; terminal_margin_pct: number; fair_value_per_share: number };
+  const base = rawBase as DCFScenario & { revenue_cagr_pct: number; terminal_margin_pct: number; fair_value_per_share: number };
+  const bull = rawBull as DCFScenario & { revenue_cagr_pct: number; terminal_margin_pct: number; fair_value_per_share: number };
   const summary = data.summary;
   const modelSelector = data.selected_model;
   const coc = data.cost_of_capital;
@@ -75,17 +117,17 @@ export function IntrinsicValueEngine({
   const [showSimulator, setShowSimulator] = useState(false);
   
   // Single Source of Truth: Region-aware CAPM WACC derived from stock Beta
-  const effectiveWacc = coc?.wacc_pct ?? dcf.assumptions.wacc_pct;
-  const effectiveGrowth = dcf.assumptions.terminal_growth_pct;
+  const effectiveWacc = coc?.wacc_pct ?? assumptions.wacc_pct;
+  const effectiveGrowth = assumptions.terminal_growth_pct;
   const [simWacc, setSimWacc] = useState(effectiveWacc);
   const [simGrowth, setSimGrowth] = useState(effectiveGrowth);
   const [simCagr, setSimCagr] = useState(base.revenue_cagr_pct);
 
   React.useEffect(() => {
-    setSimWacc(coc?.wacc_pct ?? dcf.assumptions.wacc_pct);
-    setSimGrowth(dcf.assumptions.terminal_growth_pct);
+    setSimWacc(coc?.wacc_pct ?? assumptions.wacc_pct);
+    setSimGrowth(assumptions.terminal_growth_pct);
     setSimCagr(base.revenue_cagr_pct);
-  }, [coc?.wacc_pct, dcf.assumptions.wacc_pct, dcf.assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
+  }, [coc?.wacc_pct, assumptions.wacc_pct, assumptions.terminal_growth_pct, base.revenue_cagr_pct]);
 
   // Dynamic DCF inputs from verified engine
   const dcfInputs = dcf.inputs;
@@ -107,7 +149,7 @@ export function IntrinsicValueEngine({
       || (data.selected_model?.model_type === 'ddm')
       || (data.selected_model?.model_type === 'reit_affo')
       || (data.selected_model?.model_type === 'dcf_cyclical')
-      || (base.fair_value_per_share > 0 && dcf.assumptions.wacc_pct > 14 && base.revenue_cagr_pct > 40);
+      || (base.fair_value_per_share > 0 && assumptions.wacc_pct > 14 && base.revenue_cagr_pct > 40);
 
     if (isSpecializedModel) {
       const baseCagr = base.revenue_cagr_pct;
@@ -133,7 +175,7 @@ export function IntrinsicValueEngine({
       simGrowth,
       simCagr,
       margin,
-      dcf.assumptions.projection_years
+      assumptions.projection_years
     );
 
     return Number.isFinite(dcfVal) && dcfVal > 0 ? dcfVal : Number.NaN;
@@ -635,7 +677,7 @@ export function IntrinsicValueEngine({
                 <span className="text-xs font-bold text-stone-800">{effectiveGrowth.toFixed(1)}%</span>
               </div>
               <div className="bg-stone-50 p-2 rounded-xl border border-stone-100">
-                <span className="text-[10px] text-stone-400 uppercase font-bold block">{dcf.assumptions.projection_years}-Yr Projection</span>
+                <span className="text-[10px] text-stone-400 uppercase font-bold block">{assumptions.projection_years}-Yr Projection</span>
                 <span className="text-xs font-bold text-stone-800">{base.revenue_cagr_pct}% CAGR</span>
               </div>
             </div>
@@ -672,7 +714,7 @@ export function IntrinsicValueEngine({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs font-semibold text-stone-700">
-                  <span>{isThai ? `Revenue CAGR (${dcf.assumptions.projection_years} ปี)` : `${dcf.assumptions.projection_years}-Yr Revenue CAGR`}</span>
+                  <span>{isThai ? `Revenue CAGR (${assumptions.projection_years} ปี)` : `${assumptions.projection_years}-Yr Revenue CAGR`}</span>
                   <div className="flex items-center gap-1.5 font-mono text-[#0b5a4b] font-bold text-sm">
                     <button
                       type="button"
@@ -818,7 +860,7 @@ export function IntrinsicValueEngine({
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 font-mono">
                   <span>{minGrowthLimit.toFixed(1)}%</span>
-                  <span>{dcf.assumptions.terminal_growth_pct.toFixed(1)}% (Base)</span>
+                  <span>{assumptions.terminal_growth_pct.toFixed(1)}% (Base)</span>
                   <span>{maxGrowthLimit.toFixed(1)}%</span>
                 </div>
               </div>

@@ -20,7 +20,7 @@ const sourced = {
 const preserved = harmonizeReportData(sourced as any, 'TEST');
 assert.deepEqual(
   preserved.financial_statements,
-  { ...sourced.financial_statements, validation_summary: undefined },
+  sourced.financial_statements,
   'Sourced statements must be preserved without synthetic periods or values',
 );
 

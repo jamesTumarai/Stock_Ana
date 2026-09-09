@@ -230,7 +230,7 @@ export function validateFinancialStatements(
     if (diffSpread < 2 && Math.abs(diffs[0]) > 10) {
       failedGuards.push(`HISTORICAL_EXTRAPOLATION_SUSPECT: ตัวเลข Net Income ในอดีตมีลักษณะเป็น Linear Extrapolation สม่ำเสมอผิดธรรมชาติ (Diffs: ${diffs.join(', ')}M) ต้องตรวจสอบกับ SEC Form 10-Q จริงทีละไตรมาส`);
     } else {
-      passedGuards.push(`HISTORICAL_AUTHENTICITY_OK: Net Income มีความผันผวนตามผลการดำเนินงานจริง ไม่ใช่การ Extrapolate`);
+      passedGuards.push(`HISTORICAL_PATTERN_NOT_LINEAR: ไม่พบรูปแบบ Linear Extrapolation ตาม heuristic นี้ แต่ผลลัพธ์นี้ไม่ใช่การยืนยันแหล่งข้อมูลหรือความถูกต้องของงบ`);
     }
   }
 
@@ -243,7 +243,7 @@ export function validateFinancialStatements(
       // In high-growth lending quarters, OCF is often deeply negative because loans held for sale consume cash
       if (ocf !== null && ocf !== undefined && ocf < -500) {
         if (cf.change_in_loans_held_for_sale?.[i] !== undefined && cf.change_in_loans_held_for_sale?.[i] !== null) {
-          passedGuards.push(`LENDING_OCF_LOAN_ORIGINATION_VERIFIED: ${periods[i]} กระแสเงินสดดำเนินงานติดลบ ($${ocf}M) สอดคล้องกับการขยายพอร์ต Loans Held for Sale ($${cf.change_in_loans_held_for_sale[i]}M)`);
+          passedGuards.push(`LENDING_OCF_LOAN_ORIGINATION_CONSISTENT: ${periods[i]} กระแสเงินสดดำเนินงานติดลบ ($${ocf}M) สอดคล้องภายในรายงานกับ Change in Loans Held for Sale ($${cf.change_in_loans_held_for_sale[i]}M)`);
         } else {
           failedGuards.push(`MISSING_LOANS_HELD_FOR_SALE_LINE: ${periods[i]} OCF ติดลบหนัก ($${ocf}M) แต่ไม่มีการแจกแจงบรรทัด Change in Loans Held for Sale ในงบกระแสเงินสด`);
         }
@@ -260,7 +260,7 @@ export function validateFinancialStatements(
         const signFlipped = (prevOcf > 0 && curOcf < 0) || (prevOcf < 0 && curOcf > 0);
         const ocfMagnitudeDiff = Math.abs(curOcf - prevOcf);
         if (signFlipped && ocfMagnitudeDiff >= 1000) {
-          passedGuards.push(`OCF_SIGN_INVERSION_AUDITED: ตรวจพบ OCF สลับเครื่องหมายข้ามไตรมาส (${periods[i - 1]}: $${prevOcf}M -> ${periods[i]}: $${curOcf}M) จากวัฏจักรการปล่อยกู้/หมุนเวียนสินเชื่อ ยืนยันตรงกับ SEC Form 10-Q`);
+          passedGuards.push(`OCF_SIGN_INVERSION_OBSERVED: ตรวจพบ OCF สลับเครื่องหมายข้ามไตรมาส (${periods[i - 1]}: $${prevOcf}M -> ${periods[i]}: $${curOcf}M); ต้องตรวจเอกสารต้นทางหากต้องการยืนยันสาเหตุ`);
         }
       }
     }

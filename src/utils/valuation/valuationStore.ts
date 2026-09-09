@@ -43,24 +43,30 @@ export function initValuationStore(data?: Partial<ReportData>, ticker?: string):
   currentAssumptions = {
     ticker: sym,
     dcf: {
-      wacc_pct: dcf.assumptions.wacc_pct,
-      terminal_growth_pct: dcf.assumptions.terminal_growth_pct,
-      revenue_cagr_pct: base.revenue_cagr_pct,
-      terminal_margin_pct: base.terminal_margin_pct,
+      wacc_pct: dcf.assumptions.wacc_pct as number,
+      terminal_growth_pct: dcf.assumptions.terminal_growth_pct as number,
+      revenue_cagr_pct: base.revenue_cagr_pct as number,
+      terminal_margin_pct: base.terminal_margin_pct as number,
     },
   };
   return currentAssumptions;
 }
 
-const hasCompleteSummary = (value?: IntrinsicValueData) => Boolean(
-  value
-  && isFinitePositive(value.summary?.fair_value_range_low)
-  && isFinitePositive(value.summary?.base_case_fair_value)
-  && isFinitePositive(value.summary?.fair_value_range_high)
-  && isFiniteNumber(value.summary?.margin_of_safety_pct)
-  && value.summary.fair_value_range_low < value.summary.base_case_fair_value
-  && value.summary.base_case_fair_value < value.summary.fair_value_range_high
-);
+const hasCompleteSummary = (value?: IntrinsicValueData) => {
+  const low = value?.summary?.fair_value_range_low;
+  const base = value?.summary?.base_case_fair_value;
+  const high = value?.summary?.fair_value_range_high;
+  const margin = value?.summary?.margin_of_safety_pct;
+  return Boolean(
+    value
+    && isFinitePositive(low)
+    && isFinitePositive(base)
+    && isFinitePositive(high)
+    && isFiniteNumber(margin)
+    && low < base
+    && base < high
+  );
+};
 
 /**
  * Builds a valuation only when every required input is present. This function
@@ -81,8 +87,9 @@ export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?:
     const bear = dcfModel.scenarios.bear.fair_value_per_share;
     const base = dcfModel.scenarios.base.fair_value_per_share;
     const bull = dcfModel.scenarios.bull.fair_value_per_share;
-    if (![bear, base, bull].every(isFinitePositive) || !isFinitePositive(inputs.currentPrice)) return undefined;
-    const margin = Number((((base - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1));
+    if (!isFinitePositive(bear) || !isFinitePositive(base) || !isFinitePositive(bull) || !isFinitePositive(inputs.currentPrice)) return undefined;
+    const currentPrice = inputs.currentPrice;
+    const margin = Number((((base - currentPrice) / currentPrice) * 100).toFixed(1));
     summary = {
       fair_value_range_low: bear,
       fair_value_range_high: bull,
@@ -108,7 +115,7 @@ export function buildUniversalValuationData(data?: Partial<ReportData>, ticker?:
     : undefined;
 
   const valuationPayload: IntrinsicValueData = {
-    current_price: inputs.currentPrice,
+    current_price: inputs.currentPrice as number,
     as_of_date: source?.as_of_date,
     selected_model: modelSelector,
     cost_of_capital: source?.cost_of_capital,

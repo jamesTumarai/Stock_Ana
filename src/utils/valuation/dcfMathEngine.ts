@@ -6,13 +6,13 @@ import {
 
 export interface DCFEngineInputs {
   ticker: string;
-  currentPrice: number;
-  startingRevenueM: number;
-  sharesOutstandingM: number;
-  netCashM: number;
-  waccPct: number;
-  terminalGrowthPct: number;
-  projectionYears: number;
+  currentPrice: number | null;
+  startingRevenueM: number | null;
+  sharesOutstandingM: number | null;
+  netCashM: number | null;
+  waccPct: number | null;
+  terminalGrowthPct: number | null;
+  projectionYears: number | null;
   isValid: boolean;
   sourcePeriod?: string;
   missingFields?: string[];
@@ -66,9 +66,9 @@ export function calculateStrictDCFValue(
 }
 
 const unavailableScenario = (note: string) => ({
-  revenue_cagr_pct: 0,
-  terminal_margin_pct: 0,
-  fair_value_per_share: 0,
+  revenue_cagr_pct: null,
+  terminal_margin_pct: null,
+  fair_value_per_share: null,
   key_assumption_note: note,
 });
 
@@ -129,20 +129,28 @@ export function buildRigorousDCFModel(
     }
   }
   if (!sharesOutstandingM || sharesOutstandingM <= 0) missing.push('shares outstanding');
-  const currentPrice = data?.intrinsic_value?.current_price ?? data?.company_profile?.stock_price ?? 0;
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) missing.push('current share price');
+  const rawCurrentPrice = data?.intrinsic_value?.current_price ?? data?.company_profile?.stock_price;
+  const currentPrice = typeof rawCurrentPrice === 'number' && Number.isFinite(rawCurrentPrice) && rawCurrentPrice > 0
+    ? rawCurrentPrice
+    : null;
+  if (currentPrice === null) missing.push('current share price');
 
   const rawWacc = userWacc ?? original?.assumptions.wacc_pct;
   const rawTerminalGrowth = userGrowth ?? original?.assumptions.terminal_growth_pct;
   if (!Number.isFinite(rawWacc)) missing.push('discount rate (WACC)');
   if (!Number.isFinite(rawTerminalGrowth)) missing.push('terminal growth rate');
-  const waccPct = Number.isFinite(rawWacc) ? rawWacc as number : 0;
+  const waccPct = Number.isFinite(rawWacc) ? rawWacc as number : null;
   const terminalGrowthPct = Number.isFinite(rawTerminalGrowth)
     ? Math.min(MACRO_TERMINAL_GROWTH_MAX_CAP_PCT, Math.max(MACRO_TERMINAL_GROWTH_MIN_PCT, rawTerminalGrowth as number))
-    : 0;
-  if (!Number.isFinite(waccPct) || terminalGrowthPct >= waccPct) missing.push('discount rate greater than terminal growth');
-  const projectionYears = original?.assumptions.projection_years ?? 0;
-  if (!Number.isInteger(projectionYears) || projectionYears < 1) missing.push('projection years');
+    : null;
+  if (waccPct === null || terminalGrowthPct === null || terminalGrowthPct >= waccPct) {
+    missing.push('discount rate greater than terminal growth');
+  }
+  const rawProjectionYears = original?.assumptions.projection_years;
+  const projectionYears = typeof rawProjectionYears === 'number' && Number.isInteger(rawProjectionYears) && rawProjectionYears >= 1
+    ? rawProjectionYears
+    : null;
+  if (projectionYears === null) missing.push('projection years');
   const scenarios = original?.scenarios;
   if (!scenarios?.bear || !scenarios.base || !scenarios.bull) missing.push('bear, base, and bull DCF assumptions');
   const validScenarioInputs = scenarios && [scenarios.bear, scenarios.base, scenarios.bull].every(scenario =>
@@ -156,9 +164,11 @@ export function buildRigorousDCFModel(
   const inputs: DCFEngineInputs = {
     ticker: sym,
     currentPrice,
-    startingRevenueM: revenues.reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0),
-    sharesOutstandingM: sharesOutstandingM || 0,
-    netCashM: cash !== undefined && investments !== undefined && debt !== undefined ? cash + investments - debt : 0,
+    startingRevenueM: revenues.length === 4 && revenues.every(value => typeof value === 'number' && Number.isFinite(value))
+      ? revenues.reduce((sum, value) => sum + (value as number), 0)
+      : null,
+    sharesOutstandingM: sharesOutstandingM && sharesOutstandingM > 0 ? sharesOutstandingM : null,
+    netCashM: cash !== undefined && investments !== undefined && debt !== undefined ? cash + investments - debt : null,
     waccPct,
     terminalGrowthPct,
     projectionYears,
@@ -180,13 +190,24 @@ export function buildRigorousDCFModel(
     };
   }
 
-  const scenarioWithValue = (scenario: NonNullable<typeof scenarios>['base']) => ({
-    ...scenario,
-    fair_value_per_share: calculateStrictDCFValue(
-      inputs.startingRevenueM, inputs.sharesOutstandingM, inputs.netCashM,
-      waccPct, terminalGrowthPct, scenario.revenue_cagr_pct, scenario.terminal_margin_pct, projectionYears,
-    ),
-  });
+  const startingRevenueM = inputs.startingRevenueM as number;
+  const validSharesOutstandingM = inputs.sharesOutstandingM as number;
+  const validNetCashM = inputs.netCashM as number;
+  const validWaccPct = waccPct as number;
+  const validTerminalGrowthPct = terminalGrowthPct as number;
+  const validProjectionYears = projectionYears as number;
+
+  const scenarioWithValue = (scenario: NonNullable<typeof scenarios>['base']) => {
+    const revenueCagrPct = scenario.revenue_cagr_pct as number;
+    const terminalMarginPct = scenario.terminal_margin_pct as number;
+    return {
+      ...scenario,
+      fair_value_per_share: calculateStrictDCFValue(
+        startingRevenueM, validSharesOutstandingM, validNetCashM,
+        validWaccPct, validTerminalGrowthPct, revenueCagrPct, terminalMarginPct, validProjectionYears,
+      ),
+    };
+  };
   const bear = scenarioWithValue(scenarios!.bear);
   const base = scenarioWithValue(scenarios!.base);
   const bull = scenarioWithValue(scenarios!.bull);

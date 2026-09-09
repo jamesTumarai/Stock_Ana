@@ -69,8 +69,8 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
     };
     result.five_pillars.analyst_takeaway = 'ข้อมูลจากรายงานที่บันทึกไว้ ไม่ใช่การรับรองจาก SEC; ควรตรวจงวดบัญชีและเอกสารต้นทางก่อนใช้ประเมินมูลค่า';
   }
-  // Accounting consistency alone is not evidence that a filing was retrieved or reconciled.
-  if (fs) fs.validation_summary = undefined;
+  // Preserve deterministic validation_summary when it was produced by the production validator.
+  // Its filing_source remains unset unless real source metadata exists.
   // Keep dated research intact. Explicit refresh updates only the displayed quote, never historical narratives.
   const quote = live?.[(ticker || result.ticker || '').toUpperCase()];
   if (quote && result.company_profile && finite(quote.price)) result.company_profile.stock_price = quote.price;
@@ -78,39 +78,64 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   // Recalculate DCF from the disclosed four-quarter dataset. Historical AI price targets
   // are never retained when the report cannot supply every required input.
   if (result.intrinsic_value) {
-    const { dcfModel, inputs } = buildRigorousDCFModel(result, ticker || result.ticker);
     const intrinsic = result.intrinsic_value;
+    const validationBlocksValuation = result.validation?.issues?.some(issue =>
+      issue.severity === 'critical'
+      && ['financial_statements', 'valuation', 'cross_section', 'market_data'].includes(issue.section)
+    ) ?? false;
+
+    const { dcfModel, inputs } = buildRigorousDCFModel(result, ticker || result.ticker);
     intrinsic.dcf_model = dcfModel;
-    if (inputs.isValid) {
-      const base = dcfModel.scenarios.base.fair_value_per_share;
-      const bear = dcfModel.scenarios.bear.fair_value_per_share;
-      const bull = dcfModel.scenarios.bull.fair_value_per_share;
+    const base = dcfModel.scenarios.base.fair_value_per_share;
+    const bear = dcfModel.scenarios.bear.fair_value_per_share;
+    const bull = dcfModel.scenarios.bull.fair_value_per_share;
+
+    if (!validationBlocksValuation
+      && inputs.isValid
+      && finite(base)
+      && finite(bear)
+      && finite(bull)
+      && finite(inputs.currentPrice)
+      && inputs.currentPrice > 0) {
       intrinsic.summary = {
         ...intrinsic.summary,
         fair_value_range_low: bear,
         fair_value_range_high: bull,
         base_case_fair_value: base,
-        margin_of_safety_pct: inputs.currentPrice > 0 ? rounded((base - inputs.currentPrice) / inputs.currentPrice * 100) : 0,
+        margin_of_safety_pct: rounded((base - inputs.currentPrice) / inputs.currentPrice * 100),
       };
-      intrinsic.validation_alerts = (intrinsic.validation_alerts || []).filter(alert => alert.code !== 'VALUATION_INPUTS_INCOMPLETE');
+      intrinsic.validation_alerts = (intrinsic.validation_alerts || []).filter(alert =>
+        alert.code !== 'VALUATION_INPUTS_INCOMPLETE' && alert.code !== 'REPORT_VALIDATION_BLOCK'
+      );
     } else {
       intrinsic.summary = {
         ...intrinsic.summary,
-        fair_value_range_low: 0,
-        fair_value_range_high: 0,
-        base_case_fair_value: 0,
-        margin_of_safety_pct: 0,
-        verdict_text: 'Valuation unavailable until required filing inputs are supplied.',
+        fair_value_range_low: null,
+        fair_value_range_high: null,
+        base_case_fair_value: null,
+        margin_of_safety_pct: null,
+        verdict_text: validationBlocksValuation
+          ? 'Valuation unavailable because critical data-validation checks failed.'
+          : 'Valuation unavailable until required filing inputs are supplied.',
       };
       intrinsic.relative_valuation = undefined;
+      intrinsic.relative_only_model = undefined;
       intrinsic.validation_alerts = [
-        ...(intrinsic.validation_alerts || []).filter(alert => alert.code !== 'VALUATION_INPUTS_INCOMPLETE'),
+        ...(intrinsic.validation_alerts || []).filter(alert =>
+          alert.code !== 'VALUATION_INPUTS_INCOMPLETE' && alert.code !== 'REPORT_VALIDATION_BLOCK'
+        ),
         {
           type: 'error',
-          code: 'VALUATION_INPUTS_INCOMPLETE',
-          message_th: 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูล DCF จากงบยังไม่ครบหรือไม่อยู่ในงวดเดียวกัน',
-          message_en: 'Valuation is unavailable because the required DCF inputs are missing or are not from the same reporting period.',
-          detail: inputs.missingFields?.join('; '),
+          code: validationBlocksValuation ? 'REPORT_VALIDATION_BLOCK' : 'VALUATION_INPUTS_INCOMPLETE',
+          message_th: validationBlocksValuation
+            ? 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูลไม่ผ่านการตรวจสอบความสอดคล้องที่สำคัญ'
+            : 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูล DCF จากงบยังไม่ครบหรือไม่อยู่ในงวดเดียวกัน',
+          message_en: validationBlocksValuation
+            ? 'Valuation is unavailable because critical report-validation checks failed.'
+            : 'Valuation is unavailable because the required DCF inputs are missing or are not from the same reporting period.',
+          detail: validationBlocksValuation
+            ? result.validation?.issues?.filter(issue => issue.severity === 'critical').map(issue => issue.code).join('; ')
+            : inputs.missingFields?.join('; '),
         },
       ];
     }
