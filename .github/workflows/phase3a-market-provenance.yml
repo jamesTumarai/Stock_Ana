@@ -1,15 +1,18 @@
-name: Phase 3A market provenance
+name: Verify Phase 3A
 
 on:
   push:
     branches:
       - phase3a-working
+  pull_request:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-verify:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -24,34 +27,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Add provider provenance to live quote response
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('server.ts')
-          s = p.read_text(encoding='utf-8')
-          old = """      return res.json({
-        quotes,
-        asOf: new Date().toISOString()
-      });"""
-          new = """      const asOf = new Date().toISOString();
-      return res.json({
-        quotes,
-        asOf,
-        provider: 'Yahoo Finance',
-        dataType: 'market_quote',
-        // Yahoo quote endpoints may be delayed or session-dependent; do not claim guaranteed real-time data.
-        isRealtime: false
-      });"""
-          if new in s:
-              print('market provenance already present')
-          elif old in s:
-              p.write_text(s.replace(old, new, 1), encoding='utf-8')
-          else:
-              raise SystemExit('live quote response block not found')
-          PY
-
       - name: Install dependencies
         run: npm ci
 
@@ -59,13 +34,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --import tsx src/utils/reportIntegrity.test.ts
-          node --import tsx src/utils/reportValidation.test.ts
-          node --import tsx src/utils/serverPromptIntegrity.test.ts
-          node --import tsx src/utils/valuation/__tests__/marketSnapshotDCF.test.ts
-          node --import tsx src/utils/valuation/__tests__/universalValuation.test.ts
-          node --import tsx src/utils/valuation/__tests__/statementValidator.test.ts
-          node --import tsx src/utils/valuation/__tests__/convictionScorer.test.ts
+          while IFS= read -r -d '' file; do
+            echo "::group::$file"
+            node --import tsx "$file"
+            echo "::endgroup::"
+          done < <(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | sort -z)
 
       - name: TypeScript check
         run: npm run lint
@@ -75,16 +48,3 @@ jobs:
 
       - name: Diff whitespace check
         run: git diff --check origin/main...HEAD
-
-      - name: Commit server provenance change when needed
-        shell: bash
-        run: |
-          if git diff --quiet -- server.ts; then
-            echo "No server provenance change to commit."
-            exit 0
-          fi
-          git add server.ts
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "feat: expose market quote provenance [phase3a-applied]"
-          git push origin HEAD:phase3a-working
