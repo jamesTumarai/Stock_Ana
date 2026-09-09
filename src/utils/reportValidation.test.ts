@@ -68,6 +68,10 @@ const makeValidReport = () => ({
   assert.equal(prepared.validation.status, 'valid');
   assert.equal(prepared.canPersist, true);
   assert.equal(prepared.report?.schema_version, 2);
+  assert.equal(prepared.report?.generated_by_version, 'lumina-phase3-provenance-v1');
+  assert.equal(prepared.report?.report_provenance?.research_narrative.source, 'ai_research');
+  assert.equal(prepared.report?.report_provenance?.financial_statements.source, 'report_snapshot');
+  assert.equal(prepared.report?.report_provenance?.dcf_financial_inputs.source, 'report_snapshot');
   assert.equal(prepared.report?.financial_statements?.validation_summary?.is_balanced, true);
   assert.equal(prepared.report?.intrinsic_value?.dcf_model.inputs?.isValid, true);
 }

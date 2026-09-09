@@ -7,9 +7,10 @@ import type {
 } from '../types';
 import { normalizeReport } from './reportIntegrity';
 import { detectStatementTemplate, validateFinancialStatements } from './statementValidator';
+import { buildReportProvenanceManifest } from './reportProvenance';
 
 export const CURRENT_REPORT_SCHEMA_VERSION = 2;
-export const CURRENT_GENERATED_BY_VERSION = 'lumina-phase2';
+export const CURRENT_GENERATED_BY_VERSION = 'lumina-phase3-provenance-v1';
 
 export interface PreparedReportResult {
   report: ReportData | null;
@@ -496,6 +497,11 @@ export function validateAndPrepareReport(input: unknown, expectedTicker?: string
   normalized.validation = validation;
 
   const prepared = blockCriticalFinancialOutputs(normalized, validation);
+  prepared.report_provenance = buildReportProvenanceManifest(prepared, {
+    generatedAt: checkedAt,
+    schemaVersion: CURRENT_REPORT_SCHEMA_VERSION,
+    generatedByVersion: CURRENT_GENERATED_BY_VERSION,
+  });
   return {
     report: prepared,
     validation,
