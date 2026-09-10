@@ -4,7 +4,7 @@ on:
     branches:
       - phase3r1-production-acceptance
 jobs:
-  accept:
+  inspect:
     runs-on: ubuntu-24.04
     timeout-minutes: 7
     steps:
@@ -12,146 +12,46 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Run MSFT fundamental DCF acceptance
+      - name: Inspect MSFT fundamental valuation schema
         shell: bash
         run: |
-          cat > .phase3r1-fundamental-acceptance.mts <<'TS'
-          import { fetchSecVerificationEnvelope } from './src/services/secVerificationService.ts';
-          import { fetchLiveQuotes } from './src/services/marketDataService.ts';
-          import { validateAndPrepareReport } from './src/utils/reportValidation.ts';
-
+          cat > .phase3r1-inspect.mjs <<'JS'
           const BASE = 'https://stock-ana-ten.vercel.app';
-          (globalThis as any).window = globalThis;
-          const nativeFetch = globalThis.fetch.bind(globalThis);
-          globalThis.fetch = ((input: any, init?: any) => {
-            if (typeof input === 'string' && input.startsWith('/')) return nativeFetch(new URL(input, BASE), init);
-            return nativeFetch(input, init);
-          }) as typeof fetch;
-
-          const parseFinalText = (text: string) => {
-            const matches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
-            for (let i = matches.length - 1; i >= 0; i -= 1) {
-              try {
-                const parsed = JSON.parse(matches[i][1]);
-                if (parsed && (parsed.verdict || parsed.findings || parsed.deep_insights)) return parsed;
-              } catch {}
-            }
-            const first = text.indexOf('{');
-            const last = text.lastIndexOf('}');
-            if (first >= 0 && last > first) {
-              try { return JSON.parse(text.slice(first, last + 1)); } catch {}
-            }
-            return null;
-          };
-
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 285_000);
-          const secPromise = fetchSecVerificationEnvelope('MSFT');
-          const marketPromise = fetchLiveQuotes(['MSFT']);
-
-          try {
-            const response = await fetch('/api/analyze', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                ticker: 'MSFT',
-                origin: BASE,
-                model: 'gemini-3.8-flash',
-                language: 'Thai',
-                analysisType: 'fundamental',
-                useSelfConsistency: false,
-              }),
-              signal: controller.signal,
-            });
-            if (!response.ok) throw new Error(`Fundamental Analyze HTTP ${response.status}`);
-            const rawSse = await response.text();
-            let accumulatedText = '';
-            const counts: Record<string, number> = {};
-            for (const block of rawSse.split('\n\n')) {
-              const line = block.split('\n').find(item => item.startsWith('data: '));
-              if (!line) continue;
-              const payload = line.slice(6);
-              if (!payload || payload === '[DONE]') continue;
-              try {
-                const event = JSON.parse(payload);
-                counts[event.type] = (counts[event.type] || 0) + 1;
-                if (event.type === 'text' && event.text) accumulatedText += event.text;
-              } catch {}
-            }
-            const finalData: any = parseFinalText(accumulatedText);
-            console.log('FUNDAMENTAL_STREAM=' + JSON.stringify({
-              httpStatus: response.status,
-              counts,
-              parseable: Boolean(finalData),
-              textLength: accumulatedText.length,
-              rootKeys: finalData ? Object.keys(finalData) : [],
-              intrinsicValueType: finalData?.intrinsic_value === null ? 'null' : typeof finalData?.intrinsic_value,
-              intrinsicValueKeys: finalData?.intrinsic_value && typeof finalData.intrinsic_value === 'object' ? Object.keys(finalData.intrinsic_value) : [],
-            }));
-            if (!finalData) throw new Error('No parseable Fundamental report JSON');
-
-            const rawDcf: any = finalData?.intrinsic_value?.dcf_model ?? null;
-            console.log('RAW_DCF_CONTRACT=' + JSON.stringify({
-              hasDcfModel: Boolean(rawDcf),
-              hasAssumptions: Boolean(rawDcf?.assumptions),
-              assumptions: rawDcf?.assumptions ?? null,
-              scenarioKeys: rawDcf?.scenarios ? Object.keys(rawDcf.scenarios) : [],
-              bear: rawDcf?.scenarios?.bear ?? null,
-              base: rawDcf?.scenarios?.base ?? null,
-              bull: rawDcf?.scenarios?.bull ?? null,
-            }));
-
-            const [secVerification, marketResponse] = await Promise.all([secPromise, marketPromise]);
-            const prepared = validateAndPrepareReport(
-              {
-                ...finalData,
-                ...(secVerification ? { sec_verification: secVerification } : {}),
-                analysis_type: 'fundamental',
-                ticker: 'MSFT',
-              },
-              'MSFT',
-              { marketQuotes: marketResponse?.quotes, requireMarketSnapshot: true },
-            );
-            const report: any = prepared.report;
-            const inputs: any = report?.intrinsic_value?.dcf_model?.inputs;
-            const summary = {
-              httpStatus: response.status,
-              secStatus: secVerification?.status ?? null,
-              secEligible: secVerification?.dcf_financial_inputs?.eligible ?? null,
-              marketPrice: marketResponse?.quotes?.MSFT?.price ?? null,
-              isValid: inputs?.isValid ?? null,
-              missingFields: inputs?.missingFields ?? null,
-              priceSource: inputs?.priceSource ?? null,
-              financialDataSource: inputs?.financialDataSource ?? null,
-              sourcePeriod: inputs?.sourcePeriod ?? null,
-              waccPct: inputs?.waccPct ?? null,
-              terminalGrowthPct: inputs?.terminalGrowthPct ?? null,
-              projectionYears: inputs?.projectionYears ?? null,
-              baseFairValue: report?.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share ?? null,
-              validationStatus: prepared.validation.status,
-              canPersist: prepared.canPersist,
-              provenanceMarket: report?.report_provenance?.market_price?.source ?? null,
-              provenanceDcf: report?.report_provenance?.dcf_financial_inputs?.source ?? null,
-            };
-            console.log('PREPARED_DCF=' + JSON.stringify(summary));
-            const accepted =
-              summary.httpStatus === 200 &&
-              summary.secStatus === 'verified_eligible' &&
-              summary.secEligible === true &&
-              summary.priceSource === 'market_snapshot' &&
-              summary.financialDataSource === 'sec_verified' &&
-              summary.provenanceMarket === 'market_snapshot' &&
-              summary.provenanceDcf === 'sec_verified' &&
-              summary.isValid === true &&
-              Array.isArray(summary.missingFields) && summary.missingFields.length === 0 &&
-              Number.isFinite(summary.baseFairValue) &&
-              summary.canPersist === true;
-            console.log('FUNDAMENTAL_ACCEPTED=' + accepted);
-            if (!accepted) process.exitCode = 2;
-          } finally {
-            clearTimeout(timer);
+          const response = await fetch(`${BASE}/api/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ticker: 'MSFT',
+              origin: BASE,
+              model: 'gemini-3.8-flash',
+              language: 'Thai',
+              analysisType: 'fundamental',
+              useSelfConsistency: false,
+            }),
+            signal: AbortSignal.timeout(285000),
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const raw = await response.text();
+          let text = '';
+          for (const block of raw.split('\n\n')) {
+            const line = block.split('\n').find(x => x.startsWith('data: '));
+            if (!line) continue;
+            const payload = line.slice(6);
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const ev = JSON.parse(payload);
+              if (ev.type === 'text' && ev.text) text += ev.text;
+            } catch {}
           }
-          TS
-          node --import tsx .phase3r1-fundamental-acceptance.mts
+          const matches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+          let data = null;
+          for (let i = matches.length - 1; i >= 0; i--) {
+            try { data = JSON.parse(matches[i][1]); if (data) break; } catch {}
+          }
+          if (!data) throw new Error('No JSON');
+          const vm = data.valuation_models ?? null;
+          console.log('ROOT_KEYS=' + JSON.stringify(Object.keys(data)));
+          console.log('VALUATION_MODELS=' + JSON.stringify(vm));
+          console.log('INTRINSIC_VALUE=' + JSON.stringify(data.intrinsic_value ?? null));
+          JS
+          node .phase3r1-inspect.mjs
