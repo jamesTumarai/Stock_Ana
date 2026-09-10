@@ -38,4 +38,20 @@ assert.doesNotMatch(
   'Production prompt schema contains an anchored numeric stock-price example'
 );
 
+
+
+// Fundamental/Combined output must expose the complete DCF assumption/scenario contract.
+// Numeric schema placeholders remain null so the prompt cannot seed plausible-looking defaults.
+assert.match(serverSource, /"intrinsic_value"\s*:\s*\{/);
+assert.match(serverSource, /"dcf_model"\s*:\s*\{/);
+assert.match(serverSource, /"assumptions"\s*:\s*\{/);
+assert.match(serverSource, /"wacc_pct"\s*:\s*null/);
+assert.match(serverSource, /"terminal_growth_pct"\s*:\s*null/);
+assert.match(serverSource, /"projection_years"\s*:\s*null/);
+assert.match(serverSource, /DCF OUTPUT CONTRACT \(MANDATORY\)/);
+assert.match(serverSource, /DCF FACT\/ASSUMPTION SEPARATION/);
+assert.doesNotMatch(serverSource, /"wacc_pct"\s*:\s*\d/);
+assert.doesNotMatch(serverSource, /"terminal_growth_pct"\s*:\s*\d/);
+assert.doesNotMatch(serverSource, /"projection_years"\s*:\s*\d/);
+
 console.log('Production prompt integrity checks passed');
