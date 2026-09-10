@@ -1,0 +1,33 @@
+name: Apply Runtime Schema Authority
+on:
+  push:
+    branches:
+      - phase3r1-runtime-schema-authority
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python .github/scripts/phase3r1-runtime-schema-authority.py
+      - run: npm ci
+      - name: Verify
+        run: |
+          node --import tsx src/utils/serverPromptIntegrity.test.ts
+          npm run lint
+          npm run build
+          git diff --check
+      - name: Commit product patch
+        run: |
+          rm .github/workflows/phase3r1-runtime-schema-authority.yml
+          rm .github/scripts/phase3r1-runtime-schema-authority.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.ts src/utils/serverPromptIntegrity.test.ts .github/workflows/phase3r1-runtime-schema-authority.yml .github/scripts/phase3r1-runtime-schema-authority.py
+          git commit -m 'fix: make runtime schema authoritative for analysis'
+          git push origin HEAD:phase3r1-runtime-schema-authority
