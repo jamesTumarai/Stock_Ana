@@ -1,0 +1,77 @@
+name: Phase 4E2b Verify
+
+on:
+  push:
+    branches:
+      - phase4e2b-firebase-environment-safety
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply Firebase environment-safety patch
+        run: python scripts/phase4e2b_patch.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            echo "::group::$file"
+            node --import tsx "$file"
+            echo "::endgroup::"
+          done < <(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | sort -z)
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Production build
+        run: npm run build
+
+      - name: Working diff whitespace check
+        run: git diff --check
+
+      - name: Firebase safety assertions
+        shell: bash
+        run: |
+          test ! -f firebase.json
+          test ! -f firebase-applet-config.json
+          test -f firebase.legacy-ai-studio.json
+          test -f firebase-applet-config.legacy.json
+          grep -q "firebaseDataAccessAllowed" src/App.tsx
+          grep -q "resolveFirebaseAdminProjectId" server/auth/firebaseAuth.ts
+          grep -q "node-version: 24" .github/workflows/verify.yml
+
+      - name: Commit verified product/config changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "jamesTumarai"
+          git config user.email "jzuzu175@gmail.com"
+          git add -A -- .env.example src/App.tsx src/lib/firebase.ts src/lib/firebaseConfig.ts server/auth/firebaseAuth.ts server/auth/firebaseProject.ts src/utils/firebaseEnvironmentBoundary.test.ts docs/FIREBASE_ENVIRONMENTS.md firebase.json firebase-applet-config.json firebase.legacy-ai-studio.json firebase-applet-config.legacy.json
+          if git diff --cached --quiet; then
+            echo "No verified changes to commit"
+            exit 0
+          fi
+          git diff --cached --check
+          git commit -m "chore: isolate Firebase environments [skip ci]"
+          git push origin HEAD:phase4e2b-firebase-environment-safety
