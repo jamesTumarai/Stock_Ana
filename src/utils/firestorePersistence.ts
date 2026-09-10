@@ -35,3 +35,12 @@ export const sanitizeUndefinedForPersistence = <T>(value: T): T => {
 
   return sanitize(value, false) as T;
 };
+
+/**
+ * Soft-deleted report snapshots remain in Firestore for recovery/auditability.
+ * Legacy reports do not have deletedAt and therefore remain visible.
+ */
+export const isSoftDeletedReportRecord = (value: unknown): boolean => {
+  if (!isPlainObject(value)) return false;
+  return value.deletedAt !== undefined && value.deletedAt !== null;
+};
