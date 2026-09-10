@@ -1,0 +1,163 @@
+name: Phase 3R.1 Production Acceptance
+on:
+  push:
+    branches:
+      - phase3r1-production-acceptance
+jobs:
+  accept:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run MSFT combined acceptance and technical smoke
+        shell: bash
+        run: |
+          cat > .phase3r1-production-acceptance.mts <<'TS'
+          import { fetchSecVerificationEnvelope } from './src/services/secVerificationService.ts';
+          import { fetchLiveQuotes } from './src/services/marketDataService.ts';
+          import { validateAndPrepareReport } from './src/utils/reportValidation.ts';
+
+          const BASE = 'https://stock-ana-ten.vercel.app';
+          (globalThis as any).window = globalThis;
+          const nativeFetch = globalThis.fetch.bind(globalThis);
+          globalThis.fetch = ((input: any, init?: any) => {
+            if (typeof input === 'string' && input.startsWith('/')) return nativeFetch(new URL(input, BASE), init);
+            return nativeFetch(input, init);
+          }) as typeof fetch;
+
+          const parseFinalText = (text: string) => {
+            const matches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+            for (let i = matches.length - 1; i >= 0; i -= 1) {
+              try {
+                const parsed = JSON.parse(matches[i][1]);
+                if (parsed && (parsed.verdict || parsed.findings || parsed.deep_insights)) return parsed;
+              } catch {}
+            }
+            const first = text.indexOf('{');
+            const last = text.lastIndexOf('}');
+            if (first >= 0 && last > first) {
+              try { return JSON.parse(text.slice(first, last + 1)); } catch {}
+            }
+            return null;
+          };
+
+          const readAnalyze = async (analysisType: 'combined' | 'technical', useSelfConsistency: boolean) => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), analysisType === 'combined' ? 420_000 : 240_000);
+            try {
+              const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ticker: 'MSFT',
+                  origin: BASE,
+                  model: 'gemini-3.8-flash',
+                  language: 'Thai',
+                  analysisType,
+                  useSelfConsistency,
+                }),
+                signal: controller.signal,
+              });
+              if (!response.ok) throw new Error(`${analysisType} Analyze HTTP ${response.status}`);
+              const rawSse = await response.text();
+              let accumulatedText = '';
+              const counts: Record<string, number> = {};
+              for (const block of rawSse.split('\n\n')) {
+                const line = block.split('\n').find(item => item.startsWith('data: '));
+                if (!line) continue;
+                const payload = line.slice(6);
+                if (!payload || payload === '[DONE]') continue;
+                try {
+                  const event = JSON.parse(payload);
+                  counts[event.type] = (counts[event.type] || 0) + 1;
+                  if (event.type === 'text' && event.text) accumulatedText += event.text;
+                } catch {}
+              }
+              return { status: response.status, counts, finalData: parseFinalText(accumulatedText) };
+            } finally {
+              clearTimeout(timer);
+            }
+          };
+
+          const secPromise = fetchSecVerificationEnvelope('MSFT');
+          const marketPromise = fetchLiveQuotes(['MSFT']);
+          const combined = await readAnalyze('combined', true);
+          if (!combined.finalData) throw new Error('No parseable Combined report JSON');
+
+          const rawDcf: any = combined.finalData?.intrinsic_value?.dcf_model ?? null;
+          console.log('RAW_DCF_CONTRACT=' + JSON.stringify({
+            hasDcfModel: Boolean(rawDcf),
+            hasAssumptions: Boolean(rawDcf?.assumptions),
+            assumptions: rawDcf?.assumptions ?? null,
+            scenarioKeys: rawDcf?.scenarios ? Object.keys(rawDcf.scenarios) : [],
+            bear: rawDcf?.scenarios?.bear ?? null,
+            base: rawDcf?.scenarios?.base ?? null,
+            bull: rawDcf?.scenarios?.bull ?? null,
+          }));
+
+          const [secVerification, marketResponse] = await Promise.all([secPromise, marketPromise]);
+          const prepared = validateAndPrepareReport(
+            {
+              ...combined.finalData,
+              ...(secVerification ? { sec_verification: secVerification } : {}),
+              analysis_type: 'combined',
+              ticker: 'MSFT',
+            },
+            'MSFT',
+            { marketQuotes: marketResponse?.quotes, requireMarketSnapshot: true },
+          );
+          const report: any = prepared.report;
+          const inputs: any = report?.intrinsic_value?.dcf_model?.inputs;
+          const preparedSummary = {
+            httpStatus: combined.status,
+            counts: combined.counts,
+            secStatus: secVerification?.status ?? null,
+            secEligible: secVerification?.dcf_financial_inputs?.eligible ?? null,
+            marketPrice: marketResponse?.quotes?.MSFT?.price ?? null,
+            isValid: inputs?.isValid ?? null,
+            missingFields: inputs?.missingFields ?? null,
+            priceSource: inputs?.priceSource ?? null,
+            financialDataSource: inputs?.financialDataSource ?? null,
+            sourcePeriod: inputs?.sourcePeriod ?? null,
+            waccPct: inputs?.waccPct ?? null,
+            terminalGrowthPct: inputs?.terminalGrowthPct ?? null,
+            projectionYears: inputs?.projectionYears ?? null,
+            baseFairValue: report?.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share ?? null,
+            validationStatus: prepared.validation.status,
+            canPersist: prepared.canPersist,
+            provenanceMarket: report?.report_provenance?.market_price?.source ?? null,
+            provenanceDcf: report?.report_provenance?.dcf_financial_inputs?.source ?? null,
+          };
+          console.log('PREPARED_DCF=' + JSON.stringify(preparedSummary));
+
+          const combinedAccepted =
+            preparedSummary.httpStatus === 200 &&
+            preparedSummary.secStatus === 'verified_eligible' &&
+            preparedSummary.secEligible === true &&
+            preparedSummary.priceSource === 'market_snapshot' &&
+            preparedSummary.financialDataSource === 'sec_verified' &&
+            preparedSummary.provenanceMarket === 'market_snapshot' &&
+            preparedSummary.provenanceDcf === 'sec_verified' &&
+            preparedSummary.isValid === true &&
+            Array.isArray(preparedSummary.missingFields) && preparedSummary.missingFields.length === 0 &&
+            Number.isFinite(preparedSummary.baseFairValue) &&
+            preparedSummary.canPersist === true;
+          console.log('COMBINED_ACCEPTED=' + combinedAccepted);
+
+          const technical = await readAnalyze('technical', false);
+          console.log('TECHNICAL_SMOKE=' + JSON.stringify({
+            httpStatus: technical.status,
+            counts: technical.counts,
+            parseable: Boolean(technical.finalData),
+            intrinsicValue: technical.finalData?.intrinsic_value ?? null,
+          }));
+
+          if (!combinedAccepted) process.exitCode = 2;
+          if (technical.status !== 200 || !technical.finalData) process.exitCode = 3;
+          TS
+          node --import tsx .phase3r1-production-acceptance.mts
