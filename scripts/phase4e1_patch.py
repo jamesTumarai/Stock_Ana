@@ -8,34 +8,7 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# 1) Generalize the long-lived CI workflow and make critical production dependency
-# vulnerabilities a merge blocker without auto-mutating the lockfile.
-old_workflow = Path('.github/workflows/verify-phase2.yml')
-workflow = old_workflow.read_text()
-workflow = replace_once(workflow, 'name: Verify Phase 2\n', 'name: Verify Lumina\n', 'workflow name')
-workflow = replace_once(
-    workflow,
-    '  push:\n    branches:\n      - phase2-runtime-validation\n',
-    '  push:\n    branches:\n      - main\n',
-    'workflow push branch',
-)
-workflow = replace_once(
-    workflow,
-    'permissions:\n  contents: read\n\njobs:\n',
-    "permissions:\n  contents: read\n\nconcurrency:\n  group: verify-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n",
-    'workflow permissions anchor',
-)
-workflow = replace_once(
-    workflow,
-    '      - name: TypeScript check\n        run: npm run lint\n\n      - name: Production build\n',
-    "      - name: TypeScript check\n        run: npm run lint\n\n      - name: Production dependency audit\n        run: npm audit --omit=dev --audit-level=critical\n\n      - name: Production build\n",
-    'workflow audit step',
-)
-new_workflow = Path('.github/workflows/verify.yml')
-new_workflow.write_text(workflow)
-old_workflow.unlink()
-
-# 2) Add a pure helper for history visibility so old documents remain compatible:
+# 1) Add a pure helper for history visibility so old documents remain compatible:
 # absence/null deletedAt => visible; a real deletedAt marker => hidden.
 persistence_path = Path('src/utils/firestorePersistence.ts')
 persistence = persistence_path.read_text()
@@ -52,7 +25,7 @@ if 'isSoftDeletedReportRecord' in persistence:
     raise SystemExit('soft-delete helper already exists unexpectedly')
 persistence_path.write_text(persistence.rstrip() + append_helper)
 
-# 3) Change the client delete action into a metadata-only update and hide those
+# 2) Change the client delete action into a metadata-only update and hide those
 # snapshots from history without introducing a Firestore composite index.
 app_path = Path('src/App.tsx')
 app = app_path.read_text()
@@ -82,7 +55,7 @@ app = replace_once(
 )
 app_path.write_text(app)
 
-# 4) Make report snapshots immutable at the checked-in rules boundary. The only
+# 3) Make report snapshots immutable at the checked-in rules boundary. The only
 # allowed client update is the additive/repeatable soft-delete metadata change.
 rules_path = Path('firestore.rules')
 rules = rules_path.read_text()
@@ -94,7 +67,7 @@ rules = replace_once(
 )
 rules_path.write_text(rules)
 
-# 5) Extend persistence tests and add a source/rules boundary regression.
+# 4) Extend persistence tests and add a source/rules boundary regression.
 test_path = Path('src/utils/firestorePersistence.test.ts')
 test = test_path.read_text()
 test = replace_once(
