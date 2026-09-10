@@ -1,0 +1,22 @@
+name: Phase 4A Route Audit
+
+on:
+  push:
+    branches:
+      - phase4a-auth-boundary
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Protected route call sites
+        shell: bash
+        run: |
+          echo '=== protected routes in server/client ==='
+          grep -R -n -E '/api/(analyze|dcf-assumptions|analyze-metric|tts)' -- server.ts src || true
+          echo '=== firebase auth usage ==='
+          grep -R -n -E 'getIdToken|onAuthStateChanged|firebase/auth|Authorization' -- src server server.ts || true
