@@ -576,7 +576,16 @@ Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matchin
 
       console.log(`[analyze] Starting analysis for ${ticker} using model ${model || 'default'}, language ${language || 'English'}, type ${analysisType || 'fundamental'}`);
       
-      const agentFiles = loadAgentFiles(path.join(process.cwd(), "agent"), "/.agents");
+      // The runtime prompt below is the authoritative output contract. Do not inject
+      // legacy agent configuration/instruction files into the managed-agent environment,
+      // where they can compete with the current dynamic JSON schema.
+      const legacyAgentRuntimeFiles = new Set([
+        '/.agents/AGENTS.md',
+        '/.agents/agent.yaml',
+        '/.agents/requirements.txt',
+      ]);
+      const agentFiles = loadAgentFiles(path.join(process.cwd(), "agent"), "/.agents")
+        .filter((source) => !legacyAgentRuntimeFiles.has(source.target));
       
       const host = req.get('host');
       const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
