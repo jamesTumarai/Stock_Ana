@@ -1,18 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { resolveFirebaseConfig } from './firebaseConfig';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCOoXe_HxUrdUgMMchwRtgBPb-Jvi91UR4",
-  authDomain: "stock-analyze-a89d0.firebaseapp.com",
-  projectId: "stock-analyze-a89d0",
-  storageBucket: "stock-analyze-a89d0.firebasestorage.app",
-  messagingSenderId: "251448969613",
-  appId: "1:251448969613:web:7678d9ec4649558f8195c4",
-  measurementId: "G-GSVXQJRSWN"
-};
+const viteEnv = (import.meta as ImportMeta & {
+  env?: Record<string, string | undefined>;
+}).env ?? {};
 
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(resolveFirebaseConfig(viteEnv));
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
