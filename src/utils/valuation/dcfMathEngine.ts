@@ -5,6 +5,7 @@ import {
   MACRO_TERMINAL_GROWTH_MAX_CAP_PCT,
   MACRO_TERMINAL_GROWTH_MIN_PCT,
 } from './constants';
+import { detectValuationModel } from './modelSelector';
 
 export interface DCFEngineInputs {
   ticker: string;
@@ -126,6 +127,11 @@ const unavailableScenario = (note: string) => ({
  *
  * If SEC coverage is partial/unavailable, the legacy validated report-statement path remains the
  * all-or-nothing fallback. The two financial sources are never mixed within one DCF calculation.
+ *
+ * Model selection is a conservative eligibility gate only. Financial institutions / lending-heavy
+ * businesses that route to `fintech_pe` or `ddm` are not valued with this operating-company FCFF
+ * engine even when every SEC financial input is present. This guard can only disable DCF; it never
+ * manufactures a replacement valuation.
  */
 export function buildRigorousDCFModel(
   data?: ReportWithMarketSnapshot,
@@ -137,6 +143,11 @@ export function buildRigorousDCFModel(
   const original = data?.intrinsic_value?.dcf_model;
   const missing: string[] = [];
   const derivedFields: string[] = [];
+
+  const selectedValuationModel = detectValuationModel(data, sym);
+  if (selectedValuationModel.model_type === 'fintech_pe' || selectedValuationModel.model_type === 'ddm') {
+    missing.push(`operating-company FCFF model fit (${selectedValuationModel.model_type} selected)`);
+  }
 
   let startingRevenueM: number | null = null;
   let sharesOutstandingM: number | null = null;
