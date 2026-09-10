@@ -1,0 +1,85 @@
+name: Apply Phase 3W Firestore Persistence Boundary
+
+on:
+  push:
+    branches:
+      - phase3w-firestore-persistence-boundary
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Patch App persistence boundary
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/App.tsx')
+          text = path.read_text()
+
+          import_needle = "import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';\n"
+          import_replacement = import_needle + "import { sanitizeUndefinedForPersistence } from './utils/firestorePersistence';\n"
+          if "sanitizeUndefinedForPersistence" not in text:
+              if import_needle not in text:
+                  raise SystemExit('Expected DCF assumption import not found')
+              text = text.replace(import_needle, import_replacement, 1)
+
+          save_needle = "    try {\n      console.log(\"Saving report to Firebase...\", { ticker, userId: user.uid });\n"
+          save_replacement = "    try {\n      const persistedReport = sanitizeUndefinedForPersistence(reportData);\n      console.log(\"Saving report to Firebase...\", { ticker, userId: user.uid });\n"
+          if "const persistedReport = sanitizeUndefinedForPersistence(reportData);" not in text:
+              if save_needle not in text:
+                  raise SystemExit('Expected saveReportToFirebase block not found')
+              text = text.replace(save_needle, save_replacement, 1)
+
+          data_needle = "        data: reportData\n"
+          if data_needle in text:
+              text = text.replace(data_needle, "        data: persistedReport\n", 1)
+          elif "        data: persistedReport\n" not in text:
+              raise SystemExit('Expected Firebase data payload not found')
+
+          path.write_text(text)
+          PY
+
+          rm .github/workflows/phase3w-apply.yml
+          git diff -- src/App.tsx
+
+      - run: npm ci
+
+      - name: Run all regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            echo "::group::$file"
+            node --import tsx "$file"
+            echo "::endgroup::"
+          done < <(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | sort -z)
+
+      - name: TypeScript check
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Diff whitespace check
+        run: git diff --check origin/main...HEAD && git diff --check
+
+      - name: Commit product patch and remove helper
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx src/utils/firestorePersistence.ts src/utils/firestorePersistence.test.ts .github/workflows/phase3w-apply.yml
+          git commit -m 'fix: sanitize report snapshots before Firestore persistence'
+          git push origin HEAD:phase3w-firestore-persistence-boundary
