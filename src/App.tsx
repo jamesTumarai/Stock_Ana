@@ -14,6 +14,7 @@ import { MotionIntro } from './components/MotionIntro';
 import { UserAvatar } from './components/UserAvatar';
 import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';
 import { fetchSecVerificationEnvelope } from './services/secVerificationService';
+import { fetchLiveQuotes } from './services/marketDataService';
 
 import { 
   DocumentFinding, 
@@ -359,6 +360,7 @@ export default function App() {
     const secVerificationPromise = aType === 'technical'
       ? Promise.resolve(null)
       : fetchSecVerificationEnvelope(requestedTicker, controller.signal);
+    const marketSnapshotPromise = fetchLiveQuotes([requestedTicker]);
     const startTimestamp = Date.now();
     let currentToolRuns = 0;
 
@@ -487,7 +489,10 @@ export default function App() {
       if (accumulatedText) {
           const finalData = parseFinalText(accumulatedText);
           if (finalData) {
-            const secVerification = await secVerificationPromise;
+            const [secVerification, marketResponse] = await Promise.all([
+              secVerificationPromise,
+              marketSnapshotPromise,
+            ]);
             const prepared = validateAndPrepareReport(
               {
                 ...finalData,
@@ -495,7 +500,11 @@ export default function App() {
                 analysis_type: aType,
                 ticker: requestedTicker,
               },
-              requestedTicker
+              requestedTicker,
+              {
+                marketQuotes: marketResponse?.quotes,
+                requireMarketSnapshot: aType !== 'technical',
+              },
             );
             if (prepared.report) {
               setRep(prepared.report);
@@ -861,7 +870,7 @@ export default function App() {
                   <AgentTimeline 
                     events={events} 
                     running={running} 
-                    hasReport={allReports.length > 0 && !isReportOpen}
+                    hasReport={allReports.length > 0 && !isReportOpen && !running}
                     onViewReport={() => setIsReportOpen(true)}
                     metrics={currentReport ? { durationSecs, tokenCount, documentCount: currentReport.findings?.length || 0 } : undefined}
                   />
