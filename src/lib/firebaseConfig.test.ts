@@ -1,28 +1,38 @@
 import assert from 'node:assert/strict';
 import {
-  LEGACY_PRODUCTION_FIREBASE_CONFIG,
-  resolveFirebaseConfig,
+  LEGACY_PRODUCTION_FIREBASE_PROJECT_ID,
+  isFirebaseDataAccessAllowed,
+  resolveFirebaseClientConfig,
 } from './firebaseConfig.ts';
+import { resolveFirebaseAdminProjectId } from '../../server/auth/firebaseProject.ts';
+
+const devClientEnv = {
+  VITE_FIREBASE_API_KEY: 'dev-api-key',
+  VITE_FIREBASE_AUTH_DOMAIN: 'lumina-dev.firebaseapp.com',
+  VITE_FIREBASE_PROJECT_ID: 'lumina-dev',
+  VITE_FIREBASE_STORAGE_BUCKET: 'lumina-dev.firebasestorage.app',
+  VITE_FIREBASE_MESSAGING_SENDER_ID: '123456',
+  VITE_FIREBASE_APP_ID: '1:123456:web:abcdef',
+  VITE_FIREBASE_MEASUREMENT_ID: 'G-DEV123',
+};
 
 {
-  const config = resolveFirebaseConfig({});
-  assert.equal(config.projectId, 'stock-analyze-a89d0');
-  assert.deepEqual(config, LEGACY_PRODUCTION_FIREBASE_CONFIG);
-  assert.notEqual(config, LEGACY_PRODUCTION_FIREBASE_CONFIG, 'resolver should return a copy');
+  const resolution = resolveFirebaseClientConfig({});
+  assert.equal(resolution.source, 'legacy_production_fallback');
+  assert.equal(resolution.config.projectId, LEGACY_PRODUCTION_FIREBASE_PROJECT_ID);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'stock-ana-ten.vercel.app'), true);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'stock-ana-git-main-jamestumarais-projects.vercel.app'), true);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'localhost'), false);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'preview-123.vercel.app'), false);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'localhost', true), true);
 }
 
 {
-  const config = resolveFirebaseConfig({
-    VITE_FIREBASE_API_KEY: 'dev-api-key',
-    VITE_FIREBASE_AUTH_DOMAIN: 'lumina-dev.firebaseapp.com',
-    VITE_FIREBASE_PROJECT_ID: 'lumina-dev',
-    VITE_FIREBASE_STORAGE_BUCKET: 'lumina-dev.firebasestorage.app',
-    VITE_FIREBASE_MESSAGING_SENDER_ID: '123456',
-    VITE_FIREBASE_APP_ID: '1:123456:web:abcdef',
-    VITE_FIREBASE_MEASUREMENT_ID: 'G-DEV123',
-  });
-
-  assert.deepEqual(config, {
+  const resolution = resolveFirebaseClientConfig(devClientEnv);
+  assert.equal(resolution.source, 'environment');
+  assert.equal(resolution.config.projectId, 'lumina-dev');
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'localhost'), true);
+  assert.deepEqual(resolution.config, {
     apiKey: 'dev-api-key',
     authDomain: 'lumina-dev.firebaseapp.com',
     projectId: 'lumina-dev',
@@ -33,18 +43,49 @@ import {
   });
 }
 
-{
-  assert.throws(
-    () => resolveFirebaseConfig({ VITE_FIREBASE_PROJECT_ID: 'lumina-dev' }),
-    /Incomplete Firebase client configuration/,
-  );
-}
+assert.throws(
+  () => resolveFirebaseClientConfig({ VITE_FIREBASE_PROJECT_ID: 'partial-only' }),
+  /Incomplete Firebase client environment configuration/,
+);
+assert.throws(
+  () => resolveFirebaseClientConfig({ VITE_FIREBASE_MEASUREMENT_ID: 'G-ONLY' }),
+  /Incomplete Firebase client environment configuration/,
+);
 
 {
-  assert.throws(
-    () => resolveFirebaseConfig({ VITE_FIREBASE_MEASUREMENT_ID: 'G-ONLY' }),
-    /Incomplete Firebase client configuration/,
-  );
+  const resolution = resolveFirebaseAdminProjectId({
+    FIREBASE_PROJECT_ID: 'lumina-dev',
+    VERCEL_ENV: 'preview',
+  });
+  assert.deepEqual(resolution, { projectId: 'lumina-dev', source: 'environment' });
 }
 
-console.log('Firebase client configuration tests passed');
+assert.throws(
+  () => resolveFirebaseAdminProjectId({ VERCEL_ENV: 'preview' }),
+  /FIREBASE_PROJECT_ID must be explicitly configured/,
+);
+assert.throws(
+  () => resolveFirebaseAdminProjectId({
+    FIREBASE_PROJECT_ID: LEGACY_PRODUCTION_FIREBASE_PROJECT_ID,
+    VERCEL_ENV: 'preview',
+  }),
+  /Production Firebase project is blocked/,
+);
+assert.throws(
+  () => resolveFirebaseAdminProjectId({ NODE_ENV: 'development' }),
+  /FIREBASE_PROJECT_ID must be explicitly configured/,
+);
+assert.equal(
+  resolveFirebaseAdminProjectId({ VERCEL_ENV: 'production' }).projectId,
+  LEGACY_PRODUCTION_FIREBASE_PROJECT_ID,
+);
+assert.equal(
+  resolveFirebaseAdminProjectId({
+    FIREBASE_PROJECT_ID: LEGACY_PRODUCTION_FIREBASE_PROJECT_ID,
+    VERCEL_ENV: 'preview',
+    FIREBASE_ALLOW_PRODUCTION_PROJECT_IN_NONPROD: 'true',
+  }).projectId,
+  LEGACY_PRODUCTION_FIREBASE_PROJECT_ID,
+);
+
+console.log('Firebase environment isolation tests passed');

@@ -15,7 +15,9 @@ There is intentionally no automatic switch to a new Firebase project. Existing A
 
 ## Environment contract
 
-With no `VITE_FIREBASE_*` variables set, the client preserves the historical production Firebase config. This is the backward-compatible path used by the current production deployment.
+Production keeps a backward-compatible fallback: with no `VITE_FIREBASE_*` variables set, the client resolves to the historical production Firebase config. The fallback does not grant that project to arbitrary hosts.
+
+When the client resolves to `stock-analyze-a89d0`, authenticated Firebase data access is allowed only on Lumina's known production hosts by default. `localhost` and preview hosts are blocked so development cannot silently read or write production Authentication/Firestore data. The emergency `VITE_FIREBASE_ALLOW_PRODUCTION_PROJECT=true` escape hatch exists only for deliberate, temporary operator use and must not be configured globally for preview/development.
 
 For an isolated development or staging Firebase project, set all required client variables together:
 
@@ -26,7 +28,9 @@ For an isolated development or staging Firebase project, set all required client
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
 
-`VITE_FIREBASE_MEASUREMENT_ID` is optional. Set server `FIREBASE_PROJECT_ID` to the same project ID used by the client. Partial client overrides are rejected by the app; never mix client fields from different Firebase projects.
+`VITE_FIREBASE_MEASUREMENT_ID` is optional. Partial client overrides are rejected by the app; never mix client fields from different Firebase projects.
+
+Server Firebase Admin follows the same isolation boundary. Production may fall back to `stock-analyze-a89d0`. Preview/development must set `FIREBASE_PROJECT_ID` explicitly to an isolated project. The production Firebase project is blocked in known non-production environments unless the operator intentionally sets `FIREBASE_ALLOW_PRODUCTION_PROJECT_IN_NONPROD=true`. Keep server `FIREBASE_PROJECT_ID` aligned with the client's `VITE_FIREBASE_PROJECT_ID`.
 
 ## Before any production rules deploy
 
@@ -122,4 +126,8 @@ Client hard delete of reports remains prohibited. Report snapshots remain immuta
 
 ## Release discipline
 
-`Verify Lumina` is the authoritative PR gate for repository changes. Do not use `npm audit fix --force`, and do not put `[skip ci]`, `[ci skip]`, `skip-checks:true`, or similar CI-suppression directives into merge commit titles or messages. Security/backend/Firebase changes require a production smoke check after merge/deploy before the phase is declared complete.
+`Verify Lumina` is the authoritative repository verification workflow. Its Node runtime must match production hosting (`24.x`) so CI does not certify a different major runtime than Vercel.
+
+Checking the workflow into Git is not by itself an enforced PR gate. Repository administration must enable a `main` branch protection or ruleset that requires pull requests and the `Verify Lumina` status before merge; verify that protection is active before declaring the platform foundation complete.
+
+Do not use `npm audit fix --force`, and do not put `[skip ci]`, `[ci skip]`, `skip-checks:true`, or similar CI-suppression directives into merge commit titles or messages. Security/backend/Firebase changes require a successful push-to-main verification plus a production deployment and smoke check before the phase is declared complete.
