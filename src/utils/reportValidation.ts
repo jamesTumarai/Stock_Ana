@@ -151,6 +151,136 @@ const sanitizeObjectField = (
   }
 };
 
+const ROW_STATEMENT_META_KEYS = new Set([
+  'period',
+  'period_ended',
+  'period_end',
+  'fiscal_period',
+  'fiscal_period_end',
+  'date',
+  'as_of_date',
+]);
+
+const ROW_STATEMENT_ALIASES: Record<'income_statement' | 'balance_sheet' | 'cash_flow', Record<string, string>> = {
+  income_statement: {
+    cost_of_revenue: 'cogs',
+    diluted_eps: 'eps_diluted',
+  },
+  balance_sheet: {
+    cash_and_cash_equivalents: 'cash_and_equivalents',
+    stockholders_equity: 'total_equity',
+    shareholders_equity: 'total_equity',
+  },
+  cash_flow: {
+    capital_expenditures: 'capex',
+    capital_expenditure: 'capex',
+  },
+};
+
+const exactArrayMatch = <T,>(left: T[], right: T[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
+
+const parseExplicitStatementRows = (value: unknown) => {
+  if (!Array.isArray(value) || value.length === 0 || !value.every(isRecord)) return null;
+  const rows = value as Record<string, any>[];
+  const periods = rows.map(row => typeof row.period === 'string' ? row.period.trim() : '');
+  if (periods.some(period => !period) || new Set(periods).size !== periods.length) return null;
+
+  const rawPeriodEnds = rows.map(row => row.period_ended ?? row.period_end ?? null);
+  const anyPeriodEnd = rawPeriodEnds.some(value => value !== null && value !== undefined);
+  let periodEnds: string[] | null = null;
+  if (anyPeriodEnd) {
+    if (rawPeriodEnds.some(value => typeof value !== 'string' || !value.trim())) return null;
+    periodEnds = rawPeriodEnds.map(value => String(value).trim());
+  }
+
+  return { rows, periods, periodEnds };
+};
+
+const transposeStatementRows = (
+  rows: Record<string, any>[],
+  sectionName: 'income_statement' | 'balance_sheet' | 'cash_flow',
+) => {
+  const aliases = ROW_STATEMENT_ALIASES[sectionName];
+  const metricKeys = Array.from(new Set(
+    rows.flatMap(row => Object.keys(row).filter(key => !ROW_STATEMENT_META_KEYS.has(key))),
+  ));
+  const output: Record<string, (number | null)[]> = {};
+
+  for (const sourceKey of metricKeys) {
+    const targetKey = aliases[sourceKey] ?? sourceKey;
+    const values: (number | null)[] = [];
+    for (const row of rows) {
+      const raw = row[sourceKey];
+      if (raw === undefined || raw === null) {
+        values.push(null);
+      } else if (isFiniteNumber(raw)) {
+        values.push(raw);
+      } else {
+        return null;
+      }
+    }
+
+    if (output[targetKey]) {
+      if (!exactArrayMatch(output[targetKey], values)) return null;
+      continue;
+    }
+    output[targetKey] = values;
+  }
+
+  return output;
+};
+
+const normalizeRowOrientedFinancialStatements = (fs: Record<string, any>) => {
+  if (fs.cash_flow !== undefined && fs.cash_flow_statement !== undefined) return null;
+
+  const income = parseExplicitStatementRows(fs.income_statement);
+  const balance = parseExplicitStatementRows(fs.balance_sheet);
+  const cash = parseExplicitStatementRows(fs.cash_flow ?? fs.cash_flow_statement);
+  if (!income || !balance || !cash) return null;
+  if (!exactArrayMatch(income.periods, balance.periods) || !exactArrayMatch(income.periods, cash.periods)) return null;
+
+  const suppliedPeriods = fs.periods;
+  if (suppliedPeriods !== undefined && suppliedPeriods !== null) {
+    if (!Array.isArray(suppliedPeriods)
+      || suppliedPeriods.some((period: unknown) => typeof period !== 'string' || !period.trim())) return null;
+    const normalizedSuppliedPeriods = suppliedPeriods.map((period: string) => period.trim());
+    if (!exactArrayMatch(income.periods, normalizedSuppliedPeriods)) return null;
+  }
+
+  const periodEndSets = [income.periodEnds, balance.periodEnds, cash.periodEnds];
+  const anyPeriodEnds = periodEndSets.some(value => value !== null);
+  let periodEndDates: string[] | null = null;
+  if (anyPeriodEnds) {
+    if (periodEndSets.some(value => value === null)) return null;
+    const first = periodEndSets[0] as string[];
+    if (!periodEndSets.every(value => exactArrayMatch(first, value as string[]))) return null;
+    periodEndDates = first;
+  }
+
+  const incomeStatement = transposeStatementRows(income.rows, 'income_statement');
+  const balanceSheet = transposeStatementRows(balance.rows, 'balance_sheet');
+  const cashFlow = transposeStatementRows(cash.rows, 'cash_flow');
+  if (!incomeStatement || !balanceSheet || !cashFlow) return null;
+
+  const metadata = { ...fs };
+  delete metadata.periods;
+  delete metadata.income_statement;
+  delete metadata.balance_sheet;
+  delete metadata.cash_flow;
+  delete metadata.cash_flow_statement;
+
+  const normalized: Record<string, any> = {
+    ...metadata,
+    periods: income.periods,
+    income_statement: incomeStatement,
+    balance_sheet: balanceSheet,
+    cash_flow: cashFlow,
+  };
+  if (periodEndDates) normalized.period_end_dates = periodEndDates;
+  return normalized;
+};
+
 const normalizeKnownReportShapeDrift = (report: Record<string, any>, issues: ReportValidationIssue[]) => {
   const ratios = report.valuation_ratios;
   if (isRecord(ratios)) {
@@ -172,7 +302,43 @@ const normalizeKnownReportShapeDrift = (report: Record<string, any>, issues: Rep
   }
 
   const fs = report.financial_statements;
-  if (isRecord(fs) && (!Array.isArray(fs.periods) || fs.periods.length === 0)) {
+  if (!isRecord(fs)) return;
+
+  const hasRowStatementShape = [
+    fs.income_statement,
+    fs.balance_sheet,
+    fs.cash_flow,
+    fs.cash_flow_statement,
+  ].some(Array.isArray);
+
+  if (hasRowStatementShape) {
+    const normalized = normalizeRowOrientedFinancialStatements(fs);
+    if (normalized) {
+      report.financial_statements = normalized;
+      issue(
+        issues,
+        'REPORT_FINANCIAL_STATEMENTS_ROW_SHAPE_NORMALIZED',
+        'warning',
+        'financial_statements',
+        'Transposed explicitly labeled fiscal-period rows into canonical metric series without changing financial values.',
+        'financial_statements',
+      );
+      return;
+    }
+
+    delete report.financial_statements;
+    issue(
+      issues,
+      'REPORT_FINANCIAL_STATEMENTS_QUARANTINED',
+      'warning',
+      'financial_statements',
+      'Row-oriented report financial statements were omitted because their explicit periods or numeric series could not be normalized losslessly.',
+      'financial_statements',
+    );
+    return;
+  }
+
+  if (!Array.isArray(fs.periods) || fs.periods.length === 0) {
     delete report.financial_statements;
     issue(
       issues,
