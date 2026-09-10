@@ -7,6 +7,15 @@ import { GoogleGenAI } from "@google/genai";
 import { validateDcfAssumptionModel } from "./src/utils/valuation/dcfAssumptionProposal.ts";
 import { createRequireFirebaseAuth } from "./server/auth/firebaseAuth.ts";
 import { createUserConcurrencyLimiter, createUserRateLimiter } from "./server/middleware/userRateLimit.ts";
+import {
+  normalizeAnalysisLanguage,
+  normalizeAnalysisType,
+  normalizeBoolean,
+  normalizeGeminiModel,
+  normalizeOptionalText,
+  normalizeTicker,
+  safeArtifactFilename,
+} from "./server/security/requestSecurity.ts";
 
 import { createInteraction, streamInteraction } from "./server/lib/agentClient.ts";
 import {
@@ -111,13 +120,26 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const metricRateLimit = createUserRateLimiter({ scope: 'analyze-metric', limit: 60, windowMs: rateWindowMs });
   const ttsRateLimit = createUserRateLimiter({ scope: 'tts', limit: 30, windowMs: rateWindowMs });
 
-  app.use(express.json({ limit: '50mb' }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (error?.type === 'entity.too.large') {
+      return res.status(413).json({ code: 'PAYLOAD_TOO_LARGE', error: 'Request payload is too large.' });
+    }
+    if (error instanceof SyntaxError && 'body' in error) {
+      return res.status(400).json({ code: 'INVALID_JSON', error: 'Request body must contain valid JSON.' });
+    }
+    return next(error);
+  });
 
   app.post("/api/tts", requireFirebaseAuth, ttsRateLimit, async (req, res) => {
     try {
-      const { text } = req.body;
-      if (!text) {
+      const rawText = req.body?.text;
+      if (typeof rawText !== 'string' || !rawText.trim()) {
         return res.status(400).json({ error: "Missing text." });
+      }
+      const text = rawText.trim();
+      if (text.length > 8_000) {
+        return res.status(400).json({ code: 'TTS_TEXT_TOO_LONG', error: 'TTS text exceeds the 8,000 character limit.' });
       }
 
       if (!process.env.GEMINI_API_KEY) {
@@ -487,26 +509,38 @@ STRICT RULES:
     }
   });
 
-  app.post("/api/upload_artifact", express.raw({ type: '*/*', limit: '50mb' }), (req, res) => {
+  app.post("/api/upload_artifact", requireFirebaseAuth, express.raw({ type: '*/*', limit: '20mb' }), (req, res) => {
     try {
-        const fileName = req.query.name || 'podcast_briefing.wav';
-        const localArtifactsDir = path.join(process.cwd(), 'workspace', 'artifacts');
+        const fileName = safeArtifactFilename(req.query.name);
+        if (!fileName) {
+          return res.status(400).json({ code: 'INVALID_ARTIFACT_NAME', error: 'Artifact name must be a safe filename without path components.' });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({ code: 'EMPTY_ARTIFACT', error: 'Artifact body is empty or invalid.' });
+        }
+        const localArtifactsDir = process.env.VERCEL === '1'
+          ? path.join('/tmp', 'artifacts')
+          : path.join(process.cwd(), 'workspace', 'artifacts');
         if (!fs.existsSync(localArtifactsDir)) {
             fs.mkdirSync(localArtifactsDir, { recursive: true });
         }
-        fs.writeFileSync(path.join(localArtifactsDir, fileName as string), req.body);
-        console.log(`[upload] Successfully saved ${fileName} (${req.body.length} bytes)`);
-        res.json({ success: true });
-    } catch (e) {
-        console.error("[upload] Error:", e);
-        res.status(500).json({ error: String(e) });
+        const artifactPath = path.join(localArtifactsDir, fileName);
+        if (path.dirname(artifactPath) !== localArtifactsDir) {
+          return res.status(400).json({ code: 'INVALID_ARTIFACT_PATH', error: 'Invalid artifact path.' });
+        }
+        fs.writeFileSync(artifactPath, req.body);
+        console.log(`[upload] Saved artifact ${fileName} (${req.body.length} bytes)`);
+        return res.json({ success: true });
+    } catch (e: any) {
+        console.error("[upload] Error:", e?.message || 'artifact write failed');
+        return res.status(500).json({ error: 'Artifact upload failed.' });
     }
   });
 
-  app.get("/api/download_jsonl", (req, res) => {
-    const ticker = req.query.ticker;
+  app.get("/api/download_jsonl", requireFirebaseAuth, (req, res) => {
+    const ticker = normalizeTicker(req.query.ticker);
     if (!ticker) {
-      return res.status(400).send("Missing ticker");
+      return res.status(400).send("Missing or invalid ticker");
     }
     
     const runLogsDir = process.env.VERCEL === '1' ? path.join('/tmp', 'run_logs') : path.join(process.cwd(), 'run_logs');
@@ -719,9 +753,18 @@ STRICT RULES:
 
   app.post("/api/analyze", requireFirebaseAuth, analyzeRateLimit, analyzeConcurrencyLimit, async (req, res) => {
     try {
-      const { ticker, instruction, origin, model, language, analysisType, useSelfConsistency } = req.body;
-      if (!ticker) {
-        return res.status(400).json({ error: "Missing ticker." });
+      const body = req.body || {};
+      const ticker = normalizeTicker(body.ticker);
+      const instruction = normalizeOptionalText(body.instruction, 4000);
+      const model = normalizeGeminiModel(body.model);
+      const language = normalizeAnalysisLanguage(body.language);
+      const analysisType = normalizeAnalysisType(body.analysisType);
+      const useSelfConsistency = normalizeBoolean(body.useSelfConsistency, false);
+      if (!ticker || instruction === null || !model || !language || !analysisType || useSelfConsistency === null) {
+        return res.status(400).json({
+          code: 'INVALID_ANALYZE_REQUEST',
+          error: 'Invalid ticker, model, language, analysis type, instruction, or self-consistency setting.',
+        });
       }
       if (!process.env.GEMINI_API_KEY?.trim()) {
         return res.status(503).json({
@@ -743,10 +786,6 @@ STRICT RULES:
       const agentFiles = loadAgentFiles(path.join(process.cwd(), "agent"), "/.agents")
         .filter((source) => !legacyAgentRuntimeFiles.has(source.target));
       
-      const host = req.get('host');
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-      const publicUrl = origin || `${protocol}://${host}`;
-
       const now = new Date();
       const todayISO = now.toISOString().split('T')[0];
       const currentYear = now.getFullYear();
@@ -2376,7 +2415,7 @@ ${event.message}
       const totalDuration = totalDurationSecs.toFixed(2) + 's';
       
       // Send final reliable stats to client
-      res.write(`data: ${JSON.stringify({ type: 'final_stats', duration: totalDurationSecs, tokens: totalTokens, jsonlLogUrl: '/run_logs/' + `run_log_${ticker}_${runId}.jsonl` })}
+      res.write(`data: ${JSON.stringify({ type: 'final_stats', duration: totalDurationSecs, tokens: totalTokens })}
 
 `);
 
@@ -2453,9 +2492,6 @@ ${event.message}
   if (options.serveFrontend !== false) {
   const distPath = path.join(process.cwd(), 'dist');
   const indexHtmlExists = fs.existsSync(path.join(distPath, 'index.html'));
-  app.use('/artifacts', express.static(path.join(process.cwd(), 'workspace', 'artifacts')));
-  app.use('/run_logs', express.static(path.join(process.cwd(), 'run_logs')));
-  app.use('/latest_log', express.static(process.cwd()));
 
   if (process.env.NODE_ENV !== "production" || !indexHtmlExists) {
     const vite = await createViteServer({
