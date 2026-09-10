@@ -1,9 +1,9 @@
 import type { RequestHandler } from 'express';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { resolveFirebaseAdminProjectId } from './firebaseProject.ts';
 
 const ADMIN_APP_NAME = 'lumina-server-auth';
-const DEFAULT_FIREBASE_PROJECT_ID = 'stock-analyze-a89d0';
 
 export interface VerifiedFirebaseIdentity {
   uid: string;
@@ -21,10 +21,8 @@ export function extractBearerToken(header: unknown): string | null {
 function getFirebaseAdminApp() {
   const existing = getApps().find(app => app.name === ADMIN_APP_NAME);
   if (existing) return existing;
-  return initializeApp(
-    { projectId: process.env.FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID },
-    ADMIN_APP_NAME,
-  );
+  const { projectId } = resolveFirebaseAdminProjectId();
+  return initializeApp({ projectId }, ADMIN_APP_NAME);
 }
 
 export async function verifyFirebaseIdToken(idToken: string): Promise<VerifiedFirebaseIdentity> {

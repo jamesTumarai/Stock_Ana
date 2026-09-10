@@ -1,18 +1,33 @@
-import type { FirebaseOptions } from 'firebase/app';
+export interface FirebaseWebConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId?: string;
+}
 
-export const LEGACY_PRODUCTION_FIREBASE_CONFIG: FirebaseOptions = Object.freeze({
+export type FirebaseConfigSource = 'environment' | 'legacy_production_fallback';
+
+export interface FirebaseClientConfigResolution {
+  config: FirebaseWebConfig;
+  source: FirebaseConfigSource;
+}
+
+export const LEGACY_PRODUCTION_FIREBASE_PROJECT_ID = 'stock-analyze-a89d0';
+
+export const LEGACY_PRODUCTION_FIREBASE_CONFIG: FirebaseWebConfig = Object.freeze({
   apiKey: 'AIzaSyCOoXe_HxUrdUgMMchwRtgBPb-Jvi91UR4',
   authDomain: 'stock-analyze-a89d0.firebaseapp.com',
-  projectId: 'stock-analyze-a89d0',
+  projectId: LEGACY_PRODUCTION_FIREBASE_PROJECT_ID,
   storageBucket: 'stock-analyze-a89d0.firebasestorage.app',
   messagingSenderId: '251448969613',
   appId: '1:251448969613:web:7678d9ec4649558f8195c4',
   measurementId: 'G-GSVXQJRSWN',
 });
 
-export type FirebaseClientEnvironment = Record<string, string | undefined>;
-
-const REQUIRED_CLIENT_ENV_KEYS = [
+const REQUIRED_ENV_KEYS = [
   'VITE_FIREBASE_API_KEY',
   'VITE_FIREBASE_AUTH_DOMAIN',
   'VITE_FIREBASE_PROJECT_ID',
@@ -21,41 +36,63 @@ const REQUIRED_CLIENT_ENV_KEYS = [
   'VITE_FIREBASE_APP_ID',
 ] as const;
 
-const OPTIONAL_CLIENT_ENV_KEYS = ['VITE_FIREBASE_MEASUREMENT_ID'] as const;
-const ALL_CLIENT_ENV_KEYS = [...REQUIRED_CLIENT_ENV_KEYS, ...OPTIONAL_CLIENT_ENV_KEYS] as const;
+const OPTIONAL_ENV_KEYS = ['VITE_FIREBASE_MEASUREMENT_ID'] as const;
+const ALL_FIREBASE_ENV_KEYS = [...REQUIRED_ENV_KEYS, ...OPTIONAL_ENV_KEYS] as const;
 
-function readNonEmpty(env: FirebaseClientEnvironment, key: string): string | undefined {
+const KNOWN_PRODUCTION_HOSTS = new Set([
+  'stock-ana-ten.vercel.app',
+  'stock-ana-jamestumarais-projects.vercel.app',
+  'stock-ana-git-main-jamestumarais-projects.vercel.app',
+]);
+
+const readString = (env: Record<string, unknown>, key: string): string => {
   const value = env[key];
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+  return typeof value === 'string' ? value.trim() : '';
+};
 
-export function resolveFirebaseConfig(env: FirebaseClientEnvironment): FirebaseOptions {
-  const configuredKeys = ALL_CLIENT_ENV_KEYS.filter(key => readNonEmpty(env, key));
+export function resolveFirebaseClientConfig(
+  env: Record<string, unknown>,
+): FirebaseClientConfigResolution {
+  const provided = ALL_FIREBASE_ENV_KEYS.filter(key => readString(env, key));
 
-  // Backward-compatible rollout: no Firebase Vite overrides means keep using the
-  // historical production project so existing Authentication users and report
-  // history continue to resolve exactly as before.
-  if (configuredKeys.length === 0) {
-    return { ...LEGACY_PRODUCTION_FIREBASE_CONFIG };
+  // Backward-compatible production path: when there is no Firebase client
+  // override at all, preserve the historical project so existing users/history
+  // remain attached to the same Authentication + Firestore project.
+  if (provided.length === 0) {
+    return {
+      config: { ...LEGACY_PRODUCTION_FIREBASE_CONFIG },
+      source: 'legacy_production_fallback',
+    };
   }
 
-  const missingKeys = REQUIRED_CLIENT_ENV_KEYS.filter(key => !readNonEmpty(env, key));
-  if (missingKeys.length > 0) {
+  const missing = REQUIRED_ENV_KEYS.filter(key => !readString(env, key));
+  if (missing.length > 0) {
     throw new Error(
-      `Incomplete Firebase client configuration. Set all required VITE_FIREBASE_* variables together. Missing: ${missingKeys.join(', ')}`,
+      `Incomplete Firebase client environment configuration. Missing: ${missing.join(', ')}`,
     );
   }
 
-  const measurementId = readNonEmpty(env, 'VITE_FIREBASE_MEASUREMENT_ID');
+  const measurementId = readString(env, 'VITE_FIREBASE_MEASUREMENT_ID');
   return {
-    apiKey: readNonEmpty(env, 'VITE_FIREBASE_API_KEY')!,
-    authDomain: readNonEmpty(env, 'VITE_FIREBASE_AUTH_DOMAIN')!,
-    projectId: readNonEmpty(env, 'VITE_FIREBASE_PROJECT_ID')!,
-    storageBucket: readNonEmpty(env, 'VITE_FIREBASE_STORAGE_BUCKET')!,
-    messagingSenderId: readNonEmpty(env, 'VITE_FIREBASE_MESSAGING_SENDER_ID')!,
-    appId: readNonEmpty(env, 'VITE_FIREBASE_APP_ID')!,
-    ...(measurementId ? { measurementId } : {}),
+    source: 'environment',
+    config: {
+      apiKey: readString(env, 'VITE_FIREBASE_API_KEY'),
+      authDomain: readString(env, 'VITE_FIREBASE_AUTH_DOMAIN'),
+      projectId: readString(env, 'VITE_FIREBASE_PROJECT_ID'),
+      storageBucket: readString(env, 'VITE_FIREBASE_STORAGE_BUCKET'),
+      messagingSenderId: readString(env, 'VITE_FIREBASE_MESSAGING_SENDER_ID'),
+      appId: readString(env, 'VITE_FIREBASE_APP_ID'),
+      ...(measurementId ? { measurementId } : {}),
+    },
   };
+}
+
+export function isFirebaseDataAccessAllowed(
+  resolution: FirebaseClientConfigResolution,
+  hostname: string,
+  allowProductionProjectOverride = false,
+): boolean {
+  if (resolution.config.projectId !== LEGACY_PRODUCTION_FIREBASE_PROJECT_ID) return true;
+  if (allowProductionProjectOverride) return true;
+  return KNOWN_PRODUCTION_HOSTS.has(hostname.toLowerCase());
 }

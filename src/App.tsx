@@ -1,6 +1,6 @@
 import { LandingView } from './LandingView';
 import { HistoryModal } from './components/HistoryModal';
-import { auth, db, googleProvider } from './lib/firebase';
+import { auth, db, firebaseDataAccessAllowed, googleProvider } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
@@ -167,9 +167,12 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
+      if (currentUser && firebaseDataAccessAllowed) {
         fetchHistory(currentUser.uid);
       } else {
+        if (currentUser && !firebaseDataAccessAllowed) {
+          console.warn('[firebase] Authenticated data access is blocked until this environment has its own Firebase configuration.');
+        }
         setHistoryReports([]);
       }
     });
@@ -177,6 +180,10 @@ export default function App() {
   }, []);
 
   const handleLogin = async () => {
+    if (!firebaseDataAccessAllowed) {
+      setError('Firebase is not configured for this environment. Production Firebase access is blocked outside approved production hosts.');
+      return;
+    }
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -193,6 +200,7 @@ export default function App() {
   };
 
   const fetchHistory = async (userId: string) => {
+    if (!firebaseDataAccessAllowed) return;
     try {
       console.log("Fetching history for user: ", userId);
       const q = query(
@@ -221,7 +229,7 @@ export default function App() {
   };
 
   const deleteReports = async (reportIds: string | string[]) => {
-    if (!user) return;
+    if (!user || !firebaseDataAccessAllowed) return;
     const ids = Array.isArray(reportIds) ? reportIds : [reportIds];
     try {
       for (const id of ids) {
@@ -240,7 +248,7 @@ export default function App() {
   };
 
   const saveReportToFirebase = async (reportData: ReportData) => {
-    if (!user) return;
+    if (!user || !firebaseDataAccessAllowed) return;
     try {
       const persistedReport = sanitizeUndefinedForPersistence(reportData);
       console.log("Saving report to Firebase...", { ticker, userId: user.uid });
@@ -355,6 +363,10 @@ export default function App() {
     aRef: any,
     eIdRef: any
   ) => {
+    if (!firebaseDataAccessAllowed) {
+      setErr('Firebase is not configured for this environment. Analysis is blocked to prevent production-account cross-environment access.');
+      return;
+    }
     setRun(true);
     setErr(null);
     setRep(null);
