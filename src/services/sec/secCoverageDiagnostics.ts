@@ -15,6 +15,13 @@ export interface SecConceptCoverageDiagnostic {
   latestEnd?: string;
   latestFiled?: string;
   latestForm?: string;
+  /** Latest raw SEC companyfacts value in the candidate's preferred source unit. Diagnostics only. */
+  latestValue?: number;
+  /** Latest deterministic normalized value in the candidate's preferred source unit. Diagnostics only. */
+  latestNormalizedValue?: number;
+  latestNormalizedEnd?: string;
+  latestNormalizedFiscalYear?: number;
+  latestNormalizedFiscalQuarter?: 1 | 2 | 3 | 4;
 }
 
 export interface SecCoverageDiagnostics {
@@ -89,6 +96,7 @@ const diagnosticFor = (bundle: SecCompanyBundleLike, candidate: Candidate): SecC
     ? normalizeInstantFactsToFiscalQuarters(facts)
     : normalizeDurationFactsToStandaloneQuarters(facts);
   const latest = latestFact(facts);
+  const latestNormalized = normalized.length > 0 ? normalized[normalized.length - 1] : undefined;
 
   return {
     group: candidate.group,
@@ -101,6 +109,11 @@ const diagnosticFor = (bundle: SecCompanyBundleLike, candidate: Candidate): SecC
     latestEnd: latest?.end,
     latestFiled: latest?.filed,
     latestForm: latest?.form,
+    latestValue: typeof latest?.val === 'number' && Number.isFinite(latest.val) ? latest.val : undefined,
+    latestNormalizedValue: latestNormalized?.value,
+    latestNormalizedEnd: latestNormalized?.end,
+    latestNormalizedFiscalYear: latestNormalized?.fiscalYear,
+    latestNormalizedFiscalQuarter: latestNormalized?.fiscalQuarter,
   };
 };
 
