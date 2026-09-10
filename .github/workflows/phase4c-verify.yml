@@ -20,6 +20,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Make final-stats patch whitespace independent
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/phase4c_patch.py')
+          text = p.read_text()
+          start = text.index("replace_once(\n    'server.ts',\n    \"          res.write(`data: ${JSON.stringify({ type: 'final_stats'")
+          end = text.index("\n\nreplace_once(\n    'server.ts',\n    \"  app.use('/artifacts'", start)
+          replacement = '''p = Path('server.ts')
+          text = p.read_text()
+          old_property = ", jsonlLogUrl: '/run_logs/' + `run_log_${ticker}_${runId}.jsonl`"
+          if text.count(old_property) != 1:
+              raise SystemExit(f"server.ts: expected one jsonlLogUrl property, found {text.count(old_property)}")
+          p.write_text(text.replace(old_property, '', 1))'''
+          p.write_text(text[:start] + replacement + text[end:])
+          PY
       - name: Apply server hardening
         run: python scripts/phase4c_patch.py
       - name: Remove temporary scaffolding
