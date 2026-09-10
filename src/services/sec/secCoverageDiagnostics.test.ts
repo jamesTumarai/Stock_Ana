@@ -39,11 +39,21 @@ const currentDebt = diagnostics.debt.find(item => item.concept === 'LongTermDebt
 assert.equal(currentDebt?.present, true);
 assert.equal(currentDebt?.normalizedQuarterCount, 1);
 assert.equal(currentDebt?.latestEnd, '2026-06-30');
+assert.equal(currentDebt?.latestValue, 12_000_000);
+assert.equal(currentDebt?.latestNormalizedValue, 12_000_000);
+assert.equal(currentDebt?.latestNormalizedEnd, '2026-06-30');
+assert.equal(currentDebt?.latestNormalizedFiscalYear, 2026);
+assert.equal(currentDebt?.latestNormalizedFiscalQuarter, 2);
 assert.ok(diagnostics.debt.find(item => item.concept === 'DebtCurrent')?.present === false);
 assert.equal(
   diagnostics.investments.find(item => item.concept === 'AvailableForSaleSecuritiesDebtSecuritiesCurrent')?.present,
   true,
 );
 assert.equal(diagnostics.cash_flow.find(item => item.concept === 'PaymentsToAcquireProductiveAssets')?.normalizedQuarterCount, 2);
+assert.equal(
+  diagnostics.cash_flow.find(item => item.concept === 'PaymentsToAcquireProductiveAssets')?.latestNormalizedValue,
+  6_000_000,
+  'Duration diagnostics should expose the latest standalone normalized quarter, not raw YTD value.',
+);
 
 console.log('SEC coverage diagnostic checks passed');
