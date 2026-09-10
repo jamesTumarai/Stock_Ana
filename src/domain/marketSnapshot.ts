@@ -48,6 +48,8 @@ export interface MarketQuoteLike {
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const finiteOrNull = (value: unknown): number | null | undefined => value === null ? null : finite(value) ? value : undefined;
+const omitUndefined = <T extends object>(value: T): T =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 
 /**
  * Convert one provider quote into Lumina's canonical market snapshot.
@@ -57,7 +59,7 @@ export function buildMarketSnapshot(ticker: string, quote?: MarketQuoteLike | nu
   const normalizedTicker = ticker.trim().toUpperCase();
   if (!normalizedTicker || !quote || !finite(quote.price) || quote.price <= 0) return null;
 
-  return {
+  return omitUndefined({
     ticker: normalizedTicker,
     price: quote.price,
     change: finiteOrNull(quote.change),
@@ -80,5 +82,5 @@ export function buildMarketSnapshot(ticker: string, quote?: MarketQuoteLike | nu
     dataKind: 'market_quote',
     // Yahoo-backed quotes can be delayed or session-dependent, so Lumina must not claim guaranteed real-time data.
     isRealtime: false,
-  };
+  });
 }
