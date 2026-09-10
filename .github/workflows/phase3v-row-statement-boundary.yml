@@ -1,0 +1,46 @@
+name: Apply Phase 3V Row Statement Boundary
+
+on:
+  push:
+    branches:
+      - phase3v-row-statement-boundary
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply product patch
+        run: python .github/scripts/phase3v-row-statement-boundary.py
+      - run: npm ci
+      - name: Verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            echo "::group::$file"
+            node --import tsx "$file"
+            echo "::endgroup::"
+          done < <(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | sort -z)
+          npm run lint
+          npm run build
+          git diff --check
+      - name: Commit product patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: normalize explicit row-oriented report statements"
+          git push origin HEAD:phase3v-row-statement-boundary
