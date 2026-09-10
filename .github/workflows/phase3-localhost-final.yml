@@ -30,16 +30,20 @@ jobs:
           set -euo pipefail
           PORT=3000 NODE_ENV=production npm start > /tmp/lumina-local.log 2>&1 &
           echo $! > /tmp/lumina-local.pid
+          ready=0
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then
+            if curl -fsS http://127.0.0.1:3000/ > /tmp/index.html; then
+              ready=1
               break
             fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3000/ > /tmp/index.html
-          node -e "const fs=require('fs'); const h=JSON.parse(fs.readFileSync('/tmp/health.json','utf8')); if(h.ok!==true) process.exit(2); console.log('LOCAL_HEALTH='+JSON.stringify(h));"
+          test "$ready" = "1"
           grep -q '<!doctype html>' /tmp/index.html || grep -qi '<html' /tmp/index.html
           echo 'LOCAL_UI=200'
+          status=$(curl -sS -o /tmp/tts.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:3000/api/tts)
+          test "$status" = "400"
+          node -e "const fs=require('fs'); const b=JSON.parse(fs.readFileSync('/tmp/tts.json','utf8')); if(!String(b.error||'').includes('Missing text')) process.exit(2); console.log('LOCAL_API_TTS_EMPTY=400');"
           tail -n 30 /tmp/lumina-local.log
       - name: Run Phase 3S model-fit and SEC classification guards
         run: |
@@ -118,7 +122,6 @@ jobs:
           if(preparedReport?.report_provenance?.dcf_financial_inputs?.source!=='sec_verified') throw new Error('DCF provenance is not sec_verified');
           if(preparedReport?.report_provenance?.market_price?.source!=='market_snapshot') throw new Error('Market provenance is not market_snapshot');
 
-          // Mirrors saveReportToFirebase exactly: sanitize only at persistence boundary.
           const persistedReport:any=sanitizeUndefinedForPersistence(preparedReport);
           const undefinedPaths=findUndefined(persistedReport);
           if(undefinedPaths.length) throw new Error('Firestore-unsafe undefined values remain: '+undefinedPaths.slice(0,20).join(','));
