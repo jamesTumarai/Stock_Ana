@@ -1,0 +1,80 @@
+name: Phase 3R.1 Production Single-Pass Probe
+
+on:
+  push:
+    branches:
+      - phase3r1-production-smoke-singlepass
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Run production combined single-pass probe
+        shell: bash
+        run: |
+          cat > /tmp/probe.mjs <<'JS'
+          const base = 'https://stock-ana-ten.vercel.app';
+          const startedAt = Date.now();
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 330_000);
+          try {
+            const response = await fetch(`${base}/api/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ticker: 'MSFT',
+                origin: base,
+                model: 'gemini-3.8-flash',
+                language: 'Thai',
+                analysisType: 'combined',
+                useSelfConsistency: false,
+              }),
+              signal: controller.signal,
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('Missing response body');
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let counts = { thinking: 0, text: 0, tool_call: 0, tool_result: 0, complete: 0, error: 0 };
+            let textChars = 0;
+            let firstTextMs = null;
+            let doneSeen = false;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const blocks = buffer.split('\n\n');
+              buffer = blocks.pop() ?? '';
+              for (const block of blocks) {
+                const line = block.split('\n').find(line => line.startsWith('data: '));
+                if (!line) continue;
+                const data = line.slice(6);
+                if (data === '[DONE]') {
+                  doneSeen = true;
+                  continue;
+                }
+                try {
+                  const event = JSON.parse(data);
+                  if (event.type in counts) counts[event.type] += 1;
+                  if (event.type === 'text' && typeof event.text === 'string') {
+                    if (firstTextMs === null) firstTextMs = Date.now() - startedAt;
+                    textChars += event.text.length;
+                  }
+                } catch {}
+              }
+            }
+            const elapsedMs = Date.now() - startedAt;
+            console.log('SINGLEPASS_PROBE=' + JSON.stringify({ status: response.status, elapsedMs, firstTextMs, textChars, doneSeen, counts }));
+            if (counts.error > 0) throw new Error(`SSE error events: ${counts.error}`);
+            if (counts.text === 0) throw new Error('No text SSE events');
+            if (!doneSeen) throw new Error('Missing [DONE]');
+          } finally {
+            clearTimeout(timer);
+          }
+          JS
+          node /tmp/probe.mjs
