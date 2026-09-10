@@ -6,6 +6,12 @@ import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 
 import { createInteraction, streamInteraction } from "./server/lib/agentClient.ts";
+import {
+  extractLastJsonObjectFromText,
+  extractStructuredValuationAssumptions,
+  hasUsableDcfAssumptions,
+  mergeStructuredValuationAssumptions,
+} from "./server/lib/valuationAssumptionBridge.ts";
 
 function loadAgentFiles(dir: string, basePath: string): Array<{type: string, content: string, target: string}> {
   let files: Array<{type: string, content: string, target: string}> = [];
@@ -32,6 +38,8 @@ async function createInteractionWithRetry(res: any, opts: any) {
   let attempt = 0;
   let currentOpts = { ...opts };
   const fallbackModel = 'gemini-3.7-flash';
+  const retryBudgetMs = 45_000;
+  const retryStartedAt = Date.now();
 
   while (attempt < 4) {
     const response = await createInteraction(currentOpts);
@@ -47,12 +55,18 @@ async function createInteractionWithRetry(res: any, opts: any) {
         retryInSecs = Math.ceil(parseFloat(match[1])) + 1;
       }
       
+      const retryDelayMs = retryInSecs * 1000;
+      const remainingBudgetMs = retryBudgetMs - (Date.now() - retryStartedAt);
+      if (retryDelayMs > remainingBudgetMs) {
+        console.warn(`[429 Rate Limit] Requested retry delay ${retryInSecs}s exceeds remaining retry budget; failing fast.`);
+        return new Response(errTxt, { status: response.status, statusText: response.statusText, headers: response.headers });
+      }
       console.warn(`[429 Rate Limit] Waiting ${retryInSecs}s before retry...`);
       if (res) {
         res.write(`data: ${JSON.stringify({ type: 'thinking', text: `Rate limit reached. Waiting ${retryInSecs} seconds to retry...` })}\n\n`);
       }
       
-      await new Promise(r => setTimeout(r, retryInSecs * 1000));
+      await new Promise(r => setTimeout(r, retryDelayMs));
       attempt++;
     } else if (
       status === 503 ||
@@ -2008,6 +2022,27 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
       const toolExecutions: any = {};
       let totalTokens = 0;
 
+      const appendCanonicalValuationIfNeeded = async (researchText: string) => {
+        if (analysisType === 'technical' || !researchText.trim()) return;
+        const parsedReport = extractLastJsonObjectFromText(researchText);
+        if (!parsedReport || hasUsableDcfAssumptions(parsedReport)) return;
+
+        res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Normalizing valuation assumptions into Lumina DCF contract...' })}\n\n`);
+        const assumptions = await extractStructuredValuationAssumptions(researchText, actualModel);
+        if (!assumptions || assumptions.wacc_pct === null || assumptions.terminal_growth_pct === null || assumptions.projection_years === null
+          || [assumptions.scenarios.bear, assumptions.scenarios.base, assumptions.scenarios.bull].some(
+            scenario => scenario.revenue_cagr_pct === null || scenario.terminal_margin_pct === null,
+          )) {
+          console.warn('[valuation-assumptions] Complete structured DCF assumptions unavailable; valuation remains fail-closed.');
+          return;
+        }
+
+        const canonicalReport = mergeStructuredValuationAssumptions(parsedReport, assumptions);
+        const canonicalText = '\n\n```json\n' + JSON.stringify(canonicalReport) + '\n```\n';
+        res.write(`data: ${JSON.stringify({ type: 'text', text: canonicalText })}\n\n`);
+        console.log('[valuation-assumptions] Appended canonical DCF assumption contract; fair values remain deterministic-only.');
+      };
+
             if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Validation Protocol...' })}\n\n`);
           
@@ -2088,15 +2123,19 @@ ${dynamicSchema}`;
               return;
           }
           const mergeStream = streamInteraction(mergeResponse);
+          let validatedText = '';
           
           try {
               for await (const event of mergeStream) {
                   res.write(`data: ${JSON.stringify(event)}\n\n`);
+                  if (event.type === 'text' && event.text) validatedText += event.text;
               }
           } catch (err: any) {
               console.error("Validator stream error:", err);
               res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
           }
+
+          await appendCanonicalValuationIfNeeded(validatedText || fullText);
           
           res.write(`data: [DONE]\n\n`);
           res.end();
@@ -2121,6 +2160,7 @@ ${dynamicSchema}`;
 
           
       const stream = streamInteraction(response);
+      let fullText = '';
       for await (const event of stream) {
         res.write(`data: ${JSON.stringify(event)}
 
@@ -2171,6 +2211,7 @@ ${dynamicSchema}`;
 
 `;
         } else if (event.type === 'text') {
+          if (event.text) fullText += event.text;
           debugLog += `[TEXT OUTPUT]
 ${event.text}
 
@@ -2186,6 +2227,8 @@ ${event.message}
             break;
         }
       }
+
+      await appendCanonicalValuationIfNeeded(fullText);
           
       const totalDurationSecs = ((Date.now() - startTime) / 1000);
       const totalDuration = totalDurationSecs.toFixed(2) + 's';
@@ -2248,8 +2291,10 @@ ${event.message}
         const logFileName = `run_log_${ticker}_${Date.now()}.txt`;
         const finalLog = summaryLog + debugLog;
         fs.writeFileSync(path.join(runLogsDir, logFileName), finalLog, 'utf-8');
-        // Maintain backwards compatibility with the old txt file
-        fs.writeFileSync(path.join(process.cwd(), `sub_agents_debug_${ticker}.txt`), finalLog, 'utf-8');
+        // /var/task is read-only on Vercel. Keep the legacy local debug file only in writable local runtimes.
+        if (process.env.VERCEL !== '1') {
+          fs.writeFileSync(path.join(process.cwd(), `sub_agents_debug_${ticker}.txt`), finalLog, 'utf-8');
+        }
       } catch (e) {
         console.error("Failed to write debug log", e);
       }

@@ -64,4 +64,13 @@ assert.match(serverSource, /'\/.agents\/agent\.yaml'/);
 assert.match(serverSource, /'\/.agents\/requirements\.txt'/);
 assert.match(serverSource, /\.filter\(\(source\) => !legacyAgentRuntimeFiles\.has\(source\.target\)\)/);
 
+
+// Managed-agent prose is research output, not a machine contract. Fundamental/Combined
+// requests must have a structured-assumption bridge before deterministic DCF preparation.
+assert.match(serverSource, /extractStructuredValuationAssumptions/);
+assert.match(serverSource, /appendCanonicalValuationIfNeeded/);
+assert.match(serverSource, /mergeStructuredValuationAssumptions/);
+assert.match(serverSource, /retryBudgetMs = 45_000/);
+assert.match(serverSource, /process\.env\.VERCEL !== '1'/);
+
 console.log('Production prompt integrity checks passed');
