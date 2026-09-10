@@ -1,9 +1,7 @@
 name: Phase 4E1 Verify
 
 on:
-  push:
-    branches:
-      - phase4e-ci-data-safety
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,87 +9,5 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Apply Phase 4E1 patch
-        run: python scripts/phase4e1_patch.py
-
-      - name: Remove temporary scaffolding
-        run: rm -f scripts/phase4e1_patch.py .github/workflows/phase4e1-verify.yml
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Dependency audit inventory
-        shell: bash
-        run: |
-          set +e
-          npm audit --omit=dev --json > /tmp/npm-audit.json
-          set -e
-          node <<'NODE'
-          const fs = require('fs');
-          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
-          console.log('production vulnerability counts:', JSON.stringify(audit.metadata?.vulnerabilities ?? {}));
-          for (const [name, item] of Object.entries(audit.vulnerabilities ?? {})) {
-            if (!['high', 'critical'].includes(item.severity)) continue;
-            const via = (item.via ?? []).map(v => typeof v === 'string' ? v : `${v.source}:${v.title}`).join(' | ');
-            console.log(`${name}: severity=${item.severity}; direct=${item.isDirect}; range=${item.range}; fix=${JSON.stringify(item.fixAvailable)}; via=${via}`);
-          }
-          NODE
-          rm -f /tmp/npm-audit.json
-
-      - name: Run regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r -d '' file; do
-            echo "::group::$file"
-            node --import tsx "$file"
-            echo "::endgroup::"
-          done < <(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | sort -z)
-
-      - name: TypeScript check
-        run: npm run lint
-
-      - name: Critical production dependency gate
-        run: npm audit --omit=dev --audit-level=critical
-
-      - name: Production build
-        run: npm run build
-
-      - name: Working diff whitespace check
-        run: git diff --check
-
-      - name: Data-safety assertions
-        shell: bash
-        run: |
-          test -f .github/workflows/verify.yml
-          test ! -f .github/workflows/verify-phase2.yml
-          test ! -f scripts/phase4e1_patch.py
-          test ! -f .github/workflows/phase4e1-verify.yml
-          ! grep -q "deleteDoc(doc(db, \"reports\"" src/App.tsx
-          grep -q "allow delete: if false;" firestore.rules
-
-      - name: Commit verified changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "jamesTumarai"
-          git config user.email "jzuzu175@gmail.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No verified changes to commit"
-            exit 0
-          fi
-          git diff --cached --check
-          git commit -m "chore: harden CI and Firestore report retention"
-          git push origin HEAD:phase4e-ci-data-safety
+      - run: echo "Phase 4E1 verifier temporarily paused while workflow files are updated via GitHub connector."
