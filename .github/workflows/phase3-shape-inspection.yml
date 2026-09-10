@@ -1,0 +1,39 @@
+name: Phase 3 Shape Inspection
+on:
+  push:
+    branches:
+      - phase3-final-acceptance
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Inspect MSFT report shapes
+        shell: bash
+        run: |
+          cat > /tmp/inspect.mjs <<'JS'
+          const BASE='https://stock-ana-ten.vercel.app';
+          const r=await fetch(BASE+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:'MSFT',origin:BASE,model:'gemini-3.8-flash',language:'Thai',analysisType:'fundamental',useSelfConsistency:false})});
+          const raw=await r.text(); let t='';
+          for(const b of raw.split('\n\n')){const l=b.split('\n').find(x=>x.startsWith('data: '));if(!l)continue;try{const e=JSON.parse(l.slice(6));if(e.type==='text'&&e.text)t+=e.text}catch{}}
+          const ms=[...t.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)]; let d=null;
+          for(let i=ms.length-1;i>=0;i--){try{d=JSON.parse(ms[i][1]);if(d)break}catch{}}
+          if(!d) throw new Error('no parseable report');
+          const fs=d.financial_statements;
+          const vr=d.valuation_ratios;
+          console.log('SHAPE='+JSON.stringify({
+            rootKeys:Object.keys(d),
+            financialStatementsType:Array.isArray(fs)?'array':typeof fs,
+            financialStatementKeys:fs&&typeof fs==='object'&&!Array.isArray(fs)?Object.keys(fs):[],
+            periodsType:Array.isArray(fs?.periods)?'array':typeof fs?.periods,
+            periods:Array.isArray(fs?.periods)?fs.periods:fs?.periods,
+            valuationRatiosType:Array.isArray(vr)?'array':typeof vr,
+            valuationRatioKeys:vr&&typeof vr==='object'&&!Array.isArray(vr)?Object.keys(vr):[],
+            valuationRatiosPreview:Array.isArray(vr)?vr.slice(0,2):vr,
+          }));
+          JS
+          node /tmp/inspect.mjs
