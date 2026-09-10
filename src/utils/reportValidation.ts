@@ -8,6 +8,7 @@ import type {
 import { normalizeReport } from './reportIntegrity';
 import { detectStatementTemplate, validateFinancialStatements } from './statementValidator';
 import { buildReportProvenanceManifest } from './reportProvenance';
+import { buildMarketSnapshot, type MarketQuoteLike } from '../domain/marketSnapshot';
 
 export const CURRENT_REPORT_SCHEMA_VERSION = 2;
 export const CURRENT_GENERATED_BY_VERSION = 'lumina-phase3-provenance-v1';
@@ -16,6 +17,11 @@ export interface PreparedReportResult {
   report: ReportData | null;
   validation: ReportValidationResult;
   canPersist: boolean;
+}
+
+export interface PrepareReportOptions {
+  marketQuotes?: Record<string, MarketQuoteLike | undefined>;
+  requireMarketSnapshot?: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, any> =>
@@ -239,13 +245,23 @@ const parseSharesToMillionsForComparison = (value: unknown): number | null => {
   return parsed > 100_000 ? parsed / 1_000_000 : parsed;
 };
 
-const addCrossSectionIssues = (report: ReportData, issues: ReportValidationIssue[]) => {
+const addCrossSectionIssues = (
+  report: ReportData,
+  issues: ReportValidationIssue[],
+  hasCanonicalMarketSnapshot = false,
+) => {
   const profilePrice = report.company_profile?.stock_price;
   const intrinsicPrice = report.intrinsic_value?.current_price;
   if (isFiniteNumber(profilePrice) && isFiniteNumber(intrinsicPrice) && relativeDifference(profilePrice, intrinsicPrice) > 0.01) {
-    issue(issues, 'CURRENT_PRICE_CONFLICT', 'critical', 'cross_section',
-      `Current price conflicts across report sections (${profilePrice} vs ${intrinsicPrice}).`,
-      'company_profile.stock_price / intrinsic_value.current_price');
+    if (hasCanonicalMarketSnapshot) {
+      issue(issues, 'REPORT_PRICE_OVERRIDDEN_BY_MARKET_SNAPSHOT', 'warning', 'market_data',
+        `Conflicting report prices (${profilePrice} vs ${intrinsicPrice}) were replaced by the provider market snapshot.`,
+        'company_profile.stock_price / intrinsic_value.current_price');
+    } else {
+      issue(issues, 'CURRENT_PRICE_CONFLICT', 'critical', 'cross_section',
+        `Current price conflicts across report sections (${profilePrice} vs ${intrinsicPrice}).`,
+        'company_profile.stock_price / intrinsic_value.current_price');
+    }
   }
 
   const summaryBase = report.intrinsic_value?.summary?.base_case_fair_value;
@@ -426,7 +442,11 @@ const blockCriticalFinancialOutputs = (report: ReportData, validation: ReportVal
   return report;
 };
 
-export function validateAndPrepareReport(input: unknown, expectedTicker?: string): PreparedReportResult {
+export function validateAndPrepareReport(
+  input: unknown,
+  expectedTicker?: string,
+  options: PrepareReportOptions = {},
+): PreparedReportResult {
   const issues: ReportValidationIssue[] = [];
   const checkedAt = new Date().toISOString();
 
@@ -480,8 +500,21 @@ export function validateAndPrepareReport(input: unknown, expectedTicker?: string
   sanitizeCriticalScalars(report, issues);
 
   const typedReport = report as ReportData;
+  const marketQuote = typedReport.ticker
+    ? options.marketQuotes?.[typedReport.ticker.toUpperCase()]
+    : undefined;
+  const marketSnapshot = typedReport.ticker
+    ? buildMarketSnapshot(typedReport.ticker, marketQuote)
+    : null;
+
   if (typedReport.financial_statements) addStatementValidationIssues(typedReport, issues);
-  addCrossSectionIssues(typedReport, issues);
+  addCrossSectionIssues(typedReport, issues, Boolean(marketSnapshot));
+
+  if (options.requireMarketSnapshot && !marketSnapshot) {
+    issue(issues, 'MARKET_SNAPSHOT_UNAVAILABLE', 'critical', 'market_data',
+      'A provider-backed market snapshot is required before valuation can be persisted.',
+      'market_snapshot');
+  }
 
   const validation: ReportValidationResult = {
     status: statusFromIssues(issues),
@@ -491,7 +524,7 @@ export function validateAndPrepareReport(input: unknown, expectedTicker?: string
   };
   typedReport.validation = validation;
 
-  const normalized = normalizeReport(typedReport, typedReport.ticker);
+  const normalized = normalizeReport(typedReport, typedReport.ticker, options.marketQuotes);
   normalized.schema_version = CURRENT_REPORT_SCHEMA_VERSION;
   normalized.generated_by_version = CURRENT_GENERATED_BY_VERSION;
   normalized.validation = validation;

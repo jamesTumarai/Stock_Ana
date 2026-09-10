@@ -207,4 +207,132 @@ const makeValidReport = () => ({
   assert.notEqual(prepared.report?.five_pillars as any, 'not-an-object');
 }
 
+
+
+const makeEligibleSecEnvelope = () => ({
+  status: 'verified_eligible',
+  ticker: 'TEST',
+  retrieved_at: '2026-09-10T00:00:00.000Z',
+  provenance_status: 'verified',
+  provenance_warnings: [],
+  dcf_coverage: {
+    eligible: true,
+    periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
+    current_shares_outstanding_m: 80,
+    issues: [],
+  },
+  dcf_financial_inputs: {
+    version: 1,
+    generated_by: 'sec-verified-financial-inputs-v1',
+    eligible: true,
+    ticker: 'TEST',
+    periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
+    source_period: 'Q1 2026–Q4 2026',
+    latest_balance_sheet_period_end: '2026-12-31',
+    share_as_of: '2027-01-20',
+    starting_revenue_m: 1000,
+    trailing_four_free_cash_flow_m: 160,
+    historical_fcf_margin_pct: 16,
+    cash_and_equivalents_m: 100,
+    short_term_investments_m: 30,
+    total_debt_m: 110,
+    net_cash_m: 20,
+    current_shares_outstanding_m: 80,
+    issues: [],
+  },
+  latest_statements_source: null,
+});
+
+
+{
+  const prepared = validateAndPrepareReport(makeValidReport(), 'TEST', {
+    marketQuotes: {
+      TEST: {
+        symbol: 'TEST',
+        price: 55,
+        provider: 'Test Provider',
+        asOf: '2026-09-10T00:00:00.000Z',
+        retrievedAt: '2026-09-10T00:00:01.000Z',
+      },
+    },
+    requireMarketSnapshot: true,
+  });
+  const reportWithMarket = prepared.report as any;
+  assert.equal(prepared.validation.status, 'valid');
+  assert.equal(prepared.canPersist, true);
+  assert.equal(reportWithMarket?.market_snapshot?.price, 55);
+  assert.equal(reportWithMarket?.market_snapshot?.provider, 'Test Provider');
+  assert.ok(!Object.values(reportWithMarket?.market_snapshot ?? {}).includes(undefined), 'Persisted market snapshot must not contain undefined fields');
+  assert.equal(reportWithMarket?.intrinsic_value?.current_price, 55);
+  assert.equal(reportWithMarket?.intrinsic_value?.dcf_model?.inputs?.priceSource, 'market_snapshot');
+  assert.equal(reportWithMarket?.report_provenance?.market_price?.source, 'market_snapshot');
+}
+
+
+
+{
+  const conflictingPrice: any = makeValidReport();
+  conflictingPrice.intrinsic_value.current_price = 70;
+  const prepared = validateAndPrepareReport(conflictingPrice, 'TEST', {
+    marketQuotes: {
+      TEST: {
+        symbol: 'TEST',
+        price: 55,
+        provider: 'Test Provider',
+        asOf: '2026-09-10T00:00:00.000Z',
+        retrievedAt: '2026-09-10T00:00:01.000Z',
+      },
+    },
+    requireMarketSnapshot: true,
+  });
+  assert.equal(prepared.validation.status, 'warning');
+  assert.equal(prepared.canPersist, true);
+  assert.ok(prepared.validation.issues.some(item => item.code === 'REPORT_PRICE_OVERRIDDEN_BY_MARKET_SNAPSHOT'));
+  assert.ok(!prepared.validation.issues.some(item => item.code === 'CURRENT_PRICE_CONFLICT'));
+  assert.equal(prepared.report?.company_profile?.stock_price, 55);
+  assert.equal(prepared.report?.intrinsic_value?.current_price, 55);
+}
+
+
+{
+  const report: any = makeValidReport();
+  report.sec_verification = makeEligibleSecEnvelope();
+  const prepared = validateAndPrepareReport(report, 'TEST', {
+    marketQuotes: {
+      TEST: {
+        symbol: 'TEST',
+        price: 55,
+        provider: 'Test Provider',
+        asOf: '2026-09-10T00:00:00.000Z',
+        retrievedAt: '2026-09-10T00:00:01.000Z',
+      },
+    },
+    requireMarketSnapshot: true,
+  });
+  const finalReport = prepared.report as any;
+  assert.equal(prepared.canPersist, true);
+  assert.equal(finalReport?.sec_verification?.status, 'verified_eligible');
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.financialDataSource, 'sec_verified');
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.priceSource, 'market_snapshot');
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.startingRevenueM, 1000);
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.sharesOutstandingM, 80);
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.netCashM, 20);
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.currentPrice, 55);
+  assert.equal(finalReport?.report_provenance?.dcf_financial_inputs?.source, 'sec_verified');
+  assert.equal(finalReport?.report_provenance?.market_price?.source, 'market_snapshot');
+}
+
+
+{
+  const prepared = validateAndPrepareReport(makeValidReport(), 'TEST', {
+    marketQuotes: {},
+    requireMarketSnapshot: true,
+  });
+  assert.equal(prepared.validation.status, 'invalid');
+  assert.equal(prepared.canPersist, false);
+  assert.ok(prepared.validation.issues.some(item => item.code === 'MARKET_SNAPSHOT_UNAVAILABLE'));
+  assert.equal(prepared.report?.intrinsic_value?.dcf_model?.inputs?.isValid, false);
+  assert.equal(prepared.report?.intrinsic_value?.summary.base_case_fair_value, null);
+}
+
 console.log('Runtime report validation checks passed');
