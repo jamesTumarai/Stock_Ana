@@ -444,7 +444,7 @@ export default function App() {
                   if (evt.tokens > 0) setTok(evt.tokens);
                   if (evt.duration > 0) setDur(Math.round(evt.duration));
                   if (ENABLE_JSON_DOWNLOAD && evt.jsonlLogUrl) {
-                      fetch(evt.jsonlLogUrl)
+                      authenticatedFetch(evt.jsonlLogUrl)
                         .then(res => res.blob())
                         .then(blob => {
                             const url = window.URL.createObjectURL(blob);
