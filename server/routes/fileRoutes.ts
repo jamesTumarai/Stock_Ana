@@ -40,12 +40,12 @@ export function registerFileRoutes(
     if (!ticker) {
       return res.status(400).send("Missing or invalid ticker");
     }
-    
+
     const runLogsDir = process.env.VERCEL === '1' ? path.join('/tmp', 'run_logs') : path.join(process.cwd(), 'run_logs');
     if (!fs.existsSync(runLogsDir)) {
       return res.status(404).send("No logs found");
     }
-    
+
     const files = fs.readdirSync(runLogsDir)
       .filter(f => f.startsWith(`run_log_${ticker}_`) && f.endsWith('.jsonl'))
       .sort((a, b) => {
@@ -57,11 +57,11 @@ export function registerFileRoutes(
         }
         return 0;
       });
-      
+
     if (files.length === 0) {
       return res.status(404).send("No JSONL log found for ticker");
     }
-    
+
     const latestFile = path.join(runLogsDir, files[0]);
     res.download(latestFile);
   });
