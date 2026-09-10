@@ -164,20 +164,23 @@ export function mergeStructuredValuationAssumptions(
   };
 }
 
+const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] };
+const nullableInteger = { anyOf: [{ type: 'integer' }, { type: 'null' }] };
+
 const valuationAssumptionSchema = {
   type: 'object',
   properties: {
-    wacc_pct: { type: ['number', 'null'], description: 'AI-proposed discount-rate assumption in percent.' },
-    terminal_growth_pct: { type: ['number', 'null'], description: 'AI-proposed terminal growth assumption in percent.' },
-    projection_years: { type: ['integer', 'null'], description: 'Explicit forecast horizon in whole years.' },
+    wacc_pct: { ...nullableNumber, description: 'AI-proposed discount-rate assumption in percent.' },
+    terminal_growth_pct: { ...nullableNumber, description: 'AI-proposed terminal growth assumption in percent.' },
+    projection_years: { ...nullableInteger, description: 'Explicit forecast horizon in whole years.' },
     scenarios: {
       type: 'object',
       properties: {
         bear: {
           type: 'object',
           properties: {
-            revenue_cagr_pct: { type: ['number', 'null'] },
-            terminal_margin_pct: { type: ['number', 'null'], description: 'Terminal free-cash-flow margin in percent.' },
+            revenue_cagr_pct: nullableNumber,
+            terminal_margin_pct: { ...nullableNumber, description: 'Terminal free-cash-flow margin in percent.' },
             key_assumption_note: { type: 'string' },
           },
           required: ['revenue_cagr_pct', 'terminal_margin_pct', 'key_assumption_note'],
@@ -185,8 +188,8 @@ const valuationAssumptionSchema = {
         base: {
           type: 'object',
           properties: {
-            revenue_cagr_pct: { type: ['number', 'null'] },
-            terminal_margin_pct: { type: ['number', 'null'], description: 'Terminal free-cash-flow margin in percent.' },
+            revenue_cagr_pct: nullableNumber,
+            terminal_margin_pct: { ...nullableNumber, description: 'Terminal free-cash-flow margin in percent.' },
             key_assumption_note: { type: 'string' },
           },
           required: ['revenue_cagr_pct', 'terminal_margin_pct', 'key_assumption_note'],
@@ -194,8 +197,8 @@ const valuationAssumptionSchema = {
         bull: {
           type: 'object',
           properties: {
-            revenue_cagr_pct: { type: ['number', 'null'] },
-            terminal_margin_pct: { type: ['number', 'null'], description: 'Terminal free-cash-flow margin in percent.' },
+            revenue_cagr_pct: nullableNumber,
+            terminal_margin_pct: { ...nullableNumber, description: 'Terminal free-cash-flow margin in percent.' },
             key_assumption_note: { type: 'string' },
           },
           required: ['revenue_cagr_pct', 'terminal_margin_pct', 'key_assumption_note'],
@@ -208,6 +211,8 @@ const valuationAssumptionSchema = {
 };
 
 const outputTextFromInteraction = (body: any): string => {
+  if (typeof body?.output_text === 'string' && body.output_text) return body.output_text;
+
   const steps = Array.isArray(body?.steps) ? body.steps : [];
   const text = steps
     .filter((step: any) => step?.type === 'model_output' && Array.isArray(step.content))
