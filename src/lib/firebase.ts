@@ -1,18 +1,23 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { isFirebaseDataAccessAllowed, resolveFirebaseClientConfig } from './firebaseConfig';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCOoXe_HxUrdUgMMchwRtgBPb-Jvi91UR4",
-  authDomain: "stock-analyze-a89d0.firebaseapp.com",
-  projectId: "stock-analyze-a89d0",
-  storageBucket: "stock-analyze-a89d0.firebasestorage.app",
-  messagingSenderId: "251448969613",
-  appId: "1:251448969613:web:7678d9ec4649558f8195c4",
-  measurementId: "G-GSVXQJRSWN"
-};
+type ViteEnv = Record<string, string | boolean | undefined>;
+const viteEnv = (((import.meta as ImportMeta & { env?: ViteEnv }).env) ?? {}) as ViteEnv;
+const firebaseResolution = resolveFirebaseClientConfig(viteEnv);
+const runtimeHostname = typeof window === 'undefined' ? '' : window.location.hostname;
+const allowProductionProjectOverride = viteEnv.VITE_FIREBASE_ALLOW_PRODUCTION_PROJECT === 'true';
 
-const app = initializeApp(firebaseConfig);
+export const firebaseConfigSource = firebaseResolution.source;
+export const firebaseProjectId = firebaseResolution.config.projectId;
+export const firebaseDataAccessAllowed = isFirebaseDataAccessAllowed(
+  firebaseResolution,
+  runtimeHostname,
+  allowProductionProjectOverride,
+);
+
+const app = initializeApp(firebaseResolution.config);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
