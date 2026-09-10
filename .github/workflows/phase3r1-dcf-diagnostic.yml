@@ -1,0 +1,113 @@
+name: Phase 3R.1 DCF Diagnostic
+on:
+  push:
+    branches: [phase3r1-dcf-diagnostic]
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run production MSFT combined diagnostic
+        shell: bash
+        run: |
+          cat > .phase3r1-dcf-diagnostic.mts <<'TS'
+          import { fetchSecVerificationEnvelope } from './src/services/secVerificationService.ts';
+          import { fetchLiveQuotes } from './src/services/marketDataService.ts';
+          import { validateAndPrepareReport } from './src/utils/reportValidation.ts';
+
+          const BASE = 'https://stock-ana-ten.vercel.app';
+          (globalThis as any).window = globalThis;
+          const nativeFetch = globalThis.fetch.bind(globalThis);
+          globalThis.fetch = ((input: any, init?: any) => {
+            if (typeof input === 'string' && input.startsWith('/')) return nativeFetch(new URL(input, BASE), init);
+            return nativeFetch(input, init);
+          }) as typeof fetch;
+
+          const parseFinalText = (text: string) => {
+            const matches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+            for (let i = matches.length - 1; i >= 0; i -= 1) {
+              try {
+                const parsed = JSON.parse(matches[i][1]);
+                if (parsed && (parsed.verdict || parsed.findings || parsed.deep_insights)) return parsed;
+              } catch {}
+            }
+            const first = text.indexOf('{');
+            const last = text.lastIndexOf('}');
+            if (first >= 0 && last > first) {
+              try { return JSON.parse(text.slice(first, last + 1)); } catch {}
+            }
+            return null;
+          };
+
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 330_000);
+          const secPromise = fetchSecVerificationEnvelope('MSFT', controller.signal);
+          const marketPromise = fetchLiveQuotes(['MSFT']);
+
+          try {
+            const response = await fetch('/api/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ticker: 'MSFT',
+                origin: BASE,
+                model: 'gemini-3.8-flash',
+                language: 'Thai',
+                analysisType: 'combined',
+                useSelfConsistency: true,
+              }),
+              signal: controller.signal,
+            });
+            if (!response.ok) throw new Error(`Analyze HTTP ${response.status}`);
+            const rawSse = await response.text();
+            let accumulatedText = '';
+            const counts: Record<string, number> = {};
+            for (const block of rawSse.split('\n\n')) {
+              const line = block.split('\n').find(item => item.startsWith('data: '));
+              if (!line) continue;
+              const payload = line.slice(6);
+              if (!payload || payload === '[DONE]') continue;
+              try {
+                const event = JSON.parse(payload);
+                counts[event.type] = (counts[event.type] || 0) + 1;
+                if (event.type === 'text' && event.text) accumulatedText += event.text;
+              } catch {}
+            }
+            const finalData: any = parseFinalText(accumulatedText);
+            if (!finalData) throw new Error('No parseable final report JSON');
+            const [secVerification, marketResponse] = await Promise.all([secPromise, marketPromise]);
+            const prepared = validateAndPrepareReport(
+              {
+                ...finalData,
+                ...(secVerification ? { sec_verification: secVerification } : {}),
+                analysis_type: 'combined',
+                ticker: 'MSFT',
+              },
+              'MSFT',
+              { marketQuotes: marketResponse?.quotes, requireMarketSnapshot: true },
+            );
+            const originalDcf = finalData?.intrinsic_value?.dcf_model;
+            const inputs: any = prepared.report?.intrinsic_value?.dcf_model?.inputs;
+            console.log('DCF_DIAGNOSTIC=' + JSON.stringify({
+              httpStatus: response.status,
+              counts,
+              secStatus: secVerification?.status ?? null,
+              secEligible: secVerification?.dcf_financial_inputs?.eligible ?? null,
+              marketPrice: marketResponse?.quotes?.MSFT?.price ?? null,
+              originalAssumptions: originalDcf?.assumptions ?? null,
+              originalScenarios: originalDcf?.scenarios ?? null,
+              preparedInputs: inputs ?? null,
+              preparedValidation: prepared.validation,
+              canPersist: prepared.canPersist,
+            }));
+          } finally {
+            clearTimeout(timer);
+          }
+          TS
+          node --import tsx .phase3r1-dcf-diagnostic.mts
