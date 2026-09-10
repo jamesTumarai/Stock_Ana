@@ -1,0 +1,189 @@
+name: Phase 3R.1 Production Smoke
+
+on:
+  push:
+    branches:
+      - phase3r1-production-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run combined production E2E smoke
+        shell: bash
+        run: |
+          cat > .phase3r1-production-smoke.mts <<'TS'
+          import { fetchSecVerificationEnvelope } from './src/services/secVerificationService.ts';
+          import { fetchLiveQuotes } from './src/services/marketDataService.ts';
+          import { validateAndPrepareReport } from './src/utils/reportValidation.ts';
+
+          const BASE = 'https://stock-ana-ten.vercel.app';
+          (globalThis as any).window = globalThis;
+          const nativeFetch = globalThis.fetch.bind(globalThis);
+          globalThis.fetch = ((input: any, init?: any) => {
+            if (typeof input === 'string' && input.startsWith('/')) {
+              return nativeFetch(new URL(input, BASE), init);
+            }
+            return nativeFetch(input, init);
+          }) as typeof fetch;
+
+          const assert = (condition: unknown, message: string) => {
+            if (!condition) throw new Error(message);
+          };
+
+          const parseFinalText = (text: string) => {
+            if (!text) return null;
+            const matches = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+            for (let i = matches.length - 1; i >= 0; i -= 1) {
+              try {
+                const parsed = JSON.parse(matches[i][1]);
+                if (parsed && (parsed.verdict || parsed.findings || parsed.deep_insights)) return parsed;
+              } catch {}
+            }
+            const firstBrace = text.indexOf('{');
+            const lastBrace = text.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace > firstBrace) {
+              try {
+                const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1));
+                if (parsed && (parsed.verdict || parsed.findings || parsed.deep_insights)) return parsed;
+              } catch {}
+            }
+            return null;
+          };
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 330_000);
+          const secPromise = fetchSecVerificationEnvelope('MSFT', controller.signal);
+          const marketPromise = fetchLiveQuotes(['MSFT']);
+
+          try {
+            const response = await fetch('/api/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ticker: 'MSFT',
+                origin: BASE,
+                model: 'gemini-3.8-flash',
+                language: 'Thai',
+                analysisType: 'combined',
+                useSelfConsistency: true,
+              }),
+              signal: controller.signal,
+            });
+
+            assert(response.ok, `Analyze HTTP ${response.status}`);
+            const rawSse = await response.text();
+            const events: any[] = [];
+            let accumulatedText = '';
+            for (const block of rawSse.split('\n\n')) {
+              const line = block.split('\n').find(item => item.startsWith('data: '));
+              if (!line) continue;
+              const payload = line.slice(6);
+              if (!payload || payload === '[DONE]') continue;
+              try {
+                const event = JSON.parse(payload);
+                events.push(event);
+                if (event.type === 'text' && event.text) accumulatedText += event.text;
+              } catch {}
+            }
+
+            const errorEvents = events.filter(event => event.type === 'error');
+            const textEvents = events.filter(event => event.type === 'text').length;
+            const toolCalls = events.filter(event => event.type === 'tool_call').length;
+            const finalStats = events.findLast(event => event.type === 'final_stats');
+            assert(errorEvents.length === 0, `Analyze SSE emitted ${errorEvents.length} error event(s)`);
+            assert(textEvents > 0, 'Analyze SSE emitted no text events');
+
+            const finalData = parseFinalText(accumulatedText);
+            assert(finalData, 'Analyze SSE did not contain a parseable final report JSON object');
+
+            const [secVerification, marketResponse] = await Promise.all([secPromise, marketPromise]);
+            const prepared = validateAndPrepareReport(
+              {
+                ...finalData,
+                ...(secVerification ? { sec_verification: secVerification } : {}),
+                analysis_type: 'combined',
+                ticker: 'MSFT',
+              },
+              'MSFT',
+              {
+                marketQuotes: marketResponse?.quotes,
+                requireMarketSnapshot: true,
+              },
+            );
+
+            const report: any = prepared.report;
+            const dcfInputs = report?.intrinsic_value?.dcf_model?.inputs;
+            const provenance = report?.report_provenance;
+            const marketSnapshot = report?.market_snapshot;
+            const quote = marketResponse?.quotes?.MSFT;
+            const summary = {
+              analyze: {
+                httpStatus: response.status,
+                sseEvents: events.length,
+                textEvents,
+                toolCalls,
+                hasFinalStats: Boolean(finalStats),
+              },
+              sec: {
+                status: secVerification?.status ?? null,
+                eligible: secVerification?.dcf_financial_inputs?.eligible ?? null,
+              },
+              market: {
+                provider: quote?.provider ?? null,
+                price: quote?.price ?? null,
+                asOf: quote?.asOf ?? null,
+                snapshotPrice: marketSnapshot?.price ?? null,
+              },
+              validation: {
+                status: prepared.validation.status,
+                canPersist: prepared.canPersist,
+                issueCodes: prepared.validation.issues.map(issue => issue.code),
+              },
+              dcf: {
+                isValid: dcfInputs?.isValid ?? null,
+                priceSource: dcfInputs?.priceSource ?? null,
+                financialDataSource: dcfInputs?.financialDataSource ?? null,
+                sourcePeriod: dcfInputs?.sourcePeriod ?? null,
+                baseFairValue: report?.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share ?? null,
+              },
+              provenance: {
+                marketSource: provenance?.market_price?.source ?? null,
+                dcfSource: provenance?.dcf_financial_inputs?.source ?? null,
+                secStatus: provenance?.sec_cross_check?.status ?? null,
+              },
+            };
+            console.log('PHASE3R1_SMOKE_SUMMARY=' + JSON.stringify(summary));
+
+            assert(secVerification?.status === 'verified_eligible', `SEC status is ${secVerification?.status ?? 'null'}`);
+            assert(secVerification?.dcf_financial_inputs?.eligible === true, 'SEC DCF financial inputs are not eligible');
+            assert(typeof quote?.price === 'number' && quote.price > 0, 'Provider market quote is unavailable');
+            assert(marketSnapshot?.price === quote.price, 'Persistable report market snapshot does not match provider quote');
+            assert(dcfInputs?.priceSource === 'market_snapshot', `DCF priceSource is ${dcfInputs?.priceSource ?? 'null'}`);
+            assert(dcfInputs?.financialDataSource === 'sec_verified', `DCF financialDataSource is ${dcfInputs?.financialDataSource ?? 'null'}`);
+            assert(dcfInputs?.isValid === true, 'Deterministic DCF inputs are invalid');
+            assert(provenance?.market_price?.source === 'market_snapshot', 'Report provenance market source is not market_snapshot');
+            assert(provenance?.dcf_financial_inputs?.source === 'sec_verified', 'Report provenance DCF source is not sec_verified');
+            assert(provenance?.sec_cross_check?.status === 'verified_eligible', 'Report provenance SEC status is not verified_eligible');
+            assert(prepared.canPersist === true, `Report is not persistable (${prepared.validation.status})`);
+          } finally {
+            clearTimeout(timeout);
+          }
+          TS
+          node --import tsx .phase3r1-production-smoke.mts
