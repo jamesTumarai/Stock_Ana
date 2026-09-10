@@ -17,6 +17,7 @@ import { fetchSecVerificationEnvelope } from './services/secVerificationService'
 import { fetchLiveQuotes } from './services/marketDataService';
 import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
 import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
+import { sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
 
 import { 
   DocumentFinding, 
@@ -234,6 +235,7 @@ export default function App() {
   const saveReportToFirebase = async (reportData: ReportData) => {
     if (!user) return;
     try {
+      const persistedReport = sanitizeUndefinedForPersistence(reportData);
       console.log("Saving report to Firebase...", { ticker, userId: user.uid });
       await addDoc(collection(db, "reports"), {
         userId: user.uid,
@@ -243,7 +245,7 @@ export default function App() {
         schemaVersion: reportData.schema_version ?? CURRENT_REPORT_SCHEMA_VERSION,
         generatedByVersion: reportData.generated_by_version ?? CURRENT_GENERATED_BY_VERSION,
         validationStatus: reportData.validation?.status ?? 'warning',
-        data: reportData
+        data: persistedReport
       });
       console.log("Report saved successfully!");
       fetchHistory(user.uid);
