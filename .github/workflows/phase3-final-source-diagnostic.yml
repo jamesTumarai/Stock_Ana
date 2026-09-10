@@ -1,0 +1,85 @@
+name: Phase 3 Final Source Diagnostic
+
+on:
+  push:
+    branches:
+      - phase3-localhost-final-acceptance
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Diagnose SEC source selection
+        shell: bash
+        run: |
+          cat > .phase3-source-diag.mts <<'TS'
+          import { fetchSecVerificationEnvelope } from './src/services/secVerificationService.ts';
+          import { fetchLiveQuotes } from './src/services/marketDataService.ts';
+          import { fetchDcfAssumptionProposal } from './src/services/dcfAssumptionService.ts';
+          import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './src/utils/valuation/dcfAssumptionProposal.ts';
+          import { buildMarketSnapshot } from './src/domain/marketSnapshot.ts';
+          import { buildRigorousDCFModel } from './src/utils/valuation/dcfMathEngine.ts';
+          import { detectValuationModel } from './src/utils/valuation/modelSelector.ts';
+          import { validateAndPrepareReport } from './src/utils/reportValidation.ts';
+
+          const BASE='https://stock-ana-ten.vercel.app';
+          (globalThis as any).window=globalThis;
+          const nativeFetch=globalThis.fetch.bind(globalThis);
+          globalThis.fetch=((input:any,init?:any)=>typeof input==='string'&&input.startsWith('/')?nativeFetch(new URL(input,BASE),init):nativeFetch(input,init)) as typeof fetch;
+
+          const sec=await fetchSecVerificationEnvelope('MSFT');
+          const market=await fetchLiveQuotes(['MSFT']);
+          console.log('SEC_META='+JSON.stringify({status:sec?.status,eligible:sec?.dcf_financial_inputs?.eligible,ticker:sec?.dcf_financial_inputs?.ticker,periods:sec?.dcf_financial_inputs?.periods,issues:sec?.dcf_financial_inputs?.issues,sourcePeriod:sec?.dcf_financial_inputs?.source_period}));
+          const snapshot=buildMarketSnapshot('MSFT',market?.quotes?.MSFT);
+          const dcfShape={assumptions:{wacc_pct:8.5,terminal_growth_pct:2.5,projection_years:10},scenarios:{bear:{revenue_cagr_pct:5,terminal_margin_pct:16,fair_value_per_share:null,key_assumption_note:'bear'},base:{revenue_cagr_pct:8,terminal_margin_pct:20,fair_value_per_share:null,key_assumption_note:'base'},bull:{revenue_cagr_pct:11,terminal_margin_pct:24,fair_value_per_share:null,key_assumption_note:'bull'}}};
+          const fixture:any={ticker:'MSFT',company_profile:{sector:'Technology',industry:'Software'},market_snapshot:snapshot,intrinsic_value:{current_price:snapshot?.price??null,dcf_model:dcfShape},sec_verification:sec};
+          const fixtureResult=buildRigorousDCFModel(fixture,'MSFT');
+          console.log('FIXTURE_MODEL='+JSON.stringify(detectValuationModel(fixture,'MSFT')));
+          console.log('FIXTURE_INPUTS='+JSON.stringify(fixtureResult.inputs));
+
+          function parseFinalText(text:string){
+            const matches=[...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+            for(let i=matches.length-1;i>=0;i--){try{const p=JSON.parse(matches[i][1]);if(p&&typeof p==='object'&&!Array.isArray(p))return p}catch{}}
+            const first=text.indexOf('{'),last=text.lastIndexOf('}');
+            if(first>=0&&last>first){try{return JSON.parse(text.slice(first,last+1))}catch{}}
+            return null;
+          }
+          const c=new AbortController(); const timer=setTimeout(()=>c.abort(),285000);
+          let rawReport:any=null;
+          try{
+            const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:'MSFT',origin:BASE,model:'gemini-3.8-flash',language:'Thai',analysisType:'fundamental',useSelfConsistency:false}),signal:c.signal});
+            const raw=await r.text(); let text='';
+            for(const block of raw.split('\n\n')){const line=block.split('\n').find(x=>x.startsWith('data: '));if(!line)continue;const payload=line.slice(6);if(!payload||payload==='[DONE]')continue;try{const e=JSON.parse(payload);if(e.type==='text'&&e.text)text+=e.text}catch{}}
+            rawReport=parseFinalText(text);
+            console.log('ANALYZE_META='+JSON.stringify({http:r.status,parseable:!!rawReport,rootKeys:rawReport?Object.keys(rawReport):[]}));
+          } finally {clearTimeout(timer)}
+          if(!rawReport) process.exit(3);
+          console.log('RAW_MODEL='+JSON.stringify(detectValuationModel(rawReport,'MSFT')));
+          console.log('RAW_PROFILE='+JSON.stringify({sector:rawReport?.company_profile?.sector??null,industry:rawReport?.company_profile?.industry??null,country:rawReport?.company_profile?.overview?.country??null,description:String(rawReport?.company_profile?.description??rawReport?.company_profile?.overview?.description??'').slice(0,400)}));
+          console.log('RAW_DCF='+JSON.stringify({hasIntrinsic:!!rawReport?.intrinsic_value,hasDcf:!!rawReport?.intrinsic_value?.dcf_model,validAssumptions:hasValidDcfAssumptionModel(rawReport)}));
+          let report=rawReport;
+          if(!hasValidDcfAssumptionModel(report)){
+            const proposal=await fetchDcfAssumptionProposal('MSFT',report,sec);
+            console.log('PROPOSAL='+JSON.stringify(proposal));
+            if(proposal) report=attachDcfAssumptionModel(report,proposal);
+          }
+          const direct:any={...report,sec_verification:sec,market_snapshot:snapshot,ticker:'MSFT'};
+          console.log('DIRECT_MODEL='+JSON.stringify(detectValuationModel(direct,'MSFT')));
+          console.log('DIRECT_INPUTS='+JSON.stringify(buildRigorousDCFModel(direct,'MSFT').inputs));
+          const prepared=validateAndPrepareReport({...report,sec_verification:sec,analysis_type:'fundamental',ticker:'MSFT'},'MSFT',{marketQuotes:market?.quotes,requireMarketSnapshot:true});
+          console.log('PREPARED_META='+JSON.stringify({canPersist:prepared.canPersist,status:prepared.validation.status,issues:prepared.validation.issues.map(x=>({code:x.code,severity:x.severity,section:x.section}))}));
+          console.log('PREPARED_SEC='+JSON.stringify({status:(prepared.report as any)?.sec_verification?.status,eligible:(prepared.report as any)?.sec_verification?.dcf_financial_inputs?.eligible}));
+          console.log('PREPARED_INPUTS='+JSON.stringify((prepared.report as any)?.intrinsic_value?.dcf_model?.inputs??null));
+          console.log('PREPARED_MODEL='+JSON.stringify(detectValuationModel(prepared.report as any,'MSFT')));
+          TS
+          node --import tsx .phase3-source-diag.mts
