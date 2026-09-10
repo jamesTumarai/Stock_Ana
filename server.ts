@@ -5,6 +5,7 @@ import path from "path";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import { validateDcfAssumptionModel } from "./src/utils/valuation/dcfAssumptionProposal.ts";
+import { createRequireFirebaseAuth } from "./server/auth/firebaseAuth.ts";
 
 import { createInteraction, streamInteraction } from "./server/lib/agentClient.ts";
 import {
@@ -101,10 +102,11 @@ async function createInteractionWithRetry(res: any, opts: any) {
 
 export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const app = express();
+  const requireFirebaseAuth = createRequireFirebaseAuth();
 
   app.use(express.json({ limit: '50mb' }));
 
-  app.post("/api/tts", async (req, res) => {
+  app.post("/api/tts", requireFirebaseAuth, async (req, res) => {
     try {
       const { text } = req.body;
       if (!text) {
@@ -190,7 +192,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   // In-memory cache for Live AI Financial Analyst row insights
   const metricInsightCache = new Map<string, any>();
 
-  app.post("/api/analyze-metric", async (req, res) => {
+  app.post("/api/analyze-metric", requireFirebaseAuth, async (req, res) => {
     try {
       const {
         ticker,
@@ -346,7 +348,7 @@ Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matchin
     }
   });
 
-  app.post("/api/dcf-assumptions", async (req, res) => {
+  app.post("/api/dcf-assumptions", requireFirebaseAuth, async (req, res) => {
     try {
       const { ticker, companyName, businessContext = '', verifiedFinancialContext = {} } = req.body || {};
       const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
@@ -708,7 +710,7 @@ STRICT RULES:
     }
   });
 
-  app.post("/api/analyze", async (req, res) => {
+  app.post("/api/analyze", requireFirebaseAuth, async (req, res) => {
     try {
       const { ticker, instruction, origin, model, language, analysisType, useSelfConsistency } = req.body;
       if (!ticker) {

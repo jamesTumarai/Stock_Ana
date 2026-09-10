@@ -1,6 +1,7 @@
 import type { DCFModel, ReportData } from '../types';
 import type { SecVerificationEnvelope } from '../domain/secVerification';
 import { validateDcfAssumptionModel } from '../utils/valuation/dcfAssumptionProposal';
+import { authenticatedFetch } from './authenticatedFetch';
 
 const text = (value: unknown, max = 1800) =>
   typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
@@ -25,7 +26,7 @@ export async function fetchDcfAssumptionProposal(
   ].filter(Boolean).join('\n\n').slice(0, 7000);
 
   try {
-    const response = await fetch('/api/dcf-assumptions', {
+    const response = await authenticatedFetch('/api/dcf-assumptions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { FinancialStatementsData, KeyIndicatorsData, KeyIndicatorMetric, KeyIndicatorsCategory } from '../types';
 import { getFinancialAiInsight, FinancialAiInsight } from '../utils/financialAiInsights';
+import { authenticatedFetch } from '../services/authenticatedFetch';
 
 interface Props {
   data?: FinancialStatementsData;
@@ -642,7 +643,7 @@ export function FinancialStatementsTable({
     const fetchLiveAi = async () => {
       setIsAiAnalyzing(true);
       try {
-        const res = await fetch('/api/analyze-metric', {
+        const res = await authenticatedFetch('/api/analyze-metric', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
