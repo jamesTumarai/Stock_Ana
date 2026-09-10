@@ -151,6 +151,40 @@ const sanitizeObjectField = (
   }
 };
 
+const normalizeKnownReportShapeDrift = (report: Record<string, any>, issues: ReportValidationIssue[]) => {
+  const ratios = report.valuation_ratios;
+  if (isRecord(ratios)) {
+    const normalizedRatios = Object.entries(ratios).flatMap(([name, value]) => {
+      if (value === null || isFiniteNumber(value)) return [{ name, value }];
+      return [];
+    });
+    if (normalizedRatios.length > 0) {
+      report.valuation_ratios = normalizedRatios;
+      issue(
+        issues,
+        'VALUATION_RATIOS_SHAPE_NORMALIZED',
+        'warning',
+        'valuation',
+        'Converted scalar valuation-ratio fields into the canonical ratio array without changing values.',
+        'valuation_ratios',
+      );
+    }
+  }
+
+  const fs = report.financial_statements;
+  if (isRecord(fs) && (!Array.isArray(fs.periods) || fs.periods.length === 0)) {
+    delete report.financial_statements;
+    issue(
+      issues,
+      'REPORT_FINANCIAL_STATEMENTS_QUARANTINED',
+      'warning',
+      'financial_statements',
+      'Report financial statements were omitted because explicit fiscal period labels were unavailable; no periods were inferred.',
+      'financial_statements.periods',
+    );
+  }
+};
+
 const sanitizeTopLevelShapes = (report: Record<string, any>, issues: ReportValidationIssue[]) => {
   sanitizeObjectField(report, 'verdict', issues, { section: 'schema', severity: 'critical' });
   sanitizeObjectField(report, 'company_profile', issues, { section: 'schema', severity: 'warning' });
@@ -495,6 +529,7 @@ export function validateAndPrepareReport(
   report.schema_version = CURRENT_REPORT_SCHEMA_VERSION;
   report.generated_by_version = CURRENT_GENERATED_BY_VERSION;
 
+  normalizeKnownReportShapeDrift(report, issues);
   sanitizeTopLevelShapes(report, issues);
   sanitizeFinancialStatements(report, issues);
   sanitizeCriticalScalars(report, issues);
