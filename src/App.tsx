@@ -2,7 +2,7 @@ import { LandingView } from './LandingView';
 import { HistoryModal } from './components/HistoryModal';
 import { auth, db, googleProvider } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { CrossfadeVideo } from './components/CrossfadeVideo';
 import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight } from 'lucide-react';
@@ -17,7 +17,7 @@ import { fetchSecVerificationEnvelope } from './services/secVerificationService'
 import { fetchLiveQuotes } from './services/marketDataService';
 import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
 import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
-import { sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
+import { isSoftDeletedReportRecord, sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
 import { authenticatedFetch } from './services/authenticatedFetch';
 
 import { 
@@ -200,10 +200,12 @@ export default function App() {
         where("userId", "==", userId)
       );
       const querySnapshot = await getDocs(q);
-      let reports = querySnapshot.docs.map(docSnap => {
-        const record = { id: docSnap.id, ...docSnap.data() } as any;
-        return { ...record, isLegacy: isLegacyHistoryReport(record) };
-      });
+      let reports = querySnapshot.docs
+        .map(docSnap => {
+          const record = { id: docSnap.id, ...docSnap.data() } as any;
+          return { ...record, isLegacy: isLegacyHistoryReport(record) };
+        })
+        .filter(record => !isSoftDeletedReportRecord(record));
       // Sort client-side to avoid requiring composite index
       reports.sort((a, b) => {
         const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?.toMillis?.() || new Date(a.createdAt).getTime() || 0);
@@ -223,9 +225,13 @@ export default function App() {
     const ids = Array.isArray(reportIds) ? reportIds : [reportIds];
     try {
       for (const id of ids) {
-        await deleteDoc(doc(db, "reports", id));
+        await updateDoc(doc(db, "reports", id), {
+          deletedAt: serverTimestamp(),
+          deletedByUserId: user.uid,
+          deletedByVersion: CURRENT_GENERATED_BY_VERSION,
+        });
       }
-      console.log("Reports deleted successfully!");
+      console.log("Reports soft-deleted successfully!");
       setHistoryReports(prev => prev.filter(r => !ids.includes(r.id)));
     } catch (error: any) {
       console.error("Error deleting reports: ", error);

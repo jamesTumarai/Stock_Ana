@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { sanitizeUndefinedForPersistence } from './firestorePersistence';
+import { isSoftDeletedReportRecord, sanitizeUndefinedForPersistence } from './firestorePersistence';
 
 const collectUndefinedPaths = (value: unknown, path = 'root', out: string[] = []): string[] => {
   if (value === undefined) {
@@ -97,6 +97,13 @@ const collectUndefinedPaths = (value: unknown, path = 'root', out: string[] = []
   assert.equal(sanitized.report_provenance.market_price.source, 'market_snapshot');
   assert.equal(Object.prototype.hasOwnProperty.call(sanitized.report_provenance.financial_statements, 'source_period'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(sanitized.report_provenance.financial_statements, 'as_of'), false);
+}
+
+{
+  assert.equal(isSoftDeletedReportRecord({ id: 'legacy' }), false);
+  assert.equal(isSoftDeletedReportRecord({ deletedAt: null }), false);
+  assert.equal(isSoftDeletedReportRecord({ deletedAt: { seconds: 1 } }), true);
+  assert.equal(isSoftDeletedReportRecord(null), false);
 }
 
 console.log('firestorePersistence tests passed');
