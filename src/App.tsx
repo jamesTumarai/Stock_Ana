@@ -15,6 +15,8 @@ import { UserAvatar } from './components/UserAvatar';
 import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';
 import { fetchSecVerificationEnvelope } from './services/secVerificationService';
 import { fetchLiveQuotes } from './services/marketDataService';
+import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
+import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
 
 import { 
   DocumentFinding, 
@@ -493,9 +495,26 @@ export default function App() {
               secVerificationPromise,
               marketSnapshotPromise,
             ]);
+            let reportForValidation = finalData as ReportData;
+            if (
+              aType !== 'technical'
+              && secVerification?.status === 'verified_eligible'
+              && !hasValidDcfAssumptionModel(reportForValidation)
+            ) {
+              const proposal = await fetchDcfAssumptionProposal(
+                requestedTicker,
+                reportForValidation,
+                secVerification,
+                controller.signal,
+              );
+              if (proposal) {
+                reportForValidation = attachDcfAssumptionModel(reportForValidation, proposal);
+              }
+            }
+
             const prepared = validateAndPrepareReport(
               {
-                ...finalData,
+                ...reportForValidation,
                 ...(secVerification ? { sec_verification: secVerification } : {}),
                 analysis_type: aType,
                 ticker: requestedTicker,
