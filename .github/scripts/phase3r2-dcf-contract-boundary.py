@@ -55,15 +55,8 @@ replace_once(
     '429 budget guard',
 )
 
-replace_once(
-    "  return await createInteraction(currentOpts);\n}",
-    "  const finalResponse = await createInteraction(currentOpts);\n"
-    "  return finalResponse;\n}",
-    'retry terminal call',
-)
-
 helper_anchor = "      let debugLog = `--- Analysis Run for ${ticker} at ${new Date().toISOString()} ---`;\n      const toolExecutions: any = {};\n      let totalTokens = 0;\n"
-helper = helper_anchor + "\n      const appendCanonicalValuationIfNeeded = async (researchText: string) => {\n        if (analysisType === 'technical' || !researchText.trim()) return;\n        const parsedReport = extractLastJsonObjectFromText(researchText);\n        if (!parsedReport || hasUsableDcfAssumptions(parsedReport)) return;\n\n        res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Normalizing valuation assumptions into Lumina DCF contract...' })}\\n\\n`);\n        const assumptions = await extractStructuredValuationAssumptions(researchText, actualModel);\n        if (!assumptions || assumptions.wacc_pct === null || assumptions.terminal_growth_pct === null || assumptions.projection_years === null\n          || [assumptions.scenarios.bear, assumptions.scenarios.base, assumptions.scenarios.bull].some(\n            scenario => scenario.revenue_cagr_pct === null || scenario.terminal_margin_pct === null,\n          )) {\n          console.warn('[valuation-assumptions] Complete structured DCF assumptions unavailable; valuation remains fail-closed.');\n          return;\n        }\n\n        const canonicalReport = mergeStructuredValuationAssumptions(parsedReport, assumptions);\n        const canonicalText = `\\n\\n```json\\n${JSON.stringify(canonicalReport)}\\n```\\n`;\n        res.write(`data: ${JSON.stringify({ type: 'text', text: canonicalText })}\\n\\n`);\n        console.log('[valuation-assumptions] Appended canonical DCF assumption contract; fair values remain deterministic-only.');\n      };\n"
+helper = helper_anchor + "\n      const appendCanonicalValuationIfNeeded = async (researchText: string) => {\n        if (analysisType === 'technical' || !researchText.trim()) return;\n        const parsedReport = extractLastJsonObjectFromText(researchText);\n        if (!parsedReport || hasUsableDcfAssumptions(parsedReport)) return;\n\n        res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Normalizing valuation assumptions into Lumina DCF contract...' })}\\n\\n`);\n        const assumptions = await extractStructuredValuationAssumptions(researchText, actualModel);\n        if (!assumptions || assumptions.wacc_pct === null || assumptions.terminal_growth_pct === null || assumptions.projection_years === null\n          || [assumptions.scenarios.bear, assumptions.scenarios.base, assumptions.scenarios.bull].some(\n            scenario => scenario.revenue_cagr_pct === null || scenario.terminal_margin_pct === null,\n          )) {\n          console.warn('[valuation-assumptions] Complete structured DCF assumptions unavailable; valuation remains fail-closed.');\n          return;\n        }\n\n        const canonicalReport = mergeStructuredValuationAssumptions(parsedReport, assumptions);\n        const canonicalText = '\\n\\n```json\\n' + JSON.stringify(canonicalReport) + '\\n```\\n';\n        res.write(`data: ${JSON.stringify({ type: 'text', text: canonicalText })}\\n\\n`);\n        console.log('[valuation-assumptions] Appended canonical DCF assumption contract; fair values remain deterministic-only.');\n      };\n"
 replace_once(helper_anchor, helper, 'canonical valuation helper')
 
 replace_once(
@@ -85,8 +78,8 @@ replace_once(
 )
 
 replace_once(
-    "        } else if (event.type === 'text') {\n          debugLog += `[TEXT OUTPUT]\\n${event.text}\\n\\n`;",
-    "        } else if (event.type === 'text') {\n          if (event.text) fullText += event.text;\n          debugLog += `[TEXT OUTPUT]\\n${event.text}\\n\\n`;",
+    "        } else if (event.type === 'text') {\n",
+    "        } else if (event.type === 'text') {\n          if (event.text) fullText += event.text;\n",
     'single-pass text accumulation',
 )
 
