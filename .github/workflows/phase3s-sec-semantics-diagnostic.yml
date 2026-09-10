@@ -1,0 +1,53 @@
+name: Phase 3S SEC Semantics Diagnostic
+
+on:
+  push:
+    branches:
+      - phase3s-sec-semantics-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SEC_USER_AGENT: "Lumina Stock_Ana https://github.com/jamesTumarai/Stock_Ana"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Print current SEC taxonomy semantics
+        run: |
+          cat > .phase3s-sec-diagnostic.mts <<'TS'
+          import { createSecEdgarClientFromEnv } from './src/services/sec/secClient.ts';
+          import { normalizeInstantFactsToFiscalQuarters } from './src/services/sec/xbrlNormalizer.ts';
+
+          const concepts = [
+            'DebtCurrent','LongTermDebtCurrent','LongTermDebtNoncurrent','LongTermDebt','CommercialPaper','ShortTermBorrowings',
+            'FinanceLeaseLiabilityCurrent','FinanceLeaseLiabilityNoncurrent','DebtAndFinanceLeaseObligations',
+            'MarketableSecuritiesCurrent','AvailableForSaleSecuritiesDebtSecuritiesCurrent','AvailableForSaleSecuritiesDebtSecurities',
+            'CashCashEquivalentsAndShortTermInvestments','CashAndCashEquivalentsAtCarryingValue'
+          ];
+          const client = createSecEdgarClientFromEnv();
+          for (const ticker of ['AAPL','NVDA','AMZN','SOFI']) {
+            const bundle = await client.fetchCompanyBundle(ticker);
+            if (!bundle) throw new Error(`Missing SEC bundle for ${ticker}`);
+            console.log(`=== ${ticker} ===`);
+            for (const concept of concepts) {
+              const raw = bundle.companyFacts.facts?.['us-gaap']?.[concept]?.units?.USD ?? [];
+              const normalized = normalizeInstantFactsToFiscalQuarters(raw).sort((a,b) => a.end.localeCompare(b.end));
+              if (!normalized.length) continue;
+              const tail = normalized.slice(-4).map(f => ({
+                fy:f.fiscalYear,q:f.fiscalQuarter,end:f.end,valueM:f.value/1_000_000,
+                filed:f.filed,form:f.form,accn:f.accessionNumbers?.[0] ?? null
+              }));
+              console.log(`${concept}=${JSON.stringify(tail)}`);
+            }
+          }
+          TS
+          node --import tsx .phase3s-sec-diagnostic.mts
