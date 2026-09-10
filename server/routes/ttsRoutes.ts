@@ -50,7 +50,7 @@ export function registerTtsRoutes(
           const audioContent = step.content?.find(c => c.type === 'audio');
           if (audioContent && audioContent.data) {
             const pcmBuffer = Buffer.from(audioContent.data, 'base64');
-            
+
             // If it's raw PCM, wrap it in a WAV header so browsers can play it
             if (audioContent.mime_type === 'audio/l16' || !audioContent.mime_type) {
               const sampleRate = 24000;
@@ -69,7 +69,7 @@ export function registerTtsRoutes(
               wavHeader.writeUInt16LE(16, 34);
               wavHeader.write("data", 36);
               wavHeader.writeUInt32LE(pcmBuffer.length, 40);
-              
+
               audioBuffer = Buffer.concat([wavHeader, pcmBuffer]);
               mimeType = "audio/wav";
             } else {
@@ -91,6 +91,5 @@ export function registerTtsRoutes(
       res.status(500).json({ error: error.message || "TTS Generation failed" });
     }
   });
-
 
 }
