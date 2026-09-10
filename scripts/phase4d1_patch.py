@@ -109,3 +109,12 @@ assert.ok(server.includes('registerMarketRoutes(app);'));
 assert.ok(server.includes('app.post("/api/analyze"'), 'Analyze stays in server.ts for Phase 4D1');
 console.log('server route modularization tests passed');
 ''')
+
+dcf_boundary = Path('src/utils/dcfAssumptionBoundary.test.ts')
+dcf_text = dcf_boundary.read_text()
+dcf_text = replace_once(
+    dcf_text,
+    "const serverSource = fs.readFileSync(path.join(root, 'server.ts'), 'utf8');\n\nassert.match(serverSource, /app\\.post\\(\"\\/api\\/dcf-assumptions\"/);\nassert.match(serverSource, /validateDcfAssumptionModel\\(parsed\\)/);\nassert.match(serverSource, /fair_value_per_share MUST be null/);",
+    "const dcfRouteSource = fs.readFileSync(path.join(root, 'server/routes/dcfRoutes.ts'), 'utf8');\n\nassert.match(dcfRouteSource, /app\\.post\\(\"\\/api\\/dcf-assumptions\"/);\nassert.match(dcfRouteSource, /requireFirebaseAuth, dcfAssumptionRateLimit/);\nassert.match(dcfRouteSource, /validateDcfAssumptionModel\\(parsed\\)/);\nassert.match(dcfRouteSource, /fair_value_per_share MUST be null/);",
+)
+dcf_boundary.write_text(dcf_text)
