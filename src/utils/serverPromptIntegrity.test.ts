@@ -54,4 +54,14 @@ assert.doesNotMatch(serverSource, /"wacc_pct"\s*:\s*\d/);
 assert.doesNotMatch(serverSource, /"terminal_growth_pct"\s*:\s*\d/);
 assert.doesNotMatch(serverSource, /"projection_years"\s*:\s*\d/);
 
+
+
+// The runtime dynamicSchema is authoritative. Legacy managed-agent configuration files
+// must not be injected as environment sources where they can compete with that contract.
+assert.match(serverSource, /legacyAgentRuntimeFiles = new Set/);
+assert.match(serverSource, /'\/.agents\/AGENTS\.md'/);
+assert.match(serverSource, /'\/.agents\/agent\.yaml'/);
+assert.match(serverSource, /'\/.agents\/requirements\.txt'/);
+assert.match(serverSource, /\.filter\(\(source\) => !legacyAgentRuntimeFiles\.has\(source\.target\)\)/);
+
 console.log('Production prompt integrity checks passed');
