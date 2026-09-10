@@ -1,0 +1,81 @@
+name: Phase 3V Fundamental Acceptance
+
+on:
+  push:
+    branches:
+      - phase3-final-acceptance-v3
+
+permissions:
+  contents: read
+
+jobs:
+  fundamental:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate MSFT Fundamental with current main client logic
+        shell: bash
+        run: |
+          cat > .phase3v-fundamental.mts <<'TS'
+          import { fetchSecVerificationEnvelope } from './src/services/secVerificationService.ts';
+          import { fetchLiveQuotes } from './src/services/marketDataService.ts';
+          import { fetchDcfAssumptionProposal } from './src/services/dcfAssumptionService.ts';
+          import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './src/utils/valuation/dcfAssumptionProposal.ts';
+          import { validateAndPrepareReport } from './src/utils/reportValidation.ts';
+
+          const BASE='https://stock-ana-ten.vercel.app';
+          (globalThis as any).window=globalThis;
+          const nativeFetch=globalThis.fetch.bind(globalThis);
+          globalThis.fetch=((input:any,init?:any)=>typeof input==='string'&&input.startsWith('/')?nativeFetch(new URL(input,BASE),init):nativeFetch(input,init)) as typeof fetch;
+
+          function parseFinalText(text:string){
+            const matches=[...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g)];
+            for(let i=matches.length-1;i>=0;i--){try{const p=JSON.parse(matches[i][1]);if(p&&typeof p==='object'&&!Array.isArray(p))return p}catch{}}
+            return null;
+          }
+
+          async function analyze(){
+            const c=new AbortController(); const timer=setTimeout(()=>c.abort(),285000);
+            try{
+              const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:'MSFT',origin:BASE,model:'gemini-3.8-flash',language:'Thai',analysisType:'fundamental',useSelfConsistency:false}),signal:c.signal});
+              const raw=await r.text(); let text=''; const counts:Record<string,number>={};
+              for(const block of raw.split('\n\n')){const line=block.split('\n').find(x=>x.startsWith('data: '));if(!line)continue;const payload=line.slice(6);if(payload==='[DONE]')continue;try{const e=JSON.parse(payload);counts[e.type]=(counts[e.type]||0)+1;if(e.type==='text'&&e.text)text+=e.text}catch{}}
+              return {status:r.status,counts,finalData:parseFinalText(text)};
+            } finally { clearTimeout(timer); }
+          }
+
+          const secP=fetchSecVerificationEnvelope('MSFT');
+          const marketP=fetchLiveQuotes(['MSFT']);
+          const result=await analyze();
+          if(result.status!==200||!result.finalData) throw new Error('Analyze did not return parseable HTTP 200 report');
+          const [sec,market]=await Promise.all([secP,marketP]);
+          let report:any=result.finalData; let proposalUsed=false;
+          if(sec?.status==='verified_eligible'&&!hasValidDcfAssumptionModel(report)){
+            const proposal=await fetchDcfAssumptionProposal('MSFT',report,sec);
+            if(proposal){proposalUsed=true;report=attachDcfAssumptionModel(report,proposal);}
+          }
+          const prepared=validateAndPrepareReport({...report,sec_verification:sec,analysis_type:'fundamental',ticker:'MSFT'},'MSFT',{marketQuotes:market?.quotes,requireMarketSnapshot:true});
+          const out:any=prepared.report; const inputs=out?.intrinsic_value?.dcf_model?.inputs; const dcf=out?.intrinsic_value?.dcf_model;
+          const summary={
+            httpStatus:result.status,streamCounts:result.counts,proposalUsed,
+            secStatus:sec?.status??null,secEligible:sec?.dcf_financial_inputs?.eligible??null,
+            financialDataSource:inputs?.financialDataSource??null,priceSource:inputs?.priceSource??null,sourcePeriod:inputs?.sourcePeriod??null,
+            isValid:inputs?.isValid??null,missingFields:inputs?.missingFields??null,
+            bearFairValue:dcf?.scenarios?.bear?.fair_value_per_share??null,baseFairValue:dcf?.scenarios?.base?.fair_value_per_share??null,bullFairValue:dcf?.scenarios?.bull?.fair_value_per_share??null,
+            validationStatus:prepared.validation.status,criticalIssues:prepared.validation.issues.filter((i:any)=>i.severity==='critical').map((i:any)=>({code:i.code,path:i.path,message:i.message})),
+            warningCodes:prepared.validation.issues.filter((i:any)=>i.severity==='warning').map((i:any)=>i.code),canPersist:prepared.canPersist,
+            provenanceMarket:out?.report_provenance?.market_price?.source??null,provenanceDcf:out?.report_provenance?.dcf_financial_inputs?.source??null,
+            reportStatementPeriods:out?.financial_statements?.periods??null,reportStatementWarning:prepared.validation.issues.some((i:any)=>i.code==='REPORT_FINANCIAL_STATEMENTS_ROW_SHAPE_NORMALIZED'),
+          };
+          console.log('PHASE3V_FUNDAMENTAL='+JSON.stringify(summary));
+          const ok=summary.secStatus==='verified_eligible'&&summary.secEligible===true&&summary.financialDataSource==='sec_verified'&&summary.priceSource==='market_snapshot'&&summary.provenanceMarket==='market_snapshot'&&summary.provenanceDcf==='sec_verified'&&summary.isValid===true&&Array.isArray(summary.missingFields)&&summary.missingFields.length===0&&Number.isFinite(summary.bearFairValue)&&Number.isFinite(summary.baseFairValue)&&Number.isFinite(summary.bullFairValue)&&summary.criticalIssues.length===0&&summary.canPersist===true;
+          console.log('PHASE3V_FUNDAMENTAL_ACCEPTED='+ok);
+          if(!ok) process.exitCode=2;
+          TS
+          node --import tsx .phase3v-fundamental.mts
