@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const serverSource = fs.readFileSync(path.resolve(here, '../../server.ts'), 'utf8');
+const retrySource = fs.readFileSync(path.resolve(here, '../../server/lib/agentRetry.ts'), 'utf8');
 
 const forbiddenCurrentFactPatterns = [
   /TSLA[^\n]*(?:NTM EPS|Forward P\/E|EV\/EBITDA|PEG)[^\n]*(?:\$|~|\d+x)/i,
@@ -38,8 +39,6 @@ assert.doesNotMatch(
   'Production prompt schema contains an anchored numeric stock-price example'
 );
 
-
-
 // Fundamental/Combined output must expose the complete DCF assumption/scenario contract.
 // Numeric schema placeholders remain null so the prompt cannot seed plausible-looking defaults.
 assert.match(serverSource, /"intrinsic_value"\s*:\s*\{/);
@@ -54,8 +53,6 @@ assert.doesNotMatch(serverSource, /"wacc_pct"\s*:\s*\d/);
 assert.doesNotMatch(serverSource, /"terminal_growth_pct"\s*:\s*\d/);
 assert.doesNotMatch(serverSource, /"projection_years"\s*:\s*\d/);
 
-
-
 // The runtime dynamicSchema is authoritative. Legacy managed-agent configuration files
 // must not be injected as environment sources where they can compete with that contract.
 assert.match(serverSource, /legacyAgentRuntimeFiles = new Set/);
@@ -64,13 +61,13 @@ assert.match(serverSource, /'\/.agents\/agent\.yaml'/);
 assert.match(serverSource, /'\/.agents\/requirements\.txt'/);
 assert.match(serverSource, /\.filter\(\(source\) => !legacyAgentRuntimeFiles\.has\(source\.target\)\)/);
 
-
 // Managed-agent prose is research output, not a machine contract. Fundamental/Combined
 // requests must have a structured-assumption bridge before deterministic DCF preparation.
 assert.match(serverSource, /extractStructuredValuationAssumptions/);
 assert.match(serverSource, /appendCanonicalValuationIfNeeded/);
 assert.match(serverSource, /mergeStructuredValuationAssumptions/);
-assert.match(serverSource, /retryBudgetMs = 45_000/);
+assert.match(retrySource, /retryBudgetMs = 45_000/);
+assert.match(retrySource, /fallbackModel = 'gemini-3\.7-flash'/);
 assert.match(serverSource, /process\.env\.VERCEL !== '1'/);
 
 console.log('Production prompt integrity checks passed');
