@@ -247,8 +247,8 @@ export function buildRigorousDCFModel(
         : 'company_profile';
   if (currentPrice === null) missing.push('current share price');
 
-  const rawWacc = userWacc ?? original?.assumptions.wacc_pct;
-  const rawTerminalGrowth = userGrowth ?? original?.assumptions.terminal_growth_pct;
+  const rawWacc = userWacc ?? original?.assumptions?.wacc_pct;
+  const rawTerminalGrowth = userGrowth ?? original?.assumptions?.terminal_growth_pct;
   if (!Number.isFinite(rawWacc)) missing.push('discount rate (WACC)');
   if (!Number.isFinite(rawTerminalGrowth)) missing.push('terminal growth rate');
   const waccPct = Number.isFinite(rawWacc) ? rawWacc as number : null;
@@ -258,7 +258,7 @@ export function buildRigorousDCFModel(
   if (waccPct === null || terminalGrowthPct === null || terminalGrowthPct >= waccPct) {
     missing.push('discount rate greater than terminal growth');
   }
-  const rawProjectionYears = original?.assumptions.projection_years;
+  const rawProjectionYears = original?.assumptions?.projection_years;
   const projectionYears = typeof rawProjectionYears === 'number' && Number.isInteger(rawProjectionYears) && rawProjectionYears >= 1
     ? rawProjectionYears
     : null;

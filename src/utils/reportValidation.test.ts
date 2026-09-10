@@ -336,3 +336,16 @@ const makeEligibleSecEnvelope = () => ({
 }
 
 console.log('Runtime report validation checks passed');
+
+{
+  const missingDcfAssumptions: any = makeValidReport();
+  delete missingDcfAssumptions.intrinsic_value.dcf_model.assumptions;
+  const prepared = validateAndPrepareReport(missingDcfAssumptions, 'TEST');
+  const inputs = prepared.report?.intrinsic_value?.dcf_model?.inputs;
+  assert.ok(prepared.report, 'Missing DCF assumptions must fail closed instead of throwing');
+  assert.equal(inputs?.isValid, false);
+  assert.ok(inputs?.missingFields?.includes('discount rate (WACC)'));
+  assert.ok(inputs?.missingFields?.includes('terminal growth rate'));
+  assert.ok(inputs?.missingFields?.includes('projection years'));
+  assert.equal(prepared.report?.intrinsic_value?.summary.base_case_fair_value, null);
+}
