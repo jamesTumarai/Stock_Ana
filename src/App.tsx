@@ -18,6 +18,7 @@ import { fetchLiveQuotes } from './services/marketDataService';
 import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
 import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
 import { sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
+import { authenticatedFetch } from './services/authenticatedFetch';
 
 import { 
   DocumentFinding, 
@@ -369,7 +370,7 @@ export default function App() {
     let currentToolRuns = 0;
 
     try {
-      const resp = await fetch('/api/analyze', {
+      const resp = await authenticatedFetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -569,6 +570,10 @@ export default function App() {
 
   const runAnalysis = () => {
     if (!ticker.trim() || running) return;
+    if (!user) {
+      setError(selectedLanguage === 'Thai' ? 'กรุณาเข้าสู่ระบบก่อนเริ่มวิเคราะห์' : 'Please sign in before starting an analysis.');
+      return;
+    }
     
     // Reset old data when running a new analysis
     setPastReports([]);
