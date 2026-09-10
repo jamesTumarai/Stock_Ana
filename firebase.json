@@ -1,8 +1,7 @@
 {
+  "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/firebase-config.json",
   "firestore": {
-    "databaseId": "ai-studio-coinking-f4bf008b-8d49-4bf0-92c9-82306708e20b",
-    "rules": "firestore.rules",
-    "edition": "ENTERPRISE",
-    "dataAccessMode": "FIRESTORE_NATIVE"
+    "database": "(default)",
+    "rules": "firestore.rules"
   }
 }
