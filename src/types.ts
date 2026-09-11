@@ -1306,3 +1306,52 @@ export interface MonitoringPreferences {
   concentrationThresholdPct: number; // default 30%
 }
 
+export interface ValuationScenario {
+  name: 'bear' | 'base' | 'bull';
+  revenueGrowthPct: number;
+  operatingMarginPct: number;
+  discountRatePct: number;
+  terminalGrowthPct: number;
+  fairValuePerShare: number;
+  marginOfSafetyPct: number;
+  impliedUpsidePct: number;
+}
+
+export interface SensitivityCell {
+  discountRatePct: number;
+  terminalGrowthPct: number;
+  fairValue: number;
+  marginOfSafetyPct: number;
+}
+
+export interface SensitivityMatrix {
+  discountRates: number[];
+  terminalGrowthRates: number[];
+  cells: SensitivityCell[][];
+}
+
+export interface ReverseDcfResult {
+  currentPrice: number;
+  baseFcfPerShare: number;
+  discountRatePct: number;
+  terminalGrowthPct: number;
+  projectionYears: number;
+  impliedGrowthPct: number;
+  isHurdleHigh: boolean;
+  assessment: string;
+  assessmentTh: string;
+}
+
+export interface PeerNormalizedMetric {
+  ticker: string;
+  companyName?: string;
+  marketCap?: number | null;
+  peRatio?: number | null;
+  evToEbitda?: number | null;
+  grossMarginPct?: number | null;
+  operatingMarginPct?: number | null;
+  fcfMarginPct?: number | null;
+  revenueGrowthYoYPct?: number | null;
+  roePct?: number | null;
+  debtToEquity?: number | null;
+}
