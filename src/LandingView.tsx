@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell } from 'lucide-react';
+import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell, Crown } from 'lucide-react';
 import { UserAvatar } from './components/UserAvatar';
 
 interface LandingViewProps {
@@ -24,6 +24,8 @@ interface LandingViewProps {
   onOpenHistory: () => void;
   onOpenPortfolio?: () => void;
   onOpenAlerts?: () => void;
+  onOpenSubscription?: () => void;
+  activeTier?: string;
   unreadAlertsCount?: number;
   onReplayIntro?: () => void;
   error?: string | null;
@@ -147,6 +149,8 @@ export function LandingView({
   onOpenHistory,
   onOpenPortfolio,
   onOpenAlerts,
+  onOpenSubscription,
+  activeTier = 'free',
   unreadAlertsCount = 0,
   onReplayIntro,
   error,
@@ -272,6 +276,14 @@ export function LandingView({
             {user ? (
               <div className="flex items-center gap-2 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)] shrink-0">
                 <button
+                  onClick={onOpenSubscription}
+                  className="text-emerald-300 hover:text-emerald-200 flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-mono font-bold tracking-wide"
+                  title={isThai ? 'จัดการแพ็กเกจ & โควตา' : 'Subscription & Quotas'}
+                >
+                  <Crown className="w-3.5 h-3.5 text-emerald-300" />
+                  <span className="capitalize">{activeTier}</span>
+                </button>
+                <button
                   onClick={onOpenAlerts}
                   className="text-white/70 hover:text-white flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium tracking-wide relative"
                   title={isThai ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
@@ -359,6 +371,13 @@ export function LandingView({
 
           {/* Mobile Right Controls: User Avatar + Toggle Menu */}
           <div className="md:hidden flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
+            <button
+              onClick={onOpenSubscription}
+              className="text-emerald-300 hover:text-emerald-200 cursor-pointer transition-colors p-1"
+              title={isThai ? 'จัดการแพ็กเกจ & โควตา' : 'Subscription & Quotas'}
+            >
+              <Crown className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
+            </button>
             <button
               onClick={onOpenAlerts}
               className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"

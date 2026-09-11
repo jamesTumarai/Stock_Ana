@@ -29,6 +29,15 @@ import {
   evaluateAllAlerts
 } from './utils/monitoringEngine';
 import { loadLocalWatchlist, loadLocalPortfolio } from './utils/portfolioEngine';
+import { SubscriptionModal } from './components/SubscriptionModal';
+import {
+  getActiveSubscriptionTier,
+  setActiveSubscriptionTier,
+  getStoredUserUsage,
+  recordAnalysisUsage,
+} from './services/subscriptionService';
+import { evaluateAnalysisQuota } from './utils/entitlementEngine';
+import type { SubscriptionTierId } from './domain/subscriptionTiers';
 
 import { 
   DocumentFinding, 
@@ -165,6 +174,8 @@ export default function App() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isPortfolioOpen, setIsPortfolioOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [activeTier, setActiveTier] = useState<SubscriptionTierId>(() => getActiveSubscriptionTier());
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [historyReports, setHistoryReports] = useState<any[]>([]);
   const [monitoringPreferences, setMonitoringPreferences] = useState(() => loadMonitoringPreferences(user?.uid));
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(() => loadReadAlertIds(user?.uid));
@@ -629,6 +640,7 @@ export default function App() {
             );
             if (prepared.report) {
               setRep(prepared.report);
+              recordAnalysisUsage(tokenCount || 0);
               if (prepared.canPersist) {
                 await saveReportToFirebase(prepared.report);
               } else {
@@ -672,6 +684,18 @@ export default function App() {
     if (!user) {
       setError(selectedLanguage === 'Thai' ? 'กรุณาเข้าสู่ระบบก่อนเริ่มวิเคราะห์' : 'Please sign in before starting an analysis.');
       handleLogin();
+      return;
+    }
+
+    const userUsage = getStoredUserUsage();
+    const quotaCheck = evaluateAnalysisQuota(activeTier, userUsage, selectedLanguage === 'Thai');
+    if (!quotaCheck.allowed) {
+      setError(
+        selectedLanguage === 'Thai'
+          ? `โควตาการวิเคราะห์สำหรับแพ็กเกจ ${quotaCheck.tier} เต็มแล้ว (${quotaCheck.currentUsage}/${quotaCheck.limit}) กรุณาอัปเกรดเพื่อวิเคราะห์ต่อ`
+          : `Monthly analysis quota reached for ${quotaCheck.tier} plan (${quotaCheck.currentUsage}/${quotaCheck.limit}). Please upgrade to continue.`
+      );
+      setIsSubscriptionOpen(true);
       return;
     }
     
@@ -813,6 +837,22 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Subscription & Tier Entitlements Modal */}
+      <AnimatePresence>
+        {isSubscriptionOpen && (
+          <SubscriptionModal
+            isOpen={isSubscriptionOpen}
+            onClose={() => setIsSubscriptionOpen(false)}
+            isThai={selectedLanguage === 'Thai'}
+            activeTier={activeTier}
+            onSelectTier={(newTier) => {
+              setActiveSubscriptionTier(newTier);
+              setActiveTier(newTier);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Cinematic $100M Motion Intro */}
       <AnimatePresence>
         {showIntro && (
@@ -946,6 +986,14 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <button
+                  onClick={() => setIsSubscriptionOpen(true)}
+                  className="text-emerald-300 hover:text-emerald-200 flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-mono font-bold tracking-wide p-1"
+                  title={selectedLanguage === 'Thai' ? 'จัดการแพ็กเกจ & โควตา' : 'Subscription & Quotas'}
+                >
+                  <Crown className="w-[18px] h-[18px]" strokeWidth={2} />
+                  <span className="hidden sm:inline capitalize">{activeTier}</span>
+                </button>
+                <button
                   onClick={() => setIsAlertsOpen(true)}
                   className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
                   title={selectedLanguage === 'Thai' ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
@@ -1026,6 +1074,8 @@ export default function App() {
              onOpenHistory={() => setIsHistoryModalOpen(true)}
              onOpenPortfolio={() => setIsPortfolioOpen(true)}
              onOpenAlerts={() => setIsAlertsOpen(true)}
+             onOpenSubscription={() => setIsSubscriptionOpen(true)}
+             activeTier={activeTier}
              unreadAlertsCount={unreadAlertsCount}
              onReplayIntro={() => setShowIntro(true)}
              error={error}
