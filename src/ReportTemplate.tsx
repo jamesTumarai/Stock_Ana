@@ -463,6 +463,26 @@ export default function ReportTemplate({
       { id: 'section-provenance', label: isThai ? 'แหล่งข้อมูล & ข้อกำหนด' : 'Provenance & Audit' },
     ] : []),
   ];
+
+  useEffect(() => {
+    const container = document.getElementById('report-scroll-container');
+    if (!container) return;
+
+    const handleNavScroll = () => {
+      const scrollPos = container.scrollTop + 140;
+      for (let i = navItems.length - 1; i >= 0; i--) {
+        const item = navItems[i];
+        const el = document.getElementById(item.id);
+        if (el && el.offsetTop <= scrollPos) {
+          setActiveNav(item.id);
+          break;
+        }
+      }
+    };
+
+    container.addEventListener('scroll', handleNavScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleNavScroll);
+  }, [navItems]);
   
   const handlePrintPdf = () => {
     const originalTitle = document.title;
@@ -642,7 +662,7 @@ export default function ReportTemplate({
         </div>
 
         {/* SECTION 1: EXECUTIVE SUMMARY */}
-        <div id="section-summary" className="flex flex-col gap-4 scroll-mt-14">
+        <div id="section-summary" className="flex flex-col gap-4 scroll-mt-28">
           <AnalysisCard
             title={isThai ? "บทสรุปผู้บริหาร (Executive Summary)" : "Executive Summary"}
             action={<ProvenanceBadge classification="ai_interpretation" isThai={isThai} size="xs" />}
@@ -725,7 +745,7 @@ export default function ReportTemplate({
 
         {/* SECTION 2: FINANCIAL STATEMENT TABLES (INCOME, BALANCE, CASH FLOW) */}
         {data.financial_statements && (
-          <div id="section-financial-tables" className="flex flex-col gap-4 scroll-mt-14">
+          <div id="section-financial-tables" className="flex flex-col gap-4 scroll-mt-28">
             <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
                 <Layers className="w-6 h-6 text-[#0b5a4b]" />
@@ -749,7 +769,7 @@ export default function ReportTemplate({
 
         {/* SECTION 3: VALUATION RATIOS, MULTIPLES DASHBOARD, 5 PILLARS & INTRINSIC VALUE (DCF) */}
         {(data.valuation_ratios || data.intrinsic_value || data.valuation_dashboard || data.five_pillars) && (
-          <div id="section-valuation" className="flex flex-col gap-6 scroll-mt-14">
+          <div id="section-valuation" className="flex flex-col gap-6 scroll-mt-28">
             <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
                 <Sparkles className="w-6 h-6 text-[#0b5a4b]" />
@@ -800,7 +820,7 @@ export default function ReportTemplate({
 
         {/* SECTION 4: EARNINGS & FORECAST ANALYSIS (WALL STREET & MORNINGSTAR) */}
         {(data.earnings_analysis || data.forecast_dashboard || data.morningstar_research) && (
-          <div id="section-earnings" className="flex flex-col gap-6 scroll-mt-14">
+          <div id="section-earnings" className="flex flex-col gap-6 scroll-mt-28">
             <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
                 <Calendar className="w-6 h-6 text-[#0b5a4b]" />
@@ -841,7 +861,7 @@ export default function ReportTemplate({
 
         {/* SECTION 5: COMPREHENSIVE FUNDAMENTAL ANALYSIS, PROFILE & BUSINESS STRUCTURE */}
         {data.analysis_type !== 'technical' && (data.comprehensive_analysis || data.company_profile || data.business_analysis) && (
-          <div id="section-fundamentals" className="flex flex-col gap-6 scroll-mt-14">
+          <div id="section-fundamentals" className="flex flex-col gap-6 scroll-mt-28">
             <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
                 <Lightbulb className="w-6 h-6 text-[#0b5a4b]" />
@@ -980,7 +1000,7 @@ export default function ReportTemplate({
 
         {/* SECTION 6: PEER COMPARISON, SMART MONEY & CORPORATE ACTIONS */}
         {(data.peer_comparison || data.catalysts_and_events || data.insider_activity || data.smart_money || data.corporate_actions) && (
-          <div id="section-peers-catalysts" className="flex flex-col gap-6 scroll-mt-14">
+          <div id="section-peers-catalysts" className="flex flex-col gap-6 scroll-mt-28">
             {data.peer_comparison && (
               <PeerComparisonTable 
                 data={data.peer_comparison} 
@@ -1070,7 +1090,7 @@ export default function ReportTemplate({
           const effectiveHistory = hasRawHistory ? rawHistory : [];
 
           return (
-            <div id="section-financials" className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 scroll-mt-14">
+            <div id="section-financials" className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 scroll-mt-28">
               <AnalysisCard title={isThai ? "ราคาหุ้นย้อนหลัง" : "Stock Price History"} subtext={isThai ? "แผนภูมินี้แสดงราคาปิดย้อนหลังรายสัปดาห์ในวันซื้อขายสุดท้าย" : "This chart shows the weekly closing price for the past few weeks."}>
                 <div className="h-64 mt-4 min-h-[256px]">
                   <ResponsiveContainer width="100%" height={256} minHeight={256}>
@@ -1171,7 +1191,7 @@ export default function ReportTemplate({
 
         {/* SECTION 8: TECHNICAL ANALYSIS & TRADE PLAN */}
         {data.technical_analysis && (
-          <div id="section-technical" className="flex flex-col gap-6 scroll-mt-14">
+          <div id="section-technical" className="flex flex-col gap-6 scroll-mt-28">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-200 pb-2 gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
@@ -1482,7 +1502,7 @@ export default function ReportTemplate({
 
         {/* SECTION 9: DEEP INSIGHTS */}
         {!isTechnicalOnly && data.deep_insights && data.deep_insights.length > 0 && (
-          <div id="section-insights" className="flex flex-col gap-4 scroll-mt-14">
+          <div id="section-insights" className="flex flex-col gap-4 scroll-mt-28">
             <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2">
               {isThai ? "ข้อมูลเชิงลึก (Deep Insights)" : "Deep Insights"}
             </h2>
@@ -1507,7 +1527,7 @@ export default function ReportTemplate({
         )}
 
         {/* SECTION 10: CITATIONS & SEC FILINGS */}
-        <div id="section-citations" className="flex flex-col gap-4 scroll-mt-14">
+        <div id="section-citations" className="flex flex-col gap-4 scroll-mt-28">
            <div>
              <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
                <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
@@ -1584,7 +1604,7 @@ export default function ReportTemplate({
         </div>
 
         {/* SECTION: DATA PROVENANCE, AUDIT & DISCLAIMERS */}
-        <div id="section-provenance" className="flex flex-col gap-4 scroll-mt-14 pt-6 border-t border-stone-200">
+        <div id="section-provenance" className="flex flex-col gap-4 scroll-mt-28 pt-6 border-t border-stone-200">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-[#0b5a4b] shrink-0" />
