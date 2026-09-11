@@ -34,6 +34,7 @@ import { ProvenanceBadge } from './components/ProvenanceBadge';
 import { ResearchTimelineCard } from './components/ResearchTimelineCard';
 import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
+import { estimateTokenCost } from './utils/costEstimator';
 
 interface Props {
   data: ReportData;
@@ -46,6 +47,7 @@ interface Props {
   language?: string;
   hideHeader?: boolean;
   historyReports?: any[];
+  model?: string;
 }
 
 const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number | string, isThai: boolean, onOpenMethodology?: () => void }) => {
@@ -290,7 +292,8 @@ export default function ReportTemplate({
   documentCount = 0, 
   language = 'English', 
   hideHeader = false, 
-  historyReports = [] 
+  historyReports = [],
+  model = 'gemini-3.8-flash'
 }: Props) {
   const isThai = language === 'Thai';
   const [liveOverrides, setLiveOverrides] = useState<Record<string, any>>({});
@@ -373,6 +376,14 @@ export default function ReportTemplate({
 
   const currencyRate = fxSnapshot?.rate;
   const hasUsdThbRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
+
+  const tokenCostEstimate = React.useMemo(() => {
+    return estimateTokenCost({
+      totalTokens: tokenCount,
+      model,
+      fxRateUsdThb: typeof currencyRate === 'number' ? currencyRate : undefined,
+    });
+  }, [tokenCount, model, currencyRate]);
 
   const formatPrice = (val?: number | string) => {
     if (val === undefined || val === null || val === '') return '-';
@@ -722,7 +733,7 @@ export default function ReportTemplate({
                    />
                  </div>
                  
-                 <div className="grid grid-cols-4 gap-1 border-t border-stone-200 pt-4 mt-auto w-full">
+                 <div className="grid grid-cols-5 gap-1 border-t border-stone-200 pt-4 mt-auto w-full">
                    <div className="flex flex-col items-center">
                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "เอกสาร" : "Docs"}</div>
                      <div className="text-sm font-mono text-stone-800">{documentCount}</div>
@@ -739,6 +750,12 @@ export default function ReportTemplate({
                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "โทเค็น" : "Tokens"}</div>
                      <div className="text-sm font-mono text-stone-800">
                         {tokenCount > 0 ? (tokenCount / 1000).toFixed(1) + 'k' : '-'}
+                     </div>
+                   </div>
+                   <div className="flex flex-col items-center border-l border-stone-200" title={isThai ? `ประมาณการต้นทุน AI (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.formattedCostThb ? ` (~${tokenCostEstimate.formattedCostThb})` : ''}` : `Estimated AI inference cost (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}`}>
+                     <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "ต้นทุน" : "Cost"}</div>
+                     <div className="text-xs font-mono font-bold text-emerald-700">
+                       {tokenCount > 0 ? (currencyMode === 'THB' && hasUsdThbRate ? tokenCostEstimate.formattedCostThb : tokenCostEstimate.formattedCostUsd) : '-'}
                      </div>
                    </div>
                  </div>

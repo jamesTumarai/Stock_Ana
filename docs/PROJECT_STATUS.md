@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 9 Complete ✅; Transitioning to Phase 10 — Performance, Cost & Reliability 🔄**.
+- Current stage: **Phase 10 Complete ✅; Transitioning to Phase 11 — Productization / Subscription Readiness 🔄**.
 - Current working mode: **Systematic execution across roadmap phases authorized by owner**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #62 (`6c9588e`) — Institutional Monitoring Engine, Alerts Modal, and Configurable Materiality Thresholds (Phase 8).
+- Latest merged milestone: PR #63 (`7abe25f`) — Institutional Reverse DCF, Scenario & Sensitivity Analysis, and Peer Comparison Normalizer (Phase 9).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection
@@ -193,6 +193,29 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Implemented deterministic derivations for total debt and total operating lease liabilities from verified components when aggregate concepts are omitted.
 - Built `src/utils/statementAggregation.ts` for deterministic 4-quarter Annual & LTM aggregation strictly obeying GAAP flow vs stock rules with fail-closed null handling.
 - Integrated Annual / LTM toggle in `FinancialStatementsTable.tsx` with institutional provenance status banner.
+
+### Phase 7 — Portfolio & User Intelligence ✅
+- Built `portfolioEngine.ts` and `researchTimeline.ts` for institutional portfolio management.
+- Holdings tracking with live valuation, P/L, concentration risk warnings (weight >= 30%), and portfolio-weighted Margin of Safety.
+- Delivered factual mathematical deltas for "What Changed" since prior analysis without AI narrative invention.
+
+### Phase 8 — Monitoring & Alerts ✅
+- Built `monitoringEngine.ts` with configurable materiality thresholds.
+- Alerts for valuation breaches, overvalued warnings, conviction score shifts (>= 10 pts), new SEC filings (10-K, 10-Q, 8-K), and portfolio concentration risk.
+- Interactive `AlertsModal.tsx` with filter tabs, unread indicators, and threshold controls.
+
+### Phase 9 — Comparison & Decision Tools ✅
+- Built `decisionEngine.ts` featuring Reverse DCF back-solving for market-implied growth hurdles.
+- 2D Sensitivity Matrix (5x5 grid WACC vs Terminal Growth) and deterministic 3-stage scenarios (Bear, Base, Bull).
+- Normalized peer comparison extractor enforcing strict factual integrity.
+
+### Phase 10 — Performance, Cost & Reliability ✅
+- Built `SecTtlCache` (`secCache.ts`): Bounded in-memory TTL cache with LRU eviction for SEC EDGAR company facts, submissions, and packages, eliminating redundant multi-megabyte downloads.
+- Built `costEstimator.ts`: Transparent AI token pricing models (Flash and Pro tiers), prompt/completion cost derivation, and USD/THB currency calculations.
+- Upgraded `ReportTemplate.tsx` with 5-column executive summary metrics grid displaying Docs, Time, Runs, Tokens, and live AI Cost with localized tooltips and USD/THB FX conversion.
+- Mounted structured `/api/health` diagnostics endpoint across Express and Vercel functions reporting memory usage, uptime, service configuration, and SEC cache telemetry.
+- Built `LatencyTracker` (`latencyTracker.ts`): Stage-level latency tracking for market snapshots, Gemini stream, and valuation assumption bridge, emitted in SSE `final_stats` events.
+- 62 regression test suites passing with 100% success.
 
 ## Current production health
 
