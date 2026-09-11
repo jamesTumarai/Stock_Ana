@@ -31,6 +31,7 @@ import { SmartMoneyCard } from './components/SmartMoneyCard';
 import { ScoreMethodologyModal } from './components/ScoreMethodologyModal';
 import { CompanyLogo } from './components/CompanyLogo';
 import { ProvenanceBadge } from './components/ProvenanceBadge';
+import { ResearchTimelineCard } from './components/ResearchTimelineCard';
 
 interface Props {
   data: ReportData;
@@ -742,6 +743,14 @@ export default function ReportTemplate({
             </div>
           </AnalysisCard>
         </div>
+
+        {/* RESEARCH TIMELINE & EMPIRICAL DELTAS (WHAT CHANGED) */}
+        <ResearchTimelineCard
+          ticker={ticker}
+          currentReport={data}
+          historyReports={historyReports}
+          isThai={isThai}
+        />
 
         {/* SECTION 2: FINANCIAL STATEMENT TABLES (INCOME, BALANCE, CASH FLOW) */}
         {data.financial_statements && (

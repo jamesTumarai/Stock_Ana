@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 6 Complete ✅; Transitioning to Phase 7 — Portfolio & User Intelligence 🔄**.
+- Current stage: **Phase 7 Complete ✅; Transitioning to Phase 8 — Monitoring & Alerts 🔄**.
 - Current working mode: **Systematic execution across roadmap phases authorized by owner**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #59 (`49d38e919d96bc45706571f055ce165b659db1af`) — ProvenanceBadge classification hierarchy across report sections (Phase 6).
+- Latest merged milestone: PR #60 (`bf72ae5`) — Calculation Modal & Metric Breakdowns (Phase 6).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection

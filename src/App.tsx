@@ -1,11 +1,12 @@
 import { LandingView } from './LandingView';
 import { HistoryModal } from './components/HistoryModal';
+import { PortfolioModal } from './components/PortfolioModal';
 import { auth, db, firebaseDataAccessAllowed, googleProvider } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { CrossfadeVideo } from './components/CrossfadeVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -153,7 +154,23 @@ export default function App() {
   
   const [user, setUser] = useState<User | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isPortfolioOpen, setIsPortfolioOpen] = useState(false);
   const [historyReports, setHistoryReports] = useState<any[]>([]);
+
+  // Memoized ticker to latest report mapping for portfolio valuation intelligence
+  const reportsByTicker = React.useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const r of historyReports) {
+      const t = (r.ticker || r.data?.ticker || '').toUpperCase().trim();
+      if (t && !map[t]) {
+        map[t] = r.data || r;
+      }
+    }
+    if (currentReport?.ticker) {
+      map[currentReport.ticker.toUpperCase().trim()] = currentReport;
+    }
+    return map;
+  }, [historyReports, currentReport]);
 
   // $100M Motion Intro State
   const [showIntro, setShowIntro] = useState<boolean>(() => {
@@ -702,6 +719,23 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Portfolio & Watchlist Intelligence Modal */}
+      <AnimatePresence>
+        {isPortfolioOpen && (
+          <PortfolioModal
+            isOpen={isPortfolioOpen}
+            onClose={() => setIsPortfolioOpen(false)}
+            isThai={selectedLanguage === 'Thai'}
+            user={user}
+            onSelectTicker={(selectedTicker) => {
+              setTicker(selectedTicker);
+              setIsPortfolioOpen(false);
+            }}
+            latestReports={reportsByTicker}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Cinematic $100M Motion Intro */}
       <AnimatePresence>
         {showIntro && (
@@ -835,6 +869,13 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <button
+                  onClick={() => setIsPortfolioOpen(true)}
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
+                  title={selectedLanguage === 'Thai' ? 'พอร์ตและรายการติดตาม' : 'Portfolio & Watchlist'}
+                >
+                  <Briefcase className="w-[18px] h-[18px]" strokeWidth={2} />
+                </button>
+                <button
                   onClick={() => setIsHistoryModalOpen(true)}
                   className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
                   title="History"
@@ -896,6 +937,7 @@ export default function App() {
              onLogin={handleLogin}
              onLogout={handleLogout}
              onOpenHistory={() => setIsHistoryModalOpen(true)}
+             onOpenPortfolio={() => setIsPortfolioOpen(true)}
              onReplayIntro={() => setShowIntro(true)}
              error={error}
              onClearError={() => setError(null)}
