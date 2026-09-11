@@ -47,7 +47,15 @@ firebase firestore:databases:get "(default)" --project stock-analyze-a89d0
 
 Stop if `stock-analyze-a89d0` or `(default)` is not present as expected. Do not create a database as part of a rules deployment.
 
-5. Inspect `firebase.json` and require exactly this Firestore target contract:
+5. Run the repository deployment preflight with the production project named explicitly:
+
+```bash
+npm run firebase:rules:preflight -- --project stock-analyze-a89d0
+```
+
+This preflight is intentionally fail-closed. It rejects a missing or different project ID, requires `firebase.json` to target only `(default)`, rejects `databaseId`, requires `firestore.rules`, and checks that the rules file is non-empty Firestore Rules v2 source. It validates the repository deployment contract only; it does not replace the live Firebase CLI checks above and does not authenticate or deploy anything.
+
+6. Inspect `firebase.json` and require exactly this Firestore target contract:
 
 ```json
 {
@@ -60,13 +68,14 @@ Stop if `stock-analyze-a89d0` or `(default)` is not present as expected. Do not 
 
 The repository may also include the Firebase JSON schema field. Do not deploy from a config that names a legacy AI Studio database.
 
-6. Review the diff of `firestore.rules`. Rules deployment overwrites the rules currently active for the configured database, so console-only edits must be reconciled into Git before proceeding.
+7. Review the diff of `firestore.rules`. Rules deployment overwrites the rules currently active for the configured database, so console-only edits must be reconciled into Git before proceeding.
 
 ## Deploy production rules
 
-Deploy rules only, always naming the production project explicitly:
+Re-run the preflight immediately before deployment, then deploy rules only while naming the production project explicitly:
 
 ```bash
+npm run firebase:rules:preflight -- --project stock-analyze-a89d0
 firebase deploy --only firestore:rules --project stock-analyze-a89d0
 ```
 
@@ -102,6 +111,7 @@ Git-backed rollback is also possible, but keep the corrected current `firebase.j
 cp firestore.rules firestore.rules.pre-rollback
 
 git show <KNOWN_GOOD_SHA>:firestore.rules > firestore.rules
+npm run firebase:rules:preflight -- --project stock-analyze-a89d0
 firebase deploy --only firestore:rules --project stock-analyze-a89d0
 
 mv firestore.rules.pre-rollback firestore.rules
@@ -126,7 +136,7 @@ Client hard delete of reports remains prohibited. Report snapshots remain immuta
 
 ## Release discipline
 
-`Verify Lumina` is the authoritative repository verification workflow. Its Node runtime must match production hosting (`24.x`) so CI does not certify a different major runtime than Vercel.
+`Verify Lumina` is the authoritative repository verification workflow. Its Node runtime must match production hosting (`24.x`) so CI does not certify a different major runtime than Vercel. The workflow also runs the Firebase rules deployment preflight so a bad repository target cannot pass CI unnoticed.
 
 Checking the workflow into Git is not by itself an enforced PR gate. Repository administration must enable a `main` branch protection or ruleset that requires pull requests and the `Verify Lumina` status before merge; verify that protection is active before declaring the platform foundation complete.
 
