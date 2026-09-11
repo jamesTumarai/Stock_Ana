@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 4.5 Production Stabilization complete; Phase 5 — Analysis Quality & Data Coverage actively underway**.
-- Current working mode: **Phase 5 execution authorized by owner (advancing systematically across phases with rigorous institutional engineering)**.
+- Current stage: **Phase 5 Complete ✅; Phase 6 — Report Experience / UX actively underway 🔄**.
+- Current working mode: **Systematic execution across roadmap phases authorized by owner**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #55 (`0f67ed19e722b1763b946057353d528442835d9d`) — Financial Sector Guard UI and SEC diagnostic routes.
+- Latest merged milestone: PR #58 (`80f7609ae5d6f6b6806d180bf534cf74bbb6768e`) — ASC 842 Leases, Debt Normalization & Deterministic LTM Aggregation.
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection
