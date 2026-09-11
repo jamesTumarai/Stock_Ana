@@ -332,4 +332,68 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
   console.log('✅ metricsHarmonizer Integration PASSED (arbitrary score removed)');
 }
 
+// 8. Banking / FinTech Profile with Financial Sector Guard
+{
+  console.log('➡️ Testing Banking / FinTech Profile with Financial Sector Guard...');
+
+  const fintechStock: any = {
+    ticker: 'SOFI',
+    company_profile: {
+      stock_price: 17.5,
+      sector: 'Financial Services'
+    },
+    financial_statements: {
+      statement_template: 'banking',
+      periods: ['Q3 2025', 'Q4 2025', 'Q1 2026', 'Q2 2026'],
+      income_statement: {
+        revenue: [600, 650, 700, 750],
+        yoy_revenue_growth_pct: [25, 28, 30, 32],
+        net_income: [30, 45, 60, 80],
+        net_margin_pct: [5, 6.9, 8.5, 10.7]
+      },
+      balance_sheet: {
+        deposits: [18000, 20000, 22000, 24000],
+        loans_held_for_investment: [15000, 16500, 18000, 19500],
+        cash_and_equivalents: [3000, 3200, 3400, 3500],
+        total_equity: [5000, 5200, 5400, 5600]
+      },
+      cash_flow: {
+        operating_cash_flow: [100, 120, 150, 180]
+      }
+    },
+    intrinsic_value: {
+      current_price: 17.5,
+      selected_model: {
+        model_type: 'fintech_pe',
+        model_name_en: 'FinTech Platform & Residual Income Model'
+      },
+      dcf_model: {
+        inputs: {
+          isValid: false,
+          missingFields: ['operating-company FCFF model fit (fintech_pe selected)']
+        }
+      }
+    },
+    valuation_ratios: [
+      { name: 'PEG Ratio', value: 1.1 }
+    ],
+    comprehensive_analysis: {
+      business_strengths: '1. Member growth\n2. Galileo tech platform\n3. Low cost deposits',
+      scoring: {
+        financial_strength: { score: 8, reason: 'Strong tier 1 capital' },
+        risk_level: { score: 4, reason: 'Credit risk' }
+      }
+    }
+  };
+
+  const result = calculateDeterministicConvictionScore(fintechStock, 'SOFI');
+  assert.ok(result, 'Banking/fintech profile with Financial Sector Guard must produce conviction score');
+  assert.ok(result.conviction_score >= 60, `Expected conviction >= 60, got ${result.conviction_score}`);
+  assert.equal(result.conviction_breakdown.financial_health.maxScore, 30);
+  assert.equal(result.conviction_breakdown.valuation.maxScore, 20);
+  assert.match(result.conviction_breakdown.valuation.reasonEn, /Financial Sector Guard/i);
+
+  console.log(`✅ Banking / FinTech Profile with Financial Sector Guard PASSED (Score: ${result.conviction_score}/100)`);
+}
+
 console.log('🎉 ALL CONVICTION SCORER TESTS PASSED SUCCESSFULLY!');

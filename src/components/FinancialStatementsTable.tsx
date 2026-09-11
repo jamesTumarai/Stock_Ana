@@ -424,6 +424,7 @@ export function FinancialStatementsTable({
     ocf: cashflow?.operating_cash_flow || [],
     net_income_cont: income?.net_income || [],
     depreciation: cashflow?.depreciation || [],
+    stock_based_compensation: cashflow?.stock_based_compensation || [],
     non_cash_items: cashflow?.non_cash_items || [],
     change_working_capital: cashflow?.change_working_capital || [],
     change_receivables: cashflow?.change_receivables || [],
@@ -574,6 +575,7 @@ export function FinancialStatementsTable({
         net_income_cont: { en: 'Net Income from Continuing Operations', th: 'กำไรสุทธิจากการดำเนินงานต่อเนื่อง' },
         provision_addback: { en: 'Provision for Credit Losses (Add-back)', th: 'บวกกลับสำรองหนี้สูญและผลขาดทุนด้านเครดิต' },
         depreciation: { en: 'Depreciation & Depletion & Amortization', th: 'ค่าเสื่อมราคาและค่าตัดจำหน่าย' },
+        stock_based_compensation: { en: 'Stock-Based Compensation (SBC)', th: 'ค่าตอบแทนในรูปหุ้น (Stock-Based Compensation)' },
         non_cash_items: { en: 'Other Non-Cash Items', th: 'รายการที่ไม่ใช่เงินสดอื่นๆ' },
         change_working_capital: { en: 'Change in Working Capital', th: 'การเปลี่ยนแปลงในเงินทุนหมุนเวียน' },
         change_in_loans_held_for_sale: { en: '⚠️ Change in Loans Held for Sale (Originations vs Sales)', th: 'การเปลี่ยนแปลงในเงินให้สินเชื่อเพื่อการค้า/ขาย (ตัวแปรหลักฉุด/ดัน OCF)' },
@@ -1893,6 +1895,7 @@ export function FinancialStatementsTable({
                     {renderGenericRow('net_income_cont', 'Net Income from Continuing Operations', cfItems.net_income_cont, false, 1, 'กำไรสุทธิจากการดำเนินงาน')}
                     {renderGenericRow('provision_addback', 'Provision for Credit Losses (Non-Cash Add-back)', cfItems.provision_addback, false, 1, 'บวกกลับสำรองหนี้สูญ (รายการที่ไม่ใช่เงินสด)')}
                     {renderGenericRow('depreciation', 'Depreciation & Amortization', cfItems.depreciation, false, 1, 'ค่าเสื่อมราคาและค่าตัดจำหน่าย')}
+                    {renderGenericRow('stock_based_compensation', 'Stock-Based Compensation (Non-Cash Add-back)', cfItems.stock_based_compensation, false, 1, 'ค่าตอบแทนในรูปหุ้น (บวกกลับรายการที่ไม่ใช่เงินสด)')}
                     {renderGenericRow('non_cash_items', 'Other Operating Adjustments', cfItems.non_cash_items, false, 1, 'การปรับปรุงรายการดำเนินงานอื่นๆ')}
                     {renderGenericRow('change_in_loans_held_for_sale', '⚠️ Change in Loans Held for Sale (Originations vs Sales)', cfItems.change_in_loans_held_for_sale, true, 1, 'การเปลี่ยนแปลงในเงินให้สินเชื่อเพื่อการค้า/ขาย (ตัวแปรหลักฉุด/ดัน OCF สถาบันการเงิน)')}
 
@@ -1918,6 +1921,7 @@ export function FinancialStatementsTable({
                     {renderGenericRow('ocf', 'Operating Cash Flow', cfItems.ocf, true, 0, 'กระแสเงินสดจากการดำเนินงาน (OCF)')}
                     {renderGenericRow('net_income_cont', 'Net Income from Continuing Operations', cfItems.net_income_cont, false, 1, 'กำไรสุทธิจากการดำเนินงานต่อเนื่อง')}
                     {renderGenericRow('depreciation', 'Depreciation & Depletion & Amortization', cfItems.depreciation, false, 1, 'ค่าเสื่อมราคาและค่าตัดจำหน่าย')}
+                    {renderGenericRow('stock_based_compensation', 'Stock-Based Compensation (Non-Cash Add-back)', cfItems.stock_based_compensation, false, 1, 'ค่าตอบแทนในรูปหุ้น (บวกกลับรายการที่ไม่ใช่เงินสด)')}
                     {renderGenericRow('non_cash_items', 'Other Non-Cash Items', cfItems.non_cash_items, false, 1, 'รายการที่ไม่ใช่เงินสดอื่นๆ')}
                     {renderGenericRow('change_working_capital', 'Change in Working Capital', cfItems.change_working_capital, true, 1, 'การเปลี่ยนแปลงในเงินทุนหมุนเวียน')}
                     {renderGenericRow('change_receivables', 'Change in Receivables', cfItems.change_receivables, false, 2, 'การเปลี่ยนแปลงในลูกหนี้การค้า')}
