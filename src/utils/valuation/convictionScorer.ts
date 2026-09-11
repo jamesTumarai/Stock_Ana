@@ -46,8 +46,15 @@ export function calculateDeterministicConvictionScore(
   const intrinsic = data?.intrinsic_value;
   const comp = data?.comprehensive_analysis;
   const scoring = comp?.scoring;
-  const sector = data?.company_profile?.sector || '';
-  const isFinancialSector = sector.toLowerCase().includes('financial') || sector.toLowerCase().includes('bank');
+  const sector = (data?.company_profile?.sector || '').toLowerCase();
+  const statementTemplate = data?.financial_statements?.statement_template;
+  const selectedModel = data?.intrinsic_value?.selected_model?.model_type;
+  const isFinancialSector = sector.includes('financial')
+    || sector.includes('bank')
+    || sector.includes('fintech')
+    || statementTemplate === 'banking'
+    || selectedModel === 'fintech_pe'
+    || selectedModel === 'ddm';
 
   const latest = (values?: Array<number | null>) => values?.length ? values[values.length - 1] : null;
   const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -78,8 +85,10 @@ export function calculateDeterministicConvictionScore(
     ?? ratio(latestCurrentAssetsInput, latestCurrentLiabilitiesInput);
   const suppliedMoS = (intrinsic as any)?.summary?.margin_of_safety_pct
     ?? (intrinsic as any)?.dcf_model?.margin_of_safety_pct
+    ?? (intrinsic as any)?.ddm_model?.scenarios?.base?.margin_of_safety_pct
     ?? (intrinsic as any)?.margin_of_safety_pct;
   const suppliedFairValue = (intrinsic as any)?.dcf_model?.scenarios?.base?.fair_value_per_share
+    ?? (intrinsic as any)?.ddm_model?.scenarios?.base?.fair_value_per_share
     ?? (intrinsic as any)?.summary?.base_case_fair_value
     ?? (intrinsic as any)?.fair_value_base;
   const suppliedCurrentPrice = intrinsic?.current_price ?? data?.company_profile?.stock_price;
@@ -93,7 +102,8 @@ export function calculateDeterministicConvictionScore(
   const hasSolvencyInput = latestDebtToEquityInput !== null
     || (latestCashInput !== null && latestDebtInput !== null);
   const hasValuationInput = suppliedMoS !== null && suppliedMoS !== undefined
-    || (typeof suppliedFairValue === 'number' && typeof suppliedCurrentPrice === 'number' && suppliedCurrentPrice > 0);
+    || (typeof suppliedFairValue === 'number' && typeof suppliedCurrentPrice === 'number' && suppliedCurrentPrice > 0)
+    || (isFinancialSector && typeof suppliedCurrentPrice === 'number' && suppliedCurrentPrice > 0 && pegInput !== null && pegInput > 0);
   const hasCashFlowInput = isFinancialSector
     ? financialStrengthInput !== null
     : latestFcfInput !== null && (latestFcfInput <= 0 || latestFcfMarginInput !== null);
@@ -287,6 +297,10 @@ export function calculateDeterministicConvictionScore(
       valDetailsTh.push(`Margin of Safety +${mosPct.toFixed(1)}%`);
       valDetailsEn.push(`Margin of Safety +${mosPct.toFixed(1)}%`);
     }
+  } else if (isFinancialSector) {
+    valPoints += 8.5;
+    valDetailsTh.push('แบบจำลอง FCFF ถูกระงับตาม Financial Sector Guard (ประเมินตาม Multiples & Solvency)');
+    valDetailsEn.push('Generic FCFF disabled under Financial Sector Guard (Multiples & Solvency evaluated)');
   }
 
   // B. Valuation Multiples & Multiplier Sanity (Max 6 pts) - Smooth interpolation
