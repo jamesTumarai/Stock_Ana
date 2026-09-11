@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut } from 'lucide-react';
+import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X } from 'lucide-react';
 import { UserAvatar } from './components/UserAvatar';
 
 interface LandingViewProps {
@@ -23,6 +23,8 @@ interface LandingViewProps {
   onLogout: () => void;
   onOpenHistory: () => void;
   onReplayIntro?: () => void;
+  error?: string | null;
+  onClearError?: () => void;
 }
 
 interface StatItem {
@@ -141,6 +143,8 @@ export function LandingView({
   onLogout,
   onOpenHistory,
   onReplayIntro,
+  error,
+  onClearError,
 }: LandingViewProps) {
   const isThai = language === 'Thai';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -563,6 +567,25 @@ export function LandingView({
                 )}
               </button>
             </div>
+
+            {/* Error Banner */}
+            {error && (
+              <div className="w-full max-w-[500px] mt-2.5 bg-red-500/15 border border-red-500/40 text-red-200 px-4 py-2 rounded-2xl text-xs flex items-center justify-between gap-2 shadow-lg backdrop-blur-md animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span className="truncate">{error}</span>
+                </div>
+                {onClearError && (
+                  <button
+                    onClick={onClearError}
+                    className="text-red-400 hover:text-white p-0.5 rounded-full shrink-0 cursor-pointer transition-colors"
+                    title={isThai ? 'ปิด' : 'Dismiss'}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Quick Ticker Chips */}
             <div className="flex flex-wrap items-center justify-center gap-1 mt-3 px-1">

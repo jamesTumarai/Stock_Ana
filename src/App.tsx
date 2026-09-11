@@ -186,8 +186,11 @@ export default function App() {
     }
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      if (error?.code !== 'auth/popup-closed-by-user') {
+        setError(error?.message || 'Login failed');
+      }
     }
   };
 
@@ -590,6 +593,7 @@ export default function App() {
     if (!ticker.trim() || running) return;
     if (!user) {
       setError(selectedLanguage === 'Thai' ? 'กรุณาเข้าสู่ระบบก่อนเริ่มวิเคราะห์' : 'Please sign in before starting an analysis.');
+      handleLogin();
       return;
     }
     
@@ -888,6 +892,8 @@ export default function App() {
              onLogout={handleLogout}
              onOpenHistory={() => setIsHistoryModalOpen(true)}
              onReplayIntro={() => setShowIntro(true)}
+             error={error}
+             onClearError={() => setError(null)}
            />
         ) : (
            <div className="flex-1 flex flex-col overflow-hidden pb-28 sm:pb-32 md:pb-36 gap-3 px-2.5 sm:px-4 min-h-0 max-w-2xl lg:max-w-3xl mx-auto w-full mt-0">

@@ -458,6 +458,9 @@ export default function ReportTemplate({
     ...(findings.length > 0 ? [
       { id: 'section-citations', label: isThai ? 'เอกสารอ้างอิง' : 'SEC Filings' },
     ] : []),
+    ...(provenance || (validation && validation.status !== 'valid') ? [
+      { id: 'section-provenance', label: isThai ? 'แหล่งข้อมูล & ข้อกำหนด' : 'Provenance & Audit' },
+    ] : []),
   ];
   
   const handlePrintPdf = () => {
@@ -554,10 +557,6 @@ export default function ReportTemplate({
       )}
 
       <div id="report-content" className="flex-1 py-4 sm:py-8 px-2.5 sm:px-6 md:px-[40px] w-full max-w-[1200px] mx-auto flex flex-col gap-6 md:gap-8 bg-[#F6F4F0] print:max-w-full print:gap-6 print:bg-white">
-        
-        <div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {isThai ? 'ข้อมูลในรายงานเป็น snapshot จากการวิเคราะห์ ไม่ได้รับรองว่าเทียบเอกสารต้นทางแล้ว รายงานเก่าอาจมีข้อมูลผิดงวดหรือข้อมูลที่ AI สร้างขึ้น โปรดตรวจแหล่งอ้างอิงก่อนใช้ ตัวเลขประเมินมูลค่าและคะแนนเป็นผลวิเคราะห์ ไม่ใช่ข้อเท็จจริง' : 'This report is a research snapshot, not source-verified data. Older reports may contain incorrect periods or AI-generated values. Verify citations; valuations and scores are estimates.'}
-        </div>
         {refreshSuccessMessage && (
           <div className="bg-emerald-600 text-white text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-between shadow-md transition-all animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center gap-2 font-medium">
@@ -567,120 +566,6 @@ export default function ReportTemplate({
             <button onClick={() => setRefreshSuccessMessage(null)} className="text-white/80 hover:text-white cursor-pointer">
               <X className="w-4 h-4" />
             </button>
-          </div>
-        )}
-
-        <div className="bg-stone-100/90 border border-stone-200 rounded-2xl p-3 sm:p-4 text-xs text-stone-600 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#0b5a4b] shrink-0" />
-            <span><strong>{isThai ? 'ข้อสงวนสิทธิ์:' : 'Disclaimer:'}</strong> {isThai ? 'รายงานนี้จัดทำขึ้นเพื่อการศึกษาและการวิเคราะห์ข้อมูล ไม่ใช่คำแนะนำการลงทุน' : 'This report is for educational & analytical purposes only, not investment advice.'}</span>
-          </div>
-          <div className="font-mono text-stone-500 text-[11px] self-start sm:self-auto shrink-0 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-stone-400" />
-            {isThai ? 'ข้อมูล ณ ' : 'As of '}{reportDate}
-          </div>
-        </div>
-
-        {provenance && (
-          <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 flex flex-col gap-3 shadow-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#0b5a4b] shrink-0" />
-                <strong className="text-sm text-stone-900">{isThai ? 'แหล่งข้อมูลของรายงาน (Data Provenance)' : 'Report Data Provenance'}</strong>
-              </div>
-              <span className="text-[10px] font-mono text-stone-500 bg-stone-100 border border-stone-200 rounded-full px-2 py-0.5">
-                {provenance.report_generated_by_version}
-              </span>
-            </div>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              {isThai
-                ? 'คำว่า SEC Verified ใช้เฉพาะส่วนที่ระบบระบุไว้เท่านั้น ไม่ได้หมายความว่า Narrative หรือตารางงบทั้งรายงานได้รับการรับรองจาก SEC'
-                : 'SEC Verified applies only to explicitly labeled sections; it does not certify the report narrative or displayed statement snapshot.'}
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-violet-900"><Sparkles className="w-3.5 h-3.5" />{isThai ? 'บทวิเคราะห์' : 'Research Narrative'}</div>
-                <div className="text-xs mt-1 text-violet-800">AI Research Snapshot</div>
-                <div className="text-[10px] mt-1 text-violet-700/80">{isThai ? 'สังเคราะห์โดย AI • ไม่ใช่ SEC Certified' : 'AI synthesis • not SEC certified'}</div>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900"><FileText className="w-3.5 h-3.5" />{isThai ? 'ตารางงบการเงิน' : 'Financial Statements'}</div>
-                <div className="text-xs mt-1 text-amber-800">{provenance.financial_statements.source === 'report_snapshot' ? 'Report Snapshot' : (isThai ? 'ไม่มีข้อมูล' : 'Unavailable')}</div>
-                <div className="text-[10px] mt-1 text-amber-700/80">
-                  {isThai ? 'ผ่าน runtime checks แต่ไม่ถูกยกระดับเป็น SEC Verified' : 'Runtime-checked, but not promoted to SEC Verified'}
-                </div>
-              </div>
-              <div className={`rounded-xl border p-3 ${provenance.dcf_financial_inputs.source === 'sec_verified' ? 'border-emerald-200 bg-emerald-50/70' : provenance.dcf_financial_inputs.source === 'report_snapshot' ? 'border-amber-200 bg-amber-50/60' : 'border-stone-200 bg-stone-50'}`}>
-                <div className={`flex items-center gap-1.5 text-xs font-bold ${provenance.dcf_financial_inputs.source === 'sec_verified' ? 'text-emerald-900' : provenance.dcf_financial_inputs.source === 'report_snapshot' ? 'text-amber-900' : 'text-stone-700'}`}>
-                  <ShieldCheck className="w-3.5 h-3.5" />DCF Financial Inputs
-                </div>
-                <div className="text-xs mt-1 font-semibold">
-                  {provenance.dcf_financial_inputs.source === 'sec_verified'
-                    ? 'SEC Verified Financial Inputs'
-                    : provenance.dcf_financial_inputs.source === 'report_snapshot'
-                    ? 'Report Snapshot Financial Inputs'
-                    : (isThai ? 'ยังไม่มีชุดข้อมูล DCF ที่ใช้ได้' : 'DCF input set unavailable')}
-                </div>
-                {(provenance.dcf_financial_inputs.source_period || provenance.dcf_financial_inputs.as_of) && (
-                  <div className="text-[10px] mt-1 font-mono opacity-70">
-                    {[provenance.dcf_financial_inputs.source_period, provenance.dcf_financial_inputs.as_of].filter(Boolean).join(' • ')}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="text-[10px] sm:text-[11px] text-stone-500 border-t border-stone-100 pt-2 flex flex-wrap items-center gap-1.5">
-              <span className="font-bold">SEC cross-check:</span>
-              <span className="font-mono">{provenance.sec_cross_check.status}</span>
-              <span>•</span>
-              <span>{isThai ? 'สถานะนี้ไม่ใช่การรับรองรายงานทั้งฉบับ' : 'This status is not a certification of the full report.'}</span>
-            </div>
-          </div>
-        )}
-
-        {validation && validation.status !== 'valid' && (
-          <div className={`rounded-2xl border p-4 sm:p-5 ${validation.status === 'invalid' ? 'bg-red-50 border-red-200 text-red-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>
-            <div className="flex items-start gap-3">
-              <AlertTriangle className={`w-5 h-5 mt-0.5 shrink-0 ${validation.status === 'invalid' ? 'text-red-600' : 'text-amber-600'}`} />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <strong className="text-sm sm:text-base">
-                    {validation.status === 'invalid'
-                      ? (isThai ? 'ไม่ผ่านการตรวจสอบข้อมูลสำคัญ' : 'Critical data validation failed')
-                      : (isThai ? 'มีคำเตือนด้านคุณภาพข้อมูล' : 'Data quality warning')}
-                  </strong>
-                  <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
-                    schema v{validation.schema_version}
-                  </span>
-                </div>
-                <p className="text-xs sm:text-sm mt-1 leading-relaxed opacity-85">
-                  {validation.status === 'invalid'
-                    ? (isThai
-                        ? 'ระบบระงับ Valuation และ Conviction ที่พึ่งข้อมูลส่วนที่ผิดปกติ รายงานนี้จะไม่ถูกบันทึกเป็นรายงานที่ผ่านการตรวจสอบ'
-                        : 'Dependent valuation and conviction outputs are blocked, and this report is not saved as a validated report.')
-                    : (isThai
-                        ? 'รายงานยังใช้ได้ แต่มีข้อมูลบางส่วนที่ไม่ครบหรือควรตรวจสอบเพิ่มเติม'
-                        : 'The report remains usable, but some fields are incomplete or need additional verification.')}
-                </p>
-                {(criticalValidationIssues.length > 0 || warningValidationIssues.length > 0) && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {[...criticalValidationIssues, ...warningValidationIssues].slice(0, 5).map((validationIssue, index) => (
-                      <span
-                        key={`${validationIssue.code}-${index}`}
-                        className="inline-flex rounded-full border border-current/20 bg-white/55 px-2 py-0.5 text-[10px] font-mono"
-                        title={validationIssue.message}
-                      >
-                        {validationIssue.code}
-                      </span>
-                    ))}
-                    {(criticalValidationIssues.length + warningValidationIssues.length) > 5 && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 opacity-70">
-                        +{criticalValidationIssues.length + warningValidationIssues.length - 5}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
 
@@ -701,6 +586,12 @@ export default function ReportTemplate({
                 {data.peer_comparison?.industry_name && (
                   <span className="text-[11px] font-mono font-medium px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80">
                     {data.peer_comparison.industry_name}
+                  </span>
+                )}
+                {reportDate && (
+                  <span className="text-[11px] font-mono text-stone-500 bg-stone-50 border border-stone-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-stone-400" />
+                    {reportDate}
                   </span>
                 )}
               </div>
@@ -1652,6 +1543,134 @@ export default function ReportTemplate({
                ))}
              </div>
            )}
+        </div>
+
+        {/* SECTION: DATA PROVENANCE, AUDIT & DISCLAIMERS */}
+        <div id="section-provenance" className="flex flex-col gap-4 scroll-mt-14 pt-6 border-t border-stone-200">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-[#0b5a4b] shrink-0" />
+            <h3 className="font-bold text-stone-900 text-lg sm:text-xl">
+              {isThai ? 'แหล่งข้อมูล, ข้อกำหนด & ข้อสงวนสิทธิ์ (Data Provenance & Disclaimers)' : 'Data Provenance, Audit & Disclaimers'}
+            </h3>
+          </div>
+
+          {provenance && (
+            <div className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 flex flex-col gap-3 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#0b5a4b] shrink-0" />
+                  <strong className="text-sm text-stone-900">{isThai ? 'แหล่งข้อมูลของรายงาน (Data Provenance)' : 'Report Data Provenance'}</strong>
+                </div>
+                <span className="text-[10px] font-mono text-stone-500 bg-stone-100 border border-stone-200 rounded-full px-2 py-0.5">
+                  {provenance.report_generated_by_version}
+                </span>
+              </div>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                {isThai
+                  ? 'คำว่า SEC Verified ใช้เฉพาะส่วนที่ระบบระบุไว้เท่านั้น ไม่ได้หมายความว่า Narrative หรือตารางงบทั้งรายงานได้รับการรับรองจาก SEC'
+                  : 'SEC Verified applies only to explicitly labeled sections; it does not certify the report narrative or displayed statement snapshot.'}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-violet-900"><Sparkles className="w-3.5 h-3.5" />{isThai ? 'บทวิเคราะห์' : 'Research Narrative'}</div>
+                  <div className="text-xs mt-1 text-violet-800">AI Research Snapshot</div>
+                  <div className="text-[10px] mt-1 text-violet-700/80">{isThai ? 'สังเคราะห์โดย AI • ไม่ใช่ SEC Certified' : 'AI synthesis • not SEC certified'}</div>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900"><FileText className="w-3.5 h-3.5" />{isThai ? 'ตารางงบการเงิน' : 'Financial Statements'}</div>
+                  <div className="text-xs mt-1 text-amber-800">{provenance.financial_statements.source === 'report_snapshot' ? 'Report Snapshot' : (isThai ? 'ไม่มีข้อมูล' : 'Unavailable')}</div>
+                  <div className="text-[10px] mt-1 text-amber-700/80">
+                    {isThai ? 'ผ่าน runtime checks แต่ไม่ถูกยกระดับเป็น SEC Verified' : 'Runtime-checked, but not promoted to SEC Verified'}
+                  </div>
+                </div>
+                <div className={`rounded-xl border p-3 ${provenance.dcf_financial_inputs.source === 'sec_verified' ? 'border-emerald-200 bg-emerald-50/70' : provenance.dcf_financial_inputs.source === 'report_snapshot' ? 'border-amber-200 bg-amber-50/60' : 'border-stone-200 bg-stone-50'}`}>
+                  <div className={`flex items-center gap-1.5 text-xs font-bold ${provenance.dcf_financial_inputs.source === 'sec_verified' ? 'text-emerald-900' : provenance.dcf_financial_inputs.source === 'report_snapshot' ? 'text-amber-900' : 'text-stone-700'}`}>
+                    <ShieldCheck className="w-3.5 h-3.5" />DCF Financial Inputs
+                  </div>
+                  <div className="text-xs mt-1 font-semibold">
+                    {provenance.dcf_financial_inputs.source === 'sec_verified'
+                      ? 'SEC Verified Financial Inputs'
+                      : provenance.dcf_financial_inputs.source === 'report_snapshot'
+                      ? 'Report Snapshot Financial Inputs'
+                      : (isThai ? 'ยังไม่มีชุดข้อมูล DCF ที่ใช้ได้' : 'DCF input set unavailable')}
+                  </div>
+                  {(provenance.dcf_financial_inputs.source_period || provenance.dcf_financial_inputs.as_of) && (
+                    <div className="text-[10px] mt-1 font-mono opacity-70">
+                      {[provenance.dcf_financial_inputs.source_period, provenance.dcf_financial_inputs.as_of].filter(Boolean).join(' • ')}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-[10px] sm:text-[11px] text-stone-500 border-t border-stone-100 pt-2 flex flex-wrap items-center gap-1.5">
+                <span className="font-bold">SEC cross-check:</span>
+                <span className="font-mono">{provenance.sec_cross_check.status}</span>
+                <span>•</span>
+                <span>{isThai ? 'สถานะนี้ไม่ใช่การรับรองรายงานทั้งฉบับ' : 'This status is not a certification of the full report.'}</span>
+              </div>
+            </div>
+          )}
+
+          {validation && validation.status !== 'valid' && (
+            <div className={`rounded-2xl border p-4 sm:p-5 ${validation.status === 'invalid' ? 'bg-red-50 border-red-200 text-red-950' : 'bg-amber-50 border-amber-200 text-amber-950'}`}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle className={`w-5 h-5 mt-0.5 shrink-0 ${validation.status === 'invalid' ? 'text-red-600' : 'text-amber-600'}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="text-sm sm:text-base">
+                      {validation.status === 'invalid'
+                        ? (isThai ? 'ไม่ผ่านการตรวจสอบข้อมูลสำคัญ' : 'Critical data validation failed')
+                        : (isThai ? 'มีคำเตือนด้านคุณภาพข้อมูล' : 'Data quality warning')}
+                    </strong>
+                    <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                      schema v{validation.schema_version}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm mt-1 leading-relaxed opacity-85">
+                    {validation.status === 'invalid'
+                      ? (isThai
+                          ? 'ระบบระงับ Valuation และ Conviction ที่พึ่งข้อมูลส่วนที่ผิดปกติ รายงานนี้จะไม่ถูกบันทึกเป็นรายงานที่ผ่านการตรวจสอบ'
+                          : 'Dependent valuation and conviction outputs are blocked, and this report is not saved as a validated report.')
+                      : (isThai
+                          ? 'รายงานยังใช้ได้ แต่มีข้อมูลบางส่วนที่ไม่ครบหรือควรตรวจสอบเพิ่มเติม'
+                          : 'The report remains usable, but some fields are incomplete or need additional verification.')}
+                  </p>
+                  {(criticalValidationIssues.length > 0 || warningValidationIssues.length > 0) && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {[...criticalValidationIssues, ...warningValidationIssues].slice(0, 5).map((validationIssue, index) => (
+                        <span
+                          key={`${validationIssue.code}-${index}`}
+                          className="inline-flex rounded-full border border-current/20 bg-white/55 px-2 py-0.5 text-[10px] font-mono"
+                          title={validationIssue.message}
+                        >
+                          {validationIssue.code}
+                        </span>
+                      ))}
+                      {(criticalValidationIssues.length + warningValidationIssues.length) > 5 && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 opacity-70">
+                          +{criticalValidationIssues.length + warningValidationIssues.length - 5}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 leading-relaxed">
+            {isThai ? 'ข้อมูลในรายงานเป็น snapshot จากการวิเคราะห์ ไม่ได้รับรองว่าเทียบเอกสารต้นทางแล้ว รายงานเก่าอาจมีข้อมูลผิดงวดหรือข้อมูลที่ AI สร้างขึ้น โปรดตรวจแหล่งอ้างอิงก่อนใช้ ตัวเลขประเมินมูลค่าและคะแนนเป็นผลวิเคราะห์ ไม่ใช่ข้อเท็จจริง' : 'This report is a research snapshot, not source-verified data. Older reports may contain incorrect periods or AI-generated values. Verify citations; valuations and scores are estimates.'}
+          </div>
+
+          <div className="bg-stone-100/90 border border-stone-200 rounded-2xl p-3 sm:p-4 text-xs text-stone-600 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#0b5a4b] shrink-0" />
+              <span><strong>{isThai ? 'ข้อสงวนสิทธิ์:' : 'Disclaimer:'}</strong> {isThai ? 'รายงานนี้จัดทำขึ้นเพื่อการศึกษาและการวิเคราะห์ข้อมูล ไม่ใช่คำแนะนำการลงทุน' : 'This report is for educational & analytical purposes only, not investment advice.'}</span>
+            </div>
+            <div className="font-mono text-stone-500 text-[11px] self-start sm:self-auto shrink-0 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-stone-400" />
+              {isThai ? 'ข้อมูล ณ ' : 'As of '}{reportDate}
+            </div>
+          </div>
         </div>
       </div>
 
