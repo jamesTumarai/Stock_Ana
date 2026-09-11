@@ -58,6 +58,13 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'balance_sheet', metric: 'total_current_liabilities', concepts: ['LiabilitiesCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'accounts_payable', concepts: ['AccountsPayableCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'total_liabilities', concepts: ['Liabilities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'short_term_debt', concepts: ['DebtCurrent', 'ShortTermBorrowings', 'CommercialPaper', 'LongTermDebtCurrent', 'FinanceLeaseLiabilityCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'long_term_debt', concepts: ['LongTermDebtNoncurrent', 'LongTermDebt', 'FinanceLeaseLiabilityNoncurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'total_debt', concepts: ['DebtAndFinanceLeaseObligations', 'LongTermDebtAndCapitalLeaseObligations', 'LongTermDebtAndFinanceLeaseObligations', 'DebtInstrumentCarryingAmount'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'operating_lease_rou_assets', concepts: ['OperatingLeaseRightOfUseAsset'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'operating_lease_liabilities_current', concepts: ['OperatingLeaseLiabilityCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'operating_lease_liabilities_non_current', concepts: ['OperatingLeaseLiabilityNoncurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'operating_lease_liabilities', concepts: ['OperatingLeaseLiability'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'total_equity', concepts: ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'common_stock', concepts: ['CommonStockValue', 'CommonStocksIncludingAdditionalPaidInCapital'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'retained_earnings', concepts: ['RetainedEarningsAccumulatedDeficit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
@@ -243,6 +250,104 @@ const deriveFreeCashFlow = (
   });
 };
 
+const deriveTotalDebt = (
+  periods: string[],
+  values: Record<string, CanonicalFinancialValue[]>,
+): CanonicalFinancialValue[] | null => {
+  const directTotal = values['balance_sheet.total_debt'];
+  const shortDebt = values['balance_sheet.short_term_debt'];
+  const longDebt = values['balance_sheet.long_term_debt'];
+
+  if (!directTotal && !shortDebt && !longDebt) return null;
+
+  return periods.map((period, index) => {
+    const direct = directTotal?.[index];
+    if (direct && direct.value !== null && direct.verification === 'verified') {
+      return direct;
+    }
+    const std = shortDebt?.[index];
+    const ltd = longDebt?.[index];
+    const hasStd = std?.value !== null && std?.value !== undefined;
+    const hasLtd = ltd?.value !== null && ltd?.value !== undefined;
+    if (hasStd || hasLtd) {
+      const stdVal = hasStd ? (std?.value as number) : 0;
+      const ltdVal = hasLtd ? (ltd?.value as number) : 0;
+      const isVerified = (!hasStd || std?.verification === 'verified') && (!hasLtd || ltd?.verification === 'verified');
+      return {
+        metric: 'total_debt',
+        statement: 'balance_sheet',
+        value: stdVal + ltdVal,
+        unit: 'USD_M',
+        period,
+        periodEnd: std?.periodEnd ?? ltd?.periodEnd,
+        type: 'derived',
+        verification: isVerified ? 'verified' : 'unverified',
+        source: std?.source ?? ltd?.source,
+        derivation: 'Lumina deterministic total debt = verified SEC short-term debt + verified SEC long-term debt.',
+      };
+    }
+    return direct ?? {
+      metric: 'total_debt',
+      statement: 'balance_sheet',
+      value: null,
+      unit: 'USD_M',
+      period,
+      type: 'derived',
+      verification: 'unverified',
+      derivation: 'No verified debt facts disclosed for this quarter.',
+    };
+  });
+};
+
+const deriveTotalOperatingLeases = (
+  periods: string[],
+  values: Record<string, CanonicalFinancialValue[]>,
+): CanonicalFinancialValue[] | null => {
+  const directTotal = values['balance_sheet.operating_lease_liabilities'];
+  const currentLease = values['balance_sheet.operating_lease_liabilities_current'];
+  const nonCurrentLease = values['balance_sheet.operating_lease_liabilities_non_current'];
+
+  if (!directTotal && !currentLease && !nonCurrentLease) return null;
+
+  return periods.map((period, index) => {
+    const direct = directTotal?.[index];
+    if (direct && direct.value !== null && direct.verification === 'verified') {
+      return direct;
+    }
+    const cur = currentLease?.[index];
+    const nonCur = nonCurrentLease?.[index];
+    const hasCur = cur?.value !== null && cur?.value !== undefined;
+    const hasNonCur = nonCur?.value !== null && nonCur?.value !== undefined;
+    if (hasCur || hasNonCur) {
+      const curVal = hasCur ? (cur?.value as number) : 0;
+      const nonCurVal = hasNonCur ? (nonCur?.value as number) : 0;
+      const isVerified = (!hasCur || cur?.verification === 'verified') && (!hasNonCur || nonCur?.verification === 'verified');
+      return {
+        metric: 'operating_lease_liabilities',
+        statement: 'balance_sheet',
+        value: curVal + nonCurVal,
+        unit: 'USD_M',
+        period,
+        periodEnd: cur?.periodEnd ?? nonCur?.periodEnd,
+        type: 'derived',
+        verification: isVerified ? 'verified' : 'unverified',
+        source: cur?.source ?? nonCur?.source,
+        derivation: 'Lumina deterministic total operating lease liabilities = verified current + non-current operating lease liabilities.',
+      };
+    }
+    return direct ?? {
+      metric: 'operating_lease_liabilities',
+      statement: 'balance_sheet',
+      value: null,
+      unit: 'USD_M',
+      period,
+      type: 'derived',
+      verification: 'unverified',
+      derivation: 'No verified lease liability facts disclosed for this quarter.',
+    };
+  });
+};
+
 /**
  * Maps SEC Company Facts into Lumina's canonical financial model.
  * Values are marked `verified` only because they were independently retrieved from SEC XBRL
@@ -280,6 +385,12 @@ export function mapSecBundleToCanonicalFinancials(
 
   const fcf = deriveFreeCashFlow(periods, values);
   if (fcf?.some(item => item.value !== null)) values['cash_flow.free_cash_flow'] = fcf;
+
+  const derivedDebt = deriveTotalDebt(periods, values);
+  if (derivedDebt?.some(item => item.value !== null)) values['balance_sheet.total_debt'] = derivedDebt;
+
+  const derivedLeases = deriveTotalOperatingLeases(periods, values);
+  if (derivedLeases?.some(item => item.value !== null)) values['balance_sheet.operating_lease_liabilities'] = derivedLeases;
 
   const flattened = Object.values(values).flat();
   const nonNullValues = flattened.filter(item => item.value !== null).length;

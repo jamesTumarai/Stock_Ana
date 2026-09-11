@@ -60,7 +60,12 @@ export interface BalanceSheetData {
   tax_payable?: (number | null)[];
   short_term_debt?: (number | null)[];
   current_deferred_liabilities?: (number | null)[];
+  long_term_debt?: (number | null)[];
   total_debt?: (number | null)[];
+  operating_lease_rou_assets?: (number | null)[];
+  operating_lease_liabilities_current?: (number | null)[];
+  operating_lease_liabilities_non_current?: (number | null)[];
+  operating_lease_liabilities?: (number | null)[];
   total_liabilities?: (number | null)[];
   total_equity?: (number | null)[];
   capital_stock?: (number | null)[];

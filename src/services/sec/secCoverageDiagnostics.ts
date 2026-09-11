@@ -50,6 +50,10 @@ const CANDIDATES: Candidate[] = [
   { group: 'debt', concept: 'CommercialPaper', factKind: 'instant', preferredUnit: 'USD' },
   { group: 'debt', concept: 'FinanceLeaseLiabilityCurrent', factKind: 'instant', preferredUnit: 'USD' },
   { group: 'debt', concept: 'FinanceLeaseLiabilityNoncurrent', factKind: 'instant', preferredUnit: 'USD' },
+  { group: 'debt', concept: 'OperatingLeaseLiabilityCurrent', factKind: 'instant', preferredUnit: 'USD' },
+  { group: 'debt', concept: 'OperatingLeaseLiabilityNoncurrent', factKind: 'instant', preferredUnit: 'USD' },
+  { group: 'debt', concept: 'OperatingLeaseLiability', factKind: 'instant', preferredUnit: 'USD' },
+  { group: 'debt', concept: 'OperatingLeaseRightOfUseAsset', factKind: 'instant', preferredUnit: 'USD' },
 
   // Liquid/marketable investments. Diagnostics only until accounting semantics are explicit.
   { group: 'investments', concept: 'ShortTermInvestments', factKind: 'instant', preferredUnit: 'USD' },

@@ -1,4 +1,5 @@
 import { periodChanges } from '../utils/reportIntegrity';
+import { aggregateQuarterlyToAnnual } from '../utils/statementAggregation';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -70,15 +71,22 @@ export function FinancialStatementsTable({
     );
   }
 
-  const rawPeriods = data.periods;
-  const statementTemplate = data.statement_template || 'standard';
-  const validation = data.validation_summary;
+  const annualData = React.useMemo(() => {
+    return aggregateQuarterlyToAnnual(data);
+  }, [data]);
+
+  const isAnnualActive = periodType === 'annual' && Boolean(annualData);
+  const effectiveData = isAnnualActive ? (annualData as FinancialStatementsData) : data;
+  const rawPeriods = effectiveData.periods;
+  const statementTemplate = effectiveData.statement_template || 'standard';
+  const validation = effectiveData.validation_summary;
   const currSym = currencyMode === 'THB' ? '฿' : '$';
   const hasFxRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
   const multiplier = currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
 
   // Filter periods based on user selection
   const periodIndices = rawPeriods.map((_, i) => i).filter((i) => {
+    if (isAnnualActive) return true;
     const p = rawPeriods[i];
     if (quarterFilter === 'all') return true;
     return p.includes(quarterFilter);
@@ -88,7 +96,7 @@ export function FinancialStatementsTable({
 
   // Auto-detect full raw currency scale (e.g. 100,000,000+ -> convert to millions)
   const isFullRawCurrencyScale = (() => {
-    const revs = (data.income_statement?.revenue || []).filter((v): v is number => typeof v === 'number' && v > 0);
+    const revs = (effectiveData.income_statement?.revenue || []).filter((v): v is number => typeof v === 'number' && v > 0);
     if (revs.length === 0) return false;
     return Math.max(...revs) >= 100_000_000;
   })();
@@ -118,12 +126,12 @@ export function FinancialStatementsTable({
     metricKey?: string
   ): (number | null)[] => {
     return periodChanges(values, rawPeriods, compareMode,
-      metricKey === 'revenue' ? data.income_statement?.yoy_revenue_growth_pct : undefined);
+      metricKey === 'revenue' ? effectiveData.income_statement?.yoy_revenue_growth_pct : undefined);
   };
 
-  const income = data.income_statement;
-  const balance = data.balance_sheet;
-  const cashflow = data.cash_flow;
+  const income = effectiveData.income_statement;
+  const balance = effectiveData.balance_sheet;
+  const cashflow = effectiveData.cash_flow;
 
   // Dynamic Key Indicators derived deterministically from company's actual statements
   const grossMarginVals = rawPeriods.map((_, i) => {
@@ -995,7 +1003,7 @@ export function FinancialStatementsTable({
                     }}
                     className="text-xs font-mono text-stone-700 bg-white hover:bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all font-medium"
                   >
-                    <span>{periodType === 'annual' ? 'Annual' : `Quarterly · ${quarterFilter === 'all' ? 'All' : quarterFilter}`}</span>
+                    <span>{periodType === 'annual' ? (isAnnualActive ? 'Annual / LTM' : 'Annual') : `Quarterly · ${quarterFilter === 'all' ? 'All' : quarterFilter}`}</span>
                     <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
                   </button>
 
@@ -1205,6 +1213,21 @@ export function FinancialStatementsTable({
             >
               Expand Chart ⌄
             </button>
+          </div>
+        )}
+
+        {/* Institutional Annual / LTM Status Banner */}
+        {isAnnualActive && (
+          <div className="px-4 py-2.5 bg-emerald-50/70 border-b border-emerald-100/80 flex items-center justify-between text-xs text-[#0b5a4b] font-mono">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#0b5a4b] animate-pulse" />
+              <span className="font-semibold">
+                {isThai ? 'มุมมองสรุปรายปี / LTM (คำนวณสะสม 4 ไตรมาสอย่างเคร่งครัดตามหลักการบัญชี)' : 'Annual / LTM Mode (Deterministic 4-Quarter Sum for Flows & Ending Balance for Instant Assets/Liabilities)'}
+              </span>
+            </div>
+            <span className="text-[10px] text-stone-500 uppercase tracking-wider font-sans">
+              {isThai ? 'ข้อมูลตรวจสอบแล้ว' : 'SEC GAAP Normalized'}
+            </span>
           </div>
         )}
 
