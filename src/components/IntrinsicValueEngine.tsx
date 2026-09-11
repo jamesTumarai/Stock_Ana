@@ -58,7 +58,48 @@ export function IntrinsicValueEngine({
   );
 
   if (data.dcf_model.inputs?.isValid === false) {
+    const isFinancialSectorGuard = data.dcf_model.inputs.missingFields?.some(field =>
+      field.includes('operating-company FCFF model fit')
+    );
+    const modelSelector = data.selected_model;
     const missing = data.dcf_model.inputs.missingFields?.join(', ');
+
+    if (isFinancialSectorGuard) {
+      return (
+        <div className="bg-sky-50/80 rounded-2xl p-6 border border-sky-200 text-sky-950">
+          <div className="flex items-start gap-3.5">
+            <Info className="w-5 h-5 mt-0.5 shrink-0 text-sky-700" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-base text-sky-900">
+                  {isThai ? 'ปิดการประเมินด้วยแบบจำลอง FCFF DCF (Financial Sector Guard)' : 'Generic FCFF DCF Prohibited (Financial Sector Guard)'}
+                </h3>
+                <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300">
+                  {isThai ? 'สถาบันการเงิน / FinTech' : 'Financial / FinTech'}
+                </span>
+              </div>
+              <p className="text-sm mt-2 leading-relaxed text-sky-900/90">
+                {isThai
+                  ? `เนื่องจาก ${ticker || 'บริษัทนี้'} มีโครงสร้างธุรกิจเป็นสถาบันการเงินหรือ FinTech โดยมีเงินฝากและวงเงินเครดิตเป็นวัตถุดิบในการดำเนินงาน ไม่ใช่หนี้สินทางการเงิน (Financial Leverage) แบบบริษัททั่วไป การประเมินด้วยแบบจำลองกระแสเงินสดอิสระ (FCFF) จึงขัดแย้งกับหลักการเงินสากล ระบบ Lumina จึงระงับแบบจำลอง FCFF เพื่อรักษาความถูกต้องของข้อมูล (Financial Integrity)`
+                  : `Because ${ticker || 'this company'} operates as a depository or fintech lending institution where deposits and debt facilities serve as operating inventory rather than corporate financial leverage, applying generic operating-company Free Cash Flow to Firm (FCFF) structurally misrepresents equity value. Lumina strictly disables generic FCFF in compliance with corporate finance principles.`}
+              </p>
+              {modelSelector && (
+                <div className="mt-3.5 p-3 rounded-xl bg-white/80 border border-sky-200/80 text-xs text-sky-900">
+                  <div className="font-semibold text-sky-950">
+                    {isThai ? 'แบบจำลองที่เหมาะสมตามประเภทธุรกิจ:' : 'Recommended sector methodology:'} {isThai ? (modelSelector.model_name_th || modelSelector.model_name_en) : modelSelector.model_name_en}
+                  </div>
+                  <div className="mt-1 leading-relaxed opacity-85">
+                    {isThai ? (modelSelector.reason_th || modelSelector.reason_en) : (modelSelector.reason_en || modelSelector.reason_th)}
+                  </div>
+                </div>
+              )}
+              <div className="mt-3.5">{dcfSourceBadge}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-amber-50 rounded-2xl p-6 border border-amber-200 text-amber-950">
         <div className="flex items-start gap-3">

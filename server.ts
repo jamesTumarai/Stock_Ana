@@ -18,6 +18,7 @@ import { registerMetricRoutes } from "./server/routes/metricRoutes.ts";
 import { registerDcfRoutes } from "./server/routes/dcfRoutes.ts";
 import { registerFileRoutes } from "./server/routes/fileRoutes.ts";
 import { registerMarketRoutes } from "./server/routes/marketRoutes.ts";
+import { registerSecRoutes } from "./server/routes/secRoutes.ts";
 
 import { streamInteraction } from "./server/lib/agentClient.ts";
 import { loadAgentFiles } from "./server/lib/agentFiles.ts";
@@ -56,6 +57,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   registerDcfRoutes(app, requireFirebaseAuth, dcfAssumptionRateLimit);
   registerFileRoutes(app, requireFirebaseAuth);
   registerMarketRoutes(app);
+  registerSecRoutes(app);
 
   app.post("/api/analyze", requireFirebaseAuth, analyzeRateLimit, analyzeConcurrencyLimit, async (req, res) => {
     try {

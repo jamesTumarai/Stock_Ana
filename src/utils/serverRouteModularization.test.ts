@@ -9,6 +9,8 @@ const movedRoutes = [
   ['/api/upload_artifact', 'server/routes/fileRoutes.ts'],
   ['/api/download_jsonl', 'server/routes/fileRoutes.ts'],
   ['/api/live-quotes', 'server/routes/marketRoutes.ts'],
+  ['/api/sec-preview', 'server/routes/secRoutes.ts'],
+  ['/api/sec-compare', 'server/routes/secRoutes.ts'],
 ] as const;
 
 for (const [route, file] of movedRoutes) {
@@ -22,5 +24,6 @@ assert.ok(server.includes('registerMetricRoutes(app, requireFirebaseAuth, metric
 assert.ok(server.includes('registerDcfRoutes(app, requireFirebaseAuth, dcfAssumptionRateLimit);'));
 assert.ok(server.includes('registerFileRoutes(app, requireFirebaseAuth);'));
 assert.ok(server.includes('registerMarketRoutes(app);'));
+assert.ok(server.includes('registerSecRoutes(app);'));
 assert.ok(server.includes('app.post("/api/analyze"'), 'Analyze stays in server.ts for Phase 4D1');
 console.log('server route modularization tests passed');
