@@ -113,29 +113,26 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 11 — Productization / Subscription Readiness (Active 🔄)
-**Potential scope:**
-- Usage tiers
-- Quotas and entitlements
-- Billing
-- Onboarding
-- Account management
-- Privacy and legal / disclosure readiness
-- Security reviews and production scaling
-- Entitlements must remain separate from canonical financial calculations.
+### Phase 11 — Productization / Subscription Readiness (Complete ✅)
+**Delivered capabilities:**
+- Subscription Tier Architecture (`src/domain/subscriptionTiers.ts`): 3 institutional tiers (Explorer / Free, Pro Analyst, Institutional Desk) with feature sets, monthly quotas, model access, and SLA indicators.
+- Pure Deterministic Entitlement Engine (`src/utils/entitlementEngine.ts`): feature gating, monthly quota evaluation, and portfolio holdings limit enforcement. Strict architectural invariant: entitlements operate strictly at the access boundary; canonical DCF formulas, SEC filings integrity, and mathematical calculations are never altered or degraded by tier.
+- Client Subscription & Usage Service (`src/services/subscriptionService.ts`): local storage & Node test runner compatible tracking of billing cycles (YYYY-MM), monthly analysis counts, and token consumption.
+- Institutional Subscription Modal (`src/components/SubscriptionModal.tsx`): interactive tier selector, live monthly quota consumption progress bar, feature comparison matrix, and financial integrity guarantee.
+- UI & Flow Integration (`LandingView.tsx`, `App.tsx`): Crown tier badge pill in desktop & mobile headers, pre-analysis quota checks, automatic usage recording upon report generation, and tier upgrade flows.
+- Comprehensive Unit Test Suites: 100% test pass rate across tier definitions, entitlement logic, and usage services.
 
 ---
 
-### Phase 12 — Advanced Investment Intelligence
-**Long-term capabilities:**
-- Investment thesis tracking
-- Earnings-call interpretation
-- SEC filing change detection
-- Management guidance tracking
-- Analyst estimate revisions
-- Macro sensitivity
-- Portfolio-level research intelligence
-- Historical valuation / thesis change decomposition (e.g. decomposing fair-value change into financial statements, FCF, shares, market price, growth assumptions, margin assumptions, WACC, terminal growth without invented narrative).
+### Phase 12 — Advanced Investment Intelligence (Active 🔄)
+**Potential scope:**
+- Investment thesis tracking and milestone verification
+- Historical valuation & thesis change decomposition (decomposing fair-value shifts across financial statements, FCF, shares, market price, growth assumptions, margin assumptions, WACC, and terminal growth without invented narrative)
+- Earnings-call interpretation and tone analysis
+- SEC filing change detection (10-K/10-Q diffing against prior periods)
+- Management guidance tracking vs reported performance
+- Macro and sector sensitivity stress-testing
+- Portfolio-level aggregated intelligence and sector concentration analytics
 
 ---
 

@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 10 Complete ✅; Transitioning to Phase 11 — Productization / Subscription Readiness 🔄**.
+- Current stage: **Phase 11 Complete ✅; Transitioning to Phase 12 — Advanced Investment Intelligence 🔄**.
 - Current working mode: **Systematic execution across roadmap phases authorized by owner**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #63 (`7abe25f`) — Institutional Reverse DCF, Scenario & Sensitivity Analysis, and Peer Comparison Normalizer (Phase 9).
+- Latest merged milestone: PR #64 (`fb24fa5`) — SEC Cache, AI Cost Tracking, Health Diagnostics & Telemetry (Phase 10).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection
@@ -216,6 +216,14 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Mounted structured `/api/health` diagnostics endpoint across Express and Vercel functions reporting memory usage, uptime, service configuration, and SEC cache telemetry.
 - Built `LatencyTracker` (`latencyTracker.ts`): Stage-level latency tracking for market snapshots, Gemini stream, and valuation assumption bridge, emitted in SSE `final_stats` events.
 - 62 regression test suites passing with 100% success.
+
+### Phase 11 — Productization / Subscription Readiness ✅
+- Built 3 institutional subscription tiers (`subscriptionTiers.ts`): Explorer / Free, Pro Analyst, Institutional Desk, specifying feature gates, monthly quotas, model access, and SLA indicators.
+- Implemented pure deterministic `entitlementEngine.ts`: Feature entitlement evaluation, monthly analysis quota enforcement, and portfolio holdings limitation. Strict architectural invariant: entitlements operate strictly at the access boundary; canonical DCF formulas, SEC filings integrity, and mathematical calculations are never altered or degraded by tier.
+- Client subscription service (`subscriptionService.ts`): Local storage and Node-safe tracking of billing cycles (YYYY-MM), monthly analysis counts, and token consumption.
+- Interactive `SubscriptionModal.tsx`: Plan comparison matrix, live monthly quota consumption progress bar, upgrade actions, and financial integrity guarantee.
+- UI integration (`LandingView.tsx`, `App.tsx`): Crown tier badge pill in desktop & mobile headers, pre-analysis quota checks, and usage recording upon report generation.
+- Full unit test coverage across all tier definitions, entitlement checks, and usage services.
 
 ## Current production health
 
