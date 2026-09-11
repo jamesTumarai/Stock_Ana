@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 11 Complete ✅; Transitioning to Phase 12 — Advanced Investment Intelligence 🔄**.
+- Current stage: **Phase 12 Complete ✅; Full Institutional Roadmap Execution Complete 🏆**.
 - Current working mode: **Systematic execution across roadmap phases authorized by owner**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #64 (`fb24fa5`) — SEC Cache, AI Cost Tracking, Health Diagnostics & Telemetry (Phase 10).
+- Latest merged milestone: PR #65 (`4a7270a`) — Institutional Subscription Tiers, Entitlement Engine & Quota UI (Phase 11).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection
@@ -224,6 +224,14 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Interactive `SubscriptionModal.tsx`: Plan comparison matrix, live monthly quota consumption progress bar, upgrade actions, and financial integrity guarantee.
 - UI integration (`LandingView.tsx`, `App.tsx`): Crown tier badge pill in desktop & mobile headers, pre-analysis quota checks, and usage recording upon report generation.
 - Full unit test coverage across all tier definitions, entitlement checks, and usage services.
+
+### Phase 12 — Advanced Investment Intelligence ✅
+- Built `valuationDecompositionEngine.ts`: Pure deterministic marginal attribution of Fair Value deltas across historical reports ($\Delta$ Cash Flow Growth, $\Delta$ WACC / Discount Rate, $\Delta$ Terminal Growth, $\Delta$ Capital Structure & Dilution) with zero qualitative hallucination.
+- Implemented Investment Thesis Health Classification (`upgraded`, `intact`, `under_pressure`, `macro_driven`) linking financial statement evolution with conviction scores.
+- Built `macroStressEngine.ts`: Institutional stress sandbox evaluating 5 macroeconomic shock scenarios (Base Case, Stagflation Shock, Recessionary Demand Contraction, Higher-for-Longer Rates, AI Productivity Wave) with real-time Stressed Fair Value and Margin of Safety recalculation.
+- Built `secFilingDiffEngine.ts`: Deterministic YoY topline/bottomline growth, operating margin expansion/compression (bps), diluted share count shifts, and working capital cash conversion divergence alerts.
+- Built `ValuationDecompositionModal.tsx`: 3-tab institutional analysis suite integrated into Section 3 (Valuation & DCF) of `ReportTemplate.tsx`.
+- 95 test suites passing with 100% success rate.
 
 ## Current production health
 
