@@ -59,8 +59,12 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'balance_sheet', metric: 'accounts_payable', concepts: ['AccountsPayableCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'total_liabilities', concepts: ['Liabilities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'total_equity', concepts: ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'common_stock', concepts: ['CommonStockValue', 'CommonStocksIncludingAdditionalPaidInCapital'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'retained_earnings', concepts: ['RetainedEarningsAccumulatedDeficit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
 
   { statement: 'cash_flow', metric: 'operating_cash_flow', concepts: ['NetCashProvidedByUsedInOperatingActivities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'cash_flow', metric: 'depreciation', concepts: ['DepreciationDepletionAndAmortization', 'DepreciationAmortizationAndAccretionNet', 'DepreciationAndAmortization'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'cash_flow', metric: 'stock_based_compensation', concepts: ['AllocatedShareBasedCompensationExpense', 'ShareBasedCompensation'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   // PaymentsToAcquireProductiveAssets is an SEC standard-taxonomy capex concept that includes
   // purchases/capital improvements of PPE, software and other productive intangible assets.
   // It is a fallback only for fiscal periods where the narrower PPE concept is unavailable.

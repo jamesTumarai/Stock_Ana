@@ -50,10 +50,15 @@ const METRIC_RULES: MetricRule[] = [
   { canonicalKey: 'balance_sheet.total_assets', reportSection: 'balance_sheet', reportKey: 'total_assets', tolerancePct: 1 },
   { canonicalKey: 'balance_sheet.total_liabilities', reportSection: 'balance_sheet', reportKey: 'total_liabilities', tolerancePct: 1 },
   { canonicalKey: 'balance_sheet.total_equity', reportSection: 'balance_sheet', reportKey: 'total_equity', tolerancePct: 1 },
+  { canonicalKey: 'balance_sheet.common_stock', reportSection: 'balance_sheet', reportKey: 'common_stock', tolerancePct: 1 },
+  { canonicalKey: 'balance_sheet.retained_earnings', reportSection: 'balance_sheet', reportKey: 'retained_earnings', tolerancePct: 1 },
   { canonicalKey: 'balance_sheet.total_debt', reportSection: 'balance_sheet', reportKey: 'total_debt', tolerancePct: 1 },
   { canonicalKey: 'cash_flow.operating_cash_flow', reportSection: 'cash_flow', reportKey: 'operating_cash_flow', tolerancePct: 1 },
+  { canonicalKey: 'cash_flow.depreciation', reportSection: 'cash_flow', reportKey: 'depreciation', tolerancePct: 1 },
+  { canonicalKey: 'cash_flow.stock_based_compensation', reportSection: 'cash_flow', reportKey: 'stock_based_compensation', tolerancePct: 1 },
   // SEC capex commonly arrives as a positive cash outflow while legacy report arrays use a negative sign.
   { canonicalKey: 'cash_flow.capex', reportSection: 'cash_flow', reportKey: 'capex', tolerancePct: 1, normalize: Math.abs },
+  { canonicalKey: 'cash_flow.dividends_paid', reportSection: 'cash_flow', reportKey: 'dividends_paid', tolerancePct: 1, normalize: Math.abs },
   { canonicalKey: 'cash_flow.free_cash_flow', reportSection: 'cash_flow', reportKey: 'free_cash_flow', tolerancePct: 1 },
 ];
 
