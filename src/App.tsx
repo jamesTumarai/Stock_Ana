@@ -167,6 +167,9 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        setError(prev => (prev?.includes('เข้าสู่ระบบ') || prev?.includes('sign in') ? null : prev));
+      }
       if (currentUser && firebaseDataAccessAllowed) {
         fetchHistory(currentUser.uid);
       } else {
@@ -536,9 +539,11 @@ export default function App() {
               }
             }
 
+            const nowIso = new Date().toISOString();
             const prepared = validateAndPrepareReport(
               {
                 ...reportForValidation,
+                generated_at: reportForValidation.generated_at || nowIso,
                 ...(secVerification ? { sec_verification: secVerification } : {}),
                 analysis_type: aType,
                 ticker: requestedTicker,
