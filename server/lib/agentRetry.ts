@@ -4,7 +4,10 @@ export async function createInteractionWithRetry(res: any, opts: any) {
   let attempt = 0;
   let currentOpts = { ...opts };
   const fallbackModel = 'gemini-3.7-flash';
-  const retryBudgetMs = 45_000;
+  // Gemini's free-tier rolling quota can require more than one consecutive
+  // Retry-After wait. Keep the total bounded, but long enough to honor those
+  // provider-directed waits instead of failing after the first retry.
+  const retryBudgetMs = 120_000;
   const retryStartedAt = Date.now();
 
   while (attempt < 4) {

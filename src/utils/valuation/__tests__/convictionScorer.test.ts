@@ -258,7 +258,42 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
   console.log('✅ Missing-data fail-closed behavior PASSED');
 }
 
-// 6. Harmonizer Integration Test
+// 6. Exact ratios may be derived from statement values from the same period.
+{
+  console.log('➡️ Testing statement-derived ratio inputs...');
+  const derivedRatios: any = {
+    ticker: 'DERIVE',
+    company_profile: { stock_price: 100, sector: 'Technology' },
+    financial_statements: {
+      income_statement: {
+        revenue: [100, 110],
+        yoy_revenue_growth_pct: [8, 10],
+        net_income: [20, 22]
+      },
+      balance_sheet: {
+        cash_and_equivalents: [30, 35],
+        total_debt: [20, 22],
+        total_equity: [60, 65],
+        total_current_assets: [80, 90],
+        total_current_liabilities: [40, 45]
+      },
+      cash_flow: { free_cash_flow: [18, 20] }
+    },
+    intrinsic_value: { current_price: 100, fair_value_base: 120 },
+    valuation_ratios: [{ name: 'PEG Ratio', value: 1.4 }],
+    comprehensive_analysis: {
+      business_strengths: 'Pricing power\n- Switching costs',
+      scoring: { risk_level: { score: 3 } }
+    }
+  };
+
+  const result = calculateDeterministicConvictionScore(derivedRatios, 'DERIVE');
+  assert.ok(result, 'Exact same-period statement ratios should support deterministic scoring');
+  assert.ok(result.conviction_score >= 0 && result.conviction_score <= 100);
+  console.log(`✅ Statement-derived ratio inputs PASSED (Score: ${result.conviction_score}/100)`);
+}
+
+// 7. Harmonizer Integration Test
 {
   console.log('➡️ Testing metricsHarmonizer Integration...');
 
@@ -291,10 +326,10 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
 
   const harmonized = harmonizeReportData(rawData, 'TSLA');
   assert.ok(harmonized.verdict, 'verdict must exist');
-  assert.equal(harmonized.verdict.conviction_score, 50, 'harmonizer must preserve the sourced score');
-  assert.equal(harmonized.verdict.conviction_breakdown, undefined, 'harmonizer must not synthesize a missing score breakdown');
+  assert.equal(harmonized.verdict.conviction_score, null, 'harmonizer must reject an arbitrary model-produced score');
+  assert.equal(harmonized.verdict.conviction_breakdown, undefined, 'incomplete inputs must not produce a score breakdown');
 
-  console.log(`✅ metricsHarmonizer Integration PASSED (Preserved Score: ${harmonized.verdict.conviction_score}/100)`);
+  console.log('✅ metricsHarmonizer Integration PASSED (arbitrary score removed)');
 }
 
 console.log('🎉 ALL CONVICTION SCORER TESTS PASSED SUCCESSFULLY!');

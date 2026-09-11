@@ -17,7 +17,7 @@ assert.ok(agentFiles.includes('export function loadAgentFiles'));
 assert.ok(agentFiles.includes('path.posix.join(basePath, entry.name)'));
 assert.ok(agentFiles.includes("fs.readFileSync(fullPath, 'utf-8')"));
 assert.ok(agentRetry.includes("const fallbackModel = 'gemini-3.7-flash'"));
-assert.ok(agentRetry.includes('const retryBudgetMs = 45_000'));
+assert.ok(agentRetry.includes('const retryBudgetMs = 120_000'));
 assert.ok(agentRetry.includes('while (attempt < 4)'));
 assert.ok(agentRetry.includes("currentOpts.model === 'gemini-3.8-flash'"));
 assert.ok(agentRetry.includes('return await createInteraction(currentOpts)'));

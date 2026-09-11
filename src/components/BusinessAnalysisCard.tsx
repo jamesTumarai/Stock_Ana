@@ -20,11 +20,12 @@ const BUSINESS_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#475569', '#d97706', 
 const REGION_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#64748b', '#d97706', '#a8a29e'];
 
 function formatSegmentRevenue(rev?: string | number): string {
-  if (!rev) return '-';
+  if (rev === null || rev === undefined || rev === '') return '-';
   if (typeof rev === 'number') {
     if (Math.abs(rev) >= 1000) return `$${(rev / 1000).toFixed(2).replace(/\.?0+$/, '')}B`;
     return `$${rev}M`;
   }
+  if (typeof rev !== 'string') return '-';
   const clean = rev.replace('$', '').replace('M', '').replace('B', '').trim();
   const num = parseFloat(clean);
   if (!isNaN(num)) {
@@ -41,7 +42,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
   isThai
 }) => {
   const [activeTab, setActiveTab] = useState<'breakdown' | 'efficiency'>('breakdown');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('Latest (2026/Q2)');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('Latest');
   const [isPeriodOpen, setIsPeriodOpen] = useState<boolean>(false);
   const [showYoY, setShowYoY] = useState<boolean>(true);
 
@@ -51,35 +52,55 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
 
   if (!data) return null;
 
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
+  const hasMeaningfulText = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0
+      && !['-', 'n/a', 'na', 'none', 'null', 'undefined', 'data unavailable', 'ไม่มีข้อมูล'].includes(normalized);
+  };
+  const hasObservedValue = (value: unknown) =>
+    (typeof value === 'number' && Number.isFinite(value))
+    || (typeof value === 'string' && hasMeaningfulText(value));
+
   const breakdown = data.revenue_breakdown || {};
-  const byBusiness: RevenueSegmentItem[] = breakdown.by_business || [
-    { name: 'Commercial - AIP / Foundry', revenue_usd: '$520M', ratio_pct: 52.0, growth_yoy_pct: 55.4 },
-    { name: 'Government - Gotham Defense', revenue_usd: '$340M', ratio_pct: 34.0, growth_yoy_pct: 28.2 },
-    { name: 'International Government', revenue_usd: '$85M', ratio_pct: 8.5, growth_yoy_pct: 12.0 },
-    { name: 'International Commercial', revenue_usd: '$55M', ratio_pct: 5.5, growth_yoy_pct: 18.5 }
-  ];
+  const validSegment = (item?: RevenueSegmentItem) =>
+    typeof item?.name === 'string'
+    && hasMeaningfulText(item.name)
+    && (hasObservedValue(item.revenue_usd) || hasObservedValue(item.ratio_pct));
+  const byBusiness: RevenueSegmentItem[] = (breakdown.by_business || []).filter(validSegment);
+  const byRegion: RevenueSegmentItem[] = (breakdown.by_region || []).filter(validSegment);
+  const efficiency: OperationalEfficiencyItem[] = (data.operational_efficiency || []).filter(item =>
+    typeof item?.period === 'string'
+    && item.period.trim().length > 0
+    && [
+      item.headcount,
+      item.revenue_per_employee_k_usd,
+      item.operating_profit_per_employee_k_usd,
+      item.net_income_per_employee_k_usd,
+    ].some(hasObservedValue)
+  );
 
-  const byRegion: RevenueSegmentItem[] = breakdown.by_region || [
-    { name: 'United States (สหรัฐอเมริกา)', revenue_usd: '$860M', ratio_pct: 86.0, growth_yoy_pct: 44.0 },
-    { name: 'United Kingdom & Europe', revenue_usd: '$95M', ratio_pct: 9.5, growth_yoy_pct: 15.2 },
-    { name: 'Asia Pacific & Middle East', revenue_usd: '$45M', ratio_pct: 4.5, growth_yoy_pct: 32.0 }
-  ];
-
-  const efficiency: OperationalEfficiencyItem[] = data.operational_efficiency || [
-    { period: '2021/FY', headcount: 2920, headcount_yoy_pct: 19.5, revenue_per_employee_k_usd: 527.4, revenue_per_employee_yoy_pct: 17.5, operating_profit_per_employee_k_usd: -140.2, op_profit_per_employee_yoy_pct: -35.2, net_income_per_employee_k_usd: -178.1, net_income_per_employee_yoy_pct: -52.0 },
-    { period: '2022/FY', headcount: 3838, headcount_yoy_pct: 31.4, revenue_per_employee_k_usd: 496.6, revenue_per_employee_yoy_pct: -5.8, operating_profit_per_employee_k_usd: -42.0, op_profit_per_employee_yoy_pct: 70.0, net_income_per_employee_k_usd: -96.7, net_income_per_employee_yoy_pct: 45.7 },
-    { period: '2023/FY', headcount: 3800, headcount_yoy_pct: -1.0, revenue_per_employee_k_usd: 585.5, revenue_per_employee_yoy_pct: 17.9, operating_profit_per_employee_k_usd: 31.6, op_profit_per_employee_yoy_pct: 175.2, net_income_per_employee_k_usd: 57.1, net_income_per_employee_yoy_pct: 159.0 },
-    { period: '2024/FY', headcount: 3650, headcount_yoy_pct: -3.9, revenue_per_employee_k_usd: 780.8, revenue_per_employee_yoy_pct: 33.4, operating_profit_per_employee_k_usd: 145.2, op_profit_per_employee_yoy_pct: 359.5, net_income_per_employee_k_usd: 122.4, net_income_per_employee_yoy_pct: 114.4 },
-    { period: '2025/FY', headcount: 3750, headcount_yoy_pct: 2.7, revenue_per_employee_k_usd: 945.0, revenue_per_employee_yoy_pct: 21.0, operating_profit_per_employee_k_usd: 215.0, op_profit_per_employee_yoy_pct: 48.1, net_income_per_employee_k_usd: 165.0, net_income_per_employee_yoy_pct: 34.8 },
-    { period: '2026/LTM', headcount: 3850, headcount_yoy_pct: 2.7, revenue_per_employee_k_usd: 1050.4, revenue_per_employee_yoy_pct: 11.2, operating_profit_per_employee_k_usd: 260.5, op_profit_per_employee_yoy_pct: 21.2, net_income_per_employee_k_usd: 185.2, net_income_per_employee_yoy_pct: 12.2 }
-  ];
-
-  const availablePeriods = ['Latest (2026/Q2)', '2026/Q1', '2025/FY', '2024/FY'];
+  const availablePeriods = Array.from(new Set([
+    breakdown.period,
+    ...efficiency.map(item => item.period),
+  ].filter((period): period is string => typeof period === 'string' && period.trim().length > 0)));
+  const displayedPeriod = availablePeriods.includes(selectedPeriod)
+    ? selectedPeriod
+    : (availablePeriods[0] || 'Latest');
 
   const currentBiz = (activeBizIndex !== null && byBusiness[activeBizIndex]) ? byBusiness[activeBizIndex] : byBusiness[0];
   const currentReg = (activeRegIndex !== null && byRegion[activeRegIndex]) ? byRegion[activeRegIndex] : byRegion[0];
 
-  const latestEff = efficiency[efficiency.length - 1];
+  const latestEff = efficiency[efficiency.length - 1] as OperationalEfficiencyItem | undefined;
+  const formatHeadcount = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString()
+    : (typeof value === 'string' && value.trim() ? value : unavailable);
+  const formatUsdMillionsFromThousands = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
+    ? `$${(value / 1000).toFixed(2)}M`
+    : unavailable;
+  const formatUsdThousands = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
+    ? `$${value.toFixed(1)}K`
+    : unavailable;
 
   return (
     <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col gap-5 w-full">
@@ -107,7 +128,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               onClick={() => setIsPeriodOpen(!isPeriodOpen)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200/80 rounded-xl text-xs font-semibold text-stone-700 transition-colors cursor-pointer border border-stone-200/60 font-mono"
             >
-              <span>{selectedPeriod}</span>
+              <span>{displayedPeriod}</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-70" />
             </button>
             {isPeriodOpen && (
@@ -121,11 +142,11 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       setIsPeriodOpen(false);
                     }}
                     className={`w-full text-left px-3 py-1.5 hover:bg-stone-50 transition-colors flex items-center justify-between ${
-                      selectedPeriod === p ? 'text-[#0b5a4b] font-bold bg-emerald-50/50' : 'text-stone-700'
+                      displayedPeriod === p ? 'text-[#0b5a4b] font-bold bg-emerald-50/50' : 'text-stone-700'
                     }`}
                   >
                     <span>{p}</span>
-                    {selectedPeriod === p && <span className="w-1.5 h-1.5 rounded-full bg-[#0b5a4b]"></span>}
+                    {displayedPeriod === p && <span className="w-1.5 h-1.5 rounded-full bg-[#0b5a4b]"></span>}
                   </button>
                 ))}
               </div>
@@ -216,7 +237,9 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                     {currentBiz ? (
                       <>
                         <span className="text-[10px] font-semibold text-stone-600 truncate max-w-[90px]">
-                          {currentBiz.name.split(' - ')[0]}
+                          {typeof currentBiz.name === 'string' && currentBiz.name.trim()
+                            ? currentBiz.name.split(' - ')[0]
+                            : unavailable}
                         </span>
                         <span className="text-base font-bold font-mono text-stone-900 leading-tight">
                           {currentBiz.ratio_pct}%
@@ -226,7 +249,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                         </span>
                       </>
                     ) : (
-                      <span className="text-xs font-bold text-stone-500">Business</span>
+                      <span className="text-xs font-bold text-stone-500">{unavailable}</span>
                     )}
                   </div>
                 </div>
@@ -302,7 +325,9 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                     {currentReg ? (
                       <>
                         <span className="text-[10px] font-semibold text-stone-600 truncate max-w-[90px]">
-                          {currentReg.name.split(' (')[0]}
+                          {typeof currentReg.name === 'string' && currentReg.name.trim()
+                            ? currentReg.name.split(' (')[0]
+                            : unavailable}
                         </span>
                         <span className="text-base font-bold font-mono text-stone-900 leading-tight">
                           {currentReg.ratio_pct}%
@@ -312,7 +337,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                         </span>
                       </>
                     ) : (
-                      <span className="text-xs font-bold text-stone-500">Region</span>
+                      <span className="text-xs font-bold text-stone-500">{unavailable}</span>
                     )}
                   </div>
                 </div>
@@ -359,9 +384,9 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900">
-                  {typeof latestEff.headcount === 'number' ? latestEff.headcount.toLocaleString() : latestEff.headcount}
+                  {formatHeadcount(latestEff?.headcount)}
                 </span>
-                {latestEff.headcount_yoy_pct !== undefined && (
+                {typeof latestEff?.headcount_yoy_pct === 'number' && (
                   <span className="text-xs font-mono font-bold text-emerald-700">
                     +{latestEff.headcount_yoy_pct}% YoY
                   </span>
@@ -375,9 +400,9 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-xl sm:text-2xl font-bold font-mono text-[#0b5a4b]">
-                  ${(latestEff.revenue_per_employee_k_usd / 1000).toFixed(2)}M
+                  {formatUsdMillionsFromThousands(latestEff?.revenue_per_employee_k_usd)}
                 </span>
-                {latestEff.revenue_per_employee_yoy_pct !== undefined && (
+                {typeof latestEff?.revenue_per_employee_yoy_pct === 'number' && (
                   <span className="text-xs font-mono font-bold text-emerald-700">
                     +{latestEff.revenue_per_employee_yoy_pct}%
                   </span>
@@ -391,11 +416,11 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900">
-                  ${latestEff.operating_profit_per_employee_k_usd.toFixed(1)}K
+                  {formatUsdThousands(latestEff?.operating_profit_per_employee_k_usd)}
                 </span>
-                {(latestEff.operating_profit_per_employee_yoy_pct ?? latestEff.op_profit_per_employee_yoy_pct) !== undefined && (
+                {typeof (latestEff?.operating_profit_per_employee_yoy_pct ?? latestEff?.op_profit_per_employee_yoy_pct) === 'number' && (
                   <span className="text-xs font-mono font-bold text-emerald-700">
-                    +{latestEff.operating_profit_per_employee_yoy_pct ?? latestEff.op_profit_per_employee_yoy_pct}%
+                    +{latestEff?.operating_profit_per_employee_yoy_pct ?? latestEff?.op_profit_per_employee_yoy_pct}%
                   </span>
                 )}
               </div>
@@ -407,9 +432,9 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900">
-                  ${latestEff.net_income_per_employee_k_usd.toFixed(1)}K
+                  {formatUsdThousands(latestEff?.net_income_per_employee_k_usd)}
                 </span>
-                {latestEff.net_income_per_employee_yoy_pct !== undefined && (
+                {typeof latestEff?.net_income_per_employee_yoy_pct === 'number' && (
                   <span className="text-xs font-mono font-bold text-emerald-700">
                     +{latestEff.net_income_per_employee_yoy_pct}%
                   </span>
@@ -511,7 +536,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       <td className="py-3 px-3 font-semibold text-stone-900 font-sans">{row.period}</td>
                       <td className="py-3 px-3 text-right">
                         <span className="text-stone-900 font-bold block">
-                          {typeof row.headcount === 'number' ? row.headcount.toLocaleString() : row.headcount}
+                          {formatHeadcount(row.headcount)}
                         </span>
                         {showYoY && row.headcount_yoy_pct !== undefined && (
                           <span className={`text-[10px] ${row.headcount_yoy_pct >= 0 ? 'text-emerald-700' : 'text-stone-500'}`}>
@@ -521,7 +546,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="text-[#0b5a4b] font-bold block">
-                          ${(row.revenue_per_employee_k_usd / 1000).toFixed(2)}M
+                          {formatUsdMillionsFromThousands(row.revenue_per_employee_k_usd)}
                         </span>
                         {showYoY && row.revenue_per_employee_yoy_pct !== undefined && (
                           <span className={`text-[10px] ${row.revenue_per_employee_yoy_pct >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}`}>
@@ -531,7 +556,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="text-stone-800 block font-bold">
-                          ${row.operating_profit_per_employee_k_usd.toFixed(1)}K
+                          {formatUsdThousands(row.operating_profit_per_employee_k_usd)}
                         </span>
                         {(() => {
                           const opYoY = row.op_profit_per_employee_yoy_pct ?? row.operating_profit_per_employee_yoy_pct;
@@ -544,7 +569,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="text-stone-800 block font-bold">
-                          ${row.net_income_per_employee_k_usd.toFixed(1)}K
+                          {formatUsdThousands(row.net_income_per_employee_k_usd)}
                         </span>
                         {showYoY && row.net_income_per_employee_yoy_pct !== undefined && (
                           <span className={`text-[10px] ${row.net_income_per_employee_yoy_pct >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}`}>

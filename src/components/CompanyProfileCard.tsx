@@ -168,7 +168,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
               <span className="text-[11px] text-stone-500 font-bold uppercase tracking-wider">
                 {isThai ? 'เว็บไซต์ทางการ (Official Website)' : 'Official Website'}
               </span>
-              {overview.website_url ? (
+              {typeof overview.website_url === 'string' && overview.website_url.trim() ? (
                 <a
                   href={overview.website_url}
                   target="_blank"
@@ -236,12 +236,16 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-xl bg-stone-100 text-stone-700 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5 sm:mt-0">
-                          {exec.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                          {typeof exec.name === 'string' && exec.name.trim()
+                            ? exec.name.split(' ').map(n => n[0]).slice(0, 2).join('')
+                            : '--'}
                         </div>
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-stone-900 text-sm sm:text-base font-sans">
-                              {exec.name}
+                              {typeof exec.name === 'string' && exec.name.trim()
+                                ? exec.name
+                                : (isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable')}
                             </span>
                             {exec.age && (
                               <span className="text-[11px] font-mono text-stone-500 bg-stone-100 px-1.5 py-0.2 rounded">

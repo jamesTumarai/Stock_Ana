@@ -53,6 +53,23 @@ assert.doesNotMatch(serverSource, /"wacc_pct"\s*:\s*\d/);
 assert.doesNotMatch(serverSource, /"terminal_growth_pct"\s*:\s*\d/);
 assert.doesNotMatch(serverSource, /"projection_years"\s*:\s*\d/);
 
+// Repeating report sections must expose the canonical renderer keys without
+// encouraging empty placeholder rows.
+for (const field of [
+  'holder_type_breakdown',
+  'shares_held',
+  'pct_owned',
+  'revenue_usd',
+  'ratio_pct',
+  'revenue_per_employee_k_usd',
+  'operating_profit_per_employee_k_usd',
+  'net_income_per_employee_k_usd',
+]) {
+  assert.match(serverSource, new RegExp(`"${field}"\\s*:`), `Production schema is missing canonical field ${field}`);
+}
+assert.match(serverSource, /Never emit an empty placeholder row/);
+assert.match(serverSource, /use \[\] when the entire collection is unavailable/);
+
 // The runtime dynamicSchema is authoritative. Legacy managed-agent configuration files
 // must not be injected as environment sources where they can compete with that contract.
 assert.match(serverSource, /legacyAgentRuntimeFiles = new Set/);
@@ -66,7 +83,7 @@ assert.match(serverSource, /\.filter\(\(source\) => !legacyAgentRuntimeFiles\.ha
 assert.match(serverSource, /extractStructuredValuationAssumptions/);
 assert.match(serverSource, /appendCanonicalValuationIfNeeded/);
 assert.match(serverSource, /mergeStructuredValuationAssumptions/);
-assert.match(retrySource, /retryBudgetMs = 45_000/);
+assert.match(retrySource, /retryBudgetMs = 120_000/);
 assert.match(retrySource, /fallbackModel = 'gemini-3\.7-flash'/);
 assert.match(serverSource, /process\.env\.VERCEL !== '1'/);
 

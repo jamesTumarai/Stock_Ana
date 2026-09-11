@@ -79,13 +79,29 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   };
 
   const insiderPct = data?.insiders_overview?.insider_ownership_pct ?? legacyInsiderData?.insider_ownership_pct ?? null;
-  const rawMajorHolders = data?.major_holders ?? [];
+  const hasMeaningfulText = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0
+      && !['-', 'n/a', 'na', 'none', 'null', 'undefined', 'data unavailable', 'ไม่มีข้อมูล'].includes(normalized);
+  };
+  const rawMajorHolders = (Array.isArray(data?.major_holders) ? data.major_holders : []).filter(holder =>
+    typeof holder?.name === 'string'
+    && hasMeaningfulText(holder.name)
+    && (
+      (typeof holder.pct_owned === 'number' && Number.isFinite(holder.pct_owned))
+      || (typeof holder.shares_held === 'number' && Number.isFinite(holder.shares_held))
+      || (typeof holder.shares_held === 'string' && hasMeaningfulText(holder.shares_held))
+    )
+  );
   
   // Sanitize Major Holders to ensure shares_held is in shares, NEVER % strings!
-  const majorHolders: MajorHolderItem[] = rawMajorHolders.map(h => {
+  const majorHolders = rawMajorHolders.map(h => {
+    const pctOwned = typeof h?.pct_owned === 'number' && Number.isFinite(h.pct_owned)
+      ? h.pct_owned
+      : null;
     let cleanShares = h.shares_held;
     if (typeof cleanShares === 'string' && cleanShares.endsWith('%')) {
-      cleanShares = calcHolderShares(h.pct_owned) ?? unavailable;
+      cleanShares = pctOwned !== null ? (calcHolderShares(pctOwned) ?? unavailable) : unavailable;
     } else if (typeof cleanShares === 'number') {
       cleanShares = cleanShares >= 1_000_000_000 
         ? `${(cleanShares / 1_000_000_000).toFixed(2)}B` 
@@ -93,6 +109,8 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
     }
     return {
       ...h,
+      name: typeof h?.name === 'string' && h.name.trim() ? h.name : unavailable,
+      pct_owned: pctOwned,
       shares_held: cleanShares
     };
   });
@@ -111,10 +129,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   const bearishCount = data?.insiders_overview?.bearish_insiders_count ?? (recentTransactions.length > 0 ? bearishTransactions.length : null);
 
   // Donut chart data: Major Holders
-  const topHoldersChartData = majorHolders.slice(0, 5).map(h => ({
+  const topHoldersChartData = majorHolders.filter(h => h.pct_owned !== null).slice(0, 5).map(h => ({
     name: h.name.replace(', Inc.', '').replace(' The ', '').replace(' Group', '').replace(' Management', ''),
     fullName: h.name,
-    value: Number(h.pct_owned.toFixed(2)),
+    value: Number(h.pct_owned!.toFixed(2)),
     shares: h.shares_held
   }));
   const topSum = topHoldersChartData.reduce((acc, curr) => acc + curr.value, 0);
@@ -129,10 +147,18 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   }
 
   // Donut chart data: Holder Types
-  const typeChartData = data?.holder_type_breakdown ?? [];
+  const typeChartData = (data?.holder_type_breakdown ?? []).filter(
+    entry => typeof entry?.type === 'string' && entry.type.trim().length > 0 && typeof entry.pct === 'number' && Number.isFinite(entry.pct)
+  );
 
   // Quarterly Trend History Data (Harmonized with instPct Single Source of Truth and true share scaling)
   const quarterlyHistory = data?.quarterly_history ?? [];
+  const validQuarterlyOwnership = quarterlyHistory
+    .map(item => item?.pct_owned)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const averageQuarterlyOwnership = validQuarterlyOwnership.length > 0
+    ? validQuarterlyOwnership.reduce((sum, value) => sum + value, 0) / validQuarterlyOwnership.length
+    : null;
   const availableQuarters = ['Latest', ...Array.from(new Set(rawActivity.map(item => item.date).filter((date): date is string => Boolean(date))))];
 
   const filteredActivity = rawActivity.filter(item => {
@@ -534,10 +560,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                           {holder.name}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-stone-700">
-                          {typeof holder.shares_held === 'number' ? holder.shares_held.toLocaleString() : holder.shares_held}
+                          {holder.shares_held ?? unavailable}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-[#0b5a4b]">
-                          {holder.pct_owned.toFixed(2)}%
+                          {holder.pct_owned !== null ? `${holder.pct_owned.toFixed(2)}%` : unavailable}
                         </td>
                         <td className="py-3 px-3 text-right font-mono">
                           {isZero ? (
@@ -547,7 +573,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                               isPositive ? 'text-emerald-700' : 'text-rose-700'
                             }`}>
                               {isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                              {holder.change_shares || (holder.change_pct ? `${holder.change_pct.toFixed(2)}%` : '-')}
+                              {holder.change_shares || (typeof holder.change_pct === 'number' ? `${holder.change_pct.toFixed(2)}%` : '-')}
                             </span>
                           )}
                         </td>
@@ -639,7 +665,9 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#78716c' }} />
                   <YAxis yAxisId="left" domain={['auto', 'auto']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#0b5a4b' }} />
-                  <ReferenceLine yAxisId="right" y={54.5} stroke="#d6d3d1" strokeDasharray="4 4" label={{ value: 'Avg % Owned', position: 'insideTopLeft', fill: '#a8a29e', fontSize: 10 }} />
+                  {averageQuarterlyOwnership !== null && (
+                    <ReferenceLine yAxisId="right" y={averageQuarterlyOwnership} stroke="#d6d3d1" strokeDasharray="4 4" label={{ value: 'Avg % Owned', position: 'insideTopLeft', fill: '#a8a29e', fontSize: 10 }} />
+                  )}
                   <RechartsTooltip 
                     content={({ active, payload, label }) => {
                       if (active && payload && payload.length) {
@@ -697,9 +725,9 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                 {quarterlyHistory.map((item, idx) => (
                   <tr key={idx} className="hover:bg-stone-50/60 transition-colors">
                     <td className="py-3 px-3 font-semibold text-stone-900 font-sans">{item.date}</td>
-                    <td className="py-3 px-3 text-right text-stone-700">{item.no_of_institutions.toLocaleString()}</td>
-                    <td className="py-3 px-3 text-right text-stone-700">{item.shares_held}</td>
-                    <td className="py-3 px-3 text-right font-bold text-[#0b5a4b]">{item.pct_owned.toFixed(2)}%</td>
+                    <td className="py-3 px-3 text-right text-stone-700">{typeof item.no_of_institutions === 'number' ? item.no_of_institutions.toLocaleString() : unavailable}</td>
+                    <td className="py-3 px-3 text-right text-stone-700">{item.shares_held ?? unavailable}</td>
+                    <td className="py-3 px-3 text-right font-bold text-[#0b5a4b]">{typeof item.pct_owned === 'number' ? `${item.pct_owned.toFixed(2)}%` : unavailable}</td>
                     <td className="py-3 px-3 text-right">
                       <span className={item.change_shares?.startsWith('+') ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>
                         {item.change_shares || '-'}
@@ -751,7 +779,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                     <span className="text-[11px] text-stone-500 font-sans truncate">{insider.title}</span>
                     <div className="flex items-baseline justify-between mt-2 pt-1 border-t border-stone-200/60 font-mono text-xs">
                       <span className="text-stone-700 font-bold">{typeof insider.shares_held === 'number' ? insider.shares_held.toLocaleString() : insider.shares_held} หุ้น</span>
-                      {insider.pct_owned !== undefined && (
+                      {typeof insider.pct_owned === 'number' && Number.isFinite(insider.pct_owned) && (
                         <span className="text-[#0b5a4b] font-bold">{insider.pct_owned.toFixed(2)}%</span>
                       )}
                     </div>

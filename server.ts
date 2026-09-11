@@ -175,6 +175,11 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
      - DCF ASSUMPTIONS ALIGNMENT: Base revenue CAGR ("revenue_cagr_pct") and terminal margins ("terminal_margin_pct") must be realistically aligned with consensus guidance, avoiding arbitrary extremes.
      - DCF OUTPUT CONTRACT (MANDATORY): For Fundamental and Combined analysis, "intrinsic_value.dcf_model" MUST always preserve the exact object shape shown in the JSON schema. "assumptions" MUST exist with "wacc_pct", "terminal_growth_pct", and "projection_years"; "scenarios" MUST exist with "bear", "base", and "bull", each containing "revenue_cagr_pct", "terminal_margin_pct", "fair_value_per_share", and "key_assumption_note".
      - DCF FACT/ASSUMPTION SEPARATION: WACC, terminal growth, projection years, revenue CAGR, and terminal FCF margin are valuation assumptions, not verified financial facts. You may propose them only when economically defensible from retrieved context and must explain them in "key_assumption_note". If you cannot form a defensible assumption, output null. NEVER insert ticker-specific defaults or plausible-looking fallback values. "fair_value_per_share" and the fair-value fields in "intrinsic_value.summary" may remain null because Lumina recomputes valuation deterministically after verified financial and market inputs are attached.`;
+
+      finalInstruction += `\n13. JSON ARRAY ITEM CONTRACT:
+   - Object entries shown inside schema arrays define the canonical field names only; they are not rows that must be emitted.
+   - Never emit an empty placeholder row. If an item has no verified identifier and no verified observations, omit that item; use [] when the entire collection is unavailable.
+   - Use null only for an unavailable field inside an otherwise verified, identifiable item.`;
       
       let dynamicSchema = ``;
       
@@ -653,7 +658,24 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   "smart_money": {
     "as_of_date": "...",
     "institution_overview": null,
-    "major_holders": [],
+    "holder_type_breakdown": [
+      {
+        "type": null,
+        "pct": null
+      }
+    ],
+    "major_holders": [
+      {
+        "name": null,
+        "shares_held": null,
+        "pct_owned": null,
+        "change_shares": null,
+        "change_pct": null,
+        "holder_type": null,
+        "filing_date": null,
+        "disclosure": null
+      }
+    ],
     "shareholder_activity": [],
     "insiders_overview": null,
     "recent_transactions": [],
@@ -734,10 +756,36 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "as_of_date": null,
     "revenue_breakdown": {
       "period": null,
-      "by_business": [],
-      "by_region": []
+      "by_business": [
+        {
+          "name": null,
+          "revenue_usd": null,
+          "ratio_pct": null,
+          "growth_yoy_pct": null
+        }
+      ],
+      "by_region": [
+        {
+          "name": null,
+          "revenue_usd": null,
+          "ratio_pct": null,
+          "growth_yoy_pct": null
+        }
+      ]
     },
-    "operational_efficiency": [],
+    "operational_efficiency": [
+      {
+        "period": null,
+        "headcount": null,
+        "headcount_yoy_pct": null,
+        "revenue_per_employee_k_usd": null,
+        "revenue_per_employee_yoy_pct": null,
+        "operating_profit_per_employee_k_usd": null,
+        "operating_profit_per_employee_yoy_pct": null,
+        "net_income_per_employee_k_usd": null,
+        "net_income_per_employee_yoy_pct": null
+      }
+    ],
     "key_takeaways": "..."
   },
   "comprehensive_analysis": {
@@ -1172,7 +1220,24 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   "smart_money": {
     "as_of_date": "...",
     "institution_overview": null,
-    "major_holders": [],
+    "holder_type_breakdown": [
+      {
+        "type": null,
+        "pct": null
+      }
+    ],
+    "major_holders": [
+      {
+        "name": null,
+        "shares_held": null,
+        "pct_owned": null,
+        "change_shares": null,
+        "change_pct": null,
+        "holder_type": null,
+        "filing_date": null,
+        "disclosure": null
+      }
+    ],
     "shareholder_activity": [],
     "insiders_overview": null,
     "recent_transactions": [],
@@ -1253,10 +1318,36 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "as_of_date": null,
     "revenue_breakdown": {
       "period": null,
-      "by_business": [],
-      "by_region": []
+      "by_business": [
+        {
+          "name": null,
+          "revenue_usd": null,
+          "ratio_pct": null,
+          "growth_yoy_pct": null
+        }
+      ],
+      "by_region": [
+        {
+          "name": null,
+          "revenue_usd": null,
+          "ratio_pct": null,
+          "growth_yoy_pct": null
+        }
+      ]
     },
-    "operational_efficiency": [],
+    "operational_efficiency": [
+      {
+        "period": null,
+        "headcount": null,
+        "headcount_yoy_pct": null,
+        "revenue_per_employee_k_usd": null,
+        "revenue_per_employee_yoy_pct": null,
+        "operating_profit_per_employee_k_usd": null,
+        "operating_profit_per_employee_yoy_pct": null,
+        "net_income_per_employee_k_usd": null,
+        "net_income_per_employee_yoy_pct": null
+      }
+    ],
     "key_takeaways": "..."
   },
   "comprehensive_analysis": {
