@@ -32,6 +32,8 @@ import { ScoreMethodologyModal } from './components/ScoreMethodologyModal';
 import { CompanyLogo } from './components/CompanyLogo';
 import { ProvenanceBadge } from './components/ProvenanceBadge';
 import { ResearchTimelineCard } from './components/ResearchTimelineCard';
+import { ReverseDcfCard } from './components/ReverseDcfCard';
+import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 
 interface Props {
   data: ReportData;
@@ -312,6 +314,7 @@ export default function ReportTemplate({
   const [isTradePlanCopied, setIsTradePlanCopied] = useState(false);
   const [currencyMode, setCurrencyMode] = useState<'USD' | 'THB'>('USD');
   const [showScoreModal, setShowScoreModal] = useState(false);
+  const [showScenarioModal, setShowScenarioModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -824,6 +827,43 @@ export default function ReportTemplate({
                 ticker={ticker}
               />
             )}
+
+            {/* REVERSE DCF & MARKET EXPECTATIONS */}
+            {(() => {
+              const marketPrice = typeof data.intrinsic_value?.current_price === 'number' && data.intrinsic_value.current_price > 0
+                ? data.intrinsic_value.current_price
+                : typeof data.company_profile?.stock_price === 'number' && data.company_profile.stock_price > 0
+                  ? data.company_profile.stock_price
+                  : 0;
+
+              const dcf = data.intrinsic_value?.dcf_model;
+              const fv = data.intrinsic_value?.summary?.base_case_fair_value || dcf?.scenarios?.base?.fair_value_per_share || 0;
+              const wacc = dcf?.assumptions?.wacc_pct || 9.0;
+              const tg = dcf?.assumptions?.terminal_growth_pct || 2.5;
+              const fcfArr = data.financial_statements?.cash_flow?.free_cash_flow;
+              const sharesM = dcf?.inputs?.sharesOutstandingM;
+              const lastFcf = fcfArr?.[fcfArr.length - 1];
+
+              let baseFcf = 0;
+              if (typeof lastFcf === 'number' && typeof sharesM === 'number' && sharesM > 0 && lastFcf > 0) {
+                baseFcf = lastFcf / sharesM;
+              } else if (fv > 0) {
+                baseFcf = fv * ((wacc - tg) / 100) / 1.10;
+              }
+
+              if (marketPrice <= 0 || baseFcf <= 0) return null;
+
+              return (
+                <ReverseDcfCard
+                  currentPrice={marketPrice}
+                  baseFcfPerShare={baseFcf}
+                  discountRatePct={wacc}
+                  terminalGrowthPct={tg}
+                  isThai={isThai}
+                  onOpenScenarioModal={() => setShowScenarioModal(true)}
+                />
+              );
+            })()}
           </div>
         )}
 
@@ -1763,6 +1803,43 @@ export default function ReportTemplate({
         convictionScore={data.verdict?.conviction_score}
         convictionBreakdown={data.verdict?.conviction_breakdown}
       />
+
+      {/* Scenario & Sensitivity Simulation Modal */}
+      {showScenarioModal && (
+        <ScenarioAnalysisModal
+          isOpen={showScenarioModal}
+          onClose={() => setShowScenarioModal(false)}
+          ticker={ticker}
+          currentPrice={
+            typeof data.intrinsic_value?.current_price === 'number' && data.intrinsic_value.current_price > 0
+              ? data.intrinsic_value.current_price
+              : typeof data.company_profile?.stock_price === 'number' && data.company_profile.stock_price > 0
+                ? data.company_profile.stock_price
+                : 100
+          }
+          baseFcfPerShare={(() => {
+            const dcf = data.intrinsic_value?.dcf_model;
+            const fv = data.intrinsic_value?.summary?.base_case_fair_value || dcf?.scenarios?.base?.fair_value_per_share || 0;
+            const wacc = dcf?.assumptions?.wacc_pct || 9.0;
+            const tg = dcf?.assumptions?.terminal_growth_pct || 2.5;
+            const fcfArr = data.financial_statements?.cash_flow?.free_cash_flow;
+            const sharesM = dcf?.inputs?.sharesOutstandingM;
+            const lastFcf = fcfArr?.[fcfArr.length - 1];
+
+            if (typeof lastFcf === 'number' && typeof sharesM === 'number' && sharesM > 0 && lastFcf > 0) {
+              return lastFcf / sharesM;
+            }
+            if (fv > 0) {
+              return fv * ((wacc - tg) / 100) / 1.10;
+            }
+            return 10;
+          })()}
+          initialGrowthPct={10}
+          initialWaccPct={data.intrinsic_value?.dcf_model?.assumptions?.wacc_pct || 9.0}
+          initialTerminalGrowthPct={data.intrinsic_value?.dcf_model?.assumptions?.terminal_growth_pct || 2.5}
+          isThai={isThai}
+        />
+      )}
     </div>
   );
 }

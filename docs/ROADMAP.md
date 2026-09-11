@@ -95,19 +95,18 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 9 — Comparison & Decision Tools (Active 🔄)
-**Potential capabilities:**
-- Normalized peer comparison
-- Sector-aware peer selection
-- Growth, margin, FCF, balance-sheet, valuation, and conviction-pillar comparisons
-- Deterministic scenario analysis
-- Sensitivity analysis
-- Reverse DCF / market-implied expectations
-- Never create fake peer data.
+### Phase 9 — Comparison & Decision Tools (Complete ✅)
+**Delivered capabilities:**
+- Reverse DCF Engine: back-solves implied annual FCF growth hurdle baked into current price and tests institutional feasibility.
+- Interactive Scenario & Sensitivity Sandbox (`ScenarioAnalysisModal`): real-time recalculation of fair value and Margin of Safety across adjustable Growth, WACC, and Terminal Growth sliders.
+- 2D Sensitivity Matrix: 5x5 grid evaluating WACC vs Terminal Growth with color-coded value discount/premium indicators.
+- Deterministic 3-Stage Scenarios (Bear, Base, Bull) with explicit financial parameter attribution.
+- Normalized peer comparison extractor (`extractNormalizedPeers`) enforcing the invariant to never create fake peer data.
+- Full bilingual English/Thai presentation and unit test coverage.
 
 ---
 
-### Phase 10 — Performance, Cost & Reliability
+### Phase 10 — Performance, Cost & Reliability (Active 🔄)
 **Goals:**
 - Lower Analyze latency
 - Safe reuse / caching of verified datasets
