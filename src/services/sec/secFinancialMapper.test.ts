@@ -33,6 +33,10 @@ const companyFacts: SecCompanyFactsResponse = {
       StockholdersEquity: usd(instant([250_000_000, 265_000_000, 280_000_000, 310_000_000], 'equity')),
       CommonStockValue: usd(instant([10_000_000, 10_000_000, 11_000_000, 12_000_000], 'cs')),
       RetainedEarningsAccumulatedDeficit: usd(instant([200_000_000, 212_000_000, 225_000_000, 240_000_000], 're')),
+      DebtCurrent: usd(instant([10_000_000, 10_000_000, 15_000_000, 20_000_000], 'std')),
+      LongTermDebtNoncurrent: usd(instant([80_000_000, 80_000_000, 75_000_000, 70_000_000], 'ltd')),
+      OperatingLeaseLiabilityCurrent: usd(instant([5_000_000, 5_000_000, 6_000_000, 6_000_000], 'olc')),
+      OperatingLeaseLiabilityNoncurrent: usd(instant([25_000_000, 25_000_000, 24_000_000, 24_000_000], 'olnc')),
       NetCashProvidedByUsedInOperatingActivities: usd(duration([20_000_000, 25_000_000, 30_000_000, 45_000_000], 'ocf')),
       PaymentsToAcquirePropertyPlantAndEquipment: usd(duration([5_000_000, 7_000_000, 9_000_000, 9_000_000], 'capex')),
       AllocatedShareBasedCompensationExpense: usd(duration([2_000_000, 3_000_000, 4_000_000, 5_000_000], 'sbc')),
@@ -51,6 +55,10 @@ const accessionNumbers = [
   'equity-q1', 'equity-q2', 'equity-q3', 'equity-fy',
   'cs-q1', 'cs-q2', 'cs-q3', 'cs-fy',
   're-q1', 're-q2', 're-q3', 're-fy',
+  'std-q1', 'std-q2', 'std-q3', 'std-fy',
+  'ltd-q1', 'ltd-q2', 'ltd-q3', 'ltd-fy',
+  'olc-q1', 'olc-q2', 'olc-q3', 'olc-fy',
+  'olnc-q1', 'olnc-q2', 'olnc-q3', 'olnc-fy',
   'ocf-q1', 'ocf-q2', 'ocf-q3', 'ocf-fy',
   'capex-q1', 'capex-q2', 'capex-q3', 'capex-fy',
   'sbc-q1', 'sbc-q2', 'sbc-q3', 'sbc-fy',
@@ -87,6 +95,19 @@ assert.deepEqual(dataset?.values['income_statement.eps_diluted'].map(item => ite
 assert.deepEqual(dataset?.values['balance_sheet.cash_and_equivalents'].map(item => item.value), [50, 55, 60, 70]);
 assert.deepEqual(dataset?.values['balance_sheet.common_stock'].map(item => item.value), [10, 10, 11, 12]);
 assert.deepEqual(dataset?.values['balance_sheet.retained_earnings'].map(item => item.value), [200, 212, 225, 240]);
+assert.deepEqual(dataset?.values['balance_sheet.short_term_debt'].map(item => item.value), [10, 10, 15, 20]);
+assert.deepEqual(dataset?.values['balance_sheet.long_term_debt'].map(item => item.value), [80, 80, 75, 70]);
+// Verify deterministic total debt derivation (std + ltd)
+assert.deepEqual(dataset?.values['balance_sheet.total_debt'].map(item => item.value), [90, 90, 90, 90]);
+assert.equal(dataset?.values['balance_sheet.total_debt'][0].verification, 'verified');
+assert.equal(dataset?.values['balance_sheet.total_debt'][0].type, 'derived');
+assert.match(dataset?.values['balance_sheet.total_debt'][0].derivation || '', /deterministic total debt/i);
+
+// Verify deterministic operating lease liabilities derivation (current + non-current)
+assert.deepEqual(dataset?.values['balance_sheet.operating_lease_liabilities'].map(item => item.value), [30, 30, 30, 30]);
+assert.equal(dataset?.values['balance_sheet.operating_lease_liabilities'][0].verification, 'verified');
+assert.equal(dataset?.values['balance_sheet.operating_lease_liabilities'][0].type, 'derived');
+
 assert.deepEqual(dataset?.values['cash_flow.operating_cash_flow'].map(item => item.value), [20, 25, 30, 45]);
 assert.deepEqual(dataset?.values['cash_flow.stock_based_compensation'].map(item => item.value), [2, 3, 4, 5]);
 assert.deepEqual(dataset?.values['cash_flow.capex'].map(item => item.value), [5, 7, 9, 9]);

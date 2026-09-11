@@ -179,6 +179,21 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Mounted `/api/sec-preview` and `/api/sec-compare` in Express server to ensure clean JSON responses.
 - Added institutional Financial Sector Guard in `IntrinsicValueEngine.tsx` explaining why generic FCFF is disabled for depository/fintech institutions and displaying recommended sector methodology.
 
+### PR #56 — SEC XBRL Canonical Financial Mapper Expansion
+- Expanded SEC XBRL Canonical Financial Mapper (`secFinancialMapper.ts`) with explicit mapping for `stock_based_compensation`, `depreciation`, `common_stock`, and `retained_earnings`.
+- Added `stock_based_compensation` to `CashFlowData` in `src/types.ts` and prompt schemas in `server.ts`.
+- Updated comparison rules in `secReportComparison.ts` and diagnostics in `secCoverageDiagnostics.ts`.
+
+### PR #57 — SBC Statement Rendering & Financial Sector Conviction Scorer
+- Rendered `stock_based_compensation` (SBC) as an explicit non-cash add-back row in both banking and standard templates of `FinancialStatementsTable.tsx`, synchronized with interactive chart.
+- Upgraded `convictionScorer.ts` with financial sector awareness (`fintech`, `banking`, `fintech_pe`, `ddm`) allowing depository institutions with Financial Sector Guard to evaluate gracefully in Pillar 3 via Multiples & Solvency.
+
+### Phase 5 — Leases, Debt Normalization & Deterministic LTM Aggregation
+- Mapped ASC 842 lease liabilities (`OperatingLeaseLiabilityCurrent`, `OperatingLeaseLiabilityNoncurrent`, `OperatingLeaseLiability`, `OperatingLeaseRightOfUseAsset`), `short_term_debt`, `long_term_debt`, and `total_debt` in SEC XBRL mapper.
+- Implemented deterministic derivations for total debt and total operating lease liabilities from verified components when aggregate concepts are omitted.
+- Built `src/utils/statementAggregation.ts` for deterministic 4-quarter Annual & LTM aggregation strictly obeying GAAP flow vs stock rules with fail-closed null handling.
+- Integrated Annual / LTM toggle in `FinancialStatementsTable.tsx` with institutional provenance status banner.
+
 ## Current production health
 
 At the time of this handoff, production was re-verified after the docs-only PR #50 merge:
