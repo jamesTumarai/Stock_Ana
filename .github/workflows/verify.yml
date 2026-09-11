@@ -34,6 +34,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Firebase rules deployment preflight
+        run: npm run firebase:rules:preflight -- --project stock-analyze-a89d0
+
       - name: Run regression tests
         shell: bash
         run: |
