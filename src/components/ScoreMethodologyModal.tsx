@@ -55,7 +55,7 @@ export function ScoreMethodologyModal({
                 {isThai ? 'วิธีคิดคะแนนความเชื่อมั่น (Conviction Score)' : 'Conviction Scoring Methodology'}
               </h3>
               <p className="text-xs text-stone-500">
-                {isThai ? 'คำนวณผ่าน Deterministic Multi-Pillar Scoring Engine จากงบจริง' : 'Mathematically computed from verified financial statements & valuation'}
+                {isThai ? 'คำนวณเมื่อข้อมูลที่จำเป็นจากรายงานครบเท่านั้น' : 'Calculated only when the report contains every required input'}
               </p>
             </div>
           </div>
@@ -77,6 +77,14 @@ export function ScoreMethodologyModal({
             </div>
           )}
 
+          {!convictionBreakdown && (
+            <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 text-sm text-amber-900">
+              {isThai
+                ? 'ไม่มีคะแนนสำหรับรายงานนี้ เพราะข้อมูลที่จำเป็นต่อการคำนวณยังไม่ครบ'
+                : 'No score is available because this report is missing required calculation inputs.'}
+            </div>
+          )}
+
           {/* Weighting Breakdown */}
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center">
@@ -85,7 +93,7 @@ export function ScoreMethodologyModal({
               </h4>
               {convictionBreakdown && (
                 <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  {isThai ? 'คำนวณจากงบจริง' : 'Grounded in SEC Filings'}
+                  {isThai ? 'คำนวณจากข้อมูลในรายงาน' : 'Calculated from report inputs'}
                 </span>
               )}
             </div>
@@ -94,7 +102,7 @@ export function ScoreMethodologyModal({
               {weights.map((w, idx) => {
                 const pillarData = convictionBreakdown ? convictionBreakdown[w.key] : null;
                 const earnedScore = pillarData ? pillarData.score : null;
-                const fillPct = pillarData ? Math.min(100, Math.round((pillarData.score / w.weight) * 100)) : w.weight;
+                const fillPct = pillarData ? Math.min(100, Math.round((pillarData.score / w.weight) * 100)) : 0;
                 const reasonText = pillarData ? (isThai ? pillarData.reasonTh : pillarData.reasonEn) : null;
 
                 return (
@@ -107,7 +115,7 @@ export function ScoreMethodologyModal({
                             {earnedScore} <span className="text-xs text-stone-400 font-normal">/ {w.weight} pts</span>
                           </>
                         ) : (
-                          `${w.weight}%`
+                          isThai ? 'ไม่มีข้อมูล' : 'Unavailable'
                         )}
                       </span>
                     </div>

@@ -5,6 +5,8 @@ import { EarningsAnalysisSection } from '../EarningsAnalysisSection';
 import { ForecastDashboard } from '../ForecastDashboard';
 import { MorningstarResearchSection } from '../MorningstarResearchSection';
 import { SmartMoneyCard } from '../SmartMoneyCard';
+import { BusinessAnalysisCard } from '../BusinessAnalysisCard';
+import { CompanyProfileCard } from '../CompanyProfileCard';
 import ReportTemplate from '../../ReportTemplate';
 import type { ReportData } from '../../types';
 
@@ -25,6 +27,48 @@ assert.doesNotMatch(morningstarHtml, />3<|\$100\.00|Exemplary|>Wide</);
 const smartMoneyHtml = renderToStaticMarkup(<SmartMoneyCard ticker="TEST" isThai={false} />);
 assert.match(smartMoneyHtml, /Data unavailable/);
 assert.doesNotMatch(smartMoneyHtml, /Vanguard|BlackRock|PEER_1|1\.28B|56\.73%/);
+
+const malformedSmartMoneyHtml = renderToStaticMarkup(
+  <SmartMoneyCard
+    data={{
+      holder_type_breakdown: [{ type: null, pct: 42 } as never],
+      major_holders: [{ name: 'Empty Holder', shares_held: 'Data unavailable', pct_owned: null } as never],
+    }}
+    ticker="TEST"
+    isThai={false}
+  />,
+);
+assert.match(malformedSmartMoneyHtml, /Data unavailable/);
+assert.doesNotMatch(malformedSmartMoneyHtml, /Empty Holder/);
+
+const malformedBusinessHtml = renderToStaticMarkup(
+  <BusinessAnalysisCard
+    data={{
+      revenue_breakdown: {
+        by_business: [{ name: 'Empty Segment', revenue_usd: 'Data unavailable', ratio_pct: '-' } as never],
+        by_region: [{ name: null, revenue_usd: null, ratio_pct: null } as never],
+      },
+      operational_efficiency: [{ period: 'FY2026', headcount: null } as never],
+    }}
+    ticker="TEST"
+    isThai={false}
+  />,
+);
+assert.match(malformedBusinessHtml, /Data unavailable/);
+assert.doesNotMatch(malformedBusinessHtml, /Empty Segment|FY2026/);
+assert.doesNotMatch(malformedBusinessHtml, /Commercial - AIP|Gotham Defense|United States \(สหรัฐอเมริกา\)/);
+
+const malformedCompanyProfileHtml = renderToStaticMarkup(
+  <CompanyProfileCard
+    data={{
+      overview: { company_name: 'Test Company', symbol: 'TEST' },
+      executives: [{ name: null, title: null } as never],
+    }}
+    ticker="TEST"
+    isThai={false}
+  />,
+);
+assert.match(malformedCompanyProfileHtml, /Test Company/);
 
 const partialReportHtml = renderToStaticMarkup(
   <ReportTemplate

@@ -2,6 +2,7 @@ import type { ReportData } from '../types';
 import { buildMarketSnapshot, type MarketSnapshot } from '../domain/marketSnapshot';
 import { buildCanonicalFinancialDataset, type CanonicalFinancialDataset } from '../domain/financialValue';
 import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
+import { calculateDeterministicConvictionScore } from './valuation/convictionScorer';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * 100) / 100;
@@ -142,6 +143,7 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
         fair_value_range_high: bull,
         base_case_fair_value: base,
         margin_of_safety_pct: rounded((base - inputs.currentPrice) / inputs.currentPrice * 100),
+        verdict_text: 'Canonical DCF recalculated from the financial inputs disclosed in this report. Review the scenario assumptions and margin of safety shown above.',
       };
       intrinsic.validation_alerts = (intrinsic.validation_alerts || []).filter(alert =>
         alert.code !== 'VALUATION_INPUTS_INCOMPLETE' && alert.code !== 'REPORT_VALIDATION_BLOCK'
@@ -178,6 +180,16 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
         },
       ];
     }
+  }
+
+  // The report model may suggest qualitative factor scores on a 1-10 scale, but
+  // the public conviction score is a separate 0-100 calculation. Never present
+  // an arbitrary model-produced number as the deterministic conviction score.
+  if (result.analysis_type !== 'technical' && result.verdict) {
+    const conviction = calculateDeterministicConvictionScore(result, ticker || result.ticker);
+    result.verdict.conviction_score = conviction?.conviction_score ?? null;
+    if (conviction) result.verdict.conviction_breakdown = conviction.conviction_breakdown;
+    else delete result.verdict.conviction_breakdown;
   }
   return result;
 }

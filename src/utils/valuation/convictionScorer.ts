@@ -50,18 +50,32 @@ export function calculateDeterministicConvictionScore(
   const isFinancialSector = sector.toLowerCase().includes('financial') || sector.toLowerCase().includes('bank');
 
   const latest = (values?: Array<number | null>) => values?.length ? values[values.length - 1] : null;
+  const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+  const ratio = (numerator: number | null, denominator: number | null, asPercent = false) =>
+    finite(numerator) && finite(denominator) && denominator !== 0
+      ? (numerator / denominator) * (asPercent ? 100 : 1)
+      : null;
   const latestGrowthInput = latest(inc?.yoy_revenue_growth_pct);
-  const latestMarginInput = latest(inc?.net_margin_pct);
+  const latestRevenueInput = latest(inc?.revenue);
   const latestNetIncomeInput = latest(inc?.net_income);
+  const latestMarginInput = latest(inc?.net_margin_pct)
+    ?? ratio(latestNetIncomeInput, latestRevenueInput, true);
   const previousNetIncomeInput = inc?.net_income && inc.net_income.length >= 2
     ? inc.net_income[inc.net_income.length - 2]
     : null;
   const latestFcfInput = latest(cf?.free_cash_flow);
-  const latestFcfMarginInput = latest(cf?.fcf_margin_pct);
-  const latestDebtToEquityInput = latest(bs?.debt_to_equity);
-  const latestCashInput = latest(bs?.cash_and_equivalents);
+  const latestFcfMarginInput = latest(cf?.fcf_margin_pct)
+    ?? ratio(latestFcfInput, latestRevenueInput, true);
   const latestDebtInput = latest(bs?.total_debt);
-  const latestCurrentRatioInput = latest(bs?.current_ratio);
+  const latestEquityInput = latest(bs?.total_equity);
+  const latestDebtToEquityInput = latest(bs?.debt_to_equity)
+    ?? ratio(latestDebtInput, latestEquityInput);
+  const latestCashInput = latest(bs?.cash_and_equivalents);
+  const latestCurrentAssetsInput = latest(bs?.total_current_assets);
+  const latestCurrentLiabilitiesInput = latest(bs?.total_current_liabilities)
+    ?? latest(bs?.current_liabilities);
+  const latestCurrentRatioInput = latest(bs?.current_ratio)
+    ?? ratio(latestCurrentAssetsInput, latestCurrentLiabilitiesInput);
   const suppliedMoS = (intrinsic as any)?.summary?.margin_of_safety_pct
     ?? (intrinsic as any)?.dcf_model?.margin_of_safety_pct
     ?? (intrinsic as any)?.margin_of_safety_pct;
@@ -129,8 +143,7 @@ export function calculateDeterministicConvictionScore(
   }
 
   // B. Net Profit Margin Quality (Max 10 pts) - Continuous interpolation
-  const netMarginArr = inc?.net_margin_pct || [];
-  const latestNetMargin = netMarginArr.length > 0 ? netMarginArr[netMarginArr.length - 1] : null;
+  const latestNetMargin = latestMarginInput;
 
   if (latestNetMargin !== null && latestNetMargin !== undefined) {
     if (latestNetMargin < 0) {
@@ -192,8 +205,7 @@ export function calculateDeterministicConvictionScore(
     // A. Free Cash Flow Generation (Max 12 pts) - Continuous interpolation
     const fcfArr = cf?.free_cash_flow || [];
     const latestFcf = fcfArr.length > 0 ? fcfArr[fcfArr.length - 1] : null;
-    const fcfMarginArr = cf?.fcf_margin_pct || [];
-    const latestFcfMargin = fcfMarginArr.length > 0 ? fcfMarginArr[fcfMarginArr.length - 1] : null;
+    const latestFcfMargin = latestFcfMarginInput;
 
     if (latestFcf !== null && latestFcf !== undefined) {
       if (latestFcf <= 0) {
@@ -209,12 +221,9 @@ export function calculateDeterministicConvictionScore(
     }
 
     // B. Debt to Equity / Solvency (Max 10 pts) - Continuous interpolation
-    const deArr = bs?.debt_to_equity || [];
-    const latestDe = deArr.length > 0 ? deArr[deArr.length - 1] : null;
-    const cashArr = bs?.cash_and_equivalents || [];
-    const debtArr = bs?.total_debt || [];
-    const latestCash = cashArr.length > 0 ? cashArr[cashArr.length - 1] : null;
-    const latestDebt = debtArr.length > 0 ? debtArr[debtArr.length - 1] : null;
+    const latestDe = latestDebtToEquityInput;
+    const latestCash = latestCashInput;
+    const latestDebt = latestDebtInput;
     const hasNetCash = latestCash !== null && latestDebt !== null && latestCash >= latestDebt;
 
     if (hasNetCash) {
@@ -228,8 +237,7 @@ export function calculateDeterministicConvictionScore(
     }
 
     // C. Liquidity / Current Ratio (Max 8 pts) - Continuous interpolation
-    const crArr = bs?.current_ratio || [];
-    const latestCr = crArr.length > 0 ? crArr[crArr.length - 1] : null;
+    const latestCr = latestCurrentRatioInput;
 
     if (latestCr !== null && latestCr !== undefined) {
       healthPoints += interpolate(latestCr, 0.8, 2.0, 2.0, 8.0);
@@ -259,13 +267,13 @@ export function calculateDeterministicConvictionScore(
   // A. DCF / Intrinsic Value Margin of Safety (Max 14 pts) - Dampened Continuous Curve
   const currentPrice = intrinsic?.current_price ?? data?.company_profile?.stock_price;
   const fairValue = (intrinsic as any)?.dcf_model?.scenarios?.base?.fair_value_per_share
-    || (intrinsic as any)?.summary?.base_case_fair_value
-    || (intrinsic as any)?.fair_value_base;
+    ?? (intrinsic as any)?.summary?.base_case_fair_value
+    ?? (intrinsic as any)?.fair_value_base;
   let mosPct: number | undefined | null = (intrinsic as any)?.summary?.margin_of_safety_pct
     ?? (intrinsic as any)?.dcf_model?.margin_of_safety_pct
     ?? (intrinsic as any)?.margin_of_safety_pct;
 
-  if ((mosPct === undefined || mosPct === null) && fairValue && currentPrice && currentPrice > 0) {
+  if ((mosPct === undefined || mosPct === null) && finite(fairValue) && finite(currentPrice) && currentPrice > 0) {
     mosPct = Number((((fairValue - currentPrice) / currentPrice) * 100).toFixed(1));
   }
 
@@ -341,10 +349,10 @@ export function calculateDeterministicConvictionScore(
   if (lastFcf !== null && lastFcf !== undefined && lastFcf > 0) objectiveRiskPoints += 3.0;
 
   // 3. Balance sheet safety (+2.0 pts)
-  const lastCash = bs?.cash_and_equivalents?.[bs.cash_and_equivalents.length - 1];
-  const lastDebt = bs?.total_debt?.[bs.total_debt.length - 1];
-  const lastDe = bs?.debt_to_equity?.[bs.debt_to_equity.length - 1];
-  if ((lastCash && lastDebt && lastCash >= lastDebt) || (lastDe !== null && lastDe !== undefined && lastDe < 1.0)) {
+  const lastCash = latestCashInput;
+  const lastDebt = latestDebtInput;
+  const lastDe = latestDebtToEquityInput;
+  if ((finite(lastCash) && finite(lastDebt) && lastCash >= lastDebt) || (finite(lastDe) && lastDe < 1.0)) {
     objectiveRiskPoints += 2.0;
   }
 
