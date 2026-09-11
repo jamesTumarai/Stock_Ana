@@ -415,6 +415,9 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "net_margin_pct": [],
       "eps_diluted": [],
       "yoy_revenue_growth_pct": [],
+      "net_interest_income": [],
+      "non_interest_income": [],
+      "provision_for_credit_losses": [],
       "commentary": "..."
     },
     "balance_sheet": {
@@ -424,13 +427,19 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "accounts_receivable": [],
       "inventory": [],
       "net_ppe": [],
+      "goodwill": [],
       "total_assets": [],
       "total_current_liabilities": [],
       "accounts_payable": [],
       "short_term_debt": [],
       "total_debt": [],
       "total_liabilities": [],
+      "deposits": [],
+      "loans_held_for_investment": [],
       "total_equity": [],
+      "common_stock": [],
+      "retained_earnings": [],
+      "aoci": [],
       "current_ratio": [],
       "quick_ratio": [],
       "debt_to_equity": [],
@@ -893,10 +902,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       } else {
         finalInstruction += `\n\nCRITICAL SEARCH FOR 3 FINANCIAL STATEMENTS (INCOME, BALANCE SHEET, CASH FLOW):
 1. For ${ticker}, you MUST search and locate the official SEC Form 10-Q and 10-K "CONSOLIDATED BALANCE SHEETS" and "CONSOLIDATED STATEMENTS OF CASH FLOWS" tables for all 4 reporting periods.
-2. In "financial_statements.balance_sheet":
+2. In "financial_statements.balance_sheet" and "financial_statements.income_statement":
    - "total_assets", "total_current_assets", "cash_and_equivalents", "short_term_investments", "accounts_receivable", "receivables", and "inventory" must contain exact values independently retrieved for each fiscal period from identified dated filings.
    - Never shift a value from another period, reconstruct a missing balance-sheet observation, or use numerical examples from a prompt as reference data. An unverified observation must remain null/unavailable.
    - "total_liabilities", "total_current_liabilities", "accounts_payable", "short_term_debt", "total_debt", "total_equity".
+   - For banks/fintech (e.g. SOFI): extract "net_interest_income", "non_interest_income", "provision_for_credit_losses", "deposits", and "loans_held_for_investment".
+   - For acquisitive or profitable corporations (e.g. MSFT, AAPL, NVDA): extract "goodwill", "common_stock", and "retained_earnings" if disclosed in filing tables.
 3. In "financial_statements.cash_flow":
    - "operating_cash_flow": exact net cash provided by operating activities for each quarter.
    - "capex": capital expenditures (payments for property, plant and equipment).
@@ -977,6 +988,9 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "net_margin_pct": [],
       "eps_diluted": [],
       "yoy_revenue_growth_pct": [],
+      "net_interest_income": [],
+      "non_interest_income": [],
+      "provision_for_credit_losses": [],
       "commentary": "..."
     },
     "balance_sheet": {
@@ -986,13 +1000,19 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "accounts_receivable": [],
       "inventory": [],
       "net_ppe": [],
+      "goodwill": [],
       "total_assets": [],
       "total_current_liabilities": [],
       "accounts_payable": [],
       "short_term_debt": [],
       "total_debt": [],
       "total_liabilities": [],
+      "deposits": [],
+      "loans_held_for_investment": [],
       "total_equity": [],
+      "common_stock": [],
+      "retained_earnings": [],
+      "aoci": [],
       "current_ratio": [],
       "quick_ratio": [],
       "debt_to_equity": [],
