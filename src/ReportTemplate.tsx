@@ -298,6 +298,7 @@ export default function ReportTemplate({
   const data = React.useMemo(() => harmonizeReportData(rawData, ticker, liveOverrides), [rawData, ticker, liveOverrides]);
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
   const findings = data.findings || [];
+  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
   const reportDate = data.as_of_date || new Date().toISOString().split('T')[0];
   const validation = data.validation;
   const criticalValidationIssues = validation?.issues?.filter(issue => issue.severity === 'critical') ?? [];
@@ -956,33 +957,33 @@ export default function ReportTemplate({
              
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <AnalysisCard title={isThai ? "กลุ่มลูกค้า (Target Customers)" : "Target Customers"}>
-                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.target_customers || '')}</Markdown></div>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.target_customers || unavailable}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "โมเดลรายได้ (Revenue Model)" : "Revenue Model & Quality"}>
-                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.revenue_model || '')}</Markdown></div>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.revenue_model || unavailable}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ภาพรวมงบการเงิน (Financials)" : "Financial Overview"}>
-                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.financial_overview || '')}</Markdown></div>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.financial_overview || unavailable}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ความแข็งแกร่ง (Strengths/Moat)" : "Business Strengths"}>
-                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.business_strengths || '')}</Markdown></div>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.business_strengths || unavailable}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "โอกาสเติบโต (Future Growth)" : "Future Growth"}>
-                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.future_growth || '')}</Markdown></div>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.future_growth || unavailable}</Markdown></div>
               </AnalysisCard>
               <AnalysisCard title={isThai ? "ความเสี่ยง (Key Risks)" : "Key Risks"}>
-                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.key_risks || '')}</Markdown></div>
+                 <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.key_risks || unavailable}</Markdown></div>
               </AnalysisCard>
             </div>
-            
+
             <AnalysisCard title={isThai ? "ผู้บริหาร (Management)" : "Management"}>
-               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.management || '')}</Markdown></div>
+               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.management || unavailable}</Markdown></div>
             </AnalysisCard>
             <AnalysisCard title={isThai ? "คุณภาพพื้นฐาน (Fundamentals Check)" : "Fundamentals Check"} className="bg-stone-50 border-stone-200">
-               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{(data.comprehensive_analysis.fundamentals_check || '')}</Markdown></div>
+               <div className="prose prose-base prose-stone max-w-none text-stone-700 leading-relaxed"><Markdown findings={data.findings}>{data.comprehensive_analysis?.fundamentals_check || unavailable}</Markdown></div>
             </AnalysisCard>
 
-            {data.comprehensive_analysis.beginner_summary && (
+            {data.comprehensive_analysis?.beginner_summary && (
               <AnalysisCard title={isThai ? "สรุปปัจจัยพื้นฐานสำหรับมือใหม่ (Fundamental Beginner Summary)" : "Fundamental Beginner Summary"} className="bg-white border-stone-200" titleClassName="text-stone-900">
                 <div className="text-stone-700 leading-relaxed text-[15px] mb-6 border-b border-stone-200 pb-4 prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{data.comprehensive_analysis.beginner_summary.business_type_simple || ''}</Markdown></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
@@ -1014,7 +1015,7 @@ export default function ReportTemplate({
               </AnalysisCard>
             )}
 
-            {data.comprehensive_analysis.scoring && (
+            {data.comprehensive_analysis?.scoring && (
               <AnalysisCard 
                 title={isThai ? "คะแนนประเมินปัจจัย (Factor Scoring 1-10)" : "Factor Scoring (1-10)"}
                 subtext={isThai ? "ประเมินคุณภาพ 6 มิติหลัก (สเกล 1-10 โดย 10 คือดีเยี่ยม)" : "Assessment across 6 core dimensions (1-10 scale, 10 being best)"}
@@ -1045,7 +1046,7 @@ export default function ReportTemplate({
               </AnalysisCard>
             )}
 
-            {data.comprehensive_analysis.final_verdict_summary && (
+            {data.comprehensive_analysis?.final_verdict_summary && (
               <AnalysisCard title={isThai ? "บทสรุปการประเมินมูลค่า & พื้นฐาน (Fundamental & Valuation Verdict)" : "Fundamental & Valuation Verdict"}>
                  <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "น่าศึกษาต่อไหม:" : "Worth Studying Further?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.comprehensive_analysis.final_verdict_summary.worth_further_study || '')}</Markdown></div></div>
