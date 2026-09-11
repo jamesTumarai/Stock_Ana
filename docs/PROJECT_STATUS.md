@@ -2,19 +2,23 @@
 
 Last updated: 2026-09-11 (Asia/Bangkok)
 
-This file is the engineering handoff source of truth for new ChatGPT/Codex sessions. Prefer live GitHub, CI, Vercel, Firebase, and issue evidence over old chat history when they disagree.
+This file is the durable engineering handoff for new ChatGPT/Codex sessions. Prefer live GitHub, CI, Vercel, Firebase, and issue evidence over old chat history whenever they disagree.
+
+## How to interpret SHAs in this file
+
+Do **not** treat this document as an authoritative record of the mutable `main` head SHA. A commit that edits this file changes `main` again, so embedding its own final head would become stale immediately.
+
+Always query live `main` before starting work. SHAs below identify stable application-behavior baselines or historical acceptance points.
 
 ## Current state
 
 - Current stage: **Phase 4 / Core Platform Foundation complete**.
 - Current working mode: **post-Phase-4 stabilization and product-quality review**.
-- Product Feature Expansion: **not started**. Continue reviewing the production website and fixing defects until the owner is satisfied, then begin expansion deliberately.
-- Primary reference issuer for end-to-end financial validation: **MSFT**.
+- Product Feature Expansion: **not started**. Continue reviewing production and fixing defects until the owner explicitly says the current result is satisfactory.
+- Primary end-to-end financial reference issuer: **MSFT**.
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Current `main`: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
-- Latest merged PR: **#49 — `fix: harden report scoring, missing data, and retries`**.
-- Latest production Vercel deployment: `dpl_BkwDHyEPAHD4tsYBY3pMx4a1jVBm`, `READY`, production, Git SHA `73905f585ea8001c462aaf8a7014b3c7ff926b9a`, commit verification `verified`.
-- Push-to-main `Verify Lumina` run for current main: `34580429437`, `completed / success`.
+- Latest application-behavior baseline: `73905f585ea8001c462aaf8a7014b3c7ff926b9a` (PR #49).
+- PR #50 introduced this durable handoff and was docs-only; docs-only commits may advance `main`/Vercel without changing application behavior.
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection
@@ -33,7 +37,7 @@ Active repository ruleset:
 - Non-fast-forward updates blocked
 - Branch deletion restricted
 
-Do not weaken these controls casually. If repository visibility is changed back to private, re-check that the selected GitHub plan still enforces the same `main` protection before relying on it.
+Do not weaken these controls casually. If visibility is changed back to private, re-check that the selected GitHub plan still enforces the same protection before relying on it.
 
 ## Architecture principle
 
@@ -42,8 +46,8 @@ Do not weaken these controls casually. If repository visibility is changed back 
 Non-negotiable rules:
 
 - AI must never invent financial facts. Missing or unverified facts remain null / unavailable.
-- Deterministic code owns valuation math and other canonical calculations.
-- AI may propose assumptions such as WACC, terminal growth, or scenario growth only when clearly separated from verified facts.
+- Deterministic code owns valuation math and canonical calculations.
+- AI may propose valuation assumptions only when they are clearly separated from verified facts.
 - Generic FCFF DCF must not be forced onto banks, lenders, or other financial institutions.
 - Financial statement periods, units, provenance, and source URLs must stay explicit.
 - Never use fake financial fallback numbers to make UI sections look complete.
@@ -73,11 +77,11 @@ Acceptance behavior includes:
 - History serialization / hydration preserves SEC and valuation provenance.
 - Technical-only mode skips SEC / DCF work.
 - Financial-sector guard prevents generic FCFF DCF misuse.
-- No fabricated debt / investment taxonomy when the filing cannot prove it.
+- No fabricated debt / investment taxonomy when a filing cannot prove it.
 
 ### Phase 4 — Core Platform Foundation ✅
 
-Phase 4A–4E repository engineering and all production acceptance gates are complete.
+Phase 4A–4E engineering and all production acceptance gates are complete.
 
 Key platform protections:
 
@@ -116,7 +120,7 @@ Operational acceptance recorded:
 
 ### Gate 2 — `main` protection ✅
 
-Active ruleset `Protect main` (`22863655`) requires PRs and the strict `verify` status check. PR #48 demonstrated that protected merge flow in practice.
+Active ruleset `Protect main` (`22863655`) requires PRs and the strict `verify` status check. PR #48 demonstrated the protected merge flow in practice.
 
 ### Gate 3 — Authenticated production smoke ✅
 
@@ -127,8 +131,8 @@ Recorded production acceptance includes:
 - Public `GET /api/live-quotes?symbols=MSFT` returned `200`.
 - Authenticated MSFT Analyze completed and persisted a report.
 - Firestore history updated and the saved MSFT report hydrated after reload.
-- Owner soft-delete succeeded; the deleted report disappeared from visible history while remaining a soft-deleted stored record.
-- Cross-user reads and client hard deletes remain denied by active production rules and are also covered by repository security-boundary tests.
+- Owner soft-delete succeeded; the deleted report disappeared from visible history while remaining stored as a soft-deleted record.
+- Cross-user reads and client hard deletes remain denied by active production rules and repository security-boundary tests.
 - Browser reload after the soft-delete smoke showed no application warning/error entries.
 
 Phase 4 acceptance uncovered a real partial-report rendering crash; that defect was fixed before continuing.
@@ -150,45 +154,48 @@ Merge SHA: `a8e88a0af819b94959abe70cf54f74b4a280e593`.
 
 `fix: harden report scoring, missing data, and retries`
 
-- Public conviction score is now recalculated by the deterministic 0–100 scorer instead of displaying arbitrary AI factor scores.
+- Public conviction score is recalculated by the deterministic 0–100 scorer instead of displaying arbitrary AI factor scores.
 - Scoring fails closed when required inputs are missing.
-- Exact ratios can be derived from disclosed statement values when the needed inputs are present.
+- Exact ratios can be derived from disclosed same-period statement values when needed inputs are present.
 - Stale DCF narrative is replaced when canonical DCF is recalculated.
 - Empty / placeholder business and holder rows are filtered from rendering.
 - Production prompt defines canonical repeating-array item fields and explicitly forbids placeholder rows.
 - Managed-agent retry budget increased from 45 seconds to 120 seconds while remaining bounded.
 
-Merge SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
+Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 
 ## Current production health
 
-Latest known production release is `READY` on current `main`.
+At the time of this handoff, production was re-verified after the docs-only PR #50 merge:
 
-Public MSFT live-quote smoke on 2026-09-11 returned HTTP 200 with structured market data.
+- Vercel production deployment for PR #50 merge SHA `a84bf181a4864e4342e0d7f54b677817168a64bf` reached `READY`.
+- Push-to-main `Verify Lumina` for that docs-only merge passed all steps.
+- Public MSFT live-quote smoke returned HTTP 200 with structured market data.
+
+These checks establish deployment health but do not replace live verification in a future session.
 
 Known runtime observations:
 
-- Node `[DEP0169] url.parse()` deprecation warnings predate the latest release and appear to originate from dependency/runtime behavior rather than repository source.
-- Earlier Gemini free-tier quota errors (`too_many_requests`) were observed during production Analyze testing. PR #49 expanded the bounded retry window so provider-directed retry waits can be honored longer. Treat provider quota exhaustion as an operational limitation, not permission to fabricate fallback analysis.
+- Node `[DEP0169] url.parse()` deprecation warnings predate the latest application release and appear to originate from dependency/runtime behavior rather than repository source.
+- Earlier Gemini free-tier quota errors (`too_many_requests`) occurred during production Analyze testing. PR #49 expanded the bounded retry window so provider-directed retry waits can be honored longer. Treat provider quota exhaustion as an operational limitation, never as permission to fabricate fallback analysis.
 
 Do not launch an unrelated major dependency upgrade merely to silence the Node deprecation warning.
 
 ## Verification workflow for meaningful changes
 
-Use this release discipline:
-
-1. Create a focused branch from current `main`.
-2. Make the smallest safe change.
-3. Add / update regression coverage where appropriate.
-4. Run relevant tests.
-5. Run `npm run lint`.
-6. Run `npm run build`.
-7. Run `git diff --check`.
-8. Open a PR to `main`.
-9. Require `Verify Lumina` to pass.
-10. Merge through the protected PR path.
-11. Confirm Vercel production reaches `READY` on the exact merged SHA.
-12. Smoke the affected production behavior.
+1. Query live `main` and production state first.
+2. Create a focused branch from current `main`.
+3. Make the smallest safe change.
+4. Add / update regression coverage where appropriate.
+5. Run relevant tests.
+6. Run `npm run lint`.
+7. Run `npm run build`.
+8. Run `git diff --check`.
+9. Open a PR to `main`.
+10. Require `Verify Lumina` to pass.
+11. Merge through the protected PR path.
+12. Confirm Vercel production reaches `READY` on the exact merged SHA.
+13. Smoke the affected production behavior.
 
 Firebase/security/backend changes also require their specific operational runbooks and production verification.
 
@@ -198,7 +205,7 @@ The immediate workflow is intentionally **not** a feature-expansion phase yet:
 
 1. Owner uses the production website normally.
 2. Owner reports bugs, confusing output, data-quality problems, UI issues, or desired refinements.
-3. Review the live behavior and current source before changing code.
+3. Review live behavior and current source before changing code.
 4. Fix the defect through a focused PR with regression coverage where practical.
 5. Verify production again.
 6. Repeat until the owner is satisfied with current product quality.
@@ -210,6 +217,6 @@ Do not treat aesthetic or output-quality feedback as a reason to relax financial
 
 Start with this instruction:
 
-> Continue Lumina / Stock_Ana from `docs/PROJECT_STATUS.md` and current `main`. Verify live GitHub/Vercel state before assuming SHAs are still current. Phase 4 is complete; do not redo Phases 1–4 unless a real regression is found. We are in post-Phase-4 stabilization: review production feedback, make focused fixes through protected PRs, preserve financial-integrity and Firebase safety rules, and do not begin Product Feature Expansion until the owner explicitly says the current result is satisfactory.
+> Continue Lumina / Stock_Ana from `docs/PROJECT_STATUS.md`. Query live `main`, GitHub rules/CI, and Vercel before assuming mutable deployment state. Phase 4 is complete; do not redo Phases 1–4 unless a real regression is found. We are in post-Phase-4 stabilization: review production feedback, make focused fixes through protected PRs, preserve financial-integrity and Firebase safety rules, and do not begin Product Feature Expansion until the owner explicitly says the current result is satisfactory.
 
-When this file becomes stale, update it in the same PR that changes the project phase or major operational state.
+Update this file when the project phase, architecture contract, production acceptance, or major operational state changes. Do not update it merely because a docs-only commit changed the `main` SHA.
