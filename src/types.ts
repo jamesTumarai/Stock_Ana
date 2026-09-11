@@ -1206,4 +1206,58 @@ export interface RawAnalysisReport extends Partial<AnalysisReport> {}
 
 export type ReportData = AnalysisReport;
 
+export interface PortfolioHolding {
+  id?: string;
+  ticker: string;
+  company_name?: string;
+  quantity: number;
+  average_cost: number;
+  sector?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PortfolioComputedHolding extends PortfolioHolding {
+  current_price?: number | null;
+  market_value?: number | null;
+  total_cost: number;
+  unrealized_pnl?: number | null;
+  unrealized_pnl_pct?: number | null;
+  allocation_pct: number;
+  fair_value?: number | null;
+  margin_of_safety_pct?: number | null;
+}
+
+export interface PortfolioSectorExposure {
+  sector: string;
+  market_value: number;
+  allocation_pct: number;
+}
+
+export interface PortfolioSummary {
+  total_market_value: number;
+  total_cost_basis: number;
+  total_unrealized_pnl: number;
+  total_unrealized_pnl_pct: number;
+  holdings_count: number;
+  top_holding_concentration_pct: number;
+  concentration_risk_alert: boolean;
+  sector_breakdown: PortfolioSectorExposure[];
+  weighted_margin_of_safety_pct?: number | null;
+  computed_holdings: PortfolioComputedHolding[];
+}
+
+export interface HistoricalReportDelta {
+  previousReportDate: string;
+  currentReportDate: string;
+  daysBetween: number;
+  priceDelta?: { previous: number; current: number; deltaPct: number } | null;
+  fairValueDelta?: { previous: number; current: number; deltaPct: number } | null;
+  convictionScoreDelta?: { previous: number; current: number; deltaPoints: number } | null;
+  revenueYoYDelta?: { previous: number; current: number; deltaPctPoints: number } | null;
+  operatingMarginDelta?: { previous: number; current: number; deltaPctPoints: number } | null;
+  freeCashFlowDelta?: { previous: number; current: number; deltaPct: number } | null;
+}
+
 

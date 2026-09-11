@@ -70,17 +70,19 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 7 — Portfolio & User Intelligence (Active 🔄)
-**Potential scope:**
-- Watchlist
-- Portfolio holdings (quantity, average cost, market value, unrealized P/L, allocation, concentration, sector exposure)
-- Research timeline
-- Historical analysis comparison ("What Changed since previous analysis?")
-- All historical-change explanations must come from actual evidence.
+### Phase 7 — Portfolio & User Intelligence (Complete ✅)
+**Delivered capabilities:**
+- Watchlist management (pure localStorage fallback + user scoped persistence).
+- Portfolio holdings tracking (ticker, quantity, average cost, live market value, unrealized P/L ($ and %), allocation %, sector exposure).
+- Institutional concentration risk alert (automatically flags when top holding weight >= 30%).
+- Portfolio-weighted Margin of Safety (combines live quotes and fundamental DCF fair values across portfolio assets).
+- Pure mathematical empirical deltas: "What Changed since previous analysis?" comparing price, base fair value, conviction score, YoY revenue growth, operating margin, and free cash flow without AI narrative hallucination.
+- Research timeline: chronological view of all previous analyses for the active ticker.
+- Bilingual English/Thai localization across all portfolio & timeline components.
 
 ---
 
-### Phase 8 — Monitoring & Alerts
+### Phase 8 — Monitoring & Alerts (Active 🔄)
 **Potential monitoring:**
 - Earnings releases
 - New SEC filings
