@@ -5,7 +5,7 @@ import {
   X, FileText, CheckCircle2, ChevronRight, Link as LinkIcon, Calendar,
   TrendingUp, TrendingDown, Minus, Lightbulb, AlertTriangle, ArrowUp, Copy, Check, 
   Printer, Sparkles, HelpCircle, DollarSign, Layers, ShieldCheck, Clock, ArrowRight, Target,
-  Zap, RefreshCw 
+  Zap, RefreshCw, Sliders, Activity
 } from 'lucide-react';
 import { ReportData } from './types';
 import { harmonizeReportData, extractCleanRsi } from './utils/metricsHarmonizer';
@@ -34,6 +34,7 @@ import { ProvenanceBadge } from './components/ProvenanceBadge';
 import { ResearchTimelineCard } from './components/ResearchTimelineCard';
 import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
+import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
 import { estimateTokenCost } from './utils/costEstimator';
 
 interface Props {
@@ -318,6 +319,24 @@ export default function ReportTemplate({
   const [currencyMode, setCurrencyMode] = useState<'USD' | 'THB'>('USD');
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [showScenarioModal, setShowScenarioModal] = useState(false);
+  const [showDecompositionModal, setShowDecompositionModal] = useState(false);
+
+  const previousReport = React.useMemo(() => {
+    if (!Array.isArray(historyReports) || historyReports.length === 0) return null;
+    const cleanTicker = ticker.toUpperCase().trim();
+    const matches = historyReports.filter(r => {
+      const t = (r.ticker || r.data?.ticker || r.company_profile?.overview?.symbol || '').toUpperCase().trim();
+      return t === cleanTicker;
+    });
+    if (matches.length === 0) return null;
+    const sorted = [...matches].sort((a, b) => {
+      const timeA = a.created_at?.toMillis ? a.created_at.toMillis() : Date.parse(a.report_date || a.created_at) || 0;
+      const timeB = b.created_at?.toMillis ? b.created_at.toMillis() : Date.parse(b.report_date || b.created_at) || 0;
+      return timeB - timeA;
+    });
+    const first = sorted[0];
+    return first.data || first;
+  }, [historyReports, ticker]);
 
   useEffect(() => {
     let cancelled = false;
@@ -871,14 +890,42 @@ export default function ReportTemplate({
               if (marketPrice <= 0 || baseFcf <= 0) return null;
 
               return (
-                <ReverseDcfCard
-                  currentPrice={marketPrice}
-                  baseFcfPerShare={baseFcf}
-                  discountRatePct={wacc}
-                  terminalGrowthPct={tg}
-                  isThai={isThai}
-                  onOpenScenarioModal={() => setShowScenarioModal(true)}
-                />
+                <div className="flex flex-col gap-4">
+                  <ReverseDcfCard
+                    currentPrice={marketPrice}
+                    baseFcfPerShare={baseFcf}
+                    discountRatePct={wacc}
+                    terminalGrowthPct={tg}
+                    isThai={isThai}
+                    onOpenScenarioModal={() => setShowScenarioModal(true)}
+                  />
+
+                  {/* Valuation Decomposition & Macro Stress Trigger */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-xl border border-stone-200 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0b5a4b] shrink-0">
+                        <Sliders className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs sm:text-sm font-bold text-stone-900">
+                          {isThai ? 'การแจกแจงปัจจัยมูลค่า & ทดสอบภาวะวิกฤต (Decomposition & Stress Test)' : 'Valuation Decomposition & Macro Stress Sandbox'}
+                        </div>
+                        <div className="text-[11px] text-stone-500">
+                          {isThai
+                            ? 'วิเคราะห์สาเหตุการเปลี่ยนแปลง Fair Value ตามตัวขับเคลื่อน และทดสอบวิกฤตเศรษฐกิจมหภาค'
+                            : 'Marginal driver attribution, investment thesis tracking, and 5 institutional macro stress scenarios.'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowDecompositionModal(true)}
+                      className="px-3.5 py-2 rounded-lg bg-[#0b5a4b] hover:bg-[#084539] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>{isThai ? 'เปิดแบบจำลอง' : 'Open Sandbox'}</span>
+                    </button>
+                  </div>
+                </div>
               );
             })()}
           </div>
@@ -1855,6 +1902,17 @@ export default function ReportTemplate({
           initialWaccPct={data.intrinsic_value?.dcf_model?.assumptions?.wacc_pct || 9.0}
           initialTerminalGrowthPct={data.intrinsic_value?.dcf_model?.assumptions?.terminal_growth_pct || 2.5}
           isThai={isThai}
+        />
+      )}
+
+      {/* Valuation Decomposition & Macro Stress Modal */}
+      {showDecompositionModal && (
+        <ValuationDecompositionModal
+          isOpen={showDecompositionModal}
+          onClose={() => setShowDecompositionModal(false)}
+          isThai={isThai}
+          currentReport={data}
+          previousReport={previousReport}
         />
       )}
     </div>
