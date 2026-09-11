@@ -82,22 +82,20 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 8 — Monitoring & Alerts (Active 🔄)
-**Potential monitoring:**
-- Earnings releases
-- New SEC filings
-- Major 8-K events
-- Material valuation changes
-- Margin-of-safety threshold changes
-- Analyst revisions
-- Insider activity
-- Institutional flow changes
-- Thesis-changing metrics
-- **Requirements:** Materiality thresholds, deduplication, avoid alert spam, explain why alert fired, link alert to evidence.
+### Phase 8 — Monitoring & Alerts (Complete ✅)
+**Delivered capabilities:**
+- Institutional Monitoring & Alerts Engine (`monitoringEngine.ts`) with deterministic rules and materiality thresholds.
+- Valuation & MoS Breach Tracking (fires when price trades significantly below DCF Base Fair Value or exceeds threshold).
+- Valuation Overvalued Warnings (detects when price exceeds fair value by >= 15% premium).
+- Conviction Score Shift Monitoring (detects material upgrades or downgrades >= 10 points).
+- SEC Filing Alerts (monitors and links new 10-K, 10-Q, and material 8-K filings with SEC citations).
+- Portfolio Concentration Risk Alerts (flags when any asset weight >= 30% of total portfolio).
+- Interactive Alerts Modal with unread badges, filter tabs, single/bulk read actions, and configurable materiality thresholds to prevent alert fatigue.
+- Full bilingual English/Thai presentation and unit test coverage.
 
 ---
 
-### Phase 9 — Comparison & Decision Tools
+### Phase 9 — Comparison & Decision Tools (Active 🔄)
 **Potential capabilities:**
 - Normalized peer comparison
 - Sector-aware peer selection

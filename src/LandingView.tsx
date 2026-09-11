@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase } from 'lucide-react';
+import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell } from 'lucide-react';
 import { UserAvatar } from './components/UserAvatar';
 
 interface LandingViewProps {
@@ -23,6 +23,8 @@ interface LandingViewProps {
   onLogout: () => void;
   onOpenHistory: () => void;
   onOpenPortfolio?: () => void;
+  onOpenAlerts?: () => void;
+  unreadAlertsCount?: number;
   onReplayIntro?: () => void;
   error?: string | null;
   onClearError?: () => void;
@@ -144,6 +146,8 @@ export function LandingView({
   onLogout,
   onOpenHistory,
   onOpenPortfolio,
+  onOpenAlerts,
+  unreadAlertsCount = 0,
   onReplayIntro,
   error,
   onClearError,
@@ -268,6 +272,17 @@ export function LandingView({
             {user ? (
               <div className="flex items-center gap-2 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)] shrink-0">
                 <button
+                  onClick={onOpenAlerts}
+                  className="text-white/70 hover:text-white flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium tracking-wide relative"
+                  title={isThai ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
+                >
+                  <Bell className="w-3.5 h-3.5" strokeWidth={2} />
+                  {unreadAlertsCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 absolute -top-0.5 -right-0.5" />
+                  )}
+                  {isThai ? 'เตือน' : 'Alerts'}
+                </button>
+                <button
                   onClick={onOpenPortfolio}
                   className="text-white/70 hover:text-white flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium tracking-wide"
                   title={isThai ? 'พอร์ตและรายการติดตาม' : 'Portfolio & Watchlist'}
@@ -299,6 +314,22 @@ export function LandingView({
             ) : (
               <div className="flex items-center gap-2">
                 <button
+                  onClick={onOpenAlerts}
+                  className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer flex items-center gap-1.5 shrink-0 relative"
+                  style={{
+                    height: 'clamp(36px, 3.8vw, 40px)',
+                    padding: '0 clamp(10px, 1.2vw, 14px)',
+                    fontSize: 'clamp(11.5px, 1.2vw, 13px)',
+                  }}
+                  title={isThai ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
+                >
+                  <Bell className="w-3.5 h-3.5" strokeWidth={2} />
+                  {unreadAlertsCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-2 right-2" />
+                  )}
+                  <span>{isThai ? 'เตือน' : 'Alerts'}</span>
+                </button>
+                <button
                   onClick={onOpenPortfolio}
                   className="bg-[#28282a] text-[#c8c8c8] hover:bg-[#323234] hover:text-white rounded-full font-medium transition-all duration-200 hover:-translate-y-px shadow-[0_4px_14px_rgba(0,0,0,0.16)] cursor-pointer flex items-center gap-1.5 shrink-0"
                   style={{
@@ -327,7 +358,17 @@ export function LandingView({
           </div>
 
           {/* Mobile Right Controls: User Avatar + Toggle Menu */}
-          <div className="md:hidden flex items-center justify-end gap-2.5 sm:gap-3 z-10 min-w-0">
+          <div className="md:hidden flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
+            <button
+              onClick={onOpenAlerts}
+              className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
+              title={isThai ? 'การแจ้งเตือน' : 'Alerts'}
+            >
+              <Bell className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
+              {unreadAlertsCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-0.5 right-0.5" />
+              )}
+            </button>
             <button
               onClick={onOpenPortfolio}
               className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
@@ -434,6 +475,21 @@ export function LandingView({
                 </div>
 
                 <div className="pt-2 border-t border-stone-200 flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenAlerts?.();
+                    }}
+                    className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-medium rounded-full text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-2 relative"
+                  >
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>{isThai ? 'การแจ้งเตือน & เฝ้าระวัง' : 'Alerts & Monitoring'}</span>
+                    {unreadAlertsCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                        {unreadAlertsCount}
+                      </span>
+                    )}
+                  </button>
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);

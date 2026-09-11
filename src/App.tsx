@@ -1,12 +1,13 @@
 import { LandingView } from './LandingView';
 import { HistoryModal } from './components/HistoryModal';
 import { PortfolioModal } from './components/PortfolioModal';
+import { AlertsModal } from './components/AlertsModal';
 import { auth, db, firebaseDataAccessAllowed, googleProvider } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { CrossfadeVideo } from './components/CrossfadeVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight, Briefcase } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Crown, Sparkles, Printer, Copy, Check, ArrowUpRight, Briefcase, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -20,6 +21,14 @@ import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
 import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
 import { isSoftDeletedReportRecord, sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
 import { authenticatedFetch } from './services/authenticatedFetch';
+import {
+  loadMonitoringPreferences,
+  saveMonitoringPreferences,
+  loadReadAlertIds,
+  saveReadAlertIds,
+  evaluateAllAlerts
+} from './utils/monitoringEngine';
+import { loadLocalWatchlist, loadLocalPortfolio } from './utils/portfolioEngine';
 
 import { 
   DocumentFinding, 
@@ -155,7 +164,10 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isPortfolioOpen, setIsPortfolioOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [historyReports, setHistoryReports] = useState<any[]>([]);
+  const [monitoringPreferences, setMonitoringPreferences] = useState(() => loadMonitoringPreferences(user?.uid));
+  const [readAlertIds, setReadAlertIds] = useState<Set<string>>(() => loadReadAlertIds(user?.uid));
 
   // Memoized ticker to latest report mapping for portfolio valuation intelligence
   const reportsByTicker = React.useMemo(() => {
@@ -171,6 +183,50 @@ export default function App() {
     }
     return map;
   }, [historyReports, currentReport]);
+
+  const alerts = React.useMemo(() => {
+    const watchlist = loadLocalWatchlist(user?.uid);
+    const portfolio = loadLocalPortfolio(user?.uid);
+    const tracked = Array.from(new Set([
+      ...watchlist,
+      ...portfolio.map(h => h.ticker),
+      ...historyReports.map(r => r.ticker || r.data?.ticker || ''),
+      ...(ticker ? [ticker] : [])
+    ])).filter(Boolean);
+
+    return evaluateAllAlerts(
+      tracked,
+      reportsByTicker,
+      {},
+      historyReports,
+      undefined,
+      monitoringPreferences,
+      readAlertIds
+    );
+  }, [user?.uid, reportsByTicker, historyReports, ticker, monitoringPreferences, readAlertIds]);
+
+  const unreadAlertsCount = React.useMemo(() => alerts.filter(a => !a.isRead).length, [alerts]);
+
+  const handleUpdatePreferences = (newPrefs: any) => {
+    setMonitoringPreferences(newPrefs);
+    saveMonitoringPreferences(newPrefs, user?.uid);
+  };
+
+  const handleMarkAlertAsRead = (alertId: string) => {
+    setReadAlertIds(prev => {
+      const next = new Set(prev);
+      if (next.has(alertId)) next.delete(alertId);
+      else next.add(alertId);
+      saveReadAlertIds(next, user?.uid);
+      return next;
+    });
+  };
+
+  const handleMarkAllAlertsAsRead = () => {
+    const allIds = new Set(alerts.map(a => a.id));
+    setReadAlertIds(allIds);
+    saveReadAlertIds(allIds, user?.uid);
+  };
 
   // $100M Motion Intro State
   const [showIntro, setShowIntro] = useState<boolean>(() => {
@@ -736,6 +792,26 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Monitoring & Alerts Modal */}
+      <AnimatePresence>
+        {isAlertsOpen && (
+          <AlertsModal
+            isOpen={isAlertsOpen}
+            onClose={() => setIsAlertsOpen(false)}
+            isThai={selectedLanguage === 'Thai'}
+            alerts={alerts}
+            preferences={monitoringPreferences}
+            onUpdatePreferences={handleUpdatePreferences}
+            onMarkAsRead={handleMarkAlertAsRead}
+            onMarkAllAsRead={handleMarkAllAlertsAsRead}
+            onSelectTicker={(selectedTicker) => {
+              setTicker(selectedTicker);
+              setIsAlertsOpen(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Cinematic $100M Motion Intro */}
       <AnimatePresence>
         {showIntro && (
@@ -869,6 +945,16 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <button
+                  onClick={() => setIsAlertsOpen(true)}
+                  className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
+                  title={selectedLanguage === 'Thai' ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
+                >
+                  <Bell className="w-[18px] h-[18px]" strokeWidth={2} />
+                  {unreadAlertsCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-0.5 right-0.5" />
+                  )}
+                </button>
+                <button
                   onClick={() => setIsPortfolioOpen(true)}
                   className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
                   title={selectedLanguage === 'Thai' ? 'พอร์ตและรายการติดตาม' : 'Portfolio & Watchlist'}
@@ -938,6 +1024,8 @@ export default function App() {
              onLogout={handleLogout}
              onOpenHistory={() => setIsHistoryModalOpen(true)}
              onOpenPortfolio={() => setIsPortfolioOpen(true)}
+             onOpenAlerts={() => setIsAlertsOpen(true)}
+             unreadAlertsCount={unreadAlertsCount}
              onReplayIntro={() => setShowIntro(true)}
              error={error}
              onClearError={() => setError(null)}
