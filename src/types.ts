@@ -1260,4 +1260,49 @@ export interface HistoricalReportDelta {
   freeCashFlowDelta?: { previous: number; current: number; deltaPct: number } | null;
 }
 
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+
+export type AlertType =
+  | 'VALUATION_MOS_BREACH'
+  | 'VALUATION_OVERVALUED'
+  | 'CONVICTION_SHIFT'
+  | 'FILING_NEW_10K_10Q'
+  | 'FILING_MATERIAL_8K'
+  | 'INSIDER_CLUSTER_BUY'
+  | 'PORTFOLIO_CONCENTRATION';
+
+export interface MonitoringAlert {
+  id: string; // Unique deduplication key: `${ticker}-${type}-${dateKey}`
+  ticker: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+  titleTh?: string;
+  messageTh?: string;
+  timestamp: number;
+  dateStr: string;
+  isRead: boolean;
+  evidence: {
+    metricName: string;
+    currentValue: number | string;
+    thresholdValue?: number | string;
+    previousValue?: number | string;
+    filingType?: string;
+    filingDate?: string;
+    sourceUrl?: string;
+  };
+  linkSection?: string;
+}
+
+export interface MonitoringPreferences {
+  enableMosAlerts: boolean;
+  mosThresholdPct: number; // default 20%
+  enableOvervaluedAlerts: boolean;
+  enableConvictionAlerts: boolean;
+  convictionThresholdPoints: number; // default 10
+  enableFilingAlerts: boolean;
+  enableConcentrationAlerts: boolean;
+  concentrationThresholdPct: number; // default 30%
+}
 
