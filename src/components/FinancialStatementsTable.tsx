@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Table, AlertTriangle, TrendingUp, TrendingDown, Minus,
   ChevronDown, ChevronRight, Layers, DollarSign, ArrowRight,
-  BarChart3, Activity, PieChart, Shield, Check, SlidersHorizontal, Sparkles, Lightbulb, Info
+  BarChart3, Activity, PieChart, Shield, Check, SlidersHorizontal, Sparkles, Lightbulb, Info, Calculator
 } from 'lucide-react';
+import { CalculationModal } from './CalculationModal';
+import { getMetricCalculationDetail, MetricCalculationDetail } from '../utils/metricCalculations';
 import {
   ResponsiveContainer, ComposedChart, Bar, Line,
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -38,6 +40,8 @@ export function FinancialStatementsTable({
   const [isChartCollapsed, setIsChartCollapsed] = useState<boolean>(false);
   const [liveAiInsights, setLiveAiInsights] = useState<Record<string, FinancialAiInsight>>({});
   const [isAiAnalyzing, setIsAiAnalyzing] = useState<boolean>(false);
+  const [activeCalcDetail, setActiveCalcDetail] = useState<MetricCalculationDetail | null>(null);
+  const [activeCalcPeriod, setActiveCalcPeriod] = useState<string>('');
 
   // Dropdown States
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState<boolean>(false);
@@ -127,6 +131,16 @@ export function FinancialStatementsTable({
   ): (number | null)[] => {
     return periodChanges(values, rawPeriods, compareMode,
       metricKey === 'revenue' ? effectiveData.income_statement?.yoy_revenue_growth_pct : undefined);
+  };
+
+  const openCalculationDetail = (key: string, pIdx?: number) => {
+    const periodIndex = typeof pIdx === 'number' && pIdx >= 0 ? periodIndices[pIdx] ?? 0 : periodIndices[periodIndices.length - 1] ?? 0;
+    const detail = getMetricCalculationDetail(key, periodIndex, effectiveData);
+    if (detail) {
+      setActiveCalcDetail(detail);
+      const label = typeof pIdx === 'number' && pIdx >= 0 ? periods[pIdx] : periods[periods.length - 1];
+      setActiveCalcPeriod(label || '');
+    }
   };
 
   const income = effectiveData.income_statement;
@@ -739,6 +753,7 @@ export function FinancialStatementsTable({
     const isSelected = selectedRowKey === key;
     const values = periodIndices.map(i => rawValues[i] !== undefined ? rawValues[i] : null);
     const comparisonList = calculateComparison(values, key);
+    const hasCalc = Boolean(getMetricCalculationDetail(key, 0, effectiveData));
     return (
       <tr
         key={key}
@@ -757,8 +772,22 @@ export function FinancialStatementsTable({
           <div className="flex items-start gap-2">
             <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${isSelected ? 'bg-[#0b5a4b]' : indent > 0 ? 'bg-transparent' : 'bg-stone-300'}`} />
             <div>
-              <div className={`leading-snug ${isGroup ? 'font-bold text-stone-900' : indent === 1 ? 'font-semibold text-stone-800' : 'text-stone-700'}`}>
-                {indent > 0 ? `— ${title}` : title}
+              <div className={`leading-snug flex items-center gap-1.5 flex-wrap ${isGroup ? 'font-bold text-stone-900' : indent === 1 ? 'font-semibold text-stone-800' : 'text-stone-700'}`}>
+                <span>{indent > 0 ? `— ${title}` : title}</span>
+                {hasCalc && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCalculationDetail(key, periods.length - 1);
+                    }}
+                    className="p-1 rounded-md text-stone-400 hover:text-[#0b5a4b] hover:bg-emerald-50 transition-colors cursor-pointer"
+                    title={isThai ? 'ดูสูตรและวิธีคำนวณ' : 'View calculation formula and inputs'}
+                    aria-label={`View formula for ${title}`}
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               {title_th && (
                 <div className={`text-[11px] font-normal text-stone-500 font-sans mt-0.5 ${indent > 0 ? 'pl-3' : ''}`}>
@@ -1274,6 +1303,20 @@ export function FinancialStatementsTable({
                               <div>
                                 <div className="font-bold text-stone-900 leading-snug flex items-center gap-1.5 flex-wrap">
                                   <span>{metric.name}</span>
+                                  {Boolean(getMetricCalculationDetail(metric.key, 0, effectiveData)) && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openCalculationDetail(metric.key, periods.length - 1);
+                                      }}
+                                      className="p-1 rounded-md text-stone-400 hover:text-[#0b5a4b] hover:bg-emerald-50 transition-colors cursor-pointer"
+                                      title={isThai ? 'ดูสูตรและวิธีคำนวณ' : 'View calculation formula and inputs'}
+                                      aria-label={`View formula for ${metric.name}`}
+                                    >
+                                      <Calculator className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   {validation?.flagged_metrics?.[metric.key] && (
                                     <span
                                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100/90 text-amber-800 text-[10px] font-mono font-semibold"
@@ -2247,6 +2290,16 @@ export function FinancialStatementsTable({
           </ul>
         </div>
       )}
+
+      <CalculationModal
+        detail={activeCalcDetail}
+        isOpen={Boolean(activeCalcDetail)}
+        onClose={() => setActiveCalcDetail(null)}
+        isThai={isThai}
+        periodLabel={activeCalcPeriod}
+        currencyMode={currencyMode}
+        currencyRate={currencyRate}
+      />
     </div>
   );
 }

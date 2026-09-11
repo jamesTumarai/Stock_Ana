@@ -9,6 +9,8 @@ import { IntrinsicValueData, ForecastDashboardData, DCFScenario } from '../types
 
 import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
 import { describeDcfFinancialSource } from '../utils/valuation/dcfSourceDescriptor';
+import { CalculationModal } from './CalculationModal';
+import { getMetricCalculationDetail, MetricCalculationDetail } from '../utils/metricCalculations';
 
 
 interface Props {
@@ -181,6 +183,7 @@ export function IntrinsicValueEngine({
   const coc = data.cost_of_capital;
 
   const [showSimulator, setShowSimulator] = useState(false);
+  const [mosCalcDetail, setMosCalcDetail] = useState<MetricCalculationDetail | null>(null);
   
   // Single Source of Truth: Region-aware CAPM WACC derived from stock Beta
   const effectiveWacc = coc?.wacc_pct ?? assumptions.wacc_pct;
@@ -328,9 +331,28 @@ export function IntrinsicValueEngine({
               <ShieldAlert className="w-6 h-6 text-red-600 shrink-0" />
             )}
             <div className="flex flex-col">
-              <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">
-                {isThai ? 'ส่วนเผื่อความปลอดภัย (MARGIN OF SAFETY)' : 'MARGIN OF SAFETY'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">
+                  {isThai ? 'ส่วนเผื่อความปลอดภัย (MARGIN OF SAFETY)' : 'MARGIN OF SAFETY'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const detail = getMetricCalculationDetail('margin_of_safety', 0, undefined, {
+                      currentPrice,
+                      fairValue: effectiveBasePrice,
+                      waccPct: simWacc,
+                      terminalGrowthPct: simGrowth
+                    });
+                    setMosCalcDetail(detail);
+                  }}
+                  className="text-stone-400 hover:text-[#0b5a4b] hover:bg-emerald-50 p-0.5 rounded transition-colors cursor-pointer"
+                  title={isThai ? 'ดูสูตรและวิธีคำนวณ Margin of Safety' : 'View Margin of Safety calculation formula'}
+                  aria-label="View Margin of Safety formula"
+                >
+                  <Calculator className="w-3 h-3" />
+                </button>
+              </div>
               <span className={`text-base sm:text-lg font-bold font-mono ${effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
                 {effectiveMarginOfSafety > 0 ? `+${effectiveMarginOfSafety.toFixed(1)}%` : `${effectiveMarginOfSafety.toFixed(1)}%`}
                 <span className="text-xs font-sans font-normal ml-1 text-stone-500">
@@ -970,6 +992,14 @@ export function IntrinsicValueEngine({
         </div>
       </div>
 
+      <CalculationModal
+        detail={mosCalcDetail}
+        isOpen={Boolean(mosCalcDetail)}
+        onClose={() => setMosCalcDetail(null)}
+        isThai={isThai}
+        currencyMode={currencyMode}
+        currencyRate={currencyRate}
+      />
     </div>
   );
 }

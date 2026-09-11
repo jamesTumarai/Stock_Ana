@@ -43,32 +43,34 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 6 — Report Experience / UX
-**Goals:**
+### Phase 6 — Report Experience / UX (Complete ✅)
+**Delivered Capabilities:**
 - Stronger information hierarchy:
   - Executive Summary
-  - Investment Thesis
-  - Valuation
-  - Financial Health
-  - Growth
-  - Business Quality
-  - Risks
-  - Smart Money
-  - Technical Context
-  - Sources / Data Integrity
-- Clearly distinguish:
-  - Verified Data
-  - Calculated
-  - Assumption
-  - Market Data
-  - AI Interpretation
-  - Unavailable
-- Improve progressive disclosure, source visibility, calculation visibility, charts, mobile responsiveness, and Thai / English readability.
-- No fake chart series.
+  - Financial Statements & Indicators
+  - Valuation & 5 Fundamental Pillars
+  - Earnings & Equity Research
+  - Fundamentals & Business Model
+  - Peers, Smart Money & Corporate Actions
+  - Historical Price & Performance Charts
+  - Technical Analysis & Trade Plan
+  - Deep Insights
+  - SEC Citations & Document Findings
+  - Data Provenance & Disclaimers
+- ProvenanceBadge classification hierarchy across all report sections:
+  - Verified Data (🛡️ Verified SEC XBRL/Filing facts)
+  - Calculated (📐 Deterministic formulas: FCF, Margins, Ratios, Base DCF)
+  - Assumption (⚙️ Explicit forward inputs: WACC, Terminal Growth, Forecast CAGR)
+  - Market Data (📈 Live market quotes, Beta, Price range)
+  - AI Interpretation (💡 AI qualitative thesis, moat commentary)
+  - Unavailable (⚪ Explicitly missing/null per integrity rules)
+- CalculationModal: interactive calculation transparency with mathematical formulas, period inputs, and financial significance for FCF, Gross/Operating/Net margins, Current/Quick ratios, Debt-to-Equity, ROE, and Margin of Safety.
+- Scroll-Spy activeNav navigation with container offset (`scroll-mt-28`) ensuring headers never hide behind sticky navbar.
+- Mobile table scroll hints for multi-period swipe discovery.
 
 ---
 
-### Phase 7 — Portfolio & User Intelligence
+### Phase 7 — Portfolio & User Intelligence (Active 🔄)
 **Potential scope:**
 - Watchlist
 - Portfolio holdings (quantity, average cost, market value, unrealized P/L, allocation, concentration, sector exposure)
