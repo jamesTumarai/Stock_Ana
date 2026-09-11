@@ -19,6 +19,7 @@ import { registerDcfRoutes } from "./server/routes/dcfRoutes.ts";
 import { registerFileRoutes } from "./server/routes/fileRoutes.ts";
 import { registerMarketRoutes } from "./server/routes/marketRoutes.ts";
 import { registerSecRoutes } from "./server/routes/secRoutes.ts";
+import { registerHealthRoutes } from "./server/routes/healthRoutes.ts";
 
 import { streamInteraction } from "./server/lib/agentClient.ts";
 import { loadAgentFiles } from "./server/lib/agentFiles.ts";
@@ -29,6 +30,7 @@ import {
   hasUsableDcfAssumptions,
   mergeStructuredValuationAssumptions,
 } from "./server/lib/valuationAssumptionBridge.ts";
+import { LatencyTracker } from "./src/utils/latencyTracker.ts";
 
 export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const app = express();
@@ -58,6 +60,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   registerFileRoutes(app, requireFirebaseAuth);
   registerMarketRoutes(app);
   registerSecRoutes(app);
+  registerHealthRoutes(app);
 
   app.post("/api/analyze", requireFirebaseAuth, analyzeRateLimit, analyzeConcurrencyLimit, async (req, res) => {
     try {
@@ -81,6 +84,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
         });
       }
 
+      const latencyTracker = new LatencyTracker();
       console.log(`[analyze] Starting analysis for ${ticker} using model ${model || 'default'}, language ${language || 'English'}, type ${analysisType || 'fundamental'}`);
       
       // The runtime prompt below is the authoritative output contract. Do not inject
@@ -1433,6 +1437,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       }
       
       let liveMarketPromptSection = "";
+      const stopMarketSnapshot = latencyTracker.startStage('market_snapshot');
       try {
         const peerMap: Record<string, string[]> = {
           // Fintech, Neobanks & Digital Payments
@@ -1585,6 +1590,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         }
       } catch (e) {
         console.warn("Could not pre-fetch live quotes:", e);
+      } finally {
+        stopMarketSnapshot();
       }
 
       let prompt = `Perform a comprehensive document analysis on ${ticker}. ${finalInstruction}${liveMarketPromptSection}
@@ -1765,6 +1772,7 @@ ${dynamicSchema}`;
       }
 
           
+      const stopGeminiStream = latencyTracker.startStage('gemini_stream');
       const stream = streamInteraction(response);
       let fullText = '';
       for await (const event of stream) {
@@ -1834,25 +1842,24 @@ ${event.message}
         }
       }
 
+      stopGeminiStream();
+
+      const stopAssumptions = latencyTracker.startStage('valuation_assumptions');
       await appendCanonicalValuationIfNeeded(fullText);
+      stopAssumptions();
           
       const totalDurationSecs = ((Date.now() - startTime) / 1000);
       const totalDuration = totalDurationSecs.toFixed(2) + 's';
+      const timing = latencyTracker.getTimingBreakdown();
       
       // Send final reliable stats to client
-      res.write(`data: ${JSON.stringify({ type: 'final_stats', duration: totalDurationSecs, tokens: totalTokens })}
+      res.write(`data: ${JSON.stringify({ type: 'final_stats', duration: totalDurationSecs, tokens: totalTokens, timing })}\n\n`);
 
-`);
-
-      let summaryLog = `========================================================
-`;
-      summaryLog += `                 RUN SUMMARY FOR ${ticker.toUpperCase()}
-`;
-      summaryLog += `                 Total Duration: ${totalDuration}
-`;
-      summaryLog += `========================================================
-
-`;
+      let summaryLog = `========================================================\n`;
+      summaryLog += `                 RUN SUMMARY FOR ${ticker.toUpperCase()}\n`;
+      summaryLog += `                 Total Duration: ${totalDuration}\n`;
+      summaryLog += `                 Stage Timings: ${latencyTracker.formatSummary()}\n`;
+      summaryLog += `========================================================\n\n`;
       summaryLog += `1. SUB-AGENT EXECUTIONS:
 `;
       summaryLog += `--------------------------------------------------------

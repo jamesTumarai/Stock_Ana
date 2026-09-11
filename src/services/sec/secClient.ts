@@ -48,6 +48,8 @@ export interface SecCompanyFact {
   [key: string]: unknown;
 }
 
+import { getGlobalSecCache, SecTtlCache, type SecCacheStats } from './secCache';
+
 export interface SecClientOptions {
   userAgent?: string;
   fetchImpl?: typeof fetch;
@@ -55,6 +57,7 @@ export interface SecClientOptions {
   tickerCacheTtlMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  cache?: SecTtlCache | null;
 }
 
 export class SecDataError extends Error {
@@ -88,6 +91,7 @@ export class SecEdgarClient {
   private readonly tickerCacheTtlMs: number;
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly cache: SecTtlCache | null;
   private requestChain: Promise<void> = Promise.resolve();
   private lastRequestAt = 0;
   private tickerCache: { expiresAt: number; records: Map<string, SecTickerRecord> } | null = null;
@@ -99,6 +103,7 @@ export class SecEdgarClient {
     this.tickerCacheTtlMs = Math.max(60_000, options.tickerCacheTtlMs ?? 6 * 60 * 60 * 1000);
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep ?? ((ms: number) => new Promise(resolve => setTimeout(resolve, ms)));
+    this.cache = options.cache ?? null;
   }
 
   get isConfigured() {
@@ -182,12 +187,36 @@ export class SecEdgarClient {
 
   async fetchSubmissions(cik: string | number): Promise<SecSubmissionsResponse> {
     const normalized = normalizeCik(cik);
-    return this.fetchJson<SecSubmissionsResponse>(`${SEC_DATA_BASE_URL}/submissions/CIK${normalized}.json`);
+    const cacheKey = `submissions:CIK${normalized}`;
+    if (this.cache) {
+      const cached = this.cache.get<SecSubmissionsResponse>(cacheKey);
+      if (cached) return cached;
+    }
+
+    const payload = await this.fetchJson<SecSubmissionsResponse>(`${SEC_DATA_BASE_URL}/submissions/CIK${normalized}.json`);
+    if (this.cache && payload) {
+      this.cache.set(cacheKey, payload);
+    }
+    return payload;
   }
 
   async fetchCompanyFacts(cik: string | number): Promise<SecCompanyFactsResponse> {
     const normalized = normalizeCik(cik);
-    return this.fetchJson<SecCompanyFactsResponse>(`${SEC_DATA_BASE_URL}/api/xbrl/companyfacts/CIK${normalized}.json`);
+    const cacheKey = `facts:CIK${normalized}`;
+    if (this.cache) {
+      const cached = this.cache.get<SecCompanyFactsResponse>(cacheKey);
+      if (cached) return cached;
+    }
+
+    const payload = await this.fetchJson<SecCompanyFactsResponse>(`${SEC_DATA_BASE_URL}/api/xbrl/companyfacts/CIK${normalized}.json`);
+    if (this.cache && payload) {
+      this.cache.set(cacheKey, payload);
+    }
+    return payload;
+  }
+
+  getCacheStats(): SecCacheStats | null {
+    return this.cache ? this.cache.getStats() : null;
   }
 
   async fetchCompanyBundle(ticker: string): Promise<{
@@ -209,4 +238,5 @@ export class SecEdgarClient {
   }
 }
 
-export const createSecEdgarClientFromEnv = () => new SecEdgarClient();
+export const createSecEdgarClientFromEnv = (options: SecClientOptions = {}) =>
+  new SecEdgarClient({ cache: options.cache !== undefined ? options.cache : getGlobalSecCache(), ...options });

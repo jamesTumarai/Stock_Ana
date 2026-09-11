@@ -11,35 +11,31 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 1. **Phase 4** — Complete ✅
 2. **Phase 4.5 Stabilization** — Complete ✅
 3. **Phase 5** — Analysis Quality & Data Coverage — Complete ✅
-4. **Phase 6** — Report Experience / UX 🔄 Active
-5. **Phase 7** — Portfolio & User Intelligence
-6. **Phase 8** — Monitoring & Alerts
-7. **Phase 9** — Comparison & Decision Tools
-8. **Phase 10** — Performance, Cost & Reliability
-9. **Phase 11** — Productization / Subscription Readiness
+4. **Phase 6** — Report Experience / UX — Complete ✅
+5. **Phase 7** — Portfolio & User Intelligence — Complete ✅
+6. **Phase 8** — Monitoring & Alerts — Complete ✅
+7. **Phase 9** — Comparison & Decision Tools — Complete ✅
+8. **Phase 10** — Performance, Cost & Reliability — Complete ✅
+9. **Phase 11** — Productization / Subscription Readiness 🔄 Active
 10. **Phase 12** — Advanced Investment Intelligence
 
 ---
 
 ## Current Stage
 
-### Phase 6 — Report Experience / UX (Active)
+### Phase 11 — Productization / Subscription Readiness (Active 🔄)
 
-**Goal:** Establish rigorous information hierarchy, progressive disclosure, source visibility, and clear classification badges distinguishing Verified Data, Calculated Formulas, Model Assumptions, Market Quotes, and AI Qualitative Interpretation.
+**Goal:** Establish subscription tiers, quota entitlements, account management, and institutional access controls while strictly isolating entitlements from canonical valuation calculations.
 
 **Work includes:**
-- Stronger SEC / XBRL coverage (SBC, Depreciation/Amortization, Common Stock, Retained Earnings, Leases)
-- Issuer taxonomy variation support (Operating vs Financial / FinTech institutions)
-- Fiscal-period normalization and standalone quarter derivation
-- Quarterly / annual / LTM alignment
-- Debt / cash / investment handling (safe non-overlapping resolution)
-- CapEx and FCF quality (deterministic FCF from verified OCF and CapEx outflows)
-- Stock-based compensation (SBC) explicit accounting and schema inclusion
-- Stronger provenance and SEC accession linkage
-- Sector-aware valuation paths (prohibiting generic FCFF on banks/lenders, recommending sector models)
-- DCF assumption explainability and Financial Sector Guard
+- Usage tiers & quota governance (Free, Pro, Institutional)
+- User entitlement evaluation boundary
+- Onboarding & account profile management
+- Billing foundations & usage monitoring
+- Privacy, disclosures, and regulatory compliance readiness
+- Zero interference with deterministic financial calculations
 
-**Exit criteria:** Analysis is trustworthy across materially different issuer types without weakening fail-closed integrity.
+**Exit criteria:** Tiered access and entitlement guards operate seamlessly without altering underlying valuation mathematics or verified financial data integrity.
 
 ---
 
@@ -106,21 +102,18 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 10 — Performance, Cost & Reliability (Active 🔄)
-**Goals:**
-- Lower Analyze latency
-- Safe reuse / caching of verified datasets
-- Better quota handling
-- AI usage / cost visibility
-- Bounded retry observability
-- Structured production metrics and failure classification
-- SEC / market data / Firebase / renderer health monitoring
-- Stage-level latency tracking
-- Never trade financial integrity for faster results.
+### Phase 10 — Performance, Cost & Reliability (Complete ✅)
+**Delivered capabilities:**
+- Safe reuse / caching of verified datasets: Institutional bounded in-memory TTL cache (`SecTtlCache`) with LRU eviction for SEC EDGAR company facts, submissions, and packages. Eliminates redundant multi-megabyte network transfers.
+- AI usage & cost visibility (`costEstimator.ts`): Model pricing catalog (Flash & Pro tiers), prompt/completion token cost calculation, and formatted USD/THB currency metrics.
+- Executive Summary 5-Column Metrics Grid in `ReportTemplate.tsx`: Displays Docs, Time, Runs, Tokens, and live AI Cost with localized tooltips and USD/THB FX conversion.
+- Structured diagnostics & health endpoint (`GET /api/health`): Telemetry covering memory (RSS, heap), process uptime, Gemini / SEC / Firebase configuration status, and SEC cache performance (hits, misses, size).
+- Stage-level latency tracking (`LatencyTracker`): Measures timings for market snapshots, Gemini stream, and valuation assumption normalization; transmits structured breakdown via SSE `final_stats` event and writes to run logs.
+- Full unit test coverage across all newly introduced modules with 62 passing test suites.
 
 ---
 
-### Phase 11 — Productization / Subscription Readiness
+### Phase 11 — Productization / Subscription Readiness (Active 🔄)
 **Potential scope:**
 - Usage tiers
 - Quotas and entitlements

@@ -730,6 +730,7 @@ export default function App() {
                  historyReports={historyReports}
                  language={selectedLanguage}
                  hideHeader={idx > 0}
+                 model={selectedModel}
                />
              </ErrorBoundary>
           ))}
