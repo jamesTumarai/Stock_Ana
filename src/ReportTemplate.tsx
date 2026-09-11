@@ -30,6 +30,7 @@ import { MorningstarResearchSection } from './components/MorningstarResearchSect
 import { SmartMoneyCard } from './components/SmartMoneyCard';
 import { ScoreMethodologyModal } from './components/ScoreMethodologyModal';
 import { CompanyLogo } from './components/CompanyLogo';
+import { ProvenanceBadge } from './components/ProvenanceBadge';
 
 interface Props {
   data: ReportData;
@@ -642,7 +643,11 @@ export default function ReportTemplate({
 
         {/* SECTION 1: EXECUTIVE SUMMARY */}
         <div id="section-summary" className="flex flex-col gap-4 scroll-mt-14">
-          <AnalysisCard title={isThai ? "บทสรุปผู้บริหาร (Executive Summary)" : "Executive Summary"} className="w-full">
+          <AnalysisCard
+            title={isThai ? "บทสรุปผู้บริหาร (Executive Summary)" : "Executive Summary"}
+            action={<ProvenanceBadge classification="ai_interpretation" isThai={isThai} size="xs" />}
+            className="w-full"
+          >
             <div className="bg-stone-50 p-4 md:p-5 rounded-2xl border border-stone-200 mb-6 text-stone-800 leading-relaxed font-medium text-base sm:text-lg w-full">
               "{data.verdict?.summary || (isThai ? 'ไม่มีบทสรุป' : 'No summary available.')}"
             </div>
@@ -721,10 +726,16 @@ export default function ReportTemplate({
         {/* SECTION 2: FINANCIAL STATEMENT TABLES (INCOME, BALANCE, CASH FLOW) */}
         {data.financial_statements && (
           <div id="section-financial-tables" className="flex flex-col gap-4 scroll-mt-14">
-            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 flex items-center gap-2">
-              <Layers className="w-6 h-6 text-[#0b5a4b]" />
-              <span>{isThai ? "ดัชนีชี้วัดทางการเงิน & งบการเงิน 3 งบ (Key Indicators & Statements)" : "Key Financial Indicators & Statements"}</span>
-            </h2>
+            <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                <Layers className="w-6 h-6 text-[#0b5a4b]" />
+                <span>{isThai ? "ดัชนีชี้วัดทางการเงิน & งบการเงิน 3 งบ (Key Indicators & Statements)" : "Key Financial Indicators & Statements"}</span>
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <ProvenanceBadge classification="verified" isThai={isThai} size="xs" />
+                <ProvenanceBadge classification="calculated" isThai={isThai} size="xs" />
+              </div>
+            </div>
             <FinancialStatementsTable 
               data={data.financial_statements} 
               isThai={isThai}
@@ -739,10 +750,16 @@ export default function ReportTemplate({
         {/* SECTION 3: VALUATION RATIOS, MULTIPLES DASHBOARD, 5 PILLARS & INTRINSIC VALUE (DCF) */}
         {(data.valuation_ratios || data.intrinsic_value || data.valuation_dashboard || data.five_pillars) && (
           <div id="section-valuation" className="flex flex-col gap-6 scroll-mt-14">
-            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-[#0b5a4b]" />
-              <span>{isThai ? "การประเมินมูลค่า & 5 เสาหลักพื้นฐาน (Valuation & 5 Fundamental Pillars)" : "Valuation & 5 Fundamental Pillars"}</span>
-            </h2>
+            <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                <Sparkles className="w-6 h-6 text-[#0b5a4b]" />
+                <span>{isThai ? "การประเมินมูลค่า & 5 เสาหลักพื้นฐาน (Valuation & 5 Fundamental Pillars)" : "Valuation & 5 Fundamental Pillars"}</span>
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <ProvenanceBadge classification="calculated" isThai={isThai} size="xs" />
+                <ProvenanceBadge classification="assumption" isThai={isThai} size="xs" />
+              </div>
+            </div>
 
             {/* 5 Core Valuation & Fundamental Pillars (Growth, ROIC, Balance Sheet, Yields, Peers) */}
             <FivePillarsAnalysis 
@@ -784,10 +801,16 @@ export default function ReportTemplate({
         {/* SECTION 4: EARNINGS & FORECAST ANALYSIS (WALL STREET & MORNINGSTAR) */}
         {(data.earnings_analysis || data.forecast_dashboard || data.morningstar_research) && (
           <div id="section-earnings" className="flex flex-col gap-6 scroll-mt-14">
-            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 flex items-center gap-2">
-              <Calendar className="w-6 h-6 text-[#0b5a4b]" />
-              <span>{isThai ? "การวิเคราะห์ Earnings & บทวิเคราะห์หลักทรัพย์ (Morningstar & Wall St)" : "Earnings Performance & Equity Research"}</span>
-            </h2>
+            <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                <Calendar className="w-6 h-6 text-[#0b5a4b]" />
+                <span>{isThai ? "การวิเคราะห์ Earnings & บทวิเคราะห์หลักทรัพย์ (Morningstar & Wall St)" : "Earnings Performance & Equity Research"}</span>
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <ProvenanceBadge classification="market" isThai={isThai} size="xs" />
+                <ProvenanceBadge classification="ai_interpretation" isThai={isThai} size="xs" />
+              </div>
+            </div>
 
             {data.morningstar_research && (
               <MorningstarResearchSection 
@@ -819,10 +842,16 @@ export default function ReportTemplate({
         {/* SECTION 5: COMPREHENSIVE FUNDAMENTAL ANALYSIS, PROFILE & BUSINESS STRUCTURE */}
         {data.analysis_type !== 'technical' && (data.comprehensive_analysis || data.company_profile || data.business_analysis) && (
           <div id="section-fundamentals" className="flex flex-col gap-6 scroll-mt-14">
-            <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 flex items-center gap-2">
-              <Lightbulb className="w-6 h-6 text-[#0b5a4b]" />
-              <span>{isThai ? "การวิเคราะห์ปัจจัยพื้นฐาน & โครงสร้างธุรกิจ (Fundamentals & Business)" : "Fundamental & Business Analysis"}</span>
-            </h2>
+            <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                <Lightbulb className="w-6 h-6 text-[#0b5a4b]" />
+                <span>{isThai ? "การวิเคราะห์ปัจจัยพื้นฐาน & โครงสร้างธุรกิจ (Fundamentals & Business)" : "Fundamental & Business Analysis"}</span>
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <ProvenanceBadge classification="verified" isThai={isThai} size="xs" />
+                <ProvenanceBadge classification="ai_interpretation" isThai={isThai} size="xs" />
+              </div>
+            </div>
 
             {data.company_profile && (
               <CompanyProfileCard
@@ -1144,10 +1173,16 @@ export default function ReportTemplate({
         {data.technical_analysis && (
           <div id="section-technical" className="flex flex-col gap-6 scroll-mt-14">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-stone-200 pb-2 gap-2">
-              <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
-                <TrendingUp className="w-6 h-6 text-stone-900" />
-                <span>{isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}</span>
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-stone-900" />
+                  <span>{isThai ? "การวิเคราะห์ทางเทคนิค (Technical Analysis)" : "Technical Analysis"}</span>
+                </h2>
+                <div className="flex items-center gap-1.5">
+                  <ProvenanceBadge classification="market" isThai={isThai} size="xs" />
+                  <ProvenanceBadge classification="calculated" isThai={isThai} size="xs" />
+                </div>
+              </div>
               {data.technical_analysis.signal_summary?.status && (
                 <div className="flex items-center gap-2 self-start sm:self-auto">
                   <span className="text-xs text-stone-500 font-semibold">{isThai ? 'สัญญาณหลัก:' : 'Primary Signal:'}</span>
@@ -1474,10 +1509,13 @@ export default function ReportTemplate({
         {/* SECTION 10: CITATIONS & SEC FILINGS */}
         <div id="section-citations" className="flex flex-col gap-4 scroll-mt-14">
            <div>
-             <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight border-b border-stone-200 pb-2 flex items-center gap-2">
-               <FileText className="w-6 h-6 text-[#0b5a4b]" />
-               <span>{isThai ? "เอกสารอ้างอิงและผลการค้นพบ (Document Findings & SEC Filings)" : "Document Findings & SEC Filings"}</span>
-             </h2>
+             <div className="border-b border-stone-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+               <h2 className="text-xl md:text-2xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight flex items-center gap-2">
+                 <FileText className="w-6 h-6 text-[#0b5a4b]" />
+                 <span>{isThai ? "เอกสารอ้างอิงและผลการค้นพบ (Document Findings & SEC Filings)" : "Document Findings & SEC Filings"}</span>
+               </h2>
+               <ProvenanceBadge classification="verified" isThai={isThai} size="xs" />
+             </div>
              <p className="text-xs sm:text-sm text-stone-500 mt-1">
                {isThai 
                  ? "เอกสารอ้างอิงที่รายงานระบุไว้ โปรดตรวจงวด ตัวเลข และลิงก์เอกสารต้นทางก่อนใช้คำนวณมูลค่า"
@@ -1547,11 +1585,14 @@ export default function ReportTemplate({
 
         {/* SECTION: DATA PROVENANCE, AUDIT & DISCLAIMERS */}
         <div id="section-provenance" className="flex flex-col gap-4 scroll-mt-14 pt-6 border-t border-stone-200">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-5 h-5 text-[#0b5a4b] shrink-0" />
-            <h3 className="font-bold text-stone-900 text-lg sm:text-xl">
-              {isThai ? 'แหล่งข้อมูล, ข้อกำหนด & ข้อสงวนสิทธิ์ (Data Provenance & Disclaimers)' : 'Data Provenance, Audit & Disclaimers'}
-            </h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-[#0b5a4b] shrink-0" />
+              <h3 className="font-bold text-stone-900 text-lg sm:text-xl">
+                {isThai ? 'แหล่งข้อมูล, ข้อกำหนด & ข้อสงวนสิทธิ์ (Data Provenance & Disclaimers)' : 'Data Provenance, Audit & Disclaimers'}
+              </h3>
+            </div>
+            <ProvenanceBadge classification="verified" isThai={isThai} size="xs" />
           </div>
 
           {provenance && (

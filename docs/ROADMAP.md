@@ -10,8 +10,8 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 1. **Phase 4** — Complete ✅
 2. **Phase 4.5 Stabilization** — Complete ✅
-3. **Phase 5** — Analysis Quality & Data Coverage 🔄 Active
-4. **Phase 6** — Report Experience / UX
+3. **Phase 5** — Analysis Quality & Data Coverage — Complete ✅
+4. **Phase 6** — Report Experience / UX 🔄 Active
 5. **Phase 7** — Portfolio & User Intelligence
 6. **Phase 8** — Monitoring & Alerts
 7. **Phase 9** — Comparison & Decision Tools
@@ -23,9 +23,9 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ## Current Stage
 
-### Phase 5 — Analysis Quality & Data Coverage (Active)
+### Phase 6 — Report Experience / UX (Active)
 
-**Goal:** Expand verified data coverage, strengthen SEC / XBRL extraction, align corporate vs banking financial taxonomy, and provide institutional-grade valuation paths.
+**Goal:** Establish rigorous information hierarchy, progressive disclosure, source visibility, and clear classification badges distinguishing Verified Data, Calculated Formulas, Model Assumptions, Market Quotes, and AI Qualitative Interpretation.
 
 **Work includes:**
 - Stronger SEC / XBRL coverage (SBC, Depreciation/Amortization, Common Stock, Retained Earnings, Leases)
