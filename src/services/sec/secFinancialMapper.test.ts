@@ -31,8 +31,11 @@ const companyFacts: SecCompanyFactsResponse = {
       Assets: usd(instant([500_000_000, 520_000_000, 540_000_000, 580_000_000], 'assets')),
       Liabilities: usd(instant([250_000_000, 255_000_000, 260_000_000, 270_000_000], 'liab')),
       StockholdersEquity: usd(instant([250_000_000, 265_000_000, 280_000_000, 310_000_000], 'equity')),
+      CommonStockValue: usd(instant([10_000_000, 10_000_000, 11_000_000, 12_000_000], 'cs')),
+      RetainedEarningsAccumulatedDeficit: usd(instant([200_000_000, 212_000_000, 225_000_000, 240_000_000], 're')),
       NetCashProvidedByUsedInOperatingActivities: usd(duration([20_000_000, 25_000_000, 30_000_000, 45_000_000], 'ocf')),
       PaymentsToAcquirePropertyPlantAndEquipment: usd(duration([5_000_000, 7_000_000, 9_000_000, 9_000_000], 'capex')),
+      AllocatedShareBasedCompensationExpense: usd(duration([2_000_000, 3_000_000, 4_000_000, 5_000_000], 'sbc')),
     },
   },
 };
@@ -46,8 +49,11 @@ const accessionNumbers = [
   'assets-q1', 'assets-q2', 'assets-q3', 'assets-fy',
   'liab-q1', 'liab-q2', 'liab-q3', 'liab-fy',
   'equity-q1', 'equity-q2', 'equity-q3', 'equity-fy',
+  'cs-q1', 'cs-q2', 'cs-q3', 'cs-fy',
+  're-q1', 're-q2', 're-q3', 're-fy',
   'ocf-q1', 'ocf-q2', 'ocf-q3', 'ocf-fy',
   'capex-q1', 'capex-q2', 'capex-q3', 'capex-fy',
+  'sbc-q1', 'sbc-q2', 'sbc-q3', 'sbc-fy',
 ];
 const submissions: SecSubmissionsResponse = {
   cik: identity.cik,
@@ -79,7 +85,10 @@ assert.deepEqual(dataset?.values['income_statement.revenue'].map(item => item.va
 assert.deepEqual(dataset?.values['income_statement.net_income'].map(item => item.value), [10, 12, 13, 15]);
 assert.deepEqual(dataset?.values['income_statement.eps_diluted'].map(item => item.value), [0.10, 0.12, 0.13, 0.15]);
 assert.deepEqual(dataset?.values['balance_sheet.cash_and_equivalents'].map(item => item.value), [50, 55, 60, 70]);
+assert.deepEqual(dataset?.values['balance_sheet.common_stock'].map(item => item.value), [10, 10, 11, 12]);
+assert.deepEqual(dataset?.values['balance_sheet.retained_earnings'].map(item => item.value), [200, 212, 225, 240]);
 assert.deepEqual(dataset?.values['cash_flow.operating_cash_flow'].map(item => item.value), [20, 25, 30, 45]);
+assert.deepEqual(dataset?.values['cash_flow.stock_based_compensation'].map(item => item.value), [2, 3, 4, 5]);
 assert.deepEqual(dataset?.values['cash_flow.capex'].map(item => item.value), [5, 7, 9, 9]);
 assert.deepEqual(dataset?.values['cash_flow.free_cash_flow'].map(item => item.value), [15, 18, 21, 36]);
 

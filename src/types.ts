@@ -94,6 +94,7 @@ export interface BalanceSheetData {
 export interface CashFlowData {
   operating_cash_flow?: (number | null)[];
   depreciation?: (number | null)[];
+  stock_based_compensation?: (number | null)[];
   non_cash_items?: (number | null)[];
   change_working_capital?: (number | null)[];
   change_receivables?: (number | null)[];

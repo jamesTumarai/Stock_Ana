@@ -451,6 +451,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "cash_flow": {
       "operating_cash_flow": [],
       "depreciation": [],
+      "stock_based_compensation": [],
       "change_working_capital": [],
       "capex": [],
       "investing_cash_flow": [],
@@ -914,7 +915,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
    - "operating_cash_flow": exact net cash provided by operating activities for each quarter.
    - "capex": capital expenditures (payments for property, plant and equipment).
    - "free_cash_flow": exact OCF minus CapEx for each quarter.
-   - "investing_cash_flow", "financing_cash_flow", "stock_issuance_repurchase", "dividends_paid".
+   - "investing_cash_flow", "financing_cash_flow", "stock_issuance_repurchase", "dividends_paid", "stock_based_compensation".
 4. Ensure accounting identity consistency: Total Assets = Total Liabilities + Total Equity, Total Current Assets >= Cash + Receivables + Inventory, and Free Cash Flow = Operating Cash Flow - CapEx.
 5. In "business_analysis.revenue_breakdown":
    - You MUST extract authentic segment revenues from the official SEC Form 10-Q/10-K "Product and Service Information" or Segment Footnote table for the latest completed quarter.
@@ -1024,6 +1025,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "cash_flow": {
       "operating_cash_flow": [],
       "depreciation": [],
+      "stock_based_compensation": [],
       "change_working_capital": [],
       "capex": [],
       "investing_cash_flow": [],

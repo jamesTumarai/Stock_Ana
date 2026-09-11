@@ -66,6 +66,8 @@ const CANDIDATES: Candidate[] = [
   { group: 'cash_flow', concept: 'PaymentsToAcquirePropertyPlantAndEquipment', factKind: 'duration', preferredUnit: 'USD' },
   { group: 'cash_flow', concept: 'PaymentsToAcquireProductiveAssets', factKind: 'duration', preferredUnit: 'USD' },
   { group: 'cash_flow', concept: 'PaymentsToAcquirePropertyPlantAndEquipmentAndIntangibleAssets', factKind: 'duration', preferredUnit: 'USD' },
+  { group: 'cash_flow', concept: 'ShareBasedCompensation', factKind: 'duration', preferredUnit: 'USD' },
+  { group: 'cash_flow', concept: 'AllocatedShareBasedCompensationExpense', factKind: 'duration', preferredUnit: 'USD' },
 ];
 
 const dateRank = (value?: string) => {

@@ -12,13 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 4 / Core Platform Foundation complete**.
-- Current working mode: **post-Phase-4 stabilization and product-quality review**.
-- Product Feature Expansion: **not started**. Continue reviewing production and fixing defects until the owner explicitly says the current result is satisfactory.
-- Primary end-to-end financial reference issuer: **MSFT**.
+- Current stage: **Phase 4.5 Production Stabilization complete; Phase 5 — Analysis Quality & Data Coverage actively underway**.
+- Current working mode: **Phase 5 execution authorized by owner (advancing systematically across phases with rigorous institutional engineering)**.
+- Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest application-behavior baseline: `73905f585ea8001c462aaf8a7014b3c7ff926b9a` (PR #49).
-- PR #50 introduced this durable handoff and was docs-only; docs-only commits may advance `main`/Vercel without changing application behavior.
+- Latest merged milestone: PR #55 (`0f67ed19e722b1763b946057353d528442835d9d`) — Financial Sector Guard UI and SEC diagnostic routes.
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Repository protection
@@ -163,6 +161,23 @@ Merge SHA: `a8e88a0af819b94959abe70cf54f74b4a280e593`.
 - Managed-agent retry budget increased from 45 seconds to 120 seconds while remaining bounded.
 
 Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
+
+### PR #52 — Master Long-Term Roadmap
+- Introduced `docs/ROADMAP.md` covering Phase 4.5 through Phase 12.
+
+### PR #53 — Report UX & Authentication Clarity
+- Relocated data provenance & disclaimers to footer (`#section-provenance`) with navbar jump link.
+- Retained Executive Stock Spotlight Hero at top of reports.
+- Added landing view authentication banner with auto-Google popup when unauthenticated analyze is attempted.
+
+### PR #54 — Financial Data Coverage & Timestamp Integrity
+- Expanded financial statement prompt schemas with banking lines (NII, non-interest income, provision for credit losses, deposits, loans) and corporate balance sheet equity (goodwill, common stock, retained earnings, AOCI).
+- Defaulted fresh report `generated_at` to ISO timestamp.
+- Auto-cleared sign-in errors upon successful user authentication.
+
+### PR #55 — Financial Sector Guard & SEC Diagnostic Routing
+- Mounted `/api/sec-preview` and `/api/sec-compare` in Express server to ensure clean JSON responses.
+- Added institutional Financial Sector Guard in `IntrinsicValueEngine.tsx` explaining why generic FCFF is disabled for depository/fintech institutions and displaying recommended sector methodology.
 
 ## Current production health
 

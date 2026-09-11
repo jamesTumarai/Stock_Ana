@@ -9,8 +9,8 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 ## Authorized Phase Order
 
 1. **Phase 4** — Complete ✅
-2. **Phase 4.5 Stabilization** — Current 🔄
-3. **Phase 5** — Analysis Quality & Data Coverage
+2. **Phase 4.5 Stabilization** — Complete ✅
+3. **Phase 5** — Analysis Quality & Data Coverage 🔄 Active
 4. **Phase 6** — Report Experience / UX
 5. **Phase 7** — Portfolio & User Intelligence
 6. **Phase 8** — Monitoring & Alerts
@@ -23,51 +23,21 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ## Current Stage
 
-### Phase 4.5 — Production Stabilization & Product Quality
+### Phase 5 — Analysis Quality & Data Coverage (Active)
 
-**Goal:** Make the existing production product trustworthy, stable, understandable, and pleasant to use.
+**Goal:** Expand verified data coverage, strengthen SEC / XBRL extraction, align corporate vs banking financial taxonomy, and provide institutional-grade valuation paths.
 
 **Work includes:**
-- Production bugs
-- Incorrect financial output
-- Suspicious values
-- Unnecessary missing data
-- Rendering crashes
-- Incorrect units / percentages
-- Scoring problems
-- Valuation inconsistencies
-- History / persistence problems
-- Authentication issues
-- Provider failures
-- Performance
-- Mobile / responsive issues
-- Confusing report UX
-- Thai / English presentation quality
-
-Test multiple issuer profiles over time, not only MSFT. MSFT remains the primary end-to-end reference issuer.
-
-**Exit criteria:** Phase 4.5 ends **ONLY** after explicit owner approval.
-
----
-
-## Future Direction (Unauthorized Until Approved)
-
-### Phase 5 — Analysis Quality & Data Coverage
-**Goals:**
-- Stronger SEC / XBRL coverage
-- Issuer taxonomy variation support
-- Fiscal-period normalization
+- Stronger SEC / XBRL coverage (SBC, Depreciation/Amortization, Common Stock, Retained Earnings, Leases)
+- Issuer taxonomy variation support (Operating vs Financial / FinTech institutions)
+- Fiscal-period normalization and standalone quarter derivation
 - Quarterly / annual / LTM alignment
-- Debt / cash / investment handling
-- CapEx and FCF quality
-- Stock-based compensation
-- Leases
-- Dilution / share count
-- Stronger provenance
-- DCF assumption explainability
-- Deterministic conviction-score audit
-- Sector-aware valuation paths
-- Appropriate financial-sector valuation instead of forced generic FCFF
+- Debt / cash / investment handling (safe non-overlapping resolution)
+- CapEx and FCF quality (deterministic FCF from verified OCF and CapEx outflows)
+- Stock-based compensation (SBC) explicit accounting and schema inclusion
+- Stronger provenance and SEC accession linkage
+- Sector-aware valuation paths (prohibiting generic FCFF on banks/lenders, recommending sector models)
+- DCF assumption explainability and Financial Sector Guard
 
 **Exit criteria:** Analysis is trustworthy across materially different issuer types without weakening fail-closed integrity.
 
