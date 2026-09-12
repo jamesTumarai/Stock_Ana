@@ -100,20 +100,26 @@ export function generateValuationScenarios(
   ];
 
   return scenariosConfig.map(cfg => {
-    const fv = calculateDcfPerShare(
-      baseFcfPerShare,
-      cfg.growth,
-      cfg.wacc,
-      cfg.tg
-    );
+    let fv: number | null = null;
+    if (cfg.wacc > cfg.tg) {
+      const calculated = calculateDcfPerShare(
+        baseFcfPerShare,
+        cfg.growth,
+        cfg.wacc,
+        cfg.tg
+      );
+      if (Number.isFinite(calculated) && calculated > 0) {
+        fv = calculated;
+      }
+    }
 
-    const mos = (fv > 0 && currentPrice > 0)
+    const mos = (fv !== null && currentPrice > 0)
       ? Number((((fv - currentPrice) / currentPrice) * 100).toFixed(1))
-      : 0;
+      : null;
 
-    const upside = (currentPrice > 0)
+    const upside = (fv !== null && currentPrice > 0)
       ? Number((((fv - currentPrice) / currentPrice) * 100).toFixed(1))
-      : 0;
+      : null;
 
     return {
       name: cfg.name,
@@ -130,21 +136,20 @@ export function generateValuationScenarios(
 
 /**
  * Computes a 2D Sensitivity Matrix varying WACC discount rates and Terminal Growth rates.
- * Requires all verified inputs explicitly; zero fabricated defaults.
+ * Descriptive stress matrix; handles boundary conditions safely.
  */
 export function computeSensitivityMatrix(
   baseFcfPerShare: number,
   currentPrice: number,
   baseWaccPct: number,
   baseTerminalGrowthPct: number,
-  growthRatePct: number
+  growthRatePct: number = 8.0
 ): SensitivityMatrix {
   if (
-    !Number.isFinite(baseFcfPerShare) || baseFcfPerShare <= 0 ||
-    !Number.isFinite(currentPrice) || currentPrice <= 0 ||
-    !Number.isFinite(baseWaccPct) || baseWaccPct <= 0 ||
-    !Number.isFinite(baseTerminalGrowthPct) || baseTerminalGrowthPct < 0 ||
-    !Number.isFinite(growthRatePct)
+    baseFcfPerShare <= 0 ||
+    baseWaccPct <= 0 ||
+    baseTerminalGrowthPct <= 0 ||
+    baseWaccPct <= baseTerminalGrowthPct
   ) {
     return {
       discountRates: [],
@@ -171,13 +176,16 @@ export function computeSensitivityMatrix(
 
   const cells: SensitivityCell[][] = discountRates.map(wacc => {
     return terminalGrowthRates.map(tg => {
-      let fv = 0;
+      let fv: number | null = null;
       if (wacc > tg) {
-        fv = calculateDcfPerShare(baseFcfPerShare, growthRatePct, wacc, tg);
+        const calculated = calculateDcfPerShare(baseFcfPerShare, growthRatePct, wacc, tg);
+        if (Number.isFinite(calculated) && calculated > 0) {
+          fv = calculated;
+        }
       }
-      const mos = (fv > 0 && currentPrice > 0)
+      const mos = (fv !== null && currentPrice > 0)
         ? Number((((fv - currentPrice) / currentPrice) * 100).toFixed(1))
-        : 0;
+        : null;
 
       return {
         discountRatePct: wacc,
@@ -321,25 +329,30 @@ export function generateCanonicalScenarios(
   ];
 
   return scenariosConfig.map(cfg => {
-    const fv = calculateStrictDCFValue(
-      inputs.startingRevenueM,
-      inputs.sharesOutstandingM,
-      inputs.netCashM,
-      cfg.wacc,
-      cfg.tg,
-      cfg.growth,
-      cfg.margin,
-      inputs.projectionYears
-    );
+    let validFv: number | null = null;
+    if (cfg.wacc > cfg.tg) {
+      const fv = calculateStrictDCFValue(
+        inputs.startingRevenueM,
+        inputs.sharesOutstandingM,
+        inputs.netCashM,
+        cfg.wacc,
+        cfg.tg,
+        cfg.growth,
+        cfg.margin,
+        inputs.projectionYears
+      );
+      if (Number.isFinite(fv) && fv > 0) {
+        validFv = fv;
+      }
+    }
 
-    const validFv = Number.isFinite(fv) && fv > 0 ? fv : 0;
-    const mos = (validFv > 0 && inputs.currentPrice > 0)
+    const mos = (validFv !== null && inputs.currentPrice > 0)
       ? Number((((validFv - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1))
-      : 0;
+      : null;
 
-    const upside = (inputs.currentPrice > 0 && validFv > 0)
+    const upside = (inputs.currentPrice > 0 && validFv !== null)
       ? Number((((validFv - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1))
-      : 0;
+      : null;
 
     return {
       name: cfg.name,
@@ -386,7 +399,7 @@ export function computeCanonicalSensitivityMatrix(
 
   const cells: SensitivityCell[][] = discountRates.map(wacc => {
     return terminalGrowthRates.map(tg => {
-      let fv = 0;
+      let fv: number | null = null;
       if (wacc > tg) {
         const strictFv = calculateStrictDCFValue(
           inputs.startingRevenueM,
@@ -402,9 +415,9 @@ export function computeCanonicalSensitivityMatrix(
           fv = strictFv;
         }
       }
-      const mos = (fv > 0 && inputs.currentPrice > 0)
+      const mos = (fv !== null && inputs.currentPrice > 0)
         ? Number((((fv - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1))
-        : 0;
+        : null;
 
       return {
         discountRatePct: wacc,

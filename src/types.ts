@@ -1320,16 +1320,16 @@ export interface ValuationScenario {
   operatingMarginPct: number;
   discountRatePct: number;
   terminalGrowthPct: number;
-  fairValuePerShare: number;
-  marginOfSafetyPct: number;
-  impliedUpsidePct: number;
+  fairValuePerShare: number | null;
+  marginOfSafetyPct: number | null;
+  impliedUpsidePct: number | null;
 }
 
 export interface SensitivityCell {
   discountRatePct: number;
   terminalGrowthPct: number;
-  fairValue: number;
-  marginOfSafetyPct: number;
+  fairValue: number | null;
+  marginOfSafetyPct: number | null;
 }
 
 export interface SensitivityMatrix {

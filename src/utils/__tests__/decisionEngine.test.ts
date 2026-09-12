@@ -142,6 +142,21 @@ describe('decisionEngine', () => {
     assert.equal(centerCell.fairValue, mockCanonicalInputs.canonicalBaseFairValue);
   });
 
+  it('computeCanonicalSensitivityMatrix: returns null fairValue and null MoS when WACC <= TG', () => {
+    // Construct inputs where low discount rates collide with high terminal growth
+    const borderInputs = {
+      ...mockCanonicalInputs,
+      waccPct: 4.5,
+      terminalGrowthPct: 4.0,
+    };
+    const matrix = computeCanonicalSensitivityMatrix(borderInputs);
+    // Row 0 has WACC 4.5 - 1.5 = 3.0%, while high TG columns have TG >= 3.5%
+    const invalidCell = matrix.cells[0].find(c => c.discountRatePct <= c.terminalGrowthPct);
+    assert.ok(invalidCell, 'Must have at least one cell where WACC <= TG');
+    assert.equal(invalidCell.fairValue, null);
+    assert.equal(invalidCell.marginOfSafetyPct, null);
+  });
+
   it('calculateCanonicalReverseDcf: back-solves implied revenue CAGR using canonical strict DCF engine', () => {
     const targetPrice = mockCanonicalInputs.canonicalBaseFairValue!;
     const res = calculateCanonicalReverseDcf({
