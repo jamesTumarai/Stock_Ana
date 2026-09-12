@@ -177,16 +177,28 @@ export function getMetricCalculationDetail(
     }
 
     case 'quick_ratio': {
-      const cash = balance?.cash_and_equivalents?.[p] ?? 0;
-      const sti = balance?.short_term_investments?.[p] ?? 0;
-      const rec = balance?.receivables?.[p] ?? balance?.accounts_receivable?.[p] ?? 0;
+      const cashRaw = balance?.cash_and_equivalents?.[p];
+      const stiRaw = balance?.short_term_investments?.[p];
+      const recRaw = balance?.receivables?.[p] ?? balance?.accounts_receivable?.[p];
       const cl = balance?.total_current_liabilities?.[p];
-      const quickAssets = (balance?.cash_and_equivalents?.[p] !== undefined || balance?.short_term_investments?.[p] !== undefined)
-        ? (cash + sti + rec)
-        : null;
-      const qr = (quickAssets !== null && cl !== null && cl !== undefined && cl > 0)
+
+      // Fail-closed solvency verification: never assume missing cash, ST investments, or receivables are zero
+      const hasCash = typeof cashRaw === 'number' && Number.isFinite(cashRaw) && cashRaw >= 0;
+      const hasRec = typeof recRaw === 'number' && Number.isFinite(recRaw) && recRaw >= 0;
+      // Short-term investments: if present, must be valid number >= 0. If field is explicitly absent from balance sheet structure, treat as 0 (no separate marketable securities line); if the array exists but this period is missing/null, it is unverified missing data.
+      const stiVal = (typeof stiRaw === 'number' && Number.isFinite(stiRaw) && stiRaw >= 0)
+        ? stiRaw
+        : (balance?.short_term_investments === undefined ? 0 : null);
+
+      const hasValidInputs = hasCash && hasRec && stiVal !== null &&
+        typeof cl === 'number' && Number.isFinite(cl) && cl > 0;
+
+      const quickAssets = hasValidInputs ? (cashRaw! + stiVal! + recRaw!) : null;
+      const qr = (quickAssets !== null && typeof cl === 'number' && cl > 0)
         ? Number((quickAssets / cl).toFixed(2))
         : null;
+
+      const cashSecVal = (hasCash && stiVal !== null) ? cashRaw! + stiVal! : (hasCash ? cashRaw! : null);
 
       return {
         key: 'quick_ratio',
@@ -195,9 +207,9 @@ export function getMetricCalculationDetail(
         category: 'solvency',
         formulaDisplay: 'Quick Ratio = (Cash + Short-Term Investments + Receivables) / Current Liabilities',
         variables: [
-          { symbol: 'Cash+Sec', nameEn: 'Cash & Liquid Investments', nameTh: 'เงินสดและหลักทรัพย์เผื่อขาย', value: cash + sti, isCurrency: true },
-          { symbol: 'Rec', nameEn: 'Accounts Receivable', nameTh: 'ลูกหนี้การค้า', value: rec, isCurrency: true },
-          { symbol: 'CL', nameEn: 'Total Current Liabilities', nameTh: 'หนี้สินหมุนเวียนรวม', value: cl, isCurrency: true }
+          { symbol: 'Cash+Sec', nameEn: 'Cash & Liquid Investments', nameTh: 'เงินสดและหลักทรัพย์เผื่อขาย', value: cashSecVal, isCurrency: true },
+          { symbol: 'Rec', nameEn: 'Accounts Receivable', nameTh: 'ลูกหนี้การค้า', value: hasRec ? recRaw! : null, isCurrency: true },
+          { symbol: 'CL', nameEn: 'Total Current Liabilities', nameTh: 'หนี้สินหมุนเวียนรวม', value: (typeof cl === 'number' && Number.isFinite(cl)) ? cl : null, isCurrency: true }
         ],
         resultValue: qr,
         resultUnit: 'x',
