@@ -33,6 +33,27 @@ assert.deepEqual(ltmWindows[0].quarterIndices, [0, 1, 2, 3]);
 // Insufficient periods (< 4)
 assert.equal(findAggregationWindows(['Q1 2024', 'Q2 2024', 'Q3 2024']).length, 0);
 
+// Gapped quarters must be rejected (no LTM created)
+const gappedPeriods = ['Q1 2024', 'Q2 2024', 'Q4 2024', 'Q1 2025'];
+assert.equal(findAggregationWindows(gappedPeriods).length, 0);
+
+// Duplicate quarters must be rejected
+const duplicatePeriods = ['Q1 2024', 'Q2 2024', 'Q2 2024', 'Q3 2024'];
+assert.equal(findAggregationWindows(duplicatePeriods).length, 0);
+
+// Annual periods must be rejected
+const annualPeriods = ['2021', '2022', '2023', '2024'];
+assert.equal(findAggregationWindows(annualPeriods).length, 0);
+assert.equal(findAggregationWindows(['FY 2021', 'FY 2022', 'FY 2023', 'FY 2024']).length, 0);
+
+// Malformed periods must be rejected
+const malformedPeriods = ['Q1 2024', 'UNKNOWN_PERIOD', 'Q3 2024', 'Q4 2024'];
+assert.equal(findAggregationWindows(malformedPeriods).length, 0);
+
+// Exactly four period fallback removed: 4 arbitrary periods do not produce LTM
+const arbitraryFourPeriods = ['Period 1', 'Period 2', 'Period 3', 'Period 4'];
+assert.equal(findAggregationWindows(arbitraryFourPeriods).length, 0);
+
 // 3. Flow Summation Tests (Strict Fail-Closed)
 assert.equal(sumFlowMetric([100, 120, 130, 150], [0, 1, 2, 3]), 500);
 // Missing one quarter must return null, never fabricate or ignore!
@@ -104,5 +125,7 @@ assert.deepEqual(annualResult.cash_flow.free_cash_flow, [970]);
 assert.deepEqual(annualResult.cash_flow.stock_based_compensation, [150]);
 assert.deepEqual(annualResult.cash_flow.beginning_cash, [450]);
 assert.deepEqual(annualResult.cash_flow.ending_cash, [600]);
+// Verify already-annual data is rejected
+assert.equal(aggregateQuarterlyToAnnual({ fiscal_period_type: 'annual', periods: ['2021', '2022', '2023', '2024'] } as any), null);
 
 console.log('✓ statementAggregation unit tests passed completely.');
