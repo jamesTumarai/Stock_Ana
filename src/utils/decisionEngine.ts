@@ -228,10 +228,49 @@ export function calculateReverseDcf(
       discountRatePct: Number.isFinite(discountRatePct) ? discountRatePct : 0,
       terminalGrowthPct: Number.isFinite(terminalGrowthPct) ? terminalGrowthPct : 0,
       projectionYears,
-      impliedGrowthPct: 0,
+      impliedGrowthPct: null,
       isHurdleHigh: false,
       assessment: 'Unable to calculate reverse DCF: missing or invalid verified inputs.',
       assessmentTh: 'ไม่สามารถคำนวณ Reverse DCF ได้เนื่องจากข้อมูลไม่ครบถ้วนหรือไม่ถูกต้อง'
+    };
+  }
+
+  // Check if target price is bracketed by [-50%, +150%]
+  const priceAtLow = calculateDcfPerShare(
+    baseFcfPerShare,
+    -50,
+    discountRatePct,
+    terminalGrowthPct,
+    projectionYears
+  );
+  const priceAtHigh = calculateDcfPerShare(
+    baseFcfPerShare,
+    150,
+    discountRatePct,
+    terminalGrowthPct,
+    projectionYears
+  );
+
+  const isBracketed = Number.isFinite(priceAtLow) && Number.isFinite(priceAtHigh) &&
+    currentPrice >= priceAtLow && currentPrice <= priceAtHigh;
+
+  if (!isBracketed) {
+    const isAbove = Number.isFinite(priceAtHigh) && currentPrice > priceAtHigh;
+    return {
+      currentPrice,
+      baseFcfPerShare,
+      discountRatePct,
+      terminalGrowthPct,
+      projectionYears,
+      impliedGrowthPct: null,
+      isHurdleHigh: true,
+      isOutOfRange: true,
+      assessment: isAbove
+        ? `Market price of $${currentPrice.toFixed(2)} exceeds the valuation at +150% annual growth ($${priceAtHigh.toFixed(2)}). Implied growth is outside the modeled range [-50%, +150%].`
+        : `Market price of $${currentPrice.toFixed(2)} is below the valuation at -50% annual growth ($${priceAtLow.toFixed(2)}). Implied growth is outside the modeled range [-50%, +150%].`,
+      assessmentTh: isAbove
+        ? `ราคาตลาด $${currentPrice.toFixed(2)} สูงกว่ามูลค่าภายใต้การเติบโต +150% ($${priceAtHigh.toFixed(2)}) อัตราการเติบโตที่ตลาดคาดหวังอยู่นอกกรอบแบบจำลอง [-50%, +150%]`
+        : `ราคาตลาด $${currentPrice.toFixed(2)} ต่ำกว่ามูลค่าภายใต้การเติบโต -50% ($${priceAtLow.toFixed(2)}) อัตราการเติบโตที่ตลาดคาดหวังอยู่นอกกรอบแบบจำลอง [-50%, +150%]`,
     };
   }
 
@@ -461,10 +500,61 @@ export function calculateCanonicalReverseDcf(
       discountRatePct: Number.isFinite(discountRatePct) ? discountRatePct : 0,
       terminalGrowthPct: Number.isFinite(terminalGrowthPct) ? terminalGrowthPct : 0,
       projectionYears: inputs.projectionYears,
-      impliedGrowthPct: 0,
+      impliedGrowthPct: null,
       isHurdleHigh: false,
       assessment: 'Unable to calculate reverse DCF: missing or invalid verified inputs.',
       assessmentTh: 'ไม่สามารถคำนวณ Reverse DCF ได้เนื่องจากข้อมูลไม่ครบถ้วนหรือไม่ถูกต้อง'
+    };
+  }
+
+  // Verify target price is bracketed by [-50%, +150%]
+  const priceAtLow = calculateStrictDCFValue(
+    inputs.startingRevenueM,
+    inputs.sharesOutstandingM,
+    inputs.netCashM,
+    discountRatePct,
+    terminalGrowthPct,
+    -50,
+    inputs.baseFcfMarginPct,
+    inputs.projectionYears
+  );
+
+  const priceAtHigh = calculateStrictDCFValue(
+    inputs.startingRevenueM,
+    inputs.sharesOutstandingM,
+    inputs.netCashM,
+    discountRatePct,
+    terminalGrowthPct,
+    150,
+    inputs.baseFcfMarginPct,
+    inputs.projectionYears
+  );
+
+  const startingFcfM = inputs.startingRevenueM * (inputs.baseFcfMarginPct / 100);
+  const baseFcfPerShare = inputs.sharesOutstandingM > 0
+    ? Number((startingFcfM / inputs.sharesOutstandingM).toFixed(2))
+    : 0;
+
+  const isBracketed = Number.isFinite(priceAtLow) && Number.isFinite(priceAtHigh) &&
+    currentPrice >= priceAtLow && currentPrice <= priceAtHigh;
+
+  if (!isBracketed) {
+    const isAbove = Number.isFinite(priceAtHigh) && currentPrice > priceAtHigh;
+    return {
+      currentPrice,
+      baseFcfPerShare,
+      discountRatePct,
+      terminalGrowthPct,
+      projectionYears: inputs.projectionYears,
+      impliedGrowthPct: null,
+      isHurdleHigh: true,
+      isOutOfRange: true,
+      assessment: isAbove
+        ? `Market price of $${currentPrice.toFixed(2)} exceeds the valuation at +150% revenue CAGR ($${priceAtHigh.toFixed(2)}). Implied revenue CAGR expectation is outside the modeled range [-50%, +150%].`
+        : `Market price of $${currentPrice.toFixed(2)} is below the valuation at -50% revenue CAGR ($${priceAtLow.toFixed(2)}). Implied revenue CAGR expectation is outside the modeled range [-50%, +150%].`,
+      assessmentTh: isAbove
+        ? `ราคาตลาด $${currentPrice.toFixed(2)} สูงกว่ามูลค่าภายใต้อัตราการเติบโตรายได้ (Revenue CAGR) +150% ($${priceAtHigh.toFixed(2)}) สมมติฐานการเติบโตที่ตลาดคาดหวังอยู่นอกกรอบการจำลอง [-50%, +150%]`
+        : `ราคาตลาด $${currentPrice.toFixed(2)} ต่ำกว่ามูลค่าภายใต้อัตราการเติบโตรายได้ (Revenue CAGR) -50% ($${priceAtLow.toFixed(2)}) สมมติฐานการเติบโตที่ตลาดคาดหวังอยู่นอกกรอบการจำลอง [-50%, +150%]`,
     };
   }
 
@@ -513,14 +603,8 @@ export function calculateCanonicalReverseDcf(
     ? ` (เทียบกับสมมติฐานกรณีฐานในรายงาน: ${inputs.baseRevenueCagrPct}%)`
     : '';
 
-  const assessment = `Market price of $${currentPrice.toFixed(2)} implies approximately ${impliedG}% annual revenue growth under stated assumptions (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%).${baseGrowthNote}`;
-  const assessmentTh = `ราคาตลาด $${currentPrice.toFixed(2)} สะท้อนอัตราการเติบโตของรายได้ประมาณ ${impliedG}% ต่อปี ภายใต้สมมติฐานที่ระบุ (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%)${baseGrowthNoteTh}`;
-
-  // Base FCF per share for display
-  const startingFcfM = inputs.startingRevenueM * (inputs.baseFcfMarginPct / 100);
-  const baseFcfPerShare = inputs.sharesOutstandingM > 0
-    ? Number((startingFcfM / inputs.sharesOutstandingM).toFixed(2))
-    : 0;
+  const assessment = `Market price of $${currentPrice.toFixed(2)} implies approximately ${impliedG}% annual revenue CAGR under stated assumptions (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%).${baseGrowthNote}`;
+  const assessmentTh = `ราคาตลาด $${currentPrice.toFixed(2)} สะท้อนอัตราการเติบโตของรายได้ (Revenue CAGR) ประมาณ ${impliedG}% ต่อปี ภายใต้สมมติฐานที่ระบุ (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%)${baseGrowthNoteTh}`;
 
   return {
     currentPrice,

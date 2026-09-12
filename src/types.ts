@@ -1344,8 +1344,9 @@ export interface ReverseDcfResult {
   discountRatePct: number;
   terminalGrowthPct: number;
   projectionYears: number;
-  impliedGrowthPct: number;
+  impliedGrowthPct: number | null;
   isHurdleHigh: boolean;
+  isOutOfRange?: boolean;
   assessment: string;
   assessmentTh: string;
 }
