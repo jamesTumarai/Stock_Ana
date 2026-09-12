@@ -39,24 +39,26 @@ export function isAnnualPeriodLabel(label: string): boolean {
 }
 
 /**
- * Parses period labels like 'Q1 2024', 'Q1-2024', '2024-Q1', 'Q1 24'
+ * Parses period labels like 'Q1 2024', 'Q1-2024', '2024-Q1', 'Q1 24', 'Q1 FY26', 'Q1 FY2026', 'Q1-FY26', 'FY26-Q1', 'FY2026 Q1'.
  */
 export function parseQuarterPeriod(label: string, index: number): ParsedQuarterPeriod | null {
   if (!label || typeof label !== 'string') return null;
   const trimmed = label.trim();
 
-  // Pattern: Q1 2024, Q1-2024, Q1'24, Q1 24
-  const qFirst = trimmed.match(/^Q([1-4])[\s\-_'/]*(?:20)?(\d{2})$/i);
+  // Pattern: Q1 2024, Q1-2024, Q1'24, Q1 24, Q1 FY26, Q1 FY2026, Q1-FY26, Q1/FY26
+  const qFirst = trimmed.match(/^Q([1-4])[\s\-_'/]*(?:FY[\s\-_'/]*)?(\d{2,4})$/i);
   if (qFirst) {
     const q = Number(qFirst[1]);
-    const y = Number(qFirst[2].length === 2 ? `20${qFirst[2]}` : qFirst[2]);
+    let y = Number(qFirst[2]);
+    if (y < 100) y += 2000;
     return { raw: label, year: y, quarter: q, index };
   }
 
-  // Pattern: 2024 Q1, 2024-Q1
-  const yFirst = trimmed.match(/^(?:20)?(\d{2})[\s\-_'/]*Q([1-4])$/i);
+  // Pattern: 2024 Q1, 2024-Q1, FY26 Q1, FY26-Q1, FY2026 Q1, FY2026-Q1
+  const yFirst = trimmed.match(/^(?:FY[\s\-_'/]*)?(\d{2,4})[\s\-_'/]*Q([1-4])$/i);
   if (yFirst) {
-    const y = Number(yFirst[1].length === 2 ? `20${yFirst[1]}` : yFirst[1]);
+    let y = Number(yFirst[1]);
+    if (y < 100) y += 2000;
     const q = Number(yFirst[2]);
     return { raw: label, year: y, quarter: q, index };
   }

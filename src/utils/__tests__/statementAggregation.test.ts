@@ -13,6 +13,10 @@ assert.deepEqual(parseQuarterPeriod('Q1 2024', 0), { raw: 'Q1 2024', year: 2024,
 assert.deepEqual(parseQuarterPeriod('Q4-2023', 3), { raw: 'Q4-2023', year: 2023, quarter: 4, index: 3 });
 assert.deepEqual(parseQuarterPeriod('2024-Q2', 1), { raw: '2024-Q2', year: 2024, quarter: 2, index: 1 });
 assert.deepEqual(parseQuarterPeriod('Q3 24', 2), { raw: 'Q3 24', year: 2024, quarter: 3, index: 2 });
+assert.deepEqual(parseQuarterPeriod('Q1 FY26', 0), { raw: 'Q1 FY26', year: 2026, quarter: 1, index: 0 });
+assert.deepEqual(parseQuarterPeriod('Q1 FY2026', 1), { raw: 'Q1 FY2026', year: 2026, quarter: 1, index: 1 });
+assert.deepEqual(parseQuarterPeriod('FY26-Q3', 2), { raw: 'FY26-Q3', year: 2026, quarter: 3, index: 2 });
+assert.deepEqual(parseQuarterPeriod('FY2026 Q4', 3), { raw: 'FY2026 Q4', year: 2026, quarter: 4, index: 3 });
 assert.equal(parseQuarterPeriod('InvalidPeriod', 0), null);
 
 // 2. Window Detection Tests
@@ -23,6 +27,13 @@ assert.equal(fyWindows[0].label, 'FY 2024');
 assert.equal(fyWindows[0].kind, 'annual_fy');
 assert.deepEqual(fyWindows[0].quarterIndices, [0, 1, 2, 3]);
 
+// FY detection with Qx FYyy format
+const fy26Periods = ['Q1 FY26', 'Q2 FY26', 'Q3 FY26', 'Q4 FY26'];
+const fy26Windows = findAggregationWindows(fy26Periods);
+assert.equal(fy26Windows.length, 1);
+assert.equal(fy26Windows[0].label, 'FY 2026');
+assert.equal(fy26Windows[0].kind, 'annual_fy');
+
 const trailingPeriods = ['Q2 2023', 'Q3 2023', 'Q4 2023', 'Q1 2024'];
 const ltmWindows = findAggregationWindows(trailingPeriods);
 assert.equal(ltmWindows.length, 1);
@@ -30,12 +41,23 @@ assert.match(ltmWindows[0].label, /LTM/);
 assert.equal(ltmWindows[0].kind, 'ltm');
 assert.deepEqual(ltmWindows[0].quarterIndices, [0, 1, 2, 3]);
 
+// LTM detection with Qx FYyy format
+const trailingFyPeriods = ['Q2 FY25', 'Q3 FY25', 'Q4 FY25', 'Q1 FY26'];
+const ltmFyWindows = findAggregationWindows(trailingFyPeriods);
+assert.equal(ltmFyWindows.length, 1);
+assert.equal(ltmFyWindows[0].label, "LTM (Q2'25 - Q1'26)");
+assert.equal(ltmFyWindows[0].kind, 'ltm');
+assert.deepEqual(ltmFyWindows[0].quarterIndices, [0, 1, 2, 3]);
+
 // Insufficient periods (< 4)
 assert.equal(findAggregationWindows(['Q1 2024', 'Q2 2024', 'Q3 2024']).length, 0);
 
 // Gapped quarters must be rejected (no LTM created)
 const gappedPeriods = ['Q1 2024', 'Q2 2024', 'Q4 2024', 'Q1 2025'];
 assert.equal(findAggregationWindows(gappedPeriods).length, 0);
+
+const gappedFyPeriods = ['Q1 FY25', 'Q2 FY25', 'Q4 FY25', 'Q1 FY26'];
+assert.equal(findAggregationWindows(gappedFyPeriods).length, 0);
 
 // Duplicate quarters must be rejected
 const duplicatePeriods = ['Q1 2024', 'Q2 2024', 'Q2 2024', 'Q3 2024'];
