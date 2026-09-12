@@ -39,7 +39,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       reason_th: 'ธนาคารดิจิทัลและ FinTech ระดมเงินฝากและวงเงินเครดิตเพื่อใช้เป็นวัตถุดิบในการปล่อยสินเชื่อ ไม่ใช่ภาระหนี้สินทางการเงิน (Financial Leverage) แบบบริษัททั่วไป การหักหนี้สินเงินฝากออกตรงๆ จะทำให้มูลค่ากิจการต่ำกว่าความเป็นจริงอย่างรุนแรง และเนื่องจากบริษัทอยู่ในช่วงขยายฐานลูกค้าจึงยังไม่จ่ายปันผล (DDM จึงประเมินได้ $0 หรือต่ำเกินไป) โมเดลที่เหมาะสมที่สุดคือ Forward P/E & PEG Multiple ควบคู่กับ Platform Net Margin DCF',
       reason_en: 'Digital banks and FinTech lenders utilize customer deposits and warehouse credit facilities as operating inventory, not corporate leverage. Subtracting deposits as debt severely distorts equity value, while zero dividends render classic DDM ineffective. Forward P/E, PEG, and Platform Residual Income DCF are the industry standards.',
       alternative_models: ['relative_only', 'dcf_multistage'],
-      disclaimer_note: 'ประเมินมูลค่าตามส่วนของผู้ถือหุ้น (Cost of Equity) โดยไม่นำเงินฝากและวงเงินเครดิตมาหักลบเป็นหนี้สินทางการเงิน'
+      disclaimer_note: 'ประเมินมูลค่าตามส่วนของผู้ถือหุ้น (Cost of Equity) โดยไม่นำเงินฝากและวงเงินเครดิตมาหักลบเป็นหนี้สินทางการเงิน',
+      canonical_status: 'sourced_non_canonical'
     };
   }
 
@@ -62,7 +63,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       reason_th: 'หนี้สินและเงินฝากเป็นวัตถุดิบในการดำเนินธุรกิจของธนาคารและสถาบันการเงิน (รวมถึงเงินสำรองประกันภัย Float) ไม่ใช่ภาระหนี้ (Leverage) แบบบริษัททั่วไป การนิยาม Free Cash Flow แบบมาตรฐานจึงไม่สะท้อนมูลค่าที่แท้จริง DDM และ Residual Income จึงเป็นวิธีมาตรฐานสากลที่เหมาะสมที่สุด',
       reason_en: 'Debt, deposits, and insurance float serve as raw operating material. Standard Free Cash Flow is non-applicable; DDM and Residual Income are the industry standards.',
       alternative_models: ['relative_only'],
-      disclaimer_note: 'ประเมินมูลค่าตามส่วนของผู้ถือหุ้น (Cost of Equity) โดยอิงอัตราเงินปันผลจ่ายและผลตอบแทนส่วนของผู้ถือหุ้น (ROE)'
+      disclaimer_note: 'ประเมินมูลค่าตามส่วนของผู้ถือหุ้น (Cost of Equity) โดยอิงอัตราเงินปันผลจ่ายและผลตอบแทนส่วนของผู้ถือหุ้น (ROE)',
+      canonical_status: 'sourced_non_canonical'
     };
   }
 
@@ -83,7 +85,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       reason_th: 'อสังหาริมทรัพย์มีค่าเสื่อมราคาทางบัญชี (Depreciation) สูงมาก ทำให้กำไรสุทธิ (Net Income) และ FCF บิดเบือนต่ำกว่าความเป็นจริง จึงต้องใช้ Adjusted Funds From Operations (AFFO) เพื่อสะท้อนกระแสเงินสดที่แท้จริงจากค่าเช่า',
       reason_en: 'High non-cash depreciation distorts Net Income and standard FCF. AFFO reflects true recurring cash generation from real estate assets.',
       alternative_models: ['ddm'],
-      disclaimer_note: 'ประเมินตามกลุ่มย่อยของสินทรัพย์ (Sub-Sector Multiple) เช่น Data Center, Industrial, หรือ Retail'
+      disclaimer_note: 'ประเมินตามกลุ่มย่อยของสินทรัพย์ (Sub-Sector Multiple) เช่น Data Center, Industrial, หรือ Retail',
+      canonical_status: 'sourced_non_canonical'
     };
   }
 
@@ -126,7 +129,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       alternative_models: ['dcf_multistage'],
       disclaimer_note: isSpace
         ? 'ประเมินด้วย Forward EV/Sales Multiple เทียบกับกลุ่ม Aerospace & Space Tech ชั้นนำ และสะท้อนมูลค่าสัญญา Backlog จากภาครัฐและเอกชน'
-        : 'คำเตือน: หุ้นนี้ยังไม่มีกระแสเงินสดอิสระที่มั่นคง การประเมินด้วย Relative Valuation มีความผันผวนและความไม่แน่นอนสูงกว่าปกติ'
+        : 'คำเตือน: หุ้นนี้ยังไม่มีกระแสเงินสดอิสระที่มั่นคง การประเมินด้วย Relative Valuation มีความผันผวนและความไม่แน่นอนสูงกว่าปกติ',
+      canonical_status: 'sourced_non_canonical'
     };
   }
 
@@ -151,7 +155,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       reason_th: 'รายได้และอัตรากำไรของธุรกิจแกว่งตัวรุนแรงตามรอบราคาสินค้าโภคภัณฑ์ การใช้ผลการดำเนินงานไตรมาสล่าสุดตรง ๆ จะประเมินมูลค่าสูงหรือต่ำเกินจริง จึงต้องใช้ Normalized Operating Margin เฉลี่ยย้อนหลังทั้งวัฏจักร (7-10 ปี)',
       reason_en: 'Cash flows fluctuate widely with commodity price cycles. A full-cycle normalized margin (7-10 years) avoids overvaluing at peaks or undervaluing at troughs.',
       alternative_models: ['dcf_standard', 'relative_only'],
-      disclaimer_note: 'คำนวณสมมติฐาน Bear/Base/Bull ตามสถานการณ์อุปสงค์และราคาสินค้าโภคภัณฑ์ในแต่ละช่วงวัฏจักร'
+      disclaimer_note: 'คำนวณสมมติฐาน Bear/Base/Bull ตามสถานการณ์อุปสงค์และราคาสินค้าโภคภัณฑ์ในแต่ละช่วงวัฏจักร',
+      canonical_status: 'sourced_non_canonical'
     };
   }
 
@@ -170,7 +175,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       reason_th: 'บริษัทมีอัตราการเติบโตสูงและมีตลาดเป้าหมายขนาดใหญ่ (TAM) เส้นทางการเติบโตจึงแบ่งเป็นหลายระยะ (High Growth -> Transition Phase -> Mature Phase -> Terminal) โมเดล 4-Stage จึงสะท้อนพลวัตการชะลอตัวของอัตราเติบโตได้แม่นยำกว่า',
       reason_en: 'High growth with a long addressable market runway requires a multi-stage fade model to accurately simulate growth deceleration over time.',
       alternative_models: ['dcf_standard', 'relative_only'],
-      disclaimer_note: 'ปรับจำลองความอ่อนไหว (Sensitivity) ของอัตราคิดลด WACC และ Terminal Growth ได้อย่างละเอียด'
+      disclaimer_note: 'ปรับจำลองความอ่อนไหว (Sensitivity) ของอัตราคิดลด WACC และ Terminal Growth ได้อย่างละเอียด',
+      canonical_status: 'canonical_dcf'
     };
   }
 
@@ -193,7 +199,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
       reason_th: 'บริษัทมีกระแสเงินสดและฐานลูกค้าเสถียรมาก อัตราการเติบโตอยู่ในระดับใกล้เคียง GDP การใช้โมเดล Multi-stage ที่ซับซ้อนเกินจำเป็นจะเพิ่ม Noise มากกว่าความแม่นยำ จึงใช้ Gordon Growth / 2-Stage Fade DCF',
       reason_en: 'Stable cash flows growing near GDP pace are best valued with Gordon Growth or 2-Stage DCF, avoiding unnecessary complexity.',
       alternative_models: ['ddm', 'dcf_standard'],
-      disclaimer_note: 'เน้นความมั่นคงของกระแสเงินสดและผลตอบแทนเงินปันผล'
+      disclaimer_note: 'เน้นความมั่นคงของกระแสเงินสดและผลตอบแทนเงินปันผล',
+      canonical_status: 'canonical_dcf'
     };
   }
 
@@ -206,6 +213,7 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     reason_th: 'บริษัทมีกระแสเงินสดอิสระ (FCF) เป็นบวกและมีโครงสร้างธุรกิจที่เติบโตต่อเนื่อง โมเดลมาตรฐาน 3-Stage DCF สามารถสะท้อนมูลค่ากิจการได้อย่างสมดุลและครอบคลุมทั้งช่วงขยายตัวและช่วงเติบโตเต็มที่',
     reason_en: 'Positive and consistent FCF allows standard 3-Stage DCF modeling across high-growth, fade, and terminal steady states.',
     alternative_models: ['relative_only', 'dcf_gordon'],
-    disclaimer_note: 'ประเมินมูลค่าด้วยกระแสเงินสดอิสระคิดลดด้วยต้นทุนเงินทุนเฉลี่ยถ่วงน้ำหนัก (WACC)'
+    disclaimer_note: 'ประเมินมูลค่าด้วยกระแสเงินสดอิสระคิดลดด้วยต้นทุนเงินทุนเฉลี่ยถ่วงน้ำหนัก (WACC)',
+    canonical_status: 'canonical_dcf'
   };
 }

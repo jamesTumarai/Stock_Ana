@@ -94,13 +94,18 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
     }
   }
 
+  // Check whether Bear and Bull scenarios were explicitly supplied or synthesized
+  const hasExplicitBear = isFiniteNumber(source.scenarios?.bear?.terminal_growth_pct) && isFinitePositive(source.scenarios?.bear?.cost_of_equity_pct);
+  const hasExplicitBull = isFiniteNumber(source.scenarios?.bull?.terminal_growth_pct) && isFinitePositive(source.scenarios?.bull?.cost_of_equity_pct);
+
   const baseScenario: DDMScenario = {
     dividend_growth_rate_pct: gPct,
     cost_of_equity_pct: rPct,
     terminal_growth_pct: gPct,
-    terminal_payout_ratio_pct: isFinitePositive(payoutPct) ? payoutPct : 50,
+    terminal_payout_ratio_pct: isFinitePositive(payoutPct) ? payoutPct : null,
     fair_value_per_share: baseFairValue,
-    key_assumption_note: source.scenarios?.base?.key_assumption_note || `Ke=${rPct}%, g=${gPct}%, D0=$${d0.toFixed(2)}`
+    key_assumption_note: source.scenarios?.base?.key_assumption_note || `Ke=${rPct}%, g=${gPct}%, D0=$${d0.toFixed(2)}`,
+    source_type: 'verified_dividend'
   };
 
   const bearScenario: DDMScenario = {
@@ -109,9 +114,10 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
     terminal_growth_pct: bearG_pct,
     terminal_payout_ratio_pct: isFinitePositive(source.scenarios?.bear?.terminal_payout_ratio_pct)
       ? source.scenarios.bear.terminal_payout_ratio_pct
-      : Math.max(20, (isFinitePositive(payoutPct) ? payoutPct : 50) - 10),
+      : (isFinitePositive(payoutPct) ? Math.max(20, payoutPct - 10) : null),
     fair_value_per_share: bearFairValue,
-    key_assumption_note: source.scenarios?.bear?.key_assumption_note || `Ke=${bearR_pct}%, g=${bearG_pct}%`
+    key_assumption_note: source.scenarios?.bear?.key_assumption_note || `Ke=${bearR_pct}%, g=${bearG_pct}% (illustrative stress)`,
+    source_type: hasExplicitBear ? 'verified_dividend' : 'system_illustrative'
   };
 
   const bullScenario: DDMScenario = {
@@ -120,9 +126,10 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
     terminal_growth_pct: bullG_pct,
     terminal_payout_ratio_pct: isFinitePositive(source.scenarios?.bull?.terminal_payout_ratio_pct)
       ? source.scenarios.bull.terminal_payout_ratio_pct
-      : Math.min(90, (isFinitePositive(payoutPct) ? payoutPct : 50) + 10),
+      : (isFinitePositive(payoutPct) ? Math.min(90, payoutPct + 10) : null),
     fair_value_per_share: bullFairValue,
-    key_assumption_note: source.scenarios?.bull?.key_assumption_note || `Ke=${bullR_pct}%, g=${bullG_pct}%`
+    key_assumption_note: source.scenarios?.bull?.key_assumption_note || `Ke=${bullR_pct}%, g=${bullG_pct}% (illustrative expansion)`,
+    source_type: hasExplicitBull ? 'verified_dividend' : 'system_illustrative'
   };
 
   return {
@@ -130,8 +137,8 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
       cost_of_equity_pct: rPct,
       terminal_growth_pct: gPct,
       current_dividend_per_share: d0,
-      current_payout_ratio_pct: isFinitePositive(payoutPct) ? payoutPct : 0,
-      current_roe_pct: isFinitePositive(roePct) ? roePct : 0
+      current_payout_ratio_pct: isFinitePositive(payoutPct) ? payoutPct : null,
+      current_roe_pct: isFinitePositive(roePct) ? roePct : null
     },
     scenarios: {
       bear: bearScenario,
