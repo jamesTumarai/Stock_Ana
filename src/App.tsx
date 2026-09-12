@@ -71,9 +71,6 @@ export type {
   ReportData 
 };
 
-// Toggle this to true if you want the JSON logs to be downloaded automatically after a run.
-const ENABLE_JSON_DOWNLOAD = false;
-
 
 function CustomSelect({ 
   value, 
@@ -551,21 +548,6 @@ export default function App() {
               } else if (evt.type === 'final_stats') {
                   if (evt.tokens > 0) setTok(evt.tokens);
                   if (evt.duration > 0) setDur(Math.round(evt.duration));
-                  if (ENABLE_JSON_DOWNLOAD && evt.jsonlLogUrl) {
-                      authenticatedFetch(evt.jsonlLogUrl)
-                        .then(res => res.blob())
-                        .then(blob => {
-                            const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = evt.jsonlLogUrl.split('/').pop() || 'run_log.jsonl';
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            window.URL.revokeObjectURL(url);
-                        })
-                        .catch(err => console.error('Failed to download log:', err));
-                  }
               }
             } catch { /* skip malformed */ }
           }

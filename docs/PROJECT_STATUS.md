@@ -12,12 +12,30 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Phase 12 Complete ✅; Full Institutional Roadmap Execution Complete 🏆**.
-- Current working mode: **Systematic execution across roadmap phases authorized by owner**.
+- Current stage: **Post-Roadmap Integrity Hardening (Active 🔄; Feature expansion frozen until P0–P2 integrity hardening is accepted)**.
+- Current working mode: **Systematic resolution of P0–P2 issues across focused protected PRs (PR A through PR I)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #65 (`4a7270a`) — Institutional Subscription Tiers, Entitlement Engine & Quota UI (Phase 11).
+- Latest merged milestone: PR #66 (`9140d9c`) — Valuation Decomposition, Macro Stress Sandbox, and SEC Filing Diff Engine (Phase 12).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
+
+## Canonical Phase Acceptance Matrix
+
+| Phase | Description | Planned | Implemented | CI Verified | Production Verified | Owner Accepted | Current Status | Evidence / PR |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1** | Financial Integrity Cleanup | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
+| **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
+| **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
+| **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | 🔄 | 🔄 | 🔄 | ⏳ | `Re-opened` | PR A – PR I Hardening |
+| **5** | Analysis Quality & Data Coverage | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Implemented partially` | PR #56–#58 (revalidation required) |
+| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ⚠️ | ⏳ | `Implemented` | PR #59, #60 (production UX pending) |
+| **7** | Portfolio & User Intelligence | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Partial` | PR #61 (persistence & history hardening) |
+| **8** | Monitoring & Alerts | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Prototype` | PR #62 (client on-open prototype) |
+| **9** | Comparison & Decision Tools | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Blocked` | PR #63 (valuation integrity remediation) |
+| **10** | Performance, Cost & Reliability | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Partial` | PR #64 (observability & cache semantics) |
+| **11** | Productization / Subscription | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Prototype` | PR #65 (client entitlement prototype) |
+| **12** | Advanced Investment Intelligence | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Experimental` | PR #66 (rebuilding against canonical DCF) |
 
 ## Repository protection
 
