@@ -1,5 +1,7 @@
-import type { SecVerificationEnvelope } from './domain/secVerification';
+import type { SecVerificationEnvelope, SecPeriodStatement } from './domain/secVerification';
 import type { ReportProvenanceManifest } from './domain/reportProvenance';
+
+export type { SecPeriodStatement };
 
 export interface IncomeStatementData {
   revenue: (number | null)[];
@@ -1183,6 +1185,7 @@ export interface AnalysisReport {
   generated_by_version?: string;
   validation?: ReportValidationResult;
   sec_verification?: SecVerificationEnvelope;
+  canonical_financials?: any;
   report_provenance?: ReportProvenanceManifest;
   verdict?: {
     summary: string;

@@ -2,26 +2,33 @@ import type { FinancialStatementsData, ReportData } from '../types';
 import type { CanonicalFinancialDataset } from '../domain/financialValue';
 import type { SecShareSnapshot } from '../services/sec/secShareSnapshot';
 
-export interface SecPeriodStatement {
-  period: string;
-  fiscal_year?: number;
-  revenue?: number | null;
-  operating_income?: number | null;
-  net_income?: number | null;
-  operating_cash_flow?: number | null;
-  capital_expenditure?: number | null;
-  total_debt?: number | null;
-  stockholders_equity?: number | null;
-  diluted_shares?: number | null;
-  accounts_receivable?: number | null;
-  inventory?: number | null;
-  accounts_payable?: number | null;
-}
+import type { SecPeriodStatement } from '../domain/secVerification';
+
+export type { SecPeriodStatement };
 
 export interface SecFilingPeriodDiff {
+  ticker?: string;
   currentPeriod: string;
   priorPeriod: string;
   comparisonType: 'annual_yoy' | 'quarter_yoy';
+  currentFiling?: {
+    form?: string | null;
+    accession?: string | null;
+    filed_date?: string | null;
+    period_end?: string | null;
+    units?: string | null;
+    fiscal_year?: number | null;
+    fiscal_quarter?: number | null;
+  };
+  priorFiling?: {
+    form?: string | null;
+    accession?: string | null;
+    filed_date?: string | null;
+    period_end?: string | null;
+    units?: string | null;
+    fiscal_year?: number | null;
+    fiscal_quarter?: number | null;
+  };
   revenueYoYPct: number | null;
   operatingIncomeYoYPct: number | null;
   netIncomeYoYPct: number | null;
@@ -31,10 +38,10 @@ export interface SecFilingPeriodDiff {
   operatingMarginPriorPct: number | null;
   operatingMarginBpsDelta: number | null;
   shareCountDeltaPct: number | null;
-  dilutionOrBuyback: 'buybacks' | 'dilution' | 'stable';
+  dilutionOrBuyback: 'buybacks' | 'dilution' | 'stable' | 'unavailable';
   ocfToNetIncomeRatioCurrent: number | null;
   ocfToNetIncomeRatioPrior: number | null;
-  cashConversionStatus: 'healthy' | 'warning' | 'neutral';
+  cashConversionStatus: 'healthy' | 'warning' | 'neutral' | 'unavailable';
   cashConversionSummary: string;
   workingCapitalNote?: string;
 }
@@ -52,6 +59,11 @@ function parseNum(val: any): number | null {
  * Adapts FinancialStatementsData, CanonicalFinancialDataset, or ReportData into typed SecPeriodStatement[]
  * for period-over-period diffing and SEC filing audit.
  * Replaces synthetic or legacy shapes with Lumina's canonical model.
+ *
+ * Strict Financial Integrity Invariant:
+ * AI-generated report.financial_statements must NEVER be treated as canonical SEC facts,
+ * even if sec_verification.status === 'verified_eligible'.
+ * Only verified CanonicalFinancialDataset or verified sec_period_statements may be adapted.
  */
 export function adaptFinancialStatementsToSecPeriodStatements(
   input?: FinancialStatementsData | CanonicalFinancialDataset | ReportData | null,
@@ -60,54 +72,18 @@ export function adaptFinancialStatementsToSecPeriodStatements(
   if (!input) return [];
 
   // Case 1: ReportData wrapper
-  if ('ticker' in input && ('financial_statements' in input || 'sec_verification' in input)) {
+  if ('ticker' in input && ('canonical_financials' in input || 'financial_statements' in input || 'sec_verification' in input)) {
     const report = input as ReportData;
-    const fs = report.financial_statements;
-    if (!fs || !Array.isArray(fs.periods) || fs.periods.length === 0) return [];
-
-    // SEC Provenance Guard:
-    // ReportData must be verified by SEC EDGAR before entering Verified SEC Filing Comparison.
-    const secVerification = report.sec_verification;
-    const isSecVerified = Boolean(
-      secVerification
-      && secVerification.status === 'verified_eligible'
-      && (secVerification.provenance_status === 'verified' || secVerification.dcf_financial_inputs?.eligible === true)
-    );
-    if (!isSecVerified) {
-      return [];
+    // If canonical financials exist on report, adapt them
+    if (report.canonical_financials) {
+      return adaptFinancialStatementsToSecPeriodStatements(report.canonical_financials, shareSnapshot);
     }
-
-    return fs.periods.map((period, i) => {
-      const isLatest = i === fs.periods.length - 1;
-      // Map comparable Diluted Weighted Average Shares.
-      // Important: Current Common Shares Outstanding != Diluted Weighted Average Shares.
-      // Never mix them to manufacture dilution comparison.
-      let dilutedShares: number | null = null;
-      if (isLatest && shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM) {
-        dilutedShares = shareSnapshot.latestDilutedWeightedAverageShares.sharesM;
-      } else {
-        const netInc = parseNum(fs.income_statement?.net_income?.[i]);
-        const epsDil = parseNum(fs.income_statement?.eps_diluted?.[i]);
-        if (netInc !== null && epsDil !== null && epsDil > 0) {
-          dilutedShares = Number((netInc / epsDil).toFixed(2));
-        }
-      }
-
-      return {
-        period,
-        revenue: parseNum(fs.income_statement?.revenue?.[i]),
-        operating_income: parseNum(fs.income_statement?.operating_income?.[i]),
-        net_income: parseNum(fs.income_statement?.net_income?.[i]),
-        operating_cash_flow: parseNum(fs.cash_flow?.operating_cash_flow?.[i]),
-        capital_expenditure: parseNum(fs.cash_flow?.capex?.[i]),
-        total_debt: parseNum(fs.balance_sheet?.total_debt?.[i]),
-        stockholders_equity: parseNum(fs.balance_sheet?.total_equity?.[i]),
-        accounts_receivable: parseNum(fs.balance_sheet?.accounts_receivable?.[i]),
-        inventory: parseNum(fs.balance_sheet?.inventory?.[i]),
-        accounts_payable: parseNum(fs.balance_sheet?.accounts_payable?.[i]),
-        diluted_shares: dilutedShares,
-      };
-    });
+    const secVerification = report.sec_verification;
+    if (secVerification?.sec_period_statements && Array.isArray(secVerification.sec_period_statements) && secVerification.sec_period_statements.length > 0) {
+      return secVerification.sec_period_statements;
+    }
+    // Never adapt AI report.financial_statements into SEC Period Statements
+    return [];
   }
 
   // Case 2: CanonicalFinancialDataset
@@ -115,27 +91,48 @@ export function adaptFinancialStatementsToSecPeriodStatements(
     const dataset = input as CanonicalFinancialDataset;
     if (dataset.periods.length === 0) return [];
 
-    const getVal = (metricKey: string, period: string, index: number): number | null => {
+    const getValWithSource = (metricKey: string, period: string, index: number) => {
       const series = dataset.values[metricKey];
-      if (!Array.isArray(series)) return null;
+      if (!Array.isArray(series)) return { val: null, source: undefined, unit: undefined };
       const item = series.find((v) => v.period === period) ?? series[index];
-      return (item && typeof item.value === 'number' && Number.isFinite(item.value)) ? item.value : null;
+      const val = (item && typeof item.value === 'number' && Number.isFinite(item.value)) ? item.value : null;
+      return { val, source: item?.source, unit: item?.unit };
     };
 
     return dataset.periods.map((period, i) => {
       const isLatest = i === dataset.periods.length - 1;
+      const revInfo = getValWithSource('income_statement.revenue', period, i);
+      const opIncInfo = getValWithSource('income_statement.operating_income', period, i);
+      const netIncInfo = getValWithSource('income_statement.net_income', period, i);
+      const ocfInfo = getValWithSource('cash_flow.operating_cash_flow', period, i);
+      const capexInfo = getValWithSource('cash_flow.capex', period, i);
+      const debtInfo = getValWithSource('balance_sheet.total_debt', period, i);
+      const equityInfo = getValWithSource('balance_sheet.total_equity', period, i);
+      const arInfo = getValWithSource('balance_sheet.accounts_receivable', period, i);
+      const invInfo = getValWithSource('balance_sheet.inventory', period, i);
+      const apInfo = getValWithSource('balance_sheet.accounts_payable', period, i);
+
+      const primarySource = revInfo.source || netIncInfo.source || opIncInfo.source || ocfInfo.source;
+      const primaryUnit = revInfo.unit || netIncInfo.unit || opIncInfo.unit || ocfInfo.unit || 'USD_M';
+
       return {
+        ticker: dataset.ticker,
         period,
-        revenue: getVal('income_statement.revenue', period, i),
-        operating_income: getVal('income_statement.operating_income', period, i),
-        net_income: getVal('income_statement.net_income', period, i),
-        operating_cash_flow: getVal('cash_flow.operating_cash_flow', period, i),
-        capital_expenditure: getVal('cash_flow.capex', period, i),
-        total_debt: getVal('balance_sheet.total_debt', period, i),
-        stockholders_equity: getVal('balance_sheet.total_equity', period, i),
-        accounts_receivable: getVal('balance_sheet.accounts_receivable', period, i),
-        inventory: getVal('balance_sheet.inventory', period, i),
-        accounts_payable: getVal('balance_sheet.accounts_payable', period, i),
+        form: (primarySource as any)?.form || primarySource?.documentType || null,
+        accession: (primarySource as any)?.accession || primarySource?.accessionNumber || null,
+        filed_date: (primarySource as any)?.filed || primarySource?.filingDate || null,
+        period_end: primarySource?.periodEnd || null,
+        units: (primarySource as any)?.unit || primaryUnit || 'USD',
+        revenue: revInfo.val,
+        operating_income: opIncInfo.val,
+        net_income: netIncInfo.val,
+        operating_cash_flow: ocfInfo.val,
+        capital_expenditure: capexInfo.val,
+        total_debt: debtInfo.val,
+        stockholders_equity: equityInfo.val,
+        accounts_receivable: arInfo.val,
+        inventory: invInfo.val,
+        accounts_payable: apInfo.val,
         diluted_shares: isLatest
           ? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? null)
           : null,
@@ -143,41 +140,9 @@ export function adaptFinancialStatementsToSecPeriodStatements(
     });
   }
 
-  // Case 3: FinancialStatementsData
-  if ('periods' in input && Array.isArray(input.periods)) {
-    const fs = input as FinancialStatementsData;
-    if (fs.periods.length === 0) return [];
-
-    return fs.periods.map((period, i) => {
-      const isLatest = i === fs.periods.length - 1;
-      let dilutedShares: number | null = null;
-      if (isLatest && shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM) {
-        dilutedShares = shareSnapshot.latestDilutedWeightedAverageShares.sharesM;
-      } else {
-        const netInc = parseNum(fs.income_statement?.net_income?.[i]);
-        const epsDil = parseNum(fs.income_statement?.eps_diluted?.[i]);
-        if (netInc !== null && epsDil !== null && epsDil > 0) {
-          dilutedShares = Number((netInc / epsDil).toFixed(2));
-        }
-      }
-
-      return {
-        period,
-        revenue: parseNum(fs.income_statement?.revenue?.[i]),
-        operating_income: parseNum(fs.income_statement?.operating_income?.[i]),
-        net_income: parseNum(fs.income_statement?.net_income?.[i]),
-        operating_cash_flow: parseNum(fs.cash_flow?.operating_cash_flow?.[i]),
-        capital_expenditure: parseNum(fs.cash_flow?.capex?.[i]),
-        total_debt: parseNum(fs.balance_sheet?.total_debt?.[i]),
-        stockholders_equity: parseNum(fs.balance_sheet?.total_equity?.[i]),
-        accounts_receivable: parseNum(fs.balance_sheet?.accounts_receivable?.[i]),
-        inventory: parseNum(fs.balance_sheet?.inventory?.[i]),
-        accounts_payable: parseNum(fs.balance_sheet?.accounts_payable?.[i]),
-        diluted_shares: dilutedShares,
-      };
-    });
-  }
-
+  // Case 3: Raw FinancialStatementsData without verified SEC provenance
+  // Strict Financial Integrity Invariant:
+  // Raw AI report.financial_statements has no canonical SEC provenance and must NEVER be adapted as verified SEC statements.
   return [];
 }
 
@@ -412,11 +377,12 @@ export function diffSecFinancialStatements(
 
   // Shares & Dilution Pace
   let shareCountDeltaPct: number | null = null;
-  let dilutionOrBuyback: 'buybacks' | 'dilution' | 'stable' = 'stable';
+  let dilutionOrBuyback: 'buybacks' | 'dilution' | 'stable' | 'unavailable' = 'unavailable';
   if (curShares !== null && priorShares !== null && priorShares > 0) {
     shareCountDeltaPct = Number((((curShares - priorShares) / priorShares) * 100).toFixed(2));
     if (shareCountDeltaPct < -0.1) dilutionOrBuyback = 'buybacks';
     else if (shareCountDeltaPct > 0.1) dilutionOrBuyback = 'dilution';
+    else dilutionOrBuyback = 'stable';
   }
 
   // Cash Conversion Quality (P1-2):
@@ -444,10 +410,16 @@ export function diffSecFinancialStatements(
   }
 
   // Fact-based Cash Conversion Status
-  let cashConversionStatus: 'healthy' | 'warning' | 'neutral' = 'neutral';
+  let cashConversionStatus: 'healthy' | 'warning' | 'neutral' | 'unavailable' = 'unavailable';
   let cashConversionSummary: string;
 
-  if (curNetInc !== null && curNetInc > 0 && curOcf !== null && curOcf < 0) {
+  if (curNetInc === null || curOcf === null) {
+    // Missing inputs cannot prove healthy cash conversion
+    cashConversionStatus = 'unavailable';
+    cashConversionSummary = isThai
+      ? 'ไม่มีข้อมูลการแปลงเงินสด — ข้อมูล OCF หรือกำไรสุทธิไม่เพียงพอสำหรับการเปรียบเทียบ'
+      : 'Cash conversion unavailable — insufficient comparable OCF / Net Income data.';
+  } else if (curNetInc > 0 && curOcf < 0) {
     // Severe divergence: profitable on accrual basis, burning cash on operations
     cashConversionStatus = 'warning';
     cashConversionSummary = isThai
@@ -465,23 +437,47 @@ export function diffSecFinancialStatements(
     cashConversionSummary = isThai
       ? `คุณภาพกระแสเงินสดแข็งแกร่ง: อัตราส่วน OCF ต่อกำไรสุทธิอยู่ที่ ${ocfToNetIncomeRatioCurrent}x (กำไรได้รับการสนับสนุนด้วยเงินสดจริงเต็มจำนวน)`
       : `High earnings quality: OCF-to-Net Income ratio of ${ocfToNetIncomeRatioCurrent}x confirms robust cash-backed accounting profits.`;
-  } else if (ocfToNetIncomeRatioCurrent !== null && ocfToNetIncomeRatioCurrent < 0.70 && curNetInc !== null && curNetInc > 0) {
+  } else if (ocfToNetIncomeRatioCurrent !== null && ocfToNetIncomeRatioCurrent < 0.70 && curNetInc > 0) {
     // Below benchmark conversion
     cashConversionStatus = 'warning';
     cashConversionSummary = isThai
       ? `อัตราการแปลงกำไรเป็นเงินสดต่ำ: OCF คิดเป็นเพียง ${ocfToNetIncomeRatioCurrent}x ของกำไรสุทธิ (ต่ำกว่าเกณฑ์สถาบัน 1.0x)`
       : `Subdued cash conversion: OCF is ${ocfToNetIncomeRatioCurrent}x of net income (below the 1.0x institutional benchmark).`;
-  } else {
-    cashConversionStatus = 'healthy';
+  } else if (ocfToNetIncomeRatioCurrent !== null) {
+    cashConversionStatus = 'neutral';
     cashConversionSummary = isThai
-      ? `กระแสเงินสดจากการดำเนินงานสอดคล้องกับผลการดำเนินงาน (อัตราส่วน OCF/NI: ${ocfToNetIncomeRatioCurrent !== null ? ocfToNetIncomeRatioCurrent + 'x' : 'N/A'})`
-      : `Operating cash flow aligns with reported earnings (OCF/NI: ${ocfToNetIncomeRatioCurrent !== null ? ocfToNetIncomeRatioCurrent + 'x' : 'N/A'}).`;
+      ? `กระแสเงินสดจากการดำเนินงานสอดคล้องกับผลการดำเนินงาน (อัตราส่วน OCF/NI: ${ocfToNetIncomeRatioCurrent}x)`
+      : `Operating cash flow aligns with reported earnings (OCF/NI: ${ocfToNetIncomeRatioCurrent}x).`;
+  } else {
+    cashConversionStatus = 'unavailable';
+    cashConversionSummary = isThai
+      ? 'ไม่มีข้อมูลการแปลงเงินสด — ข้อมูล OCF หรือกำไรสุทธิไม่เพียงพอสำหรับการเปรียบเทียบ'
+      : 'Cash conversion unavailable — insufficient comparable OCF / Net Income data.';
   }
 
   return {
+    ticker: cur.ticker || prior.ticker,
     currentPeriod: cur.period,
     priorPeriod: prior.period,
     comparisonType,
+    currentFiling: {
+      form: cur.form,
+      accession: cur.accession,
+      filed_date: cur.filed_date,
+      period_end: cur.period_end,
+      units: cur.units,
+      fiscal_year: curDesc.fiscalYear,
+      fiscal_quarter: curDesc.quarter,
+    },
+    priorFiling: {
+      form: prior.form,
+      accession: prior.accession,
+      filed_date: prior.filed_date,
+      period_end: prior.period_end,
+      units: prior.units,
+      fiscal_year: priorDesc.fiscalYear,
+      fiscal_quarter: priorDesc.quarter,
+    },
     revenueYoYPct,
     operatingIncomeYoYPct,
     netIncomeYoYPct,

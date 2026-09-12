@@ -2,6 +2,7 @@ import { fetchSecVerifiedIntegrationPackage } from '../src/services/sec/secInteg
 import { buildSecDcfFinancialInputs } from '../src/services/sec/secDcfInputs';
 import { compareSecCanonicalToReport } from '../src/services/sec/secReportComparison';
 import { SecDataError } from '../src/services/sec/secClient';
+import { adaptFinancialStatementsToSecPeriodStatements, diffSecFinancialStatements } from '../src/utils/secFilingDiffEngine';
 
 const normalizeTicker = (value: unknown) => typeof value === 'string' ? value.trim().toUpperCase() : '';
 const validTicker = (ticker: string) => /^[A-Z0-9.-]{1,12}$/.test(ticker);
@@ -56,6 +57,14 @@ export async function handleSecPreview(req: any, res: any) {
       pkg.shareSnapshot,
       pkg.dcfCoverage,
     );
+    const secPeriodStatements = adaptFinancialStatementsToSecPeriodStatements(
+      pkg.canonicalFinancials,
+      pkg.shareSnapshot,
+    );
+    const secFilingDiff = secPeriodStatements.length >= 2
+      ? diffSecFinancialStatements(secPeriodStatements, false)
+      : null;
+
     return res.status(200).json({
       ok: true,
       ticker: pkg.ticker,
@@ -67,6 +76,8 @@ export async function handleSecPreview(req: any, res: any) {
       provenanceWarnings: pkg.canonicalFinancials?.provenanceWarnings ?? [],
       dcfCoverage: pkg.dcfCoverage,
       dcfFinancialInputs,
+      secPeriodStatements,
+      secFilingDiff,
       coverageDiagnostics: presentCoverageDiagnostics(pkg.coverageDiagnostics),
       shareSnapshot: pkg.shareSnapshot ? {
         currentCommonSharesOutstandingM: pkg.shareSnapshot.currentCommonSharesOutstanding?.sharesM ?? null,
@@ -81,6 +92,48 @@ export async function handleSecPreview(req: any, res: any) {
     });
   } catch (error) {
     return secErrorResponse(res, error, '/api/sec-preview');
+  }
+}
+
+export async function handleSecDiff(req: any, res: any) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!requireSecConfiguration(res)) return;
+
+  const url = new URL(req.url || '/api/sec-diff', 'http://localhost');
+  const ticker = normalizeTicker(url.searchParams.get('ticker') || url.searchParams.get('symbol'));
+  const isThai = url.searchParams.get('lang') === 'th';
+  if (!ticker || !validTicker(ticker)) {
+    return res.status(400).json({ error: 'Missing or invalid ticker.', code: 'INVALID_TICKER' });
+  }
+
+  try {
+    const pkg = await fetchSecVerifiedIntegrationPackage(ticker);
+    const secPeriodStatements = adaptFinancialStatementsToSecPeriodStatements(
+      pkg.canonicalFinancials,
+      pkg.shareSnapshot,
+    );
+    const secFilingDiff = secPeriodStatements.length >= 2
+      ? diffSecFinancialStatements(secPeriodStatements, isThai)
+      : null;
+
+    return res.status(200).json({
+      ok: true,
+      ticker: pkg.ticker,
+      retrievedAt: pkg.retrievedAt,
+      secConfigured: true,
+      secPeriodStatements,
+      secFilingDiff,
+      canonicalPeriods: pkg.canonicalFinancials?.periods ?? [],
+      provenanceStatus: pkg.canonicalFinancials?.provenanceStatus ?? null,
+      provenanceWarnings: pkg.canonicalFinancials?.provenanceWarnings ?? [],
+      latestStatementsSource: pkg.financialStatements?.source ?? null,
+    });
+  } catch (error) {
+    return secErrorResponse(res, error, '/api/sec-diff');
   }
 }
 
