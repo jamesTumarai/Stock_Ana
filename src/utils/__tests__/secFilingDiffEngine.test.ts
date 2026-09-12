@@ -2,8 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   diffSecFinancialStatements,
+  adaptFinancialStatementsToSecPeriodStatements,
   type SecFilingPeriodDiff,
 } from '../secFilingDiffEngine';
+import type { FinancialStatementsData, ReportData } from '../../types';
+import type { SecCompanyFact, SecCompanyFactsResponse, SecSubmissionsResponse, SecTickerRecord } from '../../services/sec/secClient';
+import { mapSecBundleToCanonicalFinancials } from '../../services/sec/secFinancialMapper';
 
 describe('secFilingDiffEngine', () => {
   const mockAnnualStatements = [
@@ -182,5 +186,198 @@ describe('secFilingDiffEngine', () => {
     const single = [mockAnnualStatements[0]];
     const diff = diffSecFinancialStatements(single as any, false);
     assert.equal(diff, null);
+  });
+
+  it('adapts column-oriented FinancialStatementsData into SecPeriodStatement array', () => {
+    const fs: FinancialStatementsData = {
+      periods: ['2023', '2024'],
+      income_statement: {
+        revenue: [1000, 1200],
+        operating_income: [200, 250],
+        net_income: [150, 190],
+      },
+      balance_sheet: {
+        total_debt: [300, 280],
+        total_equity: [500, 600],
+        accounts_receivable: [80, 95],
+        inventory: [40, 45],
+        accounts_payable: [50, 55],
+      },
+      cash_flow: {
+        operating_cash_flow: [220, 270],
+        capex: [-50, -60],
+      },
+    };
+
+    const statements = adaptFinancialStatementsToSecPeriodStatements(fs);
+    assert.equal(statements.length, 2);
+    assert.equal(statements[0].period, '2023');
+    assert.equal(statements[0].revenue, 1000);
+    assert.equal(statements[1].period, '2024');
+    assert.equal(statements[1].revenue, 1200);
+
+    const diff = diffSecFinancialStatements(statements);
+    assert.ok(diff);
+    assert.equal(diff.currentPeriod, '2024');
+    assert.equal(diff.priorPeriod, '2023');
+    assert.equal(diff.comparisonType, 'annual_yoy');
+    assert.equal(diff.revenueYoYPct, 20);
+  });
+
+  it('adapts ReportData and attaches SEC shares to latest period', () => {
+    const report: Partial<ReportData> = {
+      ticker: 'AAPL',
+      financial_statements: {
+        periods: ['2023', '2024'],
+        income_statement: { revenue: [383285, 391035], net_income: [96995, 93736] },
+        balance_sheet: {},
+        cash_flow: {},
+      },
+      sec_verification: {
+        status: 'verified_eligible',
+        ticker: 'AAPL',
+        retrieved_at: '2025-01-01',
+        provenance_status: 'verified',
+        provenance_warnings: [],
+        dcf_coverage: null,
+        dcf_financial_inputs: {
+          version: 1,
+          generated_by: 'sec-verified-financial-inputs-v1',
+          eligible: true,
+          ticker: 'AAPL',
+          periods: ['2023', '2024'],
+          source_period: '2024',
+          latest_balance_sheet_period_end: '2024-09-30',
+          share_as_of: '2024-10-18',
+          starting_revenue_m: 391035,
+          trailing_four_free_cash_flow_m: 108807,
+          historical_fcf_margin_pct: 27.8,
+          cash_and_equivalents_m: 29942,
+          short_term_investments_m: 35232,
+          total_debt_m: 106629,
+          net_cash_m: -41455,
+          current_shares_outstanding_m: 15116,
+          issues: [],
+        },
+        latest_statements_source: null,
+      },
+    };
+
+    const statements = adaptFinancialStatementsToSecPeriodStatements(report as ReportData);
+    assert.equal(statements.length, 2);
+    assert.equal(statements[0].diluted_shares, null);
+    assert.equal(statements[1].diluted_shares, 15116);
+  });
+
+  it('parses reverse quarterly period formats (2025-Q3 vs 2024-Q3)', () => {
+    const reverseQuarterStatements = [
+      {
+        period: '2025-Q3',
+        revenue: 80000,
+      },
+      {
+        period: '2024-Q3',
+        revenue: 70000,
+      },
+    ];
+
+    const diff = diffSecFinancialStatements(reverseQuarterStatements as any);
+    assert.ok(diff);
+    assert.equal(diff.currentPeriod, '2025-Q3');
+    assert.equal(diff.priorPeriod, '2024-Q3');
+    assert.equal(diff.comparisonType, 'quarter_yoy');
+    assert.equal(diff.revenueYoYPct, 14.29);
+  });
+
+  it('integration: diffSecFinancialStatements works end-to-end with real SEC mapper output', () => {
+    const durationFacts = (values: number[], prefix: string, fy: number, year: number): SecCompanyFact[] => [
+      { start: `${year}-01-01`, end: `${year}-03-31`, val: values[0], fy, fp: 'Q1', form: '10-Q', filed: `${year}-05-01`, accn: `${prefix}-${fy}-q1` },
+      { start: `${year}-01-01`, end: `${year}-06-30`, val: values[0] + values[1], fy, fp: 'Q2', form: '10-Q', filed: `${year}-08-01`, accn: `${prefix}-${fy}-q2` },
+      { start: `${year}-01-01`, end: `${year}-09-30`, val: values[0] + values[1] + values[2], fy, fp: 'Q3', form: '10-Q', filed: `${year}-11-01`, accn: `${prefix}-${fy}-q3` },
+      { start: `${year}-01-01`, end: `${year}-12-31`, val: values.reduce((s, v) => s + v, 0), fy, fp: 'FY', form: '10-K', filed: `${year + 1}-02-15`, accn: `${prefix}-${fy}-fy` },
+    ];
+
+    const instantFacts = (values: number[], prefix: string, fy: number, year: number): SecCompanyFact[] => [
+      { end: `${year}-03-31`, val: values[0], fy, fp: 'Q1', form: '10-Q', filed: `${year}-05-01`, accn: `${prefix}-${fy}-q1` },
+      { end: `${year}-06-30`, val: values[1], fy, fp: 'Q2', form: '10-Q', filed: `${year}-08-01`, accn: `${prefix}-${fy}-q2` },
+      { end: `${year}-09-30`, val: values[2], fy, fp: 'Q3', form: '10-Q', filed: `${year}-11-01`, accn: `${prefix}-${fy}-q3` },
+      { end: `${year}-12-31`, val: values[3], fy, fp: 'FY', form: '10-K', filed: `${year + 1}-02-15`, accn: `${prefix}-${fy}-fy` },
+    ];
+
+    const usd = (facts: SecCompanyFact[]) => ({ label: 'usd', units: { USD: facts } });
+
+    // 2 years of facts: FY2025 and FY2026
+    const rev2025 = [100_000_000, 100_000_000, 100_000_000, 100_000_000];
+    const rev2026 = [120_000_000, 120_000_000, 120_000_000, 130_000_000];
+
+    const ni2025 = [10_000_000, 10_000_000, 10_000_000, 10_000_000];
+    const ni2026 = [12_000_000, 12_000_000, 12_000_000, 15_000_000];
+
+    const ocf2025 = [15_000_000, 15_000_000, 15_000_000, 20_000_000];
+    const ocf2026 = [20_000_000, 20_000_000, 20_000_000, 26_000_000];
+
+    const capex2025 = [5_000_000, 5_000_000, 5_000_000, 5_000_000];
+    const capex2026 = [6_000_000, 6_000_000, 6_000_000, 6_000_000];
+
+    const companyFacts: SecCompanyFactsResponse = {
+      cik: 999999,
+      entityName: 'Real SEC Test Corp',
+      facts: {
+        'us-gaap': {
+          Revenues: usd([...durationFacts(rev2025, 'rev', 2025, 2025), ...durationFacts(rev2026, 'rev', 2026, 2026)]),
+          NetIncomeLoss: usd([...durationFacts(ni2025, 'ni', 2025, 2025), ...durationFacts(ni2026, 'ni', 2026, 2026)]),
+          NetCashProvidedByUsedInOperatingActivities: usd([...durationFacts(ocf2025, 'ocf', 2025, 2025), ...durationFacts(ocf2026, 'ocf', 2026, 2026)]),
+          PaymentsToAcquirePropertyPlantAndEquipment: usd([...durationFacts(capex2025, 'capex', 2025, 2025), ...durationFacts(capex2026, 'capex', 2026, 2026)]),
+          Assets: usd([...instantFacts([500e6, 500e6, 500e6, 500e6], 'ast', 2025, 2025), ...instantFacts([600e6, 600e6, 600e6, 600e6], 'ast', 2026, 2026)]),
+          Liabilities: usd([...instantFacts([200e6, 200e6, 200e6, 200e6], 'liab', 2025, 2025), ...instantFacts([250e6, 250e6, 250e6, 250e6], 'liab', 2026, 2026)]),
+          StockholdersEquity: usd([...instantFacts([300e6, 300e6, 300e6, 300e6], 'eq', 2025, 2025), ...instantFacts([350e6, 350e6, 350e6, 350e6], 'eq', 2026, 2026)]),
+        },
+      },
+    };
+
+    const identity: SecTickerRecord = { cik: '0000999999', ticker: 'SECTEST', title: 'Real SEC Test Corp' };
+    const accns = ['rev-2025-fy', 'rev-2026-fy'];
+    const submissions: SecSubmissionsResponse = {
+      cik: identity.cik,
+      filings: {
+        recent: {
+          accessionNumber: accns,
+          primaryDocument: accns.map(a => `${a}.htm`),
+          form: accns.map(() => '10-K'),
+          filingDate: ['2026-02-15', '2027-02-15'],
+        },
+      },
+    };
+
+    // 1. Run real SEC mapper
+    const canonicalDataset = mapSecBundleToCanonicalFinancials({
+      identity,
+      submissions,
+      companyFacts,
+      retrievedAt: '2027-02-16T00:00:00.000Z',
+    });
+
+    assert.ok(canonicalDataset, 'Canonical dataset must be successfully produced by SEC mapper');
+    assert.equal(canonicalDataset.periods.length, 8);
+
+    // 2. Adapt canonical dataset into SecPeriodStatement[]
+    const statements = adaptFinancialStatementsToSecPeriodStatements(canonicalDataset);
+    assert.equal(statements.length, 8);
+
+    // 3. Diff statements
+    const diff = diffSecFinancialStatements(statements);
+    assert.ok(diff, 'Diff must not be null');
+    assert.equal(diff.currentPeriod, 'Q4 2026');
+    assert.equal(diff.priorPeriod, 'Q4 2025');
+    assert.equal(diff.comparisonType, 'quarter_yoy');
+
+    // Revenue: 130 vs 100 -> +30.0%
+    assert.equal(diff.revenueYoYPct, 30);
+    // Net Income: 15 vs 10 -> +50.0%
+    assert.equal(diff.netIncomeYoYPct, 50);
+    // OCF: 26 vs 20 -> +30.0%
+    assert.equal(diff.ocfYoYPct, 30);
+    // FCF: (26 - 6 = 20) vs (20 - 5 = 15) -> (20 - 15) / 15 = +33.33%
+    assert.equal(diff.fcfYoYPct, 33.33);
   });
 });
