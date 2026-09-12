@@ -124,4 +124,50 @@ import { estimateTokenCost, getModelPricing, formatCostUsd, formatCostThb, PRICI
   assert.equal(formatCostThb(1.25), '฿1.25');
 }
 
+// 7. Missing model identity fails closed without arbitrary fallback
+{
+  const missingModelEstimate = estimateTokenCost({ totalTokens: 10_000 });
+  assert.equal(missingModelEstimate.isAvailable, false);
+  assert.equal(missingModelEstimate.model, null);
+  assert.equal(missingModelEstimate.totalCostUsd, null);
+  assert.equal(missingModelEstimate.formattedCostUsd, 'N/A');
+  assert.ok(missingModelEstimate.reason?.includes('Model identity unavailable'));
+}
+
+// 8. Requested model != actual model: must calculate price using actual model only
+{
+  const requestedModel = 'perseus'; // client alias/unpriced rewrite
+  const actualModel = 'gemini-3.8-flash'; // actual inference model in catalog
+
+  // Directly providing actual model yields accurate pricing
+  const actualEstimate = estimateTokenCost({
+    totalTokens: 10_000,
+    model: actualModel,
+  });
+  assert.equal(actualEstimate.isAvailable, true);
+  assert.equal(actualEstimate.model, 'gemini-3.8-flash');
+  assert.ok(actualEstimate.totalCostUsd !== null && actualEstimate.totalCostUsd > 0);
+  assert.equal(actualEstimate.pricingTier, 'flash');
+
+  // Passing unpriced requested alias without actual model fails closed
+  const requestedEstimate = estimateTokenCost({
+    totalTokens: 10_000,
+    model: requestedModel,
+  });
+  assert.equal(requestedEstimate.isAvailable, false);
+  assert.equal(requestedEstimate.totalCostUsd, null);
+  assert.equal(requestedEstimate.formattedCostUsd, 'N/A');
+}
+
+// 9. Unknown actual model fails closed
+{
+  const unknownActualEstimate = estimateTokenCost({
+    totalTokens: 10_000,
+    model: 'custom-internal-llm-v99',
+  });
+  assert.equal(unknownActualEstimate.isAvailable, false);
+  assert.equal(unknownActualEstimate.totalCostUsd, null);
+  assert.equal(unknownActualEstimate.formattedCostUsd, 'N/A');
+}
+
 console.log('Cost estimator checks passed');

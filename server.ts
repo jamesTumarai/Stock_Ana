@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { createRequireFirebaseAuth } from "./server/auth/firebaseAuth.ts";
@@ -31,6 +30,7 @@ import {
   mergeStructuredValuationAssumptions,
 } from "./server/lib/valuationAssumptionBridge.ts";
 import { LatencyTracker } from "./src/utils/latencyTracker.ts";
+import { PRICING_CATALOG_METADATA } from "./src/utils/costEstimator.ts";
 
 export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const app = express();
@@ -1853,7 +1853,15 @@ ${event.message}
       const timing = latencyTracker.getTimingBreakdown();
       
       // Send final reliable stats to client
-      res.write(`data: ${JSON.stringify({ type: 'final_stats', duration: totalDurationSecs, tokens: totalTokens, timing })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        type: 'final_stats',
+        duration: totalDurationSecs,
+        tokens: totalTokens,
+        timing,
+        actualModel,
+        requestedModel: model,
+        pricingCatalogVersion: PRICING_CATALOG_METADATA.version,
+      })}\n\n`);
 
       let summaryLog = `========================================================\n`;
       summaryLog += `                 RUN SUMMARY FOR ${ticker.toUpperCase()}\n`;
@@ -1926,6 +1934,7 @@ ${event.message}
   const indexHtmlExists = fs.existsSync(path.join(distPath, 'index.html'));
 
   if (process.env.NODE_ENV !== "production" || !indexHtmlExists) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

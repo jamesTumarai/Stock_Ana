@@ -3,7 +3,7 @@ import {
   Gauge, Sliders
 } from 'lucide-react';
 import { ReverseDcfResult } from '../types';
-import { calculateCanonicalReverseDcf, calculateReverseDcf } from '../utils/decisionEngine';
+import { calculateCanonicalReverseDcf } from '../utils/decisionEngine';
 import type { CanonicalValuationSandboxInputs } from '../utils/valuationSandboxAdapter';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
@@ -30,25 +30,8 @@ export function ReverseDcfCard({
     if (sandboxInputs) {
       return calculateCanonicalReverseDcf(sandboxInputs);
     }
-
-    if (
-      typeof currentPrice === 'number' && currentPrice > 0 &&
-      typeof baseFcfPerShare === 'number' && baseFcfPerShare > 0 &&
-      typeof discountRatePct === 'number' && discountRatePct > 0 &&
-      typeof terminalGrowthPct === 'number' && terminalGrowthPct >= 0 &&
-      discountRatePct > terminalGrowthPct
-    ) {
-      return calculateReverseDcf(
-        currentPrice,
-        baseFcfPerShare,
-        discountRatePct,
-        terminalGrowthPct,
-        5
-      );
-    }
-
     return null;
-  }, [sandboxInputs, currentPrice, baseFcfPerShare, discountRatePct, terminalGrowthPct]);
+  }, [sandboxInputs]);
 
   if (!result || result.currentPrice <= 0) return null;
 

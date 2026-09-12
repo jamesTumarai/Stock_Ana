@@ -28,7 +28,7 @@ export const MODEL_PRICING_CATALOG: Record<string, Omit<ModelPricing, 'source' |
 export interface TokenCostEstimate {
   isAvailable: boolean;
   reason?: string;
-  model: string;
+  model: string | null;
   totalTokens: number;
   promptTokens: number | null;
   completionTokens: number | null;
@@ -58,13 +58,14 @@ export interface EstimateCostOptions {
 }
 
 /**
- * Resolves the active model pricing tier.
- * Returns null if the model is unrecognized or absent from the pricing catalog.
- * Never guesses or falls back to arbitrary standard/pro pricing for unknown models.
+ * Resolves a model name to its pricing entry.
+ * Recognizes exact catalog names (e.g. 'gemini-3.8-flash', 'gemini-1.5-pro')
+ * and models/ prefixed versions (e.g. 'models/gemini-3.8-flash').
+ * Returns null for any unrecognized model (fail-closed, no arbitrary standard fallback).
  */
-export function getModelPricing(modelName?: string): ModelPricing | null {
-  if (!modelName) return null;
-  const normalized = modelName.trim().toLowerCase();
+export function getModelPricing(model: string): ModelPricing | null {
+  if (!model) return null;
+  const normalized = model.trim().toLowerCase();
 
   for (const [key, pricing] of Object.entries(MODEL_PRICING_CATALOG)) {
     if (normalized === key || normalized === `models/${key}`) {
@@ -83,25 +84,43 @@ export function getModelPricing(modelName?: string): ModelPricing | null {
 
 /**
  * Deterministic token cost estimator for Gemini AI inferences.
- * If model pricing is unrecognized, returns isAvailable: false with reason.
+ * If model pricing is unrecognized or model identity is missing, returns isAvailable: false with reason.
  * If prompt/completion breakdown is omitted, institutional default distribution
  * (75% input context/filings, 25% output report) is applied for cost calculation,
  * clearly surfaced as an approximation assumption in approximationNote.
  * When fxRateUsdThb is omitted, totalCostThb and formattedCostThb return null.
  */
 export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstimate {
-  const model = options.model?.trim() || 'gemini-3.8-flash';
-  const pricing = getModelPricing(model);
-
   const rawTotal = Math.max(0, options.totalTokens ?? 0);
   const hasExplicitPrompt = typeof options.promptTokens === 'number' && options.promptTokens >= 0;
   const hasExplicitCompletion = typeof options.completionTokens === 'number' && options.completionTokens >= 0;
 
+  const modelTrimmed = options.model?.trim();
+  if (!modelTrimmed) {
+    return {
+      isAvailable: false,
+      reason: 'Model identity unavailable for cost estimation.',
+      model: null,
+      totalTokens: rawTotal,
+      promptTokens: hasExplicitPrompt ? options.promptTokens! : null,
+      completionTokens: hasExplicitCompletion ? options.completionTokens! : null,
+      inputCostUsd: null,
+      outputCostUsd: null,
+      totalCostUsd: null,
+      totalCostThb: null,
+      formattedCostUsd: 'N/A',
+      formattedCostThb: null,
+      pricingTier: null,
+    };
+  }
+
+  const pricing = getModelPricing(modelTrimmed);
+
   if (!pricing) {
     return {
       isAvailable: false,
-      reason: `Pricing unavailable for unrecognized model '${model}'.`,
-      model,
+      reason: `Pricing unavailable for unrecognized model '${modelTrimmed}'.`,
+      model: modelTrimmed,
       totalTokens: rawTotal,
       promptTokens: hasExplicitPrompt ? options.promptTokens! : null,
       completionTokens: hasExplicitCompletion ? options.completionTokens! : null,
@@ -156,7 +175,7 @@ export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstima
 
   return {
     isAvailable: true,
-    model,
+    model: modelTrimmed,
     totalTokens: effectiveTotal,
     promptTokens,
     completionTokens,

@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Post-Hardening Review Round 3 Complete (PRs #87–#95 Merged; Phase 4.5 Pending Owner Acceptance ⏳)**.
-- Current working mode: **Post-Hardening Review Round 3 (Diagnostic security, canonical valuation ranges, unclamped macro stress, strict YoY SEC matching, D/E missing-vs-zero fail-closed, fail-closed model pricing, truthful DDM provenance, period parser consistency, vulnerability triage & bundle performance analysis)**.
+- Current stage: **Final Integrity Cleanup Complete (PRs #96, #97, #98; Phase 4.5 Pending Owner Acceptance ⏳)**.
+- Current working mode: **Final Integrity Cleanup (Verified SEC fact diff, Cash conversion semantics, Health contract parity, Actual model AI cost, Quick ratio STI verification, Terminal growth transparency, Canonical sandbox unification, History soft-delete UX & Master documentation reconciliation)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #94 (Security Audit Triage & Bundle Performance Analysis).
+- Latest merged milestone: PR #97 (Health Contract Parity) / PR #98 in flight.
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,7 +27,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented / Hardening Pending` | PR #67–#76, #78–#85, #87–#95 |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented / Hardening Complete (Pending Owner Acceptance ⏳)` | PR #67–#76, #78–#85, #87–#98 |
 | **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #56–#58, PR #70 |
 | **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #59, #60 |
 | **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #61, PR #71 |
@@ -224,17 +224,17 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Interactive `AlertsModal.tsx` with filter tabs, unread indicators, and threshold controls.
 
 ### Phase 9 — Comparison & Decision Tools ✅
-- Built `decisionEngine.ts` featuring Reverse DCF back-solving for market-implied growth hurdles.
+- Built `decisionEngine.ts` featuring Reverse DCF back-solving for market-implied Revenue CAGR hurdle.
 - 2D Sensitivity Matrix (5x5 grid WACC vs Terminal Growth) and deterministic 3-stage scenarios (Bear, Base, Bull).
 - Normalized peer comparison extractor enforcing strict factual integrity.
 
 ### Phase 10 — Performance, Cost & Reliability ✅
 - Built `SecTtlCache` (`secCache.ts`): Bounded in-memory TTL cache with LRU eviction for SEC EDGAR company facts, submissions, and packages, eliminating redundant multi-megabyte downloads.
 - Built `costEstimator.ts`: Transparent AI token pricing models (Flash and Pro tiers), prompt/completion cost derivation, and USD/THB currency calculations.
-- Upgraded `ReportTemplate.tsx` with 5-column executive summary metrics grid displaying Docs, Time, Runs, Tokens, and live AI Cost with localized tooltips and USD/THB FX conversion.
-- Mounted structured `/api/health` diagnostics endpoint across Express and Vercel functions reporting memory usage, uptime, service configuration, and SEC cache telemetry.
+- Upgraded `ReportTemplate.tsx` with 5-column executive summary metrics grid displaying Docs, Time, Runs, Tokens, and Estimated AI Cost with localized tooltips and USD/THB FX conversion.
+- Mounted structured `/api/health` diagnostics endpoint across Express and Vercel functions returning minimal public telemetry and protected detailed internal diagnostics.
 - Built `LatencyTracker` (`latencyTracker.ts`): Stage-level latency tracking for market snapshots, Gemini stream, and valuation assumption bridge, emitted in SSE `final_stats` events.
-- 62 regression test suites passing with 100% success.
+- 74 regression test files across `src/` and `server/` passing with 100% success (171 test cases).
 
 ### Phase 11 — Productization / Subscription Readiness (Removed per owner directive)
 - **Status**: The entire subscription, tier gating, and quota system has been removed per owner directive (2026-09-12).
@@ -475,11 +475,55 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Analyzed production Vite bundle warning (~2.61 MB minified / 670.5 kB gzip) and proposed safe route-level and modal lazy-loading candidates for a future dedicated PR.
 - Merge SHA: `e9080df`.
 
-#### Round 3 Test Gate Metrics
-- **Test files executed**: 73
+#### PR #95 — SEC Diff Zero Metrics Guard & Non-Empty Financial Statements Guard (`fix/sec-diff-zero-metrics-guard`) ✅
+- Enforced strict non-empty guard on financial statements in `src/utils/secFilingDiffEngine.ts`, preventing synthetic 0.0% metrics when financial statements contain no rows or empty periods.
+- Added regression tests verifying zero metric guard behavior.
+- Merge SHA: `8b2da525fdce0327d30c345f6c7bcac17f01d91b`.
+
+### Final Integrity Cleanup PRs
+
+#### PR #96 — Verified SEC Canonical Financial Facts Diff, Cash Conversion Semantics & Tab-Specific Modal Provenance (`fix/sec-diff-canonical-facts`) ✅
+- **Blocker 1 (Verified SEC Filing Diff Must Use Actual SEC Values)**:
+  - Mounted `/api/sec-diff` endpoint querying canonical financials from `fetchSecVerifiedIntegrationPackage(ticker).canonicalFinancials` directly on the server.
+  - UI strictly fetches and displays verified SEC canonical facts; report AI financial statements are never used as numeric authority for SEC diff.
+  - Preserved SEC source metadata (period, fiscal year, fiscal quarter, form, accession, filed date, period end, metric provenance).
+- **Blocker 2 (Cash Conversion Missing Data Semantics & Dilution/Buyback Semantics)**:
+  - Missing OCF or Net Income returns `cashConversionStatus = 'neutral'` / `'unavailable'` with summary: *"Cash conversion unavailable — insufficient comparable OCF / Net Income data."* Never labels missing data as healthy.
+  - Dilution/buyback domain semantics revised to `buybacks`, `dilution`, `stable`, `unavailable`. Strictly returns `stable` only when verified comparable shares establish near-zero change.
+- **Integrity 8 (Modal Provenance Language)**:
+  - ValuationDecompositionModal uses truthful tab-specific provenance: Valuation Decomposition (deterministic from recorded inputs), Macro Stress (system-defined illustrative stress assumptions recalculated by canonical DCF), SEC Diff (verified SEC canonical facts).
+- Merge SHA: `1439e85d69e00ca9a9cdd7bbeb306802724031b1`.
+
+#### PR #97 — Public vs. Authenticated Health Check Contract Parity & Serverless Parity (`fix/health-contract-parity`) ✅
+- **Blocker 3 (Health Contract Parity Across Express & Vercel)**:
+  - Extracted shared, zero-dependency `handleHealthCheck` helper in `server/secPreviewHandler.ts` used by both Express (`server/routes/healthRoutes.ts`) and Vercel serverless (`api/index.js`).
+  - Contract: `GET /api/health` -> minimal public status (200); `GET /api/health?detailed=true` unauthenticated -> minimal public status (200) without leaking memory/telemetry; `GET /api/health/detailed` unauthenticated -> 401 Unauthorized; authorized requests with `INTERNAL_DIAGNOSTICS_KEY` or admin auth -> detailed telemetry.
+  - In `vercel.json`, expanded `includeFiles` to `"{dist/*.cjs,agent/**}"` ensuring `dist/sec-preview.cjs` is packaged into serverless bundle.
+  - Dynamically imported `vite` in `server.ts` so `dist/server.cjs` never fails with `MODULE_NOT_FOUND: vite` when running serverless outside development.
+  - Added unit test suite `server/routes/__tests__/secPreviewHandler.test.ts`.
+- Merge SHA: `ef8673f29f275637576272a6ff3cdc67ce6534df`.
+
+#### PR #98 — Actual Model AI Cost, Quick Ratio STI Verification, Terminal Growth Transparency & Canonical Sandbox Unification (`fix/final-integrity-cleanups`)
+- **Blocker 4 (AI Cost Must Use Actual Model Identity)**:
+  - In `src/utils/costEstimator.ts`, removed fallback to `'gemini-3.8-flash'`. Missing model identity fails closed (`isAvailable: false`, `formattedCostUsd: 'N/A'`).
+  - Emitted `actualModel`, `requestedModel`, and `pricingCatalogVersion` in server SSE `final_stats` event.
+  - UI calculates AI cost strictly from `actualModel`.
+- **Blocker 5 (Quick Ratio Must Not Treat Absent ST Investments as Zero)**:
+  - In `src/utils/metricCalculations.ts`, removed `short_term_investments === undefined ? 0 : null`. Absent STI field strictly returns `null` (Quick Ratio unavailable). Explicit verified 0 remains supported.
+- **Integrity 6 (Terminal Growth Policy Transparency)**:
+  - In `src/types.ts` and `src/utils/valuation/dcfMathEngine.ts`, preserved `requestedTerminalGrowthPct`, `usedTerminalGrowthPct`, `terminalGrowthPolicyApplied`, and `terminalGrowthPolicyReason` to expose policy clamping transparently.
+- **Integrity 7 (Remove Legacy Parallel Scenario DCF Path)**:
+  - In `src/components/ScenarioAnalysisModal.tsx` and `src/components/ReverseDcfCard.tsx`, removed all fallback to parallel calculation functions (`calculateDcfPerShare`, `generateValuationScenarios`, `computeSensitivityMatrix`, `calculateReverseDcf`). Canonical valuation sandbox inputs are the sole execution path.
+- **Integrity 9 (History Soft-Delete Truthful UX)**:
+  - Updated `src/components/HistoryModal.tsx` confirmation copy: *"This report will be removed from your visible history."* (truthful soft-delete copy).
+- **Master Documentation Reconciliation**:
+  - Reconciled all metrics, contracts, and status fields across `docs/ROADMAP.md` and `docs/PROJECT_STATUS.md`.
+
+#### Final Integrity Test Gate Metrics
+- **Test files executed**: 74
 - **src/ test files executed**: 71
-- **Server test files executed**: 2 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`)
-- **Test cases passed**: 161
+- **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/secPreviewHandler.test.ts`)
+- **Test cases passed**: 171
 - **Test cases failed**: 0
 - **Test cases skipped**: 0
 - **Vulnerabilities**: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged)
