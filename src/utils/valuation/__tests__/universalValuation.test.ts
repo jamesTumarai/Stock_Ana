@@ -323,8 +323,44 @@ const eligibleSecEnvelope = () => ({
   assert.ok(ddm !== undefined);
   assert.equal(ddm.assumptions.current_payout_ratio_pct, null, 'Must not assume payout=0 or payout=50');
   assert.equal(ddm.scenarios.base.terminal_payout_ratio_pct, null, 'Must not assume payout=50 for terminal');
+  assert.equal(ddm.scenarios.base.source_type, 'source_assumption', 'Base scenario assumptions must not inherit verified_dividend');
+  assert.equal(ddm.scenarios.base.dividend_provenance, 'verified_company_fact', 'D0 company fact is verified');
+  assert.equal(ddm.scenarios.base.growth_provenance, 'source_assumption', 'Growth is a model assumption, not verified fact');
+  assert.equal(ddm.scenarios.base.ke_provenance, 'source_assumption', 'Ke is a model assumption, not verified fact');
   assert.equal(ddm.scenarios.bear.source_type, 'system_illustrative');
   assert.equal(ddm.scenarios.bull.source_type, 'system_illustrative');
+}
+
+{
+  // PR F: Derived dividend provenance is source_assumption, explicit bear/bull are source_assumption
+  const derivedReport: any = {
+    ticker: 'JPM',
+    company_profile: { sector: 'Financial Services', industry: 'Banks', stock_price: 200 },
+    intrinsic_value: {
+      current_price: 200,
+      ddm_model: {
+        assumptions: {
+          cost_of_equity_pct: 10,
+          terminal_growth_pct: 3,
+          current_payout_ratio_pct: 40,
+          current_roe_pct: 15,
+        },
+        book_value_per_share: 100,
+        scenarios: {
+          bear: { terminal_growth_pct: 2, cost_of_equity_pct: 11 },
+          bull: { terminal_growth_pct: 4, cost_of_equity_pct: 9 },
+        },
+      },
+    },
+  };
+  const ddm = calculateDDMModel(derivedReport);
+  assert.ok(ddm !== undefined);
+  // Derived D0 = 100 * 0.15 * 0.40 = 6.0
+  assert.equal(ddm.assumptions.current_dividend_per_share, 6.0);
+  assert.equal(ddm.assumptions.dividend_provenance, 'source_assumption', 'Derived dividend is source_assumption, not verified_company_fact');
+  assert.equal(ddm.scenarios.base.dividend_provenance, 'source_assumption');
+  assert.equal(ddm.scenarios.bear.source_type, 'source_assumption', 'Explicit bear scenario is source_assumption');
+  assert.equal(ddm.scenarios.bull.source_type, 'source_assumption', 'Explicit bull scenario is source_assumption');
 }
 
 {
