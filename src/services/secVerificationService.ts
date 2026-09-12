@@ -185,6 +185,10 @@ export async function fetchSecVerificationEnvelope(
 
     const provenanceStatus = textOrNull(body.provenanceStatus);
     const eligible = Boolean(dcfCoverage?.eligible && dcfFinancialInputs?.eligible);
+    const secPeriodStatements = Array.isArray(body.secPeriodStatements)
+      ? (body.secPeriodStatements as any[])
+      : undefined;
+
     return {
       status: eligible ? 'verified_eligible' : provenanceStatus === 'verified' ? 'verified_partial' : 'unavailable',
       ticker: normalizedTicker,
@@ -194,6 +198,7 @@ export async function fetchSecVerificationEnvelope(
       dcf_coverage: dcfCoverage,
       dcf_financial_inputs: dcfFinancialInputs,
       latest_statements_source: latestSource,
+      sec_period_statements: secPeriodStatements,
     };
   } catch (error: any) {
     if (parentSignal?.aborted) return null;

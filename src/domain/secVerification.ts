@@ -31,6 +31,29 @@ export interface SecDcfCoverageEnvelope {
   issues: SecVerificationIssue[];
 }
 
+export interface SecPeriodStatement {
+  ticker?: string;
+  period: string;
+  fiscal_year?: number;
+  fiscal_quarter?: number | null;
+  form?: string | null;
+  accession?: string | null;
+  filed_date?: string | null;
+  period_end?: string | null;
+  units?: string | null;
+  revenue?: number | null;
+  operating_income?: number | null;
+  net_income?: number | null;
+  operating_cash_flow?: number | null;
+  capital_expenditure?: number | null;
+  total_debt?: number | null;
+  stockholders_equity?: number | null;
+  diluted_shares?: number | null;
+  accounts_receivable?: number | null;
+  inventory?: number | null;
+  accounts_payable?: number | null;
+}
+
 export interface SecVerificationEnvelope {
   status: 'verified_eligible' | 'verified_partial' | 'unavailable';
   ticker: string;
@@ -46,6 +69,7 @@ export interface SecVerificationEnvelope {
     period_end?: string;
     units?: string;
   } | null;
+  sec_period_statements?: SecPeriodStatement[];
   error?: {
     code: string;
     message: string;

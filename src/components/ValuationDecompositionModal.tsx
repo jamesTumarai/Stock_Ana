@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -57,11 +57,31 @@ export function ValuationDecompositionModal({
   }, [currentReport, isThai]);
 
   // 3. SEC YoY Diff Calculation via Comparable-Period Matching
-  const secDiff: SecFilingPeriodDiff | null = useMemo(() => {
+  const [remoteSecDiff, setRemoteSecDiff] = useState<SecFilingPeriodDiff | null>(null);
+
+  const localSecDiff: SecFilingPeriodDiff | null = useMemo(() => {
     const statements = adaptFinancialStatementsToSecPeriodStatements(currentReport);
     if (statements.length < 2) return null;
     return diffSecFinancialStatements(statements, isThai);
   }, [currentReport, isThai]);
+
+  useEffect(() => {
+    if (!isOpen || localSecDiff || !currentReport.ticker) return;
+    let cancelled = false;
+    fetch(`/api/sec-diff?ticker=${encodeURIComponent(currentReport.ticker)}&lang=${isThai ? 'th' : 'en'}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.secFilingDiff) {
+          setRemoteSecDiff(data.secFilingDiff);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, localSecDiff, currentReport.ticker, isThai]);
+
+  const secDiff: SecFilingPeriodDiff | null = localSecDiff || remoteSecDiff;
 
   if (!isOpen) return null;
 
@@ -428,6 +448,8 @@ export function ValuationDecompositionModal({
                       className={`text-xs p-2.5 rounded-lg border ${
                         secDiff.cashConversionStatus === 'warning'
                           ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                          : secDiff.cashConversionStatus === 'unavailable'
+                          ? 'bg-stone-500/10 border-stone-500/20 text-stone-400'
                           : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
                       }`}
                     >
@@ -559,7 +581,7 @@ export function ValuationDecompositionModal({
                       </div>
                       <div
                         className={`text-sm font-bold font-mono ${
-                          secDiff.shareCountDeltaPct === null
+                          secDiff.shareCountDeltaPct === null || secDiff.dilutionOrBuyback === 'unavailable'
                             ? 'text-stone-400'
                             : secDiff.shareCountDeltaPct < 0
                             ? 'text-emerald-400'
@@ -568,18 +590,18 @@ export function ValuationDecompositionModal({
                             : 'text-stone-300'
                         }`}
                       >
-                        {secDiff.shareCountDeltaPct !== null
+                        {secDiff.shareCountDeltaPct !== null && secDiff.dilutionOrBuyback !== 'unavailable'
                           ? `${secDiff.shareCountDeltaPct > 0 ? '+' : ''}${secDiff.shareCountDeltaPct}%`
                           : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable')}
                       </div>
                       <div className="text-[10px] text-stone-500 mt-0.5">
-                        {secDiff.shareCountDeltaPct === null
-                          ? (isThai ? 'ไม่มีข้อมูลเปรียบเทียบ' : 'Unavailable')
-                          : secDiff.dilutionOrBuyback === 'buybacks'
+                        {secDiff.dilutionOrBuyback === 'buybacks'
                           ? (isThai ? 'ซื้อหุ้นคืนสุทธิ' : 'Net Buybacks')
                           : secDiff.dilutionOrBuyback === 'dilution'
                           ? (isThai ? 'จำนวนหุ้นเพิ่มขึ้น' : 'Net Dilution')
-                          : (isThai ? 'คงที่' : 'Stable')}
+                          : secDiff.dilutionOrBuyback === 'stable'
+                          ? (isThai ? 'คงที่' : 'Stable')
+                          : (isThai ? 'ไม่มีข้อมูลเปรียบเทียบ' : 'Unavailable')}
                       </div>
                     </div>
                   </div>
@@ -603,7 +625,13 @@ export function ValuationDecompositionModal({
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-white/10 bg-white/[0.02] flex justify-between items-center text-xs text-stone-400">
-          <span>{isThai ? 'ข้อมูลตรวจสอบแล้วตามมาตรฐาน SEC EDGAR' : 'Deterministic financial calculations derived strictly from verified statements.'}</span>
+          <span>
+            {activeTab === 'decomposition'
+              ? (isThai ? 'คำนวณแบบเชิงกำหนดจากข้อมูลมูลค่าที่บันทึกไว้' : 'Deterministic calculation from recorded valuation inputs.')
+              : activeTab === 'macro_stress'
+              ? (isThai ? 'สมมติฐานจำลองความเครียดของระบบ คำนวณใหม่โดย Canonical DCF' : 'System-defined illustrative stress assumptions recalculated by canonical DCF.')
+              : (isThai ? 'ข้อเท็จจริงทางการเงินมาตรฐานจากฐานข้อมูล SEC EDGAR' : 'Verified SEC canonical financial facts.')}
+          </span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors"

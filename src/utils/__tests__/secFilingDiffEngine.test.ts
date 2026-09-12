@@ -4,6 +4,7 @@ import {
   diffSecFinancialStatements,
   adaptFinancialStatementsToSecPeriodStatements,
   type SecFilingPeriodDiff,
+  type SecPeriodStatement,
 } from '../secFilingDiffEngine';
 import type { FinancialStatementsData, ReportData } from '../../types';
 import type { SecCompanyFact, SecCompanyFactsResponse, SecSubmissionsResponse, SecTickerRecord } from '../../services/sec/secClient';
@@ -188,7 +189,7 @@ describe('secFilingDiffEngine', () => {
     assert.equal(diff, null);
   });
 
-  it('adapts column-oriented FinancialStatementsData into SecPeriodStatement array', () => {
+  it('rejects raw unverified FinancialStatementsData from becoming SecPeriodStatement array', () => {
     const fs: FinancialStatementsData = {
       periods: ['2023', '2024'],
       income_statement: {
@@ -210,29 +211,53 @@ describe('secFilingDiffEngine', () => {
     };
 
     const statements = adaptFinancialStatementsToSecPeriodStatements(fs);
-    assert.equal(statements.length, 2);
-    assert.equal(statements[0].period, '2023');
-    assert.equal(statements[0].revenue, 1000);
-    assert.equal(statements[1].period, '2024');
-    assert.equal(statements[1].revenue, 1200);
-
+    assert.deepEqual(statements, [], 'Raw FinancialStatementsData without SEC provenance must return empty array');
     const diff = diffSecFinancialStatements(statements);
-    assert.ok(diff);
-    assert.equal(diff.currentPeriod, '2024');
-    assert.equal(diff.priorPeriod, '2023');
-    assert.equal(diff.comparisonType, 'annual_yoy');
-    assert.equal(diff.revenueYoYPct, 20);
+    assert.equal(diff, null, 'Unverified statements cannot produce SEC filing diff');
   });
 
-  it('adapts ReportData with SEC verification and attaches verified diluted shares', () => {
+  it('Proof 1: AI/report revenue differs from SEC revenue -> SEC Filing Diff MUST use SEC revenue', () => {
     const report: Partial<ReportData> = {
       ticker: 'AAPL',
       financial_statements: {
-        periods: ['2023', '2024'],
+        periods: ['FY2023', 'FY2024'],
         income_statement: {
-          revenue: [383285, 391035],
-          net_income: [96995, 93736],
-          eps_diluted: [6.13, 6.11],
+          revenue: [999999, 888888], // Fabricated AI values
+          net_income: [100000, 100000],
+        },
+        balance_sheet: {},
+        cash_flow: {},
+      },
+      canonical_financials: {
+        schemaVersion: '1.0',
+        ticker: 'AAPL',
+        periods: ['FY2023', 'FY2024'],
+        values: {
+          'income_statement.revenue': [
+            { period: 'FY2023', value: 383285, source: { form: '10-K', accession: '0000320193-23-000106' } },
+            { period: 'FY2024', value: 391035, source: { form: '10-K', accession: '0000320193-24-000106' } },
+          ],
+        },
+      },
+    };
+
+    const statements = adaptFinancialStatementsToSecPeriodStatements(report as ReportData);
+    assert.equal(statements.length, 2);
+    assert.equal(statements[0].revenue, 383285, 'Must use SEC revenue, not AI revenue');
+    assert.equal(statements[1].revenue, 391035, 'Must use SEC revenue, not AI revenue');
+    const diff = diffSecFinancialStatements(statements);
+    assert.ok(diff);
+    assert.equal(diff.revenueYoYPct, 2.02);
+  });
+
+  it('Proof 2: SEC verification eligible + arbitrary report financial statement values -> report values do NOT become SEC verified', () => {
+    const reportWithEligibleEnvelopeOnly: Partial<ReportData> = {
+      ticker: 'AAPL',
+      financial_statements: {
+        periods: ['FY2023', 'FY2024'],
+        income_statement: {
+          revenue: [999999, 999999],
+          net_income: [100000, 100000],
         },
         balance_sheet: {},
         cash_flow: {},
@@ -249,8 +274,8 @@ describe('secFilingDiffEngine', () => {
           generated_by: 'sec-verified-financial-inputs-v1',
           eligible: true,
           ticker: 'AAPL',
-          periods: ['2023', '2024'],
-          source_period: '2024',
+          periods: ['FY2023', 'FY2024'],
+          source_period: 'FY2024',
           latest_balance_sheet_period_end: '2024-09-30',
           share_as_of: '2024-10-18',
           starting_revenue_m: 391035,
@@ -267,14 +292,96 @@ describe('secFilingDiffEngine', () => {
       },
     };
 
-    const statements = adaptFinancialStatementsToSecPeriodStatements(report as ReportData);
-    assert.equal(statements.length, 2);
-    // Verified diluted shares mapped from net_income / eps_diluted
-    assert.ok(statements[0].diluted_shares !== null);
-    assert.ok(statements[1].diluted_shares !== null);
+    const statements = adaptFinancialStatementsToSecPeriodStatements(reportWithEligibleEnvelopeOnly as ReportData);
+    assert.deepEqual(statements, [], 'Arbitrary report financial statements must not be adapted merely because sec_verification is eligible');
+    const diff = diffSecFinancialStatements(statements);
+    assert.equal(diff, null, 'SEC filing diff must be null when canonical facts are absent');
+  });
+
+  it('Proof 3: No canonical SEC comparable periods -> SEC Filing Diff unavailable', () => {
+    const canonicalWithOnePeriod: Partial<ReportData> = {
+      ticker: 'MSFT',
+      canonical_financials: {
+        schemaVersion: '1.0',
+        ticker: 'MSFT',
+        periods: ['FY2025'],
+        values: {
+          'income_statement.revenue': [{ period: 'FY2025', value: 245123 }],
+        },
+      },
+    };
+
+    const statements = adaptFinancialStatementsToSecPeriodStatements(canonicalWithOnePeriod as ReportData);
+    assert.equal(statements.length, 1);
+    const diff = diffSecFinancialStatements(statements);
+    assert.equal(diff, null, 'Single period cannot produce comparable SEC filing diff');
+  });
+
+  it('Proof 6: SEC source metadata preserved on statements and diff payload', () => {
+    const statements: SecPeriodStatement[] = [
+      {
+        ticker: 'AAPL',
+        period: 'FY2025',
+        form: '10-K',
+        accession: '0000320193-25-000106',
+        filed_date: '2025-10-31',
+        period_end: '2025-09-30',
+        units: 'USD',
+        revenue: 400000,
+        net_income: 100000,
+        operating_cash_flow: 110000,
+      },
+      {
+        ticker: 'AAPL',
+        period: 'FY2024',
+        form: '10-K',
+        accession: '0000320193-24-000106',
+        filed_date: '2024-10-31',
+        period_end: '2024-09-30',
+        units: 'USD',
+        revenue: 390000,
+        net_income: 93000,
+        operating_cash_flow: 105000,
+      },
+    ];
+
     const diff = diffSecFinancialStatements(statements);
     assert.ok(diff);
-    assert.ok(diff.shareCountDeltaPct !== null);
+    assert.equal(diff.ticker, 'AAPL');
+    assert.equal(diff.currentFiling?.form, '10-K');
+    assert.equal(diff.currentFiling?.accession, '0000320193-25-000106');
+    assert.equal(diff.currentFiling?.filed_date, '2025-10-31');
+    assert.equal(diff.priorFiling?.form, '10-K');
+    assert.equal(diff.priorFiling?.accession, '0000320193-24-000106');
+  });
+
+  it('Cash conversion missing data semantics: missing OCF or NI returns unavailable, never healthy', () => {
+    const statementsMissingOcf: SecPeriodStatement[] = [
+      { period: 'FY2025', revenue: 1000, net_income: 200, operating_cash_flow: null },
+      { period: 'FY2024', revenue: 900, net_income: 180, operating_cash_flow: 190 },
+    ];
+    const diff = diffSecFinancialStatements(statementsMissingOcf);
+    assert.ok(diff);
+    assert.equal(diff.cashConversionStatus, 'unavailable', 'Missing OCF must return unavailable status');
+    assert.equal(diff.cashConversionSummary, 'Cash conversion unavailable — insufficient comparable OCF / Net Income data.');
+  });
+
+  it('Dilution missing data semantics: missing shares returns unavailable, near-zero returns stable', () => {
+    const statementsMissingPriorShares: SecPeriodStatement[] = [
+      { period: 'FY2025', revenue: 1000, diluted_shares: 500 },
+      { period: 'FY2024', revenue: 900, diluted_shares: null },
+    ];
+    const diffMissing = diffSecFinancialStatements(statementsMissingPriorShares);
+    assert.ok(diffMissing);
+    assert.equal(diffMissing.dilutionOrBuyback, 'unavailable', 'Missing comparable shares must return unavailable');
+
+    const statementsStableShares: SecPeriodStatement[] = [
+      { period: 'FY2025', revenue: 1000, diluted_shares: 500 },
+      { period: 'FY2024', revenue: 900, diluted_shares: 500 },
+    ];
+    const diffStable = diffSecFinancialStatements(statementsStableShares);
+    assert.ok(diffStable);
+    assert.equal(diffStable.dilutionOrBuyback, 'stable', 'Near-zero share change returns stable');
   });
 
   it('parses reverse quarterly period formats (2025-Q3 vs 2024-Q3)', () => {
@@ -461,6 +568,7 @@ describe('secFilingDiffEngine', () => {
       const diff = diffSecFinancialStatements(statementsWithOnlyLatestShares);
       assert.ok(diff);
       assert.equal(diff.shareCountDeltaPct, null, 'Missing prior diluted shares must result in null shareCountDeltaPct');
+      assert.equal(diff.dilutionOrBuyback, 'unavailable', 'Missing prior diluted shares must result in unavailable dilution status');
     });
 
     it('historical diluted shares: calculates correct shareCountDeltaPct when comparable historical diluted shares are available', () => {
