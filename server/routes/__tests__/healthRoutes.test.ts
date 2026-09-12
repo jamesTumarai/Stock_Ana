@@ -59,14 +59,42 @@ describe('Health & Observability Routes (P1-10)', () => {
     assert.equal(data.runtime, undefined);
   });
 
-  it('GET /api/health?detailed=true returns detailed system telemetry', async () => {
+  it('GET /api/health?detailed=true without authorization strictly returns minimal public JSON without leaking telemetry', async () => {
     const resp = await fetch(`http://127.0.0.1:${port}/api/health?detailed=true`);
     assert.equal(resp.status, 200);
     const data: any = await resp.json();
+    assert.equal(typeof data.ok, 'boolean');
     assert.equal(data.service, 'lumina');
-    assert.equal(data.runtime, 'express-server');
-    assert.ok(data.services.gemini !== undefined);
-    assert.ok(data.services.sec !== undefined);
-    assert.ok(data.services.firebase !== undefined);
+    assert.ok(typeof data.timestamp === 'string');
+    assert.ok(['healthy', 'degraded'].includes(data.status));
+    assert.equal(data.services, undefined);
+    assert.equal(data.system, undefined);
+    assert.equal(data.runtime, undefined);
+  });
+
+  it('GET /api/health/detailed without authorization returns HTTP 401 Unauthorized', async () => {
+    const resp = await fetch(`http://127.0.0.1:${port}/api/health/detailed`);
+    assert.equal(resp.status, 401);
+    const data: any = await resp.json();
+    assert.ok(data.error !== undefined);
+  });
+
+  it('GET /api/health?detailed=true WITH admin authorization returns detailed system telemetry', async () => {
+    const originalSecret = process.env.ADMIN_SECRET;
+    try {
+      process.env.ADMIN_SECRET = 'test-internal-secret-123';
+      const resp = await fetch(`http://127.0.0.1:${port}/api/health?detailed=true`, {
+        headers: { 'x-admin-key': 'test-internal-secret-123' },
+      });
+      assert.equal(resp.status, 200);
+      const data: any = await resp.json();
+      assert.equal(data.service, 'lumina');
+      assert.equal(data.runtime, 'express-server');
+      assert.ok(data.services.gemini !== undefined);
+      assert.ok(data.services.sec !== undefined);
+      assert.ok(data.services.firebase !== undefined);
+    } finally {
+      process.env.ADMIN_SECRET = originalSecret;
+    }
   });
 });
