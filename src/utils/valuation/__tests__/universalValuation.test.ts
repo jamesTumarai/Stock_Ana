@@ -414,6 +414,71 @@ const eligibleSecEnvelope = () => ({
   assert.ok(fintechValuation !== undefined, 'FinTech with valid relative valuation must evaluate successfully');
   assert.equal(fintechValuation.selected_model?.model_type, 'fintech_pe');
   assert.equal(fintechValuation.summary?.base_case_fair_value, 17.02);
+  assert.equal(fintechValuation.summary?.fair_value_range_low, 14.5, 'Sourced explicit range low must be preserved');
+  assert.equal(fintechValuation.summary?.fair_value_range_high, 20.0, 'Sourced explicit range high must be preserved');
+}
+
+{
+  // FinTech (SOFI) with point value only (NO source range) - must NOT synthesize +/-15% range
+  const fintechPointOnly: any = {
+    ticker: 'SOFI',
+    company_profile: { sector: 'Financial Services', industry: 'Credit Services', stock_price: 15 },
+    intrinsic_value: {
+      current_price: 15,
+      selected_model: {
+        model_type: 'fintech_pe',
+        model_name_th: 'FinTech Platform & Residual Income',
+        model_name_en: 'FinTech Platform Model',
+        sector_category: 'FinTech / Digital Banking',
+      },
+      relative_valuation: {
+        method: 'Forward P/E & Platform Multiple',
+        peer_multiple_used: 18.5,
+        metric_applied: 'Forward EPS $0.92',
+        fair_value_per_share: 17.02,
+      },
+      // Explicitly NO summary range
+    },
+  };
+  const val = buildUniversalValuationData(fintechPointOnly, 'SOFI');
+  assert.ok(val !== undefined);
+  assert.equal(val.summary?.base_case_fair_value, 17.02);
+  assert.equal(val.summary?.fair_value_range_low, null, 'fintech_pe point value without source range must have null low range');
+  assert.equal(val.summary?.fair_value_range_high, null, 'fintech_pe point value without source range must have null high range');
+}
+
+{
+  // relative_only model with point value only (NO source range) - must NOT synthesize +/-15% range
+  const relativePointOnly: any = {
+    ticker: 'RIVN',
+    company_profile: { sector: 'Consumer Cyclical', industry: 'Auto Manufacturers', stock_price: 12 },
+    intrinsic_value: {
+      current_price: 12,
+      selected_model: {
+        model_type: 'relative_only',
+        model_name_th: 'แบบจำลองมูลค่าเชิงเปรียบเทียบเท่านั้น',
+        model_name_en: 'Relative Valuation Only',
+      },
+      relative_only_model: {
+        methodology: 'Peer Multiples EV/Sales',
+        primary_metric: 'EV/Sales',
+        peer_median_multiple: 2.5,
+        applied_company_metric_value: 5000,
+        implied_enterprise_value_b: 12.5,
+        implied_equity_value_b: 11.5,
+        fair_value_per_share: 25.5,
+        peers_evaluated: [
+          { ticker: 'LCID', name: 'Lucid Group', market_cap_b: 7.2, ev_revenue_multiple: 2.3, multiple_used: 2.3, metric_type: 'EV/Sales' },
+          { ticker: 'NIO', name: 'NIO Inc', market_cap_b: 9.1, ev_revenue_multiple: 2.7, multiple_used: 2.7, metric_type: 'EV/Sales' },
+        ],
+      },
+    },
+  };
+  const val = buildUniversalValuationData(relativePointOnly, 'RIVN');
+  assert.ok(val !== undefined);
+  assert.equal(val.summary?.base_case_fair_value, 25.5);
+  assert.equal(val.summary?.fair_value_range_low, null, 'relative_only point value without source range must have null low range');
+  assert.equal(val.summary?.fair_value_range_high, null, 'relative_only point value without source range must have null high range');
 }
 
 console.log('Valuation integrity checks passed');

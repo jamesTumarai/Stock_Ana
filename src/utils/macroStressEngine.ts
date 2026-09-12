@@ -39,6 +39,9 @@ export interface MacroStressScenario {
   stressedFairValue: number | null;
   stressedMarginOfSafety: number | null;
   fairValueChangePct: number | null;
+  isAvailable?: boolean;
+  reason?: string;
+  reasonTh?: string;
   driverImpacts: {
     waccDeltaBps: number;
     growthDeltaBps: number;
@@ -308,32 +311,66 @@ export function evaluateMacroStressScenarios(
   ];
 
   const scenarios: MacroStressScenario[] = definitions.map((def) => {
-    // Parameter overrides under stress
-    const stressedWacc = Number(Math.max(4.0, waccPct + (def.waccDeltaBps / 100)).toFixed(2));
-    const stressedGrowth = Number((revenueCagrPct + (def.growthDeltaBps / 100)).toFixed(2));
-    const stressedMargin = Number(Math.max(1.0, fcfMarginPct + (def.marginDeltaBps / 100)).toFixed(2));
-    const stressedTerminalGrowth = Number(
-      Math.min(
-        stressedWacc - 0.5,
-        Math.max(0.5, terminalGrowthPct + (def.tgDeltaBps / 100))
-      ).toFixed(2)
-    );
+    // Base Case must reproduce canonical inputs exactly; stress scenarios apply deltas directly without silent clamping
+    const stressedWacc = def.id === 'base_case'
+      ? waccPct
+      : Number((waccPct + (def.waccDeltaBps / 100)).toFixed(2));
+    const stressedGrowth = def.id === 'base_case'
+      ? revenueCagrPct
+      : Number((revenueCagrPct + (def.growthDeltaBps / 100)).toFixed(2));
+    const stressedMargin = def.id === 'base_case'
+      ? fcfMarginPct
+      : Number((fcfMarginPct + (def.marginDeltaBps / 100)).toFixed(2));
+    const stressedTerminalGrowth = def.id === 'base_case'
+      ? terminalGrowthPct
+      : Number((terminalGrowthPct + (def.tgDeltaBps / 100)).toFixed(2));
+
+    // Validate mathematical validity for DCF calculation
+    let isScenarioValid = true;
+    let scenarioReason: string | undefined;
+    let scenarioReasonTh: string | undefined;
+
+    if (stressedWacc <= 0) {
+      isScenarioValid = false;
+      scenarioReason = 'Scenario discount rate (WACC) must be greater than 0%.';
+      scenarioReasonTh = 'อัตราคิดลด (WACC) ในสถานการณ์จำลองต้องมากกว่า 0%';
+    } else if (stressedTerminalGrowth < 0) {
+      isScenarioValid = false;
+      scenarioReason = 'Scenario terminal growth rate cannot be negative.';
+      scenarioReasonTh = 'อัตราการเติบโตระยะยาว (Terminal Growth) ไม่สามารถติดลบได้';
+    } else if (stressedWacc <= stressedTerminalGrowth) {
+      isScenarioValid = false;
+      scenarioReason = `Mathematically invalid: discount rate (${stressedWacc}%) must exceed terminal growth (${stressedTerminalGrowth}%).`;
+      scenarioReasonTh = `ไม่สามารถคำนวณได้ทางคณิตศาสตร์: อัตราคิดลด (${stressedWacc}%) ต้องสูงกว่าอัตราเติบโตระยะยาว (${stressedTerminalGrowth}%)`;
+    } else if (stressedMargin < -100 || stressedMargin > 100) {
+      isScenarioValid = false;
+      scenarioReason = 'Scenario margin is outside allowable range (-100% to 100%).';
+      scenarioReasonTh = 'อัตรากำไรกระแสเงินสดอยู่นอกช่วงที่กำหนด (-100% ถึง 100%)';
+    }
 
     // Strict deterministic DCF recalculation
-    const stressedFvRaw = def.id === 'base_case'
-      ? baselineFv
-      : calculateStrictDCFValue(
-          startingRevenueM,
-          sharesOutstandingM,
-          netCashM,
-          stressedWacc,
-          stressedTerminalGrowth,
-          stressedGrowth,
-          stressedMargin,
-          projectionYears
-        );
+    let stressedFvRaw: number | null = null;
+    if (isScenarioValid) {
+      stressedFvRaw = def.id === 'base_case'
+        ? baselineFv
+        : calculateStrictDCFValue(
+            startingRevenueM,
+            sharesOutstandingM,
+            netCashM,
+            stressedWacc,
+            stressedTerminalGrowth,
+            stressedGrowth,
+            stressedMargin,
+            projectionYears
+          );
+      if (!Number.isFinite(stressedFvRaw) || stressedFvRaw! <= 0) {
+        isScenarioValid = false;
+        scenarioReason = 'Stress scenario calculation produced an invalid or non-positive valuation.';
+        scenarioReasonTh = 'การคำนวณในสถานการณ์จำลองได้มูลค่าติดลบหรือไม่สามารถระบุมูลค่าได้';
+      }
+    }
 
-    const stressedFv = (Number.isFinite(stressedFvRaw) && stressedFvRaw > 0)
+    const stressedFv = (isScenarioValid && typeof stressedFvRaw === 'number' && Number.isFinite(stressedFvRaw) && stressedFvRaw > 0)
       ? Number(stressedFvRaw.toFixed(2))
       : null;
 
@@ -357,6 +394,9 @@ export function evaluateMacroStressScenarios(
       stressedFairValue: stressedFv,
       stressedMarginOfSafety: stressedMos,
       fairValueChangePct: fvChangePct,
+      isAvailable: isScenarioValid,
+      reason: scenarioReason,
+      reasonTh: scenarioReasonTh,
       driverImpacts: {
         waccDeltaBps: def.waccDeltaBps,
         growthDeltaBps: def.growthDeltaBps,
