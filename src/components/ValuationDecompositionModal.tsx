@@ -559,19 +559,23 @@ export function ValuationDecompositionModal({
                       </div>
                       <div
                         className={`text-sm font-bold font-mono ${
-                          (secDiff.shareCountDeltaPct ?? 0) < 0
+                          secDiff.shareCountDeltaPct === null
+                            ? 'text-stone-400'
+                            : secDiff.shareCountDeltaPct < 0
                             ? 'text-emerald-400'
-                            : (secDiff.shareCountDeltaPct ?? 0) > 0
+                            : secDiff.shareCountDeltaPct > 0
                             ? 'text-amber-400'
                             : 'text-stone-300'
                         }`}
                       >
                         {secDiff.shareCountDeltaPct !== null
                           ? `${secDiff.shareCountDeltaPct > 0 ? '+' : ''}${secDiff.shareCountDeltaPct}%`
-                          : 'N/A'}
+                          : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable')}
                       </div>
                       <div className="text-[10px] text-stone-500 mt-0.5">
-                        {secDiff.dilutionOrBuyback === 'buybacks'
+                        {secDiff.shareCountDeltaPct === null
+                          ? (isThai ? 'ไม่มีข้อมูลเปรียบเทียบ' : 'Unavailable')
+                          : secDiff.dilutionOrBuyback === 'buybacks'
                           ? (isThai ? 'ซื้อหุ้นคืนสุทธิ' : 'Net Buybacks')
                           : secDiff.dilutionOrBuyback === 'dilution'
                           ? (isThai ? 'จำนวนหุ้นเพิ่มขึ้น' : 'Net Dilution')
@@ -584,12 +588,12 @@ export function ValuationDecompositionModal({
                 <div className="p-8 rounded-xl bg-white/[0.02] border border-white/10 text-center space-y-2">
                   <FileSpreadsheet className="w-8 h-8 text-stone-500 mx-auto" />
                   <h4 className="text-sm font-semibold text-white">
-                    {isThai ? 'ไม่มีข้อมูลเปรียบเทียบงบ SEC ที่เข้าคู่กันได้' : 'Insufficient Comparable SEC Periods'}
+                    {isThai ? 'ไม่มีข้อมูลงบ SEC ที่เปรียบเทียบได้' : 'SEC Comparison Unavailable'}
                   </h4>
                   <p className="text-xs text-stone-400 max-w-md mx-auto">
                     {isThai
-                      ? 'ระบบต้องการงบการเงินที่เปรียบเทียบกันได้ (รอบปีต่อเนื่อง หรือไตรมาสเดียวกันของปีก่อนหน้า) เพื่อคำนวณการเติบโตและการเปลี่ยนแปลงอย่างแม่นยำ'
-                      : 'Filing comparison requires comparable historical periods (consecutive annuals or same-quarter YoY) to derive factual deltas.'}
+                      ? 'ไม่มีข้อมูลงบการเงินที่ผ่านการตรวจสอบจาก SEC หรือไม่มีงบการเงินที่เปรียบเทียบกันได้ในรอบปีต่อเนื่อง'
+                      : 'SEC comparison unavailable — no verified comparable SEC filings.'}
                   </p>
                 </div>
               )}
