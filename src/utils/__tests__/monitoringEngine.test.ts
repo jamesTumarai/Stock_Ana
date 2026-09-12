@@ -152,7 +152,7 @@ describe('monitoringEngine', () => {
       NVDA: 140  // Premium 40% (severity: warning)
     };
 
-    const readIds = new Set<string>(['MSFT-MOS-2026-03-01']);
+    const readIds = new Set<string>(['alert_MSFT_VALUATION_MOS_400_500']);
 
     const allAlerts = evaluateAllAlerts(tickers, latestReports, quotes, [], undefined, DEFAULT_MONITORING_PREFERENCES, readIds);
 
@@ -162,5 +162,116 @@ describe('monitoringEngine', () => {
     assert.equal(allAlerts[0].isRead, false);
     assert.equal(allAlerts[1].ticker, 'MSFT');
     assert.equal(allAlerts[1].isRead, true);
+  });
+
+  it('generates distinct stable fingerprints for different valuation levels', () => {
+    const report: any = {
+      ticker: 'MSFT',
+      report_date: '2026-03-01',
+      intrinsic_value: { summary: { base_case_fair_value: 500 } }
+    };
+    const alertsA = evaluateTickerAlerts('MSFT', report, 380);
+    const alertsB = evaluateTickerAlerts('MSFT', report, 350);
+
+    assert.equal(alertsA[0].id, 'alert_MSFT_VALUATION_MOS_380_500');
+    assert.equal(alertsB[0].id, 'alert_MSFT_VALUATION_MOS_350_500');
+    assert.notEqual(alertsA[0].id, alertsB[0].id);
+  });
+
+  it('suppresses SEC filing alert when previous report already cited the exact same filing', () => {
+    const prevReport: any = {
+      ticker: 'MSFT',
+      report_date: '2026-02-01',
+      findings: [
+        {
+          document_type: '10-K',
+          quarter_period: 'FY2025',
+          source_url: 'https://www.sec.gov/Archives/edgar/data/789019/0000950170-25-000100/msft-20250630.htm'
+        }
+      ]
+    };
+
+    const latestReportSameFiling: any = {
+      ticker: 'MSFT',
+      report_date: '2026-03-01',
+      findings: [
+        {
+          document_type: '10-K',
+          quarter_period: 'FY2025',
+          source_url: 'https://www.sec.gov/Archives/edgar/data/789019/0000950170-25-000100/msft-20250630.htm'
+        }
+      ]
+    };
+
+    const latestReportNewFiling: any = {
+      ticker: 'MSFT',
+      report_date: '2026-04-01',
+      findings: [
+        {
+          document_type: '10-Q',
+          quarter_period: 'Q3-2026',
+          source_url: 'https://www.sec.gov/Archives/edgar/data/789019/0000950170-26-000200/msft-20260331.htm'
+        }
+      ]
+    };
+
+    const alertsSame = evaluateTickerAlerts('MSFT', latestReportSameFiling, null, prevReport);
+    assert.equal(alertsSame.filter(a => a.type.startsWith('FILING')).length, 0);
+
+    const alertsNew = evaluateTickerAlerts('MSFT', latestReportNewFiling, null, prevReport);
+    const filingAlerts = alertsNew.filter(a => a.type.startsWith('FILING'));
+    assert.equal(filingAlerts.length, 1);
+    assert.equal(filingAlerts[0].id, 'alert_MSFT_SEC_0000950170-26-000200');
+  });
+
+  it('evaluates conviction shift accurately using canonical previous report resolution', () => {
+    const historicalReports = [
+      {
+        id: 'rep-3',
+        ticker: 'AAPL',
+        createdAt: '2026-03-01T10:00:00.000Z',
+        data: {
+          ticker: 'AAPL',
+          report_date: '2026-03-01',
+          verdict: { conviction_score: 92 }
+        }
+      },
+      {
+        id: 'rep-2',
+        ticker: 'AAPL',
+        createdAt: '2026-02-15T10:00:00.000Z',
+        data: {
+          ticker: 'AAPL',
+          report_date: '2026-02-15',
+          verdict: { conviction_score: 78 }
+        }
+      },
+      {
+        id: 'rep-1',
+        ticker: 'AAPL',
+        createdAt: '2026-01-10T10:00:00.000Z',
+        data: {
+          ticker: 'AAPL',
+          report_date: '2026-01-10',
+          verdict: { conviction_score: 70 }
+        }
+      }
+    ];
+
+    const currentLatest: any = historicalReports[0].data;
+
+    const allAlerts = evaluateAllAlerts(
+      ['AAPL'],
+      { AAPL: currentLatest },
+      {},
+      historicalReports
+    );
+
+    const convictionAlert = allAlerts.find(a => a.type === 'CONVICTION_SHIFT');
+    assert.ok(convictionAlert);
+    // Compares latest (92) against strictly previous rep-2 (78) -> +14 diff
+    assert.equal(convictionAlert?.evidence.previousValue, 78);
+    assert.equal(convictionAlert?.evidence.currentValue, 92);
+    assert.equal(convictionAlert?.id, 'alert_AAPL_CONVICTION_78_TO_92');
   });
 });

@@ -286,7 +286,7 @@ export function LandingView({
                 <button
                   onClick={onOpenAlerts}
                   className="text-white/70 hover:text-white flex items-center gap-1 cursor-pointer transition-colors text-[11px] font-medium tracking-wide relative"
-                  title={isThai ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
+                  title={isThai ? 'การตรวจสอบวิจัยและการแจ้งเตือน' : 'On-Open Research Checks & Alerts'}
                 >
                   <Bell className="w-3.5 h-3.5" strokeWidth={2} />
                   {unreadAlertsCount > 0 && (
@@ -333,7 +333,7 @@ export function LandingView({
                     padding: '0 clamp(10px, 1.2vw, 14px)',
                     fontSize: 'clamp(11.5px, 1.2vw, 13px)',
                   }}
-                  title={isThai ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
+                  title={isThai ? 'การตรวจสอบวิจัยและการแจ้งเตือน' : 'On-Open Research Checks & Alerts'}
                 >
                   <Bell className="w-3.5 h-3.5" strokeWidth={2} />
                   {unreadAlertsCount > 0 && (
@@ -502,7 +502,7 @@ export function LandingView({
                     className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-medium rounded-full text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-2 relative"
                   >
                     <Bell className="w-3.5 h-3.5" />
-                    <span>{isThai ? 'การแจ้งเตือน & เฝ้าระวัง' : 'Alerts & Monitoring'}</span>
+                    <span>{isThai ? 'การตรวจสอบวิจัย & การแจ้งเตือน' : 'On-Open Research Checks & Alerts'}</span>
                     {unreadAlertsCount > 0 && (
                       <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
                         {unreadAlertsCount}
