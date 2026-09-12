@@ -55,11 +55,14 @@ export function ValuationDecompositionModal({
     return evaluateMacroStressScenarios(currentReport, isThai);
   }, [currentReport, isThai]);
 
-  // 3. SEC YoY Diff Calculation
+  // 3. SEC YoY Diff Calculation via Comparable-Period Matching
   const secDiff: SecFilingPeriodDiff | null = useMemo(() => {
-    const annuals = (currentReport as any).financial_statements?.annual;
-    if (!Array.isArray(annuals) || annuals.length < 2) return null;
-    return diffSecFinancialStatements(annuals, isThai);
+    const fs = (currentReport as any).financial_statements;
+    const statements: any[] = [];
+    if (Array.isArray(fs?.annual)) statements.push(...fs.annual);
+    if (Array.isArray(fs?.quarterly)) statements.push(...fs.quarterly);
+    if (statements.length < 2) return null;
+    return diffSecFinancialStatements(statements, isThai);
   }, [currentReport, isThai]);
 
   if (!isOpen) return null;
@@ -401,18 +404,24 @@ export function ValuationDecompositionModal({
             <div className="space-y-4">
               {secDiff ? (
                 <>
-                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
-                    <div className="flex items-center justify-between">
+                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-emerald-400" />
                         <span className="text-xs font-semibold text-white">
-                          {isThai ? 'การตรวจสอบงบการเงิน SEC ข้ามรอบปี' : 'Verified SEC Filing Comparison'}
+                          {isThai ? 'การตรวจสอบงบการเงิน SEC ข้ามรอบระยะเวลา' : 'Verified SEC Filing Comparison'}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-medium">
+                          {secDiff.comparisonType === 'annual_yoy'
+                            ? (isThai ? 'งบประจำปีเทียบปีก่อน (Annual YoY)' : 'Annual YoY')
+                            : (isThai ? 'ไตรมาสเดียวกันเทียบปีก่อน (Same-Quarter YoY)' : 'Same-Quarter YoY')}
                         </span>
                       </div>
                       <span className="text-xs font-mono text-stone-400">
                         {secDiff.currentPeriod} vs {secDiff.priorPeriod}
                       </span>
                     </div>
+
                     <div
                       className={`text-xs p-2.5 rounded-lg border ${
                         secDiff.cashConversionStatus === 'warning'
@@ -422,9 +431,16 @@ export function ValuationDecompositionModal({
                     >
                       {secDiff.cashConversionSummary}
                     </div>
+
+                    {secDiff.workingCapitalNote && (
+                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{secDiff.workingCapitalNote}</span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Summary Metric Badges */}
+                  {/* Summary Metric Badges (2x3 or 4-column grid) */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                     <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
                       <div className="text-[10px] text-stone-500 uppercase tracking-wide">
@@ -436,6 +452,19 @@ export function ValuationDecompositionModal({
                         }`}
                       >
                         {secDiff.revenueYoYPct !== null ? `${secDiff.revenueYoYPct >= 0 ? '+' : ''}${secDiff.revenueYoYPct}%` : 'N/A'}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                      <div className="text-[10px] text-stone-500 uppercase tracking-wide">
+                        {isThai ? 'กำไรจากการดำเนินงาน' : 'Operating Income YoY'}
+                      </div>
+                      <div
+                        className={`text-sm font-bold font-mono ${
+                          (secDiff.operatingIncomeYoYPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {secDiff.operatingIncomeYoYPct !== null ? `${secDiff.operatingIncomeYoYPct >= 0 ? '+' : ''}${secDiff.operatingIncomeYoYPct}%` : 'N/A'}
                       </div>
                     </div>
 
@@ -467,6 +496,19 @@ export function ValuationDecompositionModal({
 
                     <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
                       <div className="text-[10px] text-stone-500 uppercase tracking-wide">
+                        {isThai ? 'กระแสเงินสดอิสระ FCF' : 'Free Cash Flow YoY'}
+                      </div>
+                      <div
+                        className={`text-sm font-bold font-mono ${
+                          (secDiff.fcfYoYPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {secDiff.fcfYoYPct !== null ? `${secDiff.fcfYoYPct >= 0 ? '+' : ''}${secDiff.fcfYoYPct}%` : 'N/A'}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                      <div className="text-[10px] text-stone-500 uppercase tracking-wide">
                         {isThai ? 'การเปลี่ยนแปลงมาร์จิ้น' : 'OP Margin Delta'}
                       </div>
                       <div
@@ -478,6 +520,61 @@ export function ValuationDecompositionModal({
                           ? `${secDiff.operatingMarginBpsDelta >= 0 ? '+' : ''}${secDiff.operatingMarginBpsDelta} bps`
                           : 'N/A'}
                       </div>
+                      {secDiff.operatingMarginCurrentPct !== null && secDiff.operatingMarginPriorPct !== null && (
+                        <div className="text-[10px] text-stone-500 font-mono mt-0.5">
+                          {secDiff.operatingMarginCurrentPct}% vs {secDiff.operatingMarginPriorPct}%
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                      <div className="text-[10px] text-stone-500 uppercase tracking-wide">
+                        {isThai ? 'สัดส่วน OCF / Net Income' : 'Cash Conversion Ratio'}
+                      </div>
+                      <div
+                        className={`text-sm font-bold font-mono ${
+                          (secDiff.ocfToNetIncomeRatioCurrent ?? 0) >= 1.0
+                            ? 'text-emerald-400'
+                            : (secDiff.ocfToNetIncomeRatioCurrent ?? 0) >= 0.7
+                            ? 'text-stone-300'
+                            : 'text-amber-400'
+                        }`}
+                      >
+                        {secDiff.ocfToNetIncomeRatioCurrent !== null
+                          ? `${secDiff.ocfToNetIncomeRatioCurrent.toFixed(2)}x`
+                          : 'N/A'}
+                      </div>
+                      {secDiff.ocfToNetIncomeRatioPrior !== null && (
+                        <div className="text-[10px] text-stone-500 font-mono mt-0.5">
+                          {isThai ? 'งวดก่อน: ' : 'Prior: '}{secDiff.ocfToNetIncomeRatioPrior.toFixed(2)}x
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                      <div className="text-[10px] text-stone-500 uppercase tracking-wide">
+                        {isThai ? 'การเปลี่ยนแปลงจำนวนหุ้น' : 'Share Dilution / Buyback'}
+                      </div>
+                      <div
+                        className={`text-sm font-bold font-mono ${
+                          (secDiff.shareCountDeltaPct ?? 0) < 0
+                            ? 'text-emerald-400'
+                            : (secDiff.shareCountDeltaPct ?? 0) > 0
+                            ? 'text-amber-400'
+                            : 'text-stone-300'
+                        }`}
+                      >
+                        {secDiff.shareCountDeltaPct !== null
+                          ? `${secDiff.shareCountDeltaPct > 0 ? '+' : ''}${secDiff.shareCountDeltaPct}%`
+                          : 'N/A'}
+                      </div>
+                      <div className="text-[10px] text-stone-500 mt-0.5">
+                        {secDiff.dilutionOrBuyback === 'buybacks'
+                          ? (isThai ? 'ซื้อหุ้นคืนสุทธิ' : 'Net Buybacks')
+                          : secDiff.dilutionOrBuyback === 'dilution'
+                          ? (isThai ? 'จำนวนหุ้นเพิ่มขึ้น' : 'Net Dilution')
+                          : (isThai ? 'คงที่' : 'Stable')}
+                      </div>
                     </div>
                   </div>
                 </>
@@ -485,12 +582,12 @@ export function ValuationDecompositionModal({
                 <div className="p-8 rounded-xl bg-white/[0.02] border border-white/10 text-center space-y-2">
                   <FileSpreadsheet className="w-8 h-8 text-stone-500 mx-auto" />
                   <h4 className="text-sm font-semibold text-white">
-                    {isThai ? 'ไม่มีข้อมูลเปรียบเทียบงบ SEC ครบ 2 งวด' : 'Insufficient Verified SEC Periods'}
+                    {isThai ? 'ไม่มีข้อมูลเปรียบเทียบงบ SEC ที่เข้าคู่กันได้' : 'Insufficient Comparable SEC Periods'}
                   </h4>
                   <p className="text-xs text-stone-400 max-w-md mx-auto">
                     {isThai
-                      ? 'ระบบต้องการงบการเงินอย่างน้อย 2 รอบปีเพื่อคำนวณการเติบโตและการเปลี่ยนแปลงของมาร์จิ้นอย่างแม่นยำ'
-                      : 'Filing comparison requires at least 2 historical annual filing periods to derive factual YoY deltas.'}
+                      ? 'ระบบต้องการงบการเงินที่เปรียบเทียบกันได้ (รอบปีต่อเนื่อง หรือไตรมาสเดียวกันของปีก่อนหน้า) เพื่อคำนวณการเติบโตและการเปลี่ยนแปลงอย่างแม่นยำ'
+                      : 'Filing comparison requires comparable historical periods (consecutive annuals or same-quarter YoY) to derive factual deltas.'}
                   </p>
                 </div>
               )}

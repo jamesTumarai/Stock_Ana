@@ -273,7 +273,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Added 11 regression tests in `valuationSandboxAdapter.test.ts` and updated 13 tests in `decisionEngine.test.ts`. All 74 regression test files in `src/` passing.
 - Merge SHA: `0e35cbe`.
 
-#### PR #69 — Phase 12 Deterministic Revaluation Bridge & Macro Stress Engine (PR C, P0-2, P0-3, P1-12) 🔄
+#### PR #69 — Phase 12 Deterministic Revaluation Bridge & Macro Stress Engine (PR C, P0-2, P0-3, P1-12) ✅
 - Replaced heuristic valuation sensitivity approximations (`-0.10 * prevFv`, `0.06 * prevFv`, etc.) and arbitrary 60/40 residual splits with a true Sequential Valuation Revaluation Bridge:
   - Step 0: Previous baseline model valuation $V_0$.
   - Step 1: Base Operating Revenue Fact update $V_1$.
@@ -291,6 +291,24 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Added explicit institutional labels: "System-defined illustrative stress assumptions".
 - Fixed scenario null-check crash in `dcfMathEngine.ts`.
 - Added 8 regression tests in `valuationDecompositionEngine.test.ts` and 6 tests in `macroStressEngine.test.ts`. All unit test suites passing (100%).
+- Merge SHA: `b430e0d`.
+
+#### PR #70 — SEC Filing Diff & Comparable-Period Matching (PR D, P1-1, P1-2) 🔄
+- Enforced strict Comparable Period Matching in `src/utils/secFilingDiffEngine.ts`:
+  - Parses period descriptors and normalizes statements.
+  - Matches either consecutive annuals (Annual YoY: FY2025 vs FY2024) or same quarters across consecutive fiscal years (Same-Quarter YoY: Q3 2025 vs Q3 2024).
+  - Rejects mixed comparisons (e.g. Q3 vs FY2024) and fails closed (`null`).
+  - Chronological sorting independence: correctly compares the two latest periods regardless of whether inputs are sorted ascending or descending.
+- Grounded Cash Conversion Analysis in empirical accounting metrics:
+  - Cash Conversion Ratio = Operating Cash Flow / Net Income ($OCF / NI$).
+  - Evaluates conversion quality ($\ge 1.0$x healthy, $< 0.70$x warning, negative OCF with positive Net Income flagged as severe divergence).
+  - Removed speculative qualitative guessing ("อาจเกิดจากการสะสมลูกหนี้หรือสินค้าคงคลัง").
+  - Factual Working Capital expansion check: only flags accounts receivable if A/R growth expanded $> 10\%$ faster than revenue growth based on verified balance sheet items.
+- Enhanced Tab 3 in `ValuationDecompositionModal.tsx`:
+  - Added Comparison Type badge (`Annual YoY` vs `Same-Quarter YoY`).
+  - Added FCF YoY, Cash Conversion Ratio ($OCF/NI$), Operating Margin bps delta, and Share count dilution/buyback badges.
+  - Added display for factual working capital divergence alerts.
+- Added 9 unit tests in `src/utils/__tests__/secFilingDiffEngine.test.ts`. All unit tests passing.
 
 ## Current production health
 
