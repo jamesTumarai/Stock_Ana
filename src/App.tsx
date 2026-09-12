@@ -28,7 +28,8 @@ import {
   saveReadAlertIds,
   evaluateAllAlerts
 } from './utils/monitoringEngine';
-import { loadLocalWatchlist, loadLocalPortfolio } from './utils/portfolioEngine';
+import { loadLocalWatchlist, loadLocalPortfolio, calculatePortfolioSummary } from './utils/portfolioEngine';
+import { unwrapHistoryRecord } from './utils/researchTimeline';
 import { SubscriptionModal } from './components/SubscriptionModal';
 import {
   getActiveSubscriptionTier,
@@ -177,13 +178,15 @@ export default function App() {
   const [monitoringPreferences, setMonitoringPreferences] = useState(() => loadMonitoringPreferences(user?.uid));
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(() => loadReadAlertIds(user?.uid));
 
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, { price?: number }>>({});
+
   // Memoized ticker to latest report mapping for portfolio valuation intelligence
   const reportsByTicker = React.useMemo(() => {
     const map: Record<string, any> = {};
     for (const r of historyReports) {
-      const t = (r.ticker || r.data?.ticker || '').toUpperCase().trim();
-      if (t && !map[t]) {
-        map[t] = r.data || r;
+      const unwrapped = unwrapHistoryRecord(r);
+      if (unwrapped?.ticker && !map[unwrapped.ticker]) {
+        map[unwrapped.ticker] = unwrapped.data;
       }
     }
     if (currentReport?.ticker) {
@@ -191,6 +194,46 @@ export default function App() {
     }
     return map;
   }, [historyReports, currentReport]);
+
+  // Fetch live quotes for monitored tickers on open and state changes
+  useEffect(() => {
+    const watchlist = loadLocalWatchlist(user?.uid);
+    const portfolio = loadLocalPortfolio(user?.uid);
+    const tracked = Array.from(new Set([
+      ...watchlist,
+      ...portfolio.map(h => h.ticker),
+      ...historyReports.map(r => r.ticker || r.data?.ticker || ''),
+      ...(ticker ? [ticker] : [])
+    ])).map(t => t.toUpperCase().trim()).filter(Boolean);
+
+    if (tracked.length === 0) return;
+
+    let isMounted = true;
+    fetchLiveQuotes(tracked)
+      .then(res => {
+        if (!isMounted || !res?.quotes) return;
+        const mapped: Record<string, { price?: number }> = {};
+        for (const [sym, q] of Object.entries(res.quotes)) {
+          if (typeof q?.price === 'number') {
+            mapped[sym.toUpperCase().trim()] = { price: q.price };
+          }
+        }
+        setLiveQuotes(prev => ({ ...prev, ...mapped }));
+      })
+      .catch(err => {
+        console.warn('App: failed to fetch live quotes for tracked tickers', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.uid, historyReports, ticker, isPortfolioOpen, isAlertsOpen]);
+
+  // Calculate portfolio summary for concentration alert and portfolio overview
+  const portfolioSummary = React.useMemo(() => {
+    const portfolio = loadLocalPortfolio(user?.uid);
+    return calculatePortfolioSummary(portfolio, liveQuotes, reportsByTicker);
+  }, [user?.uid, liveQuotes, reportsByTicker, isPortfolioOpen]);
 
   const alerts = React.useMemo(() => {
     const watchlist = loadLocalWatchlist(user?.uid);
@@ -200,18 +243,18 @@ export default function App() {
       ...portfolio.map(h => h.ticker),
       ...historyReports.map(r => r.ticker || r.data?.ticker || ''),
       ...(ticker ? [ticker] : [])
-    ])).filter(Boolean);
+    ])).map(t => t.toUpperCase().trim()).filter(Boolean);
 
     return evaluateAllAlerts(
       tracked,
       reportsByTicker,
-      {},
+      liveQuotes,
       historyReports,
-      undefined,
+      portfolioSummary,
       monitoringPreferences,
       readAlertIds
     );
-  }, [user?.uid, reportsByTicker, historyReports, ticker, monitoringPreferences, readAlertIds]);
+  }, [user?.uid, reportsByTicker, liveQuotes, historyReports, portfolioSummary, ticker, monitoringPreferences, readAlertIds, isPortfolioOpen]);
 
   const unreadAlertsCount = React.useMemo(() => alerts.filter(a => !a.isRead).length, [alerts]);
 
@@ -794,6 +837,7 @@ export default function App() {
               setTicker(selectedTicker);
               setIsPortfolioOpen(false);
             }}
+            quotes={liveQuotes}
             latestReports={reportsByTicker}
           />
         )}
@@ -978,7 +1022,7 @@ export default function App() {
                 <button
                   onClick={() => setIsAlertsOpen(true)}
                   className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
-                  title={selectedLanguage === 'Thai' ? 'การแจ้งเตือน' : 'Alerts & Monitoring'}
+                  title={selectedLanguage === 'Thai' ? 'การตรวจสอบวิจัยและการแจ้งเตือน' : 'On-Open Research Checks & Alerts'}
                 >
                   <Bell className="w-[18px] h-[18px]" strokeWidth={2} />
                   {unreadAlertsCount > 0 && (

@@ -217,9 +217,10 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Holdings tracking with live valuation, P/L, concentration risk warnings (weight >= 30%), and portfolio-weighted Margin of Safety.
 - Delivered factual mathematical deltas for "What Changed" since prior analysis without AI narrative invention.
 
-### Phase 8 — Monitoring & Alerts ✅
-- Built `monitoringEngine.ts` with configurable materiality thresholds.
-- Alerts for valuation breaches, overvalued warnings, conviction score shifts (>= 10 pts), new SEC filings (10-K, 10-Q, 8-K), and portfolio concentration risk.
+### Phase 8 — On-Open Research Checks & Alerts (Monitoring Engine) ✅
+- Built `monitoringEngine.ts` with configurable materiality thresholds and stable event fingerprinting (`alert_${ticker}_${type}_${metric}`).
+- Client-evaluated on application open and watchlist/portfolio state changes with real market quotes (`liveQuotes`) and dynamically derived `portfolioSummary`.
+- Alerts for valuation breaches, overvalued warnings, conviction score shifts (>= 10 pts using canonical `getPreviousReport`), new SEC filings (accession-verified, duplicate citations suppressed), and portfolio concentration risk.
 - Interactive `AlertsModal.tsx` with filter tabs, unread indicators, and threshold controls.
 
 ### Phase 9 — Comparison & Decision Tools ✅

@@ -109,14 +109,14 @@ export function AlertsModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 id="alerts-modal-title" className="text-xl font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] tracking-tight">
-                  {isThai ? 'การแจ้งเตือนและการติดตาม' : 'Institutional Alerts & Monitoring'}
+                  {isThai ? 'การตรวจสอบวิจัยและการแจ้งเตือน' : 'On-Open Research Checks & Alerts'}
                 </h2>
                 <ProvenanceBadge classification="calculated" isThai={isThai} size="xs" />
               </div>
               <p className="text-xs text-stone-500 font-sans">
                 {isThai
-                  ? `ระบบตรวจสอบความปลอดภัย มูลค่า และเอกสาร SEC สำหรับหุ้นใน Watchlist & พอร์ต`
-                  : `Automated materiality & evidence tracking across your watchlist & holdings`}
+                  ? `ระบบตรวจสอบความปลอดภัย มูลค่า และเอกสาร SEC เมื่อเปิดแอป อิงข้อมูลราคาตลาดและรายงานจริง`
+                  : `Evaluated dynamically from live market quotes and verified research reports when the application is opened`}
               </p>
             </div>
           </div>

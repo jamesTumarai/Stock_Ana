@@ -2,9 +2,16 @@ import {
   MonitoringAlert,
   MonitoringPreferences,
   PortfolioSummary,
-  ReportData
+  ReportData,
+  DocumentFinding
 } from '../types';
-import { extractReportDate, extractReportPrice, extractReportFairValue, extractReportConviction } from './researchTimeline';
+import {
+  extractReportDate,
+  extractReportPrice,
+  extractReportFairValue,
+  extractReportConviction,
+  getPreviousReport
+} from './researchTimeline';
 
 export const DEFAULT_MONITORING_PREFERENCES: MonitoringPreferences = {
   enableMosAlerts: true,
@@ -19,11 +26,28 @@ export const DEFAULT_MONITORING_PREFERENCES: MonitoringPreferences = {
 
 export const ALERTS_PREFS_KEY = 'lumina_monitoring_prefs';
 export const ALERTS_READ_KEY = 'lumina_read_alert_ids';
+export const LAST_SEEN_FILING_KEY = 'lumina_last_seen_filing';
+
+function getSafeLocalStorage(): Storage | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage;
+    }
+    if (typeof localStorage !== 'undefined') {
+      return localStorage;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export function loadMonitoringPreferences(userId?: string): MonitoringPreferences {
+  const storage = getSafeLocalStorage();
+  if (!storage) return { ...DEFAULT_MONITORING_PREFERENCES };
   try {
     const key = userId ? `${ALERTS_PREFS_KEY}_${userId}` : ALERTS_PREFS_KEY;
-    const raw = localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (!raw) return { ...DEFAULT_MONITORING_PREFERENCES };
     const parsed = JSON.parse(raw);
     return { ...DEFAULT_MONITORING_PREFERENCES, ...parsed };
@@ -33,18 +57,22 @@ export function loadMonitoringPreferences(userId?: string): MonitoringPreference
 }
 
 export function saveMonitoringPreferences(prefs: MonitoringPreferences, userId?: string): void {
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
   try {
     const key = userId ? `${ALERTS_PREFS_KEY}_${userId}` : ALERTS_PREFS_KEY;
-    localStorage.setItem(key, JSON.stringify(prefs));
+    storage.setItem(key, JSON.stringify(prefs));
   } catch (e) {
     console.warn('Failed to save monitoring preferences:', e);
   }
 }
 
 export function loadReadAlertIds(userId?: string): Set<string> {
+  const storage = getSafeLocalStorage();
+  if (!storage) return new Set<string>();
   try {
     const key = userId ? `${ALERTS_READ_KEY}_${userId}` : ALERTS_READ_KEY;
-    const raw = localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (!raw) return new Set<string>();
     const parsed = JSON.parse(raw);
     return new Set(Array.isArray(parsed) ? parsed : []);
@@ -54,12 +82,64 @@ export function loadReadAlertIds(userId?: string): Set<string> {
 }
 
 export function saveReadAlertIds(readIds: Set<string>, userId?: string): void {
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
   try {
     const key = userId ? `${ALERTS_READ_KEY}_${userId}` : ALERTS_READ_KEY;
-    localStorage.setItem(key, JSON.stringify(Array.from(readIds)));
+    storage.setItem(key, JSON.stringify(Array.from(readIds)));
   } catch (e) {
     console.warn('Failed to save read alerts:', e);
   }
+}
+
+export function getLastSeenAccession(ticker: string, userId?: string): string | null {
+  const storage = getSafeLocalStorage();
+  if (!storage) return null;
+  try {
+    const key = userId ? `${LAST_SEEN_FILING_KEY}_${userId}` : LAST_SEEN_FILING_KEY;
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed[ticker.toUpperCase().trim()] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastSeenAccession(ticker: string, accession: string, userId?: string): void {
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
+  try {
+    const key = userId ? `${LAST_SEEN_FILING_KEY}_${userId}` : LAST_SEEN_FILING_KEY;
+    const raw = storage.getItem(key);
+    const map = raw ? JSON.parse(raw) : {};
+    map[ticker.toUpperCase().trim()] = accession;
+    storage.setItem(key, JSON.stringify(map));
+  } catch (e) {
+    console.warn('Failed to save last seen accession:', e);
+  }
+}
+
+/**
+ * Extracts a normalized, reliable filing identifier (accession number or docType + period) from a DocumentFinding.
+ */
+export function extractFilingIdentifier(finding: DocumentFinding): string {
+  const directAcc = (finding as any).accession_number || (finding as any).accessionNumber;
+  if (typeof directAcc === 'string' && directAcc.trim()) {
+    return directAcc.trim();
+  }
+
+  const url = finding.source_url || finding.sourceUrl || '';
+  if (url) {
+    const matchHyphen = url.match(/\b\d{10}-\d{2}-\d{6}\b/);
+    if (matchHyphen) return matchHyphen[0];
+    const matchEdgar = url.match(/data\/\d+\/([0-9a-zA-Z-]+)/);
+    if (matchEdgar && matchEdgar[1]) return matchEdgar[1];
+  }
+
+  const docType = (finding.document_type || finding.documentType || 'SEC').replace(/[^a-zA-Z0-9]/g, '');
+  const period = (finding.quarter_period || finding.date || (finding as any).period || '').replace(/[^a-zA-Z0-9]/g, '');
+  return `${docType}_${period || 'UNKNOWN'}`;
 }
 
 export function evaluateTickerAlerts(
@@ -90,8 +170,9 @@ export function evaluateTickerAlerts(
       // Margin of Safety Threshold Breach
       if (preferences.enableMosAlerts && mosPct >= preferences.mosThresholdPct) {
         const isDeepDiscount = mosPct >= 35;
+        const alertId = `alert_${cleanTicker}_VALUATION_MOS_${Math.round(price)}_${Math.round(fairValue)}`;
         alerts.push({
-          id: `${cleanTicker}-MOS-${repDate}`,
+          id: alertId,
           ticker: cleanTicker,
           type: 'VALUATION_MOS_BREACH',
           severity: isDeepDiscount ? 'critical' : 'info',
@@ -115,8 +196,9 @@ export function evaluateTickerAlerts(
       // Overvalued / Premium Alert
       if (preferences.enableOvervaluedAlerts && price > fairValue * 1.15) {
         const premiumPct = Number((((price - fairValue) / fairValue) * 100).toFixed(1));
+        const alertId = `alert_${cleanTicker}_VALUATION_OVERVALUED_${Math.round(price)}_${Math.round(fairValue)}`;
         alerts.push({
-          id: `${cleanTicker}-OVERVALUED-${repDate}`,
+          id: alertId,
           ticker: cleanTicker,
           type: 'VALUATION_OVERVALUED',
           severity: 'warning',
@@ -146,8 +228,9 @@ export function evaluateTickerAlerts(
         const pointsDiff = curConviction - prevConviction;
         if (Math.abs(pointsDiff) >= preferences.convictionThresholdPoints) {
           const isUpgrade = pointsDiff > 0;
+          const alertId = `alert_${cleanTicker}_CONVICTION_${prevConviction}_TO_${curConviction}`;
           alerts.push({
-            id: `${cleanTicker}-CONVICTION-${repDate}`,
+            id: alertId,
             ticker: cleanTicker,
             type: 'CONVICTION_SHIFT',
             severity: isUpgrade ? 'info' : 'warning',
@@ -170,9 +253,8 @@ export function evaluateTickerAlerts(
       }
     }
 
-    // 3. SEC Filing Alerts
+    // 3. SEC Filing Alerts (Accession & period verified; suppresses duplicate static citations)
     if (preferences.enableFilingAlerts && latestReport.findings && latestReport.findings.length > 0) {
-      // Find latest 10-K or 10-Q filing finding
       const majorFilingFinding = latestReport.findings.find(f => {
         const doc = (f.document_type || f.documentType || '').toUpperCase();
         return doc.includes('10-K') || doc.includes('10-Q') || doc.includes('8-K');
@@ -181,30 +263,48 @@ export function evaluateTickerAlerts(
       if (majorFilingFinding) {
         const docType = majorFilingFinding.document_type || majorFilingFinding.documentType || 'SEC Filing';
         const is8K = docType.toUpperCase().includes('8-K');
-        const filingDate = majorFilingFinding.quarter_period || majorFilingFinding.date || repDate;
-        const msg = majorFilingFinding.key_insights?.[0] || majorFilingFinding.keyInsights?.[0] || `Verified SEC ${docType} filing incorporated into research model.`;
+        const filingDate = majorFilingFinding.quarter_period || majorFilingFinding.date || (majorFilingFinding as any).period || repDate;
+        const filingIdentifier = extractFilingIdentifier(majorFilingFinding);
 
-        alerts.push({
-          id: `${cleanTicker}-FILING-${filingDate}`,
-          ticker: cleanTicker,
-          type: is8K ? 'FILING_MATERIAL_8K' : 'FILING_NEW_10K_10Q',
-          severity: is8K ? 'warning' : 'info',
-          title: `New SEC Filing: ${cleanTicker} ${docType}`,
-          titleTh: `เอกสาร SEC ใหม่: ${cleanTicker} รายงาน ${docType}`,
-          message: msg,
-          messageTh: msg,
-          timestamp: Date.now(),
-          dateStr: repDate,
-          isRead: false,
-          evidence: {
-            metricName: 'SEC Filing Citation',
-            currentValue: docType,
-            filingType: docType,
-            filingDate: filingDate,
-            sourceUrl: majorFilingFinding.source_url || majorFilingFinding.sourceUrl
-          },
-          linkSection: 'section-citations'
-        });
+        // Suppress alert if previousReport already incorporated this exact filing
+        let isAlreadyCitedInPrevious = false;
+        if (previousReport?.findings && previousReport.findings.length > 0) {
+          isAlreadyCitedInPrevious = previousReport.findings.some(pf => {
+            const pId = extractFilingIdentifier(pf);
+            return pId === filingIdentifier;
+          });
+        }
+
+        if (!isAlreadyCitedInPrevious) {
+          const msg = majorFilingFinding.key_insights?.[0] ||
+            majorFilingFinding.keyInsights?.[0] ||
+            (majorFilingFinding as any).finding ||
+            `Verified SEC ${docType} filing incorporated into research model.`;
+          const cleanFilingKey = filingIdentifier.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const alertId = `alert_${cleanTicker}_SEC_${cleanFilingKey}`;
+
+          alerts.push({
+            id: alertId,
+            ticker: cleanTicker,
+            type: is8K ? 'FILING_MATERIAL_8K' : 'FILING_NEW_10K_10Q',
+            severity: is8K ? 'warning' : 'info',
+            title: `New SEC Filing: ${cleanTicker} ${docType}`,
+            titleTh: `เอกสาร SEC ใหม่: ${cleanTicker} รายงาน ${docType}`,
+            message: msg,
+            messageTh: msg,
+            timestamp: Date.now(),
+            dateStr: repDate,
+            isRead: false,
+            evidence: {
+              metricName: 'SEC Filing Citation',
+              currentValue: docType,
+              filingType: docType,
+              filingDate: filingDate,
+              sourceUrl: majorFilingFinding.source_url || majorFilingFinding.sourceUrl
+            },
+            linkSection: 'section-citations'
+          });
+        }
       }
     }
   }
@@ -213,8 +313,9 @@ export function evaluateTickerAlerts(
   if (preferences.enableConcentrationAlerts && portfolioSummary) {
     const holding = portfolioSummary.computed_holdings.find(h => h.ticker.toUpperCase() === cleanTicker);
     if (holding && holding.allocation_pct >= preferences.concentrationThresholdPct) {
+      const alertId = `alert_${cleanTicker}_CONCENTRATION_${Math.round(holding.allocation_pct)}`;
       alerts.push({
-        id: `${cleanTicker}-CONCENTRATION-${todayDate}`,
+        id: alertId,
         ticker: cleanTicker,
         type: 'PORTFOLIO_CONCENTRATION',
         severity: 'warning',
@@ -259,14 +360,8 @@ export function evaluateAllAlerts(
         ? rawQuote.price
         : null;
 
-    // Find previous report for this ticker
-    const pastForTicker = historicalReports.filter(r => {
-      const t = (r.ticker || r.data?.ticker || '').toUpperCase().trim();
-      const d = extractReportDate(r);
-      const curD = report ? extractReportDate(report) : '';
-      return t === ticker && d !== curD;
-    });
-    const prevReport = pastForTicker.length > 0 ? (pastForTicker[0].data || pastForTicker[0]) : undefined;
+    // Use canonical getPreviousReport from researchTimeline
+    const prevReport = getPreviousReport(ticker, historicalReports, report) || undefined;
 
     const tickerAlerts = evaluateTickerAlerts(
       ticker,
