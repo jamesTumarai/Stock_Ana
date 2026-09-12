@@ -40,9 +40,11 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
   if (!isFiniteNumber(gPct) || gPct < 0 || gPct >= rPct) return undefined;
 
   // If dividend is not positive, attempt derivation from BVPS * ROE * Payout
+  let isDerivedDividend = false;
   if (!isFinitePositive(d0)) {
     if (isFinitePositive(bvps) && isFinitePositive(roePct) && isFinitePositive(payoutPct) && payoutPct <= 100) {
       d0 = Number((bvps * (roePct / 100) * (payoutPct / 100)).toFixed(2));
+      isDerivedDividend = true;
     }
   }
 
@@ -98,6 +100,8 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
   const hasExplicitBear = isFiniteNumber(source.scenarios?.bear?.terminal_growth_pct) && isFinitePositive(source.scenarios?.bear?.cost_of_equity_pct);
   const hasExplicitBull = isFiniteNumber(source.scenarios?.bull?.terminal_growth_pct) && isFinitePositive(source.scenarios?.bull?.cost_of_equity_pct);
 
+  const dividendProvenance = isDerivedDividend ? 'source_assumption' : 'verified_company_fact';
+
   const baseScenario: DDMScenario = {
     dividend_growth_rate_pct: gPct,
     cost_of_equity_pct: rPct,
@@ -105,7 +109,12 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
     terminal_payout_ratio_pct: isFinitePositive(payoutPct) ? payoutPct : null,
     fair_value_per_share: baseFairValue,
     key_assumption_note: source.scenarios?.base?.key_assumption_note || `Ke=${rPct}%, g=${gPct}%, D0=$${d0.toFixed(2)}`,
-    source_type: 'verified_dividend'
+    source_type: (source.scenarios?.base?.source_type && source.scenarios.base.source_type !== ('verified_dividend' as any))
+      ? source.scenarios.base.source_type
+      : 'source_assumption',
+    dividend_provenance: dividendProvenance,
+    growth_provenance: 'source_assumption',
+    ke_provenance: 'source_assumption',
   };
 
   const bearScenario: DDMScenario = {
@@ -117,7 +126,14 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
       : (isFinitePositive(payoutPct) ? Math.max(20, payoutPct - 10) : null),
     fair_value_per_share: bearFairValue,
     key_assumption_note: source.scenarios?.bear?.key_assumption_note || `Ke=${bearR_pct}%, g=${bearG_pct}% (illustrative stress)`,
-    source_type: hasExplicitBear ? 'verified_dividend' : 'system_illustrative'
+    source_type: hasExplicitBear
+      ? ((source.scenarios?.bear?.source_type && source.scenarios.bear.source_type !== ('verified_dividend' as any))
+          ? source.scenarios.bear.source_type
+          : 'source_assumption')
+      : 'system_illustrative',
+    dividend_provenance: dividendProvenance,
+    growth_provenance: hasExplicitBear ? 'source_assumption' : 'system_illustrative',
+    ke_provenance: hasExplicitBear ? 'source_assumption' : 'system_illustrative',
   };
 
   const bullScenario: DDMScenario = {
@@ -129,7 +145,14 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
       : (isFinitePositive(payoutPct) ? Math.min(90, payoutPct + 10) : null),
     fair_value_per_share: bullFairValue,
     key_assumption_note: source.scenarios?.bull?.key_assumption_note || `Ke=${bullR_pct}%, g=${bullG_pct}% (illustrative expansion)`,
-    source_type: hasExplicitBull ? 'verified_dividend' : 'system_illustrative'
+    source_type: hasExplicitBull
+      ? ((source.scenarios?.bull?.source_type && source.scenarios.bull.source_type !== ('verified_dividend' as any))
+          ? source.scenarios.bull.source_type
+          : 'source_assumption')
+      : 'system_illustrative',
+    dividend_provenance: dividendProvenance,
+    growth_provenance: hasExplicitBull ? 'source_assumption' : 'system_illustrative',
+    ke_provenance: hasExplicitBull ? 'source_assumption' : 'system_illustrative',
   };
 
   return {
@@ -138,7 +161,10 @@ export function calculateDDMModel(data?: Partial<ReportData>): DDMModel | undefi
       terminal_growth_pct: gPct,
       current_dividend_per_share: d0,
       current_payout_ratio_pct: isFinitePositive(payoutPct) ? payoutPct : null,
-      current_roe_pct: isFinitePositive(roePct) ? roePct : null
+      current_roe_pct: isFinitePositive(roePct) ? roePct : null,
+      dividend_provenance: dividendProvenance,
+      ke_provenance: 'source_assumption',
+      terminal_growth_provenance: 'source_assumption',
     },
     scenarios: {
       bear: bearScenario,

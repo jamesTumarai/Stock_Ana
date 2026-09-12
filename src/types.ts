@@ -326,6 +326,13 @@ export interface DCFModel {
   };
 }
 
+export type ValuationAssumptionProvenance =
+  | 'verified_company_fact'
+  | 'source_assumption'
+  | 'ai_assumption'
+  | 'user_assumption'
+  | 'system_illustrative';
+
 export interface DDMScenario {
   dividend_growth_rate_pct: number;
   cost_of_equity_pct?: number;
@@ -333,7 +340,10 @@ export interface DDMScenario {
   terminal_payout_ratio_pct: number | null;
   fair_value_per_share: number;
   key_assumption_note: string;
-  source_type?: 'verified_dividend' | 'system_illustrative';
+  source_type?: ValuationAssumptionProvenance | 'verified_dividend';
+  dividend_provenance?: ValuationAssumptionProvenance;
+  growth_provenance?: ValuationAssumptionProvenance;
+  ke_provenance?: ValuationAssumptionProvenance;
 }
 
 export interface DDMModel {
@@ -343,6 +353,9 @@ export interface DDMModel {
     current_dividend_per_share: number;
     current_payout_ratio_pct: number | null;
     current_roe_pct: number | null;
+    dividend_provenance?: ValuationAssumptionProvenance;
+    ke_provenance?: ValuationAssumptionProvenance;
+    terminal_growth_provenance?: ValuationAssumptionProvenance;
   };
   scenarios: {
     bear: DDMScenario;
