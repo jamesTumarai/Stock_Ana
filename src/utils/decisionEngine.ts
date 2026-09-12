@@ -6,9 +6,12 @@ import {
   ReverseDcfResult,
   PeerNormalizedMetric
 } from '../types';
+import { calculateStrictDCFValue } from './valuation/dcfMathEngine';
+import type { CanonicalValuationSandboxInputs } from './valuationSandboxAdapter';
 
 /**
- * Standard Gordon Growth / DCF Enterprise Value Per Share calculation
+ * Standard Gordon Growth / DCF Enterprise Value Per Share calculation.
+ * Note: Requires verified explicit inputs; never assumes default WACC or terminal growth.
  */
 export function calculateDcfPerShare(
   baseFcfPerShare: number,
@@ -17,7 +20,18 @@ export function calculateDcfPerShare(
   terminalGrowthPct: number,
   projectionYears: number = 5
 ): number {
-  if (baseFcfPerShare <= 0 || discountRatePct <= terminalGrowthPct) return 0;
+  if (
+    !Number.isFinite(baseFcfPerShare) ||
+    !Number.isFinite(growthRatePct) ||
+    !Number.isFinite(discountRatePct) ||
+    !Number.isFinite(terminalGrowthPct) ||
+    baseFcfPerShare <= 0 ||
+    discountRatePct <= 0 ||
+    terminalGrowthPct < 0 ||
+    discountRatePct <= terminalGrowthPct
+  ) {
+    return 0;
+  }
 
   const r = discountRatePct / 100;
   const g = growthRatePct / 100;
@@ -40,15 +54,27 @@ export function calculateDcfPerShare(
 }
 
 /**
- * Generates Bear, Base, and Bull scenario fair values deterministically
+ * Generates Bear, Base, and Bull scenario fair values deterministically.
+ * Requires all verified base inputs explicitly; zero fabricated defaults.
  */
 export function generateValuationScenarios(
   baseFcfPerShare: number,
   currentPrice: number,
-  baseGrowthPct: number = 10,
-  baseWaccPct: number = 9.0,
-  baseTerminalGrowthPct: number = 2.5
+  baseGrowthPct: number,
+  baseWaccPct: number,
+  baseTerminalGrowthPct: number
 ): ValuationScenario[] {
+  if (
+    !Number.isFinite(baseFcfPerShare) || baseFcfPerShare <= 0 ||
+    !Number.isFinite(currentPrice) || currentPrice <= 0 ||
+    !Number.isFinite(baseGrowthPct) ||
+    !Number.isFinite(baseWaccPct) || baseWaccPct <= 0 ||
+    !Number.isFinite(baseTerminalGrowthPct) || baseTerminalGrowthPct < 0 ||
+    baseWaccPct <= baseTerminalGrowthPct
+  ) {
+    return [];
+  }
+
   const scenariosConfig = [
     {
       name: 'bear' as const,
@@ -103,15 +129,30 @@ export function generateValuationScenarios(
 }
 
 /**
- * Computes a 2D Sensitivity Matrix varying WACC discount rates and Terminal Growth rates
+ * Computes a 2D Sensitivity Matrix varying WACC discount rates and Terminal Growth rates.
+ * Requires all verified inputs explicitly; zero fabricated defaults.
  */
 export function computeSensitivityMatrix(
   baseFcfPerShare: number,
   currentPrice: number,
-  baseWaccPct: number = 9.0,
-  baseTerminalGrowthPct: number = 2.5,
-  growthRatePct: number = 10
+  baseWaccPct: number,
+  baseTerminalGrowthPct: number,
+  growthRatePct: number
 ): SensitivityMatrix {
+  if (
+    !Number.isFinite(baseFcfPerShare) || baseFcfPerShare <= 0 ||
+    !Number.isFinite(currentPrice) || currentPrice <= 0 ||
+    !Number.isFinite(baseWaccPct) || baseWaccPct <= 0 ||
+    !Number.isFinite(baseTerminalGrowthPct) || baseTerminalGrowthPct < 0 ||
+    !Number.isFinite(growthRatePct)
+  ) {
+    return {
+      discountRates: [],
+      terminalGrowthRates: [],
+      cells: []
+    };
+  }
+
   const discountRates = [
     Number((baseWaccPct - 1.5).toFixed(1)),
     Number((baseWaccPct - 0.75).toFixed(1)),
@@ -126,7 +167,7 @@ export function computeSensitivityMatrix(
     baseTerminalGrowthPct,
     Number((baseTerminalGrowthPct + 0.5).toFixed(1)),
     Number((baseTerminalGrowthPct + 1.0).toFixed(1))
-  ].filter(g => g > 0);
+  ].filter(g => g >= 0);
 
   const cells: SensitivityCell[][] = discountRates.map(wacc => {
     return terminalGrowthRates.map(tg => {
@@ -156,26 +197,33 @@ export function computeSensitivityMatrix(
 
 /**
  * Reverse DCF: Back-solves for the implied annual FCF growth rate (g)
- * priced into the current stock price
+ * priced into the current stock price.
+ * Descriptive language only; never claims speculative probabilities.
  */
 export function calculateReverseDcf(
   currentPrice: number,
   baseFcfPerShare: number,
-  discountRatePct: number = 9.0,
-  terminalGrowthPct: number = 2.5,
+  discountRatePct: number,
+  terminalGrowthPct: number,
   projectionYears: number = 5
 ): ReverseDcfResult {
-  if (currentPrice <= 0 || baseFcfPerShare <= 0 || discountRatePct <= terminalGrowthPct) {
+  if (
+    !Number.isFinite(currentPrice) || currentPrice <= 0 ||
+    !Number.isFinite(baseFcfPerShare) || baseFcfPerShare <= 0 ||
+    !Number.isFinite(discountRatePct) || discountRatePct <= 0 ||
+    !Number.isFinite(terminalGrowthPct) || terminalGrowthPct < 0 ||
+    discountRatePct <= terminalGrowthPct
+  ) {
     return {
-      currentPrice,
-      baseFcfPerShare,
-      discountRatePct,
-      terminalGrowthPct,
+      currentPrice: Number.isFinite(currentPrice) ? currentPrice : 0,
+      baseFcfPerShare: Number.isFinite(baseFcfPerShare) ? baseFcfPerShare : 0,
+      discountRatePct: Number.isFinite(discountRatePct) ? discountRatePct : 0,
+      terminalGrowthPct: Number.isFinite(terminalGrowthPct) ? terminalGrowthPct : 0,
       projectionYears,
       impliedGrowthPct: 0,
       isHurdleHigh: false,
-      assessment: 'Unable to calculate reverse DCF with negative or zero inputs.',
-      assessmentTh: 'ไม่สามารถคำนวณ Reverse DCF ได้เนื่องจากกระแสเงินสดหรือราคาเป็นศูนย์/ติดลบ'
+      assessment: 'Unable to calculate reverse DCF: missing or invalid verified inputs.',
+      assessmentTh: 'ไม่สามารถคำนวณ Reverse DCF ได้เนื่องจากข้อมูลไม่ครบถ้วนหรือไม่ถูกต้อง'
     };
   }
 
@@ -208,24 +256,10 @@ export function calculateReverseDcf(
   }
 
   impliedG = Number(impliedG.toFixed(1));
-
-  let assessment = '';
-  let assessmentTh = '';
   const isHurdleHigh = impliedG >= 18;
 
-  if (impliedG <= 5) {
-    assessment = 'Low hurdle: Market prices in modest/conservative growth. Higher probability of outperformance.';
-    assessmentTh = 'เกณฑ์ความคาดหวังต่ำ: ตลาดคาดการณ์การเติบโตแบบอนุรักษ์นิยม มีโอกาสสร้างผลตอบแทนชนะตลาดสูงหากทำได้ดีกว่าคาด';
-  } else if (impliedG <= 14) {
-    assessment = 'Moderate hurdle: Market implies realistic compounder growth in line with historical baseline.';
-    assessmentTh = 'เกณฑ์ความคาดหวังปานกลาง: ตลาดคาดหวังการเติบโตระดับปกติ สอดคล้องกับศักยภาพธุรกิจของหุ้นคุณภาพ';
-  } else if (impliedG <= 22) {
-    assessment = 'Demanding hurdle: Market requires aggressive sustained expansion. Execution risk is elevated.';
-    assessmentTh = 'เกณฑ์ความคาดหวังสูง: ราคาตลาดตั้งอยู่บนสมมติฐานการเติบโตอย่างรวดเร็วต่อเนื่อง มีความเสี่ยงหากสะดุด';
-  } else {
-    assessment = 'Priced for perfection: Market prices in hyper-growth. Any macroeconomic slowdown may cause severe multiple compression.';
-    assessmentTh = 'ราคาถูกตรึงไว้กับความสมบูรณ์แบบ: ตลาดคาดหวังการเติบโตสูงมาก หากผิดเป้ามีความเสี่ยงที่ Valuation จะหดตัวรุนแรง';
-  }
+  const assessment = `Market price of $${currentPrice.toFixed(2)} implies approximately ${impliedG}% annual FCF growth under stated assumptions (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%).`;
+  const assessmentTh = `ราคาตลาด $${currentPrice.toFixed(2)} สะท้อนอัตราการเติบโตของ FCF ประมาณ ${impliedG}% ต่อปี ภายใต้สมมติฐานที่ระบุ (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%)`;
 
   return {
     currentPrice,
@@ -233,6 +267,254 @@ export function calculateReverseDcf(
     discountRatePct,
     terminalGrowthPct,
     projectionYears,
+    impliedGrowthPct: impliedG,
+    isHurdleHigh,
+    assessment,
+    assessmentTh
+  };
+}
+
+// =========================================================================
+// CANONICAL SCENARIO, SENSITIVITY & REVERSE DCF (REUSES dcfMathEngine.ts)
+// =========================================================================
+
+/**
+ * Generates canonical scenarios reusing calculateStrictDCFValue from dcfMathEngine.
+ * Guarantees that the base scenario matches the report's canonical DCF fair value.
+ */
+export function generateCanonicalScenarios(
+  inputs: CanonicalValuationSandboxInputs,
+  overrides?: {
+    growthPct?: number;
+    waccPct?: number;
+    terminalGrowthPct?: number;
+    fcfMarginPct?: number;
+  }
+): ValuationScenario[] {
+  const baseGrowth = overrides?.growthPct ?? inputs.baseRevenueCagrPct;
+  const baseWacc = overrides?.waccPct ?? inputs.waccPct;
+  const baseTg = overrides?.terminalGrowthPct ?? inputs.terminalGrowthPct;
+  const baseMargin = overrides?.fcfMarginPct ?? inputs.baseFcfMarginPct;
+
+  const scenariosConfig = [
+    {
+      name: 'bear' as const,
+      growth: Math.max(0, baseGrowth - 5),
+      wacc: baseWacc + 1.5,
+      tg: Math.max(1.0, baseTg - 0.5),
+      margin: Math.max(-100, baseMargin - 2)
+    },
+    {
+      name: 'base' as const,
+      growth: baseGrowth,
+      wacc: baseWacc,
+      tg: baseTg,
+      margin: baseMargin
+    },
+    {
+      name: 'bull' as const,
+      growth: baseGrowth + 5,
+      wacc: Math.max(6.0, baseWacc - 1.0),
+      tg: Math.min(4.5, baseTg + 0.5),
+      margin: Math.min(100, baseMargin + 2)
+    }
+  ];
+
+  return scenariosConfig.map(cfg => {
+    const fv = calculateStrictDCFValue(
+      inputs.startingRevenueM,
+      inputs.sharesOutstandingM,
+      inputs.netCashM,
+      cfg.wacc,
+      cfg.tg,
+      cfg.growth,
+      cfg.margin,
+      inputs.projectionYears
+    );
+
+    const validFv = Number.isFinite(fv) && fv > 0 ? fv : 0;
+    const mos = (validFv > 0 && inputs.currentPrice > 0)
+      ? Number((((validFv - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1))
+      : 0;
+
+    const upside = (inputs.currentPrice > 0 && validFv > 0)
+      ? Number((((validFv - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1))
+      : 0;
+
+    return {
+      name: cfg.name,
+      revenueGrowthPct: cfg.growth,
+      operatingMarginPct: cfg.margin,
+      discountRatePct: cfg.wacc,
+      terminalGrowthPct: cfg.tg,
+      fairValuePerShare: validFv,
+      marginOfSafetyPct: mos,
+      impliedUpsidePct: upside
+    };
+  });
+}
+
+/**
+ * Computes a 5x5 sensitivity matrix reusing calculateStrictDCFValue from dcfMathEngine.
+ */
+export function computeCanonicalSensitivityMatrix(
+  inputs: CanonicalValuationSandboxInputs,
+  growthRatePct?: number
+): SensitivityMatrix {
+  const cagr = typeof growthRatePct === 'number' && Number.isFinite(growthRatePct)
+    ? growthRatePct
+    : inputs.baseRevenueCagrPct;
+
+  const baseWaccPct = inputs.waccPct;
+  const baseTerminalGrowthPct = inputs.terminalGrowthPct;
+
+  const discountRates = [
+    Number((baseWaccPct - 1.5).toFixed(1)),
+    Number((baseWaccPct - 0.75).toFixed(1)),
+    baseWaccPct,
+    Number((baseWaccPct + 0.75).toFixed(1)),
+    Number((baseWaccPct + 1.5).toFixed(1))
+  ].filter(r => r > 0);
+
+  const terminalGrowthRates = [
+    Number((baseTerminalGrowthPct - 1.0).toFixed(1)),
+    Number((baseTerminalGrowthPct - 0.5).toFixed(1)),
+    baseTerminalGrowthPct,
+    Number((baseTerminalGrowthPct + 0.5).toFixed(1)),
+    Number((baseTerminalGrowthPct + 1.0).toFixed(1))
+  ].filter(g => g >= 0);
+
+  const cells: SensitivityCell[][] = discountRates.map(wacc => {
+    return terminalGrowthRates.map(tg => {
+      let fv = 0;
+      if (wacc > tg) {
+        const strictFv = calculateStrictDCFValue(
+          inputs.startingRevenueM,
+          inputs.sharesOutstandingM,
+          inputs.netCashM,
+          wacc,
+          tg,
+          cagr,
+          inputs.baseFcfMarginPct,
+          inputs.projectionYears
+        );
+        if (Number.isFinite(strictFv) && strictFv > 0) {
+          fv = strictFv;
+        }
+      }
+      const mos = (fv > 0 && inputs.currentPrice > 0)
+        ? Number((((fv - inputs.currentPrice) / inputs.currentPrice) * 100).toFixed(1))
+        : 0;
+
+      return {
+        discountRatePct: wacc,
+        terminalGrowthPct: tg,
+        fairValue: fv,
+        marginOfSafetyPct: mos
+      };
+    });
+  });
+
+  return {
+    discountRates,
+    terminalGrowthRates,
+    cells
+  };
+}
+
+/**
+ * Reverse DCF solving for implied revenue CAGR using the canonical strict DCF engine.
+ */
+export function calculateCanonicalReverseDcf(
+  inputs: CanonicalValuationSandboxInputs,
+  overrides?: {
+    discountRatePct?: number;
+    terminalGrowthPct?: number;
+  }
+): ReverseDcfResult {
+  const currentPrice = inputs.currentPrice;
+  const discountRatePct = overrides?.discountRatePct ?? inputs.waccPct;
+  const terminalGrowthPct = overrides?.terminalGrowthPct ?? inputs.terminalGrowthPct;
+
+  if (
+    !Number.isFinite(currentPrice) || currentPrice <= 0 ||
+    !Number.isFinite(discountRatePct) || discountRatePct <= 0 ||
+    !Number.isFinite(terminalGrowthPct) || terminalGrowthPct < 0 ||
+    discountRatePct <= terminalGrowthPct
+  ) {
+    return {
+      currentPrice: Number.isFinite(currentPrice) ? currentPrice : 0,
+      baseFcfPerShare: 0,
+      discountRatePct: Number.isFinite(discountRatePct) ? discountRatePct : 0,
+      terminalGrowthPct: Number.isFinite(terminalGrowthPct) ? terminalGrowthPct : 0,
+      projectionYears: inputs.projectionYears,
+      impliedGrowthPct: 0,
+      isHurdleHigh: false,
+      assessment: 'Unable to calculate reverse DCF: missing or invalid verified inputs.',
+      assessmentTh: 'ไม่สามารถคำนวณ Reverse DCF ได้เนื่องจากข้อมูลไม่ครบถ้วนหรือไม่ถูกต้อง'
+    };
+  }
+
+  // Binary search for implied revenue CAGR between -50% and +150%
+  let low = -50;
+  let high = 150;
+  let impliedG = 0;
+
+  for (let i = 0; i < 50; i++) {
+    const mid = (low + high) / 2;
+    const modelPrice = calculateStrictDCFValue(
+      inputs.startingRevenueM,
+      inputs.sharesOutstandingM,
+      inputs.netCashM,
+      discountRatePct,
+      terminalGrowthPct,
+      mid,
+      inputs.baseFcfMarginPct,
+      inputs.projectionYears
+    );
+
+    if (!Number.isFinite(modelPrice)) {
+      break;
+    }
+
+    if (Math.abs(modelPrice - currentPrice) < 0.05) {
+      impliedG = mid;
+      break;
+    }
+
+    if (modelPrice > currentPrice) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+    impliedG = mid;
+  }
+
+  impliedG = Number(impliedG.toFixed(1));
+  const isHurdleHigh = impliedG >= 18;
+
+  const baseGrowthNote = Number.isFinite(inputs.baseRevenueCagrPct)
+    ? ` (Base report assumption: ${inputs.baseRevenueCagrPct}%)`
+    : '';
+  const baseGrowthNoteTh = Number.isFinite(inputs.baseRevenueCagrPct)
+    ? ` (เทียบกับสมมติฐานกรณีฐานในรายงาน: ${inputs.baseRevenueCagrPct}%)`
+    : '';
+
+  const assessment = `Market price of $${currentPrice.toFixed(2)} implies approximately ${impliedG}% annual revenue growth under stated assumptions (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%).${baseGrowthNote}`;
+  const assessmentTh = `ราคาตลาด $${currentPrice.toFixed(2)} สะท้อนอัตราการเติบโตของรายได้ประมาณ ${impliedG}% ต่อปี ภายใต้สมมติฐานที่ระบุ (WACC: ${discountRatePct}%, Terminal Growth: ${terminalGrowthPct}%)${baseGrowthNoteTh}`;
+
+  // Base FCF per share for display
+  const startingFcfM = inputs.startingRevenueM * (inputs.baseFcfMarginPct / 100);
+  const baseFcfPerShare = inputs.sharesOutstandingM > 0
+    ? Number((startingFcfM / inputs.sharesOutstandingM).toFixed(2))
+    : 0;
+
+  return {
+    currentPrice,
+    baseFcfPerShare,
+    discountRatePct,
+    terminalGrowthPct,
+    projectionYears: inputs.projectionYears,
     impliedGrowthPct: impliedG,
     isHurdleHigh,
     assessment,

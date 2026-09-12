@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { 
   X, FileText, CheckCircle2, ChevronRight, Link as LinkIcon, Calendar,
   TrendingUp, TrendingDown, Minus, Lightbulb, AlertTriangle, ArrowUp, Copy, Check, 
-  Printer, Sparkles, HelpCircle, DollarSign, Layers, ShieldCheck, Clock, ArrowRight, Target,
+  Printer, Sparkles, HelpCircle, DollarSign, Layers, ShieldCheck, ShieldAlert, Clock, ArrowRight, Target,
   Zap, RefreshCw, Sliders, Activity
 } from 'lucide-react';
 import { ReportData } from './types';
@@ -36,6 +36,7 @@ import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
 import { estimateTokenCost } from './utils/costEstimator';
+import { getCanonicalValuationSandboxInputs } from './utils/valuationSandboxAdapter';
 
 interface Props {
   data: ReportData;
@@ -312,6 +313,13 @@ export default function ReportTemplate({
   const criticalValidationIssues = validation?.issues?.filter(issue => issue.severity === 'critical') ?? [];
   const warningValidationIssues = validation?.issues?.filter(issue => issue.severity === 'warning') ?? [];
   const provenance = data.report_provenance;
+
+  const sandboxEligibility = React.useMemo(
+    () => getCanonicalValuationSandboxInputs(data, ticker),
+    [data, ticker]
+  );
+  const sandboxReason = sandboxEligibility.isEligible === false ? sandboxEligibility.reason : '';
+  const sandboxReasonTh = sandboxEligibility.isEligible === false ? sandboxEligibility.reasonTh : '';
 
   const [activeNav, setActiveNav] = useState('section-summary');
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -865,69 +873,85 @@ export default function ReportTemplate({
             )}
 
             {/* REVERSE DCF & MARKET EXPECTATIONS */}
-            {(() => {
-              const marketPrice = typeof data.intrinsic_value?.current_price === 'number' && data.intrinsic_value.current_price > 0
-                ? data.intrinsic_value.current_price
-                : typeof data.company_profile?.stock_price === 'number' && data.company_profile.stock_price > 0
-                  ? data.company_profile.stock_price
-                  : 0;
+            {sandboxEligibility.isEligible ? (
+              <div className="flex flex-col gap-4">
+                <ReverseDcfCard
+                  sandboxInputs={sandboxEligibility.inputs}
+                  isThai={isThai}
+                  onOpenScenarioModal={() => setShowScenarioModal(true)}
+                />
 
-              const dcf = data.intrinsic_value?.dcf_model;
-              const fv = data.intrinsic_value?.summary?.base_case_fair_value || dcf?.scenarios?.base?.fair_value_per_share || 0;
-              const wacc = dcf?.assumptions?.wacc_pct || 9.0;
-              const tg = dcf?.assumptions?.terminal_growth_pct || 2.5;
-              const fcfArr = data.financial_statements?.cash_flow?.free_cash_flow;
-              const sharesM = dcf?.inputs?.sharesOutstandingM;
-              const lastFcf = fcfArr?.[fcfArr.length - 1];
-
-              let baseFcf = 0;
-              if (typeof lastFcf === 'number' && typeof sharesM === 'number' && sharesM > 0 && lastFcf > 0) {
-                baseFcf = lastFcf / sharesM;
-              } else if (fv > 0) {
-                baseFcf = fv * ((wacc - tg) / 100) / 1.10;
-              }
-
-              if (marketPrice <= 0 || baseFcf <= 0) return null;
-
-              return (
-                <div className="flex flex-col gap-4">
-                  <ReverseDcfCard
-                    currentPrice={marketPrice}
-                    baseFcfPerShare={baseFcf}
-                    discountRatePct={wacc}
-                    terminalGrowthPct={tg}
-                    isThai={isThai}
-                    onOpenScenarioModal={() => setShowScenarioModal(true)}
-                  />
-
-                  {/* Valuation Decomposition & Macro Stress Trigger */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-xl border border-stone-200 shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0b5a4b] shrink-0">
-                        <Sliders className="w-5 h-5" />
+                {/* Valuation Decomposition & Macro Stress Trigger */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-xl border border-stone-200 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0b5a4b] shrink-0">
+                      <Sliders className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs sm:text-sm font-bold text-stone-900">
+                        {isThai ? 'การแจกแจงปัจจัยมูลค่า & ทดสอบภาวะวิกฤต (Decomposition & Stress Test)' : 'Valuation Decomposition & Macro Stress Sandbox'}
                       </div>
-                      <div>
-                        <div className="text-xs sm:text-sm font-bold text-stone-900">
-                          {isThai ? 'การแจกแจงปัจจัยมูลค่า & ทดสอบภาวะวิกฤต (Decomposition & Stress Test)' : 'Valuation Decomposition & Macro Stress Sandbox'}
-                        </div>
-                        <div className="text-[11px] text-stone-500">
-                          {isThai
-                            ? 'วิเคราะห์สาเหตุการเปลี่ยนแปลง Fair Value ตามตัวขับเคลื่อน และทดสอบวิกฤตเศรษฐกิจมหภาค'
-                            : 'Marginal driver attribution, investment thesis tracking, and 5 institutional macro stress scenarios.'}
-                        </div>
+                      <div className="text-[11px] text-stone-500">
+                        {isThai
+                          ? 'วิเคราะห์สาเหตุการเปลี่ยนแปลง Fair Value ตามตัวขับเคลื่อน และทดสอบวิกฤตเศรษฐกิจมหภาค'
+                          : 'Marginal driver attribution, investment thesis tracking, and 5 institutional macro stress scenarios.'}
                       </div>
                     </div>
-                    <button
-                      onClick={() => setShowDecompositionModal(true)}
-                      className="px-3.5 py-2 rounded-lg bg-[#0b5a4b] hover:bg-[#084539] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
-                    >
-                      <Activity className="w-3.5 h-3.5" />
-                      <span>{isThai ? 'เปิดแบบจำลอง' : 'Open Sandbox'}</span>
-                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowDecompositionModal(true)}
+                    className="px-3.5 py-2 rounded-lg bg-[#0b5a4b] hover:bg-[#084539] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>{isThai ? 'เปิดแบบจำลอง' : 'Open Sandbox'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-stone-200/60 text-stone-500 flex items-center justify-center shrink-0">
+                      <ShieldAlert className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-stone-800">
+                        {isThai ? 'แบบจำลอง Reverse DCF & Scenario ไม่เปิดใช้งาน' : 'Reverse DCF & Scenario Sandbox Unavailable'}
+                      </div>
+                      <div className="text-[11px] text-stone-500">
+                        {isThai ? sandboxReasonTh : sandboxReason}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              );
-            })()}
+
+                {/* Valuation Decomposition & Macro Stress Trigger */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-xl border border-stone-200 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0b5a4b] shrink-0">
+                      <Sliders className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs sm:text-sm font-bold text-stone-900">
+                        {isThai ? 'การแจกแจงปัจจัยมูลค่า & ทดสอบภาวะวิกฤต (Decomposition & Stress Test)' : 'Valuation Decomposition & Macro Stress Sandbox'}
+                      </div>
+                      <div className="text-[11px] text-stone-500">
+                        {isThai
+                          ? 'วิเคราะห์สาเหตุการเปลี่ยนแปลง Fair Value ตามตัวขับเคลื่อน และทดสอบวิกฤตเศรษฐกิจมหภาค'
+                          : 'Marginal driver attribution, investment thesis tracking, and 5 institutional macro stress scenarios.'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowDecompositionModal(true)}
+                    className="px-3.5 py-2 rounded-lg bg-[#0b5a4b] hover:bg-[#084539] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>{isThai ? 'เปิดแบบจำลอง' : 'Open Sandbox'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1874,33 +1898,7 @@ export default function ReportTemplate({
           isOpen={showScenarioModal}
           onClose={() => setShowScenarioModal(false)}
           ticker={ticker}
-          currentPrice={
-            typeof data.intrinsic_value?.current_price === 'number' && data.intrinsic_value.current_price > 0
-              ? data.intrinsic_value.current_price
-              : typeof data.company_profile?.stock_price === 'number' && data.company_profile.stock_price > 0
-                ? data.company_profile.stock_price
-                : 100
-          }
-          baseFcfPerShare={(() => {
-            const dcf = data.intrinsic_value?.dcf_model;
-            const fv = data.intrinsic_value?.summary?.base_case_fair_value || dcf?.scenarios?.base?.fair_value_per_share || 0;
-            const wacc = dcf?.assumptions?.wacc_pct || 9.0;
-            const tg = dcf?.assumptions?.terminal_growth_pct || 2.5;
-            const fcfArr = data.financial_statements?.cash_flow?.free_cash_flow;
-            const sharesM = dcf?.inputs?.sharesOutstandingM;
-            const lastFcf = fcfArr?.[fcfArr.length - 1];
-
-            if (typeof lastFcf === 'number' && typeof sharesM === 'number' && sharesM > 0 && lastFcf > 0) {
-              return lastFcf / sharesM;
-            }
-            if (fv > 0) {
-              return fv * ((wacc - tg) / 100) / 1.10;
-            }
-            return 10;
-          })()}
-          initialGrowthPct={10}
-          initialWaccPct={data.intrinsic_value?.dcf_model?.assumptions?.wacc_pct || 9.0}
-          initialTerminalGrowthPct={data.intrinsic_value?.dcf_model?.assumptions?.terminal_growth_pct || 2.5}
+          sandboxInputs={sandboxEligibility.isEligible ? sandboxEligibility.inputs : null}
           isThai={isThai}
         />
       )}
