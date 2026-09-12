@@ -7,8 +7,10 @@ import {
   type SecPeriodStatement,
 } from '../secFilingDiffEngine';
 import type { FinancialStatementsData, ReportData } from '../../types';
+import type { CanonicalFinancialDataset } from '../../domain/financialValue';
 import type { SecCompanyFact, SecCompanyFactsResponse, SecSubmissionsResponse, SecTickerRecord } from '../../services/sec/secClient';
 import { mapSecBundleToCanonicalFinancials } from '../../services/sec/secFinancialMapper';
+import { normalizeReport } from '../reportIntegrity';
 
 describe('secFilingDiffEngine', () => {
   const mockAnnualStatements = [
@@ -232,6 +234,8 @@ describe('secFilingDiffEngine', () => {
         schemaVersion: '1.0',
         ticker: 'AAPL',
         periods: ['FY2023', 'FY2024'],
+        generatedBy: 'lumina-financial-provenance-v1+sec-xbrl-v1',
+        provenanceStatus: 'verified',
         values: {
           'income_statement.revenue': [
             { period: 'FY2023', value: 383285, source: { form: '10-K', accession: '0000320193-23-000106' } },
@@ -305,6 +309,8 @@ describe('secFilingDiffEngine', () => {
         schemaVersion: '1.0',
         ticker: 'MSFT',
         periods: ['FY2025'],
+        generatedBy: 'lumina-financial-provenance-v1+sec-xbrl-v1',
+        provenanceStatus: 'verified',
         values: {
           'income_statement.revenue': [{ period: 'FY2025', value: 245123 }],
         },
@@ -581,6 +587,193 @@ describe('secFilingDiffEngine', () => {
       // (480 - 500) / 500 * 100 = -4.00%
       assert.equal(diff.shareCountDeltaPct, -4.0);
       assert.equal(diff.dilutionOrBuyback, 'buybacks');
+    });
+  });
+
+  describe('Real Production Report Lifecycle & Unverified Canonical Guard', () => {
+    it('lifecycle: normalizeReport generates unverified canonical_financials; adapter prefers sec_period_statements over unverified canonical', () => {
+      // 1. Create ReportData containing deliberately wrong / arbitrary AI financial statements
+      const rawReport: Partial<ReportData> = {
+        ticker: 'NVDA',
+        financial_statements: {
+          periods: ['FY2025', 'FY2026'],
+          income_statement: {
+            revenue: [999999, 888888], // Deliberately wrong AI revenue
+            net_income: [50000, 60000],
+          },
+          balance_sheet: {},
+          cash_flow: {},
+        },
+        // 2. Attach sec_verification.sec_period_statements containing verified SEC values
+        sec_verification: {
+          status: 'verified_eligible',
+          ticker: 'NVDA',
+          retrieved_at: '2026-02-01T00:00:00.000Z',
+          provenance_status: 'verified',
+          provenance_warnings: [],
+          dcf_coverage: null,
+          dcf_financial_inputs: null,
+          latest_statements_source: null,
+          sec_period_statements: [
+            {
+              ticker: 'NVDA',
+              period: 'FY2025',
+              fiscal_year: 2025,
+              form: '10-K',
+              accession: '0001045810-25-000010',
+              filed_date: '2025-02-20',
+              period_end: '2025-01-26',
+              units: 'USD',
+              revenue: 100,
+              net_income: 50,
+            },
+            {
+              ticker: 'NVDA',
+              period: 'FY2026',
+              fiscal_year: 2026,
+              form: '10-K',
+              accession: '0001045810-26-000010',
+              filed_date: '2026-02-20',
+              period_end: '2026-01-25',
+              units: 'USD',
+              revenue: 120,
+              net_income: 60,
+            },
+          ],
+        },
+      };
+
+      // 3. Run report through normalizeReport() which automatically creates report.canonical_financials from report.financial_statements
+      const normalizedReport = normalizeReport(rawReport as ReportData);
+
+      // 4. Assert that the automatically generated canonical_financials is NOT treated as SEC verified
+      assert.ok(normalizedReport.canonical_financials, 'normalizeReport should build canonical_financials');
+      assert.equal(
+        normalizedReport.canonical_financials.generatedBy,
+        'lumina-financial-provenance-v1',
+        'Auto-generated canonical dataset must be from lumina-financial-provenance-v1'
+      );
+      assert.notEqual(
+        normalizedReport.canonical_financials.provenanceStatus,
+        'verified',
+        'Auto-generated canonical dataset from report statements must NEVER have verified status'
+      );
+      assert.equal(
+        /sec-xbrl/i.test(normalizedReport.canonical_financials.generatedBy),
+        false,
+        'Auto-generated canonical dataset must NOT have sec-xbrl in generatedBy'
+      );
+
+      // 5. Call adaptFinancialStatementsToSecPeriodStatements(normalizedReport)
+      const adapted = adaptFinancialStatementsToSecPeriodStatements(normalizedReport);
+
+      // 6. Assert output revenue is 100 and 120, NOT 999999 and 888888
+      assert.equal(adapted.length, 2);
+      assert.equal(adapted[0].revenue, 100, 'Must use SEC verified revenue (100), not AI revenue (999999)');
+      assert.equal(adapted[1].revenue, 120, 'Must use SEC verified revenue (120), not AI revenue (888888)');
+      assert.notEqual(adapted[0].revenue, 999999);
+      assert.notEqual(adapted[1].revenue, 888888);
+
+      // 7. Assert the resulting SEC diff uses the SEC values
+      const diff = diffSecFinancialStatements(adapted);
+      assert.ok(diff, 'Diff must be produced from verified SEC values');
+      assert.equal(diff.currentPeriod, 'FY2026');
+      assert.equal(diff.priorPeriod, 'FY2025');
+      // (120 - 100) / 100 * 100 = +20%
+      assert.equal(diff.revenueYoYPct, 20);
+    });
+
+    it('unverified CanonicalFinancialDataset fails closed -> []', () => {
+      const unverifiedDataset = {
+        schemaVersion: 1,
+        generatedBy: 'lumina-financial-provenance-v1',
+        ticker: 'GOOGL',
+        periods: ['FY2024', 'FY2025'],
+        provenanceStatus: 'unverified',
+        provenanceWarnings: [],
+        sourceCoverage: { sourceLinkedValues: 0, verifiedValues: 0, nonNullValues: 2, missingValues: 0, totalValues: 2 },
+        values: {
+          'income_statement.revenue': [
+            { period: 'FY2024', value: 300000 },
+            { period: 'FY2025', value: 350000 },
+          ],
+        },
+      } as unknown as CanonicalFinancialDataset;
+
+      const result = adaptFinancialStatementsToSecPeriodStatements(unverifiedDataset);
+      assert.deepEqual(result, [], 'Unverified canonical dataset must return empty array');
+      const diff = diffSecFinancialStatements(result);
+      assert.equal(diff, null, 'Unverified dataset cannot produce SEC filing diff');
+    });
+
+    it('source-linked report canonical dataset fails closed -> []', () => {
+      const sourceLinkedDataset = {
+        schemaVersion: 1,
+        generatedBy: 'lumina-financial-provenance-v1',
+        ticker: 'GOOGL',
+        periods: ['FY2024', 'FY2025'],
+        provenanceStatus: 'source_linked',
+        provenanceWarnings: [],
+        sourceCoverage: { sourceLinkedValues: 2, verifiedValues: 0, nonNullValues: 2, missingValues: 0, totalValues: 2 },
+        values: {
+          'income_statement.revenue': [
+            { period: 'FY2024', value: 300000 },
+            { period: 'FY2025', value: 350000 },
+          ],
+        },
+      } as unknown as CanonicalFinancialDataset;
+
+      const result = adaptFinancialStatementsToSecPeriodStatements(sourceLinkedDataset);
+      assert.deepEqual(result, [], 'Source-linked canonical dataset without SEC authority must return empty array');
+      const diff = diffSecFinancialStatements(result);
+      assert.equal(diff, null, 'Source-linked dataset cannot produce SEC filing diff');
+    });
+
+    it('verified SEC dataset with sec-xbrl is accepted', () => {
+      const secVerifiedDataset = {
+        schemaVersion: 1,
+        generatedBy: 'lumina-financial-provenance-v1+sec-xbrl-v1',
+        ticker: 'MSFT',
+        periods: ['FY2024', 'FY2025'],
+        provenanceStatus: 'verified',
+        provenanceWarnings: [],
+        sourceCoverage: { sourceLinkedValues: 2, verifiedValues: 2, nonNullValues: 2, missingValues: 0, totalValues: 2 },
+        values: {
+          'income_statement.revenue': [
+            { period: 'FY2024', value: 245123, source: { form: '10-K', accession: '0000950170-24-000001' } },
+            { period: 'FY2025', value: 281724, source: { form: '10-K', accession: '0000950170-25-000001' } },
+          ],
+        },
+      } as unknown as CanonicalFinancialDataset;
+
+      const result = adaptFinancialStatementsToSecPeriodStatements(secVerifiedDataset);
+      assert.equal(result.length, 2, 'Verified SEC canonical dataset must be accepted');
+      assert.equal(result[0].revenue, 245123);
+      assert.equal(result[1].revenue, 281724);
+      const diff = diffSecFinancialStatements(result);
+      assert.ok(diff, 'Verified SEC canonical dataset must produce SEC diff');
+    });
+
+    it('legacy report with no stored verified SEC periods returns [] -> triggers remote SEC fallback', () => {
+      const legacyReport: Partial<ReportData> = {
+        ticker: 'AMZN',
+        financial_statements: {
+          periods: ['FY2024', 'FY2025'],
+          income_statement: {
+            revenue: [574785, 637959],
+            net_income: [30425, 45000],
+          },
+          balance_sheet: {},
+          cash_flow: {},
+        },
+        // sec_verification is completely undefined or has no sec_period_statements
+      };
+
+      const normalized = normalizeReport(legacyReport as ReportData);
+      const adapted = adaptFinancialStatementsToSecPeriodStatements(normalized);
+      assert.deepEqual(adapted, [], 'Legacy report without stored verified SEC periods must return []');
+      const diff = diffSecFinancialStatements(adapted);
+      assert.equal(diff, null, 'Local SEC diff must remain null to allow remote /api/sec-diff fetch');
     });
   });
 });

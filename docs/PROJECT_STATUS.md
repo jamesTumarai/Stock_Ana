@@ -246,7 +246,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Built `macroStressEngine.ts`: Institutional stress sandbox evaluating 5 macroeconomic shock scenarios (Base Case, Stagflation Shock, Recessionary Demand Contraction, Higher-for-Longer Rates, AI Productivity Wave) with real-time Stressed Fair Value and Margin of Safety recalculation.
 - Built `secFilingDiffEngine.ts`: Deterministic YoY topline/bottomline growth, operating margin expansion/compression (bps), diluted share count shifts, and working capital cash conversion divergence alerts.
 - Built `ValuationDecompositionModal.tsx`: 3-tab institutional analysis suite integrated into Section 3 (Valuation & DCF) of `ReportTemplate.tsx`.
-- 95 test suites passing with 100% success rate.
+- Historical Phase 12 validation: 95 test suites passing with 100% success rate (historical suite count; see Final Integrity Test Gate for current authoritative metrics).
 
 ### Post-Roadmap Integrity Hardening PRs
 
@@ -475,9 +475,8 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Analyzed production Vite bundle warning (~2.61 MB minified / 670.5 kB gzip) and proposed safe route-level and modal lazy-loading candidates for a future dedicated PR.
 - Merge SHA: `e9080df`.
 
-#### PR #95 — SEC Diff Zero Metrics Guard & Non-Empty Financial Statements Guard (`fix/sec-diff-zero-metrics-guard`) ✅
-- Enforced strict non-empty guard on financial statements in `src/utils/secFilingDiffEngine.ts`, preventing synthetic 0.0% metrics when financial statements contain no rows or empty periods.
-- Added regression tests verifying zero metric guard behavior.
+#### PR #95 — Reconcile Round 3 Status, Reclassify Phases & Report Exact Test Metrics (`docs/round-3-reconciliation`) ✅
+- Reconciled Round 3 status, reclassified roadmap phases, and reported exact authoritative test execution metrics.
 - Merge SHA: `8b2da525fdce0327d30c345f6c7bcac17f01d91b`.
 
 ### Final Integrity Cleanup PRs
@@ -500,7 +499,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Contract: `GET /api/health` -> minimal public status (200); `GET /api/health?detailed=true` unauthenticated -> minimal public status (200) without leaking memory/telemetry; `GET /api/health/detailed` unauthenticated -> 401 Unauthorized; authorized requests with `INTERNAL_DIAGNOSTICS_KEY` or admin auth -> detailed telemetry.
   - In `vercel.json`, expanded `includeFiles` to `"{dist/*.cjs,agent/**}"` ensuring `dist/sec-preview.cjs` is packaged into serverless bundle.
   - Dynamically imported `vite` in `server.ts` so `dist/server.cjs` never fails with `MODULE_NOT_FOUND: vite` when running serverless outside development.
-  - Added unit test suite `server/routes/__tests__/secPreviewHandler.test.ts`.
+  - Added unit test suite `server/routes/__tests__/vercelApiAdapter.test.ts`.
 - Merge SHA: `ef8673f29f275637576272a6ff3cdc67ce6534df`.
 
 #### PR #98 — Actual Model AI Cost, Quick Ratio STI Verification, Terminal Growth Transparency & Canonical Sandbox Unification (`fix/final-integrity-cleanups`)
@@ -529,7 +528,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 #### Final Integrity Test Gate Metrics
 - **Test files executed**: 74
 - **src/ test files executed**: 71
-- **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/secPreviewHandler.test.ts`)
+- **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
 - **Test cases passed**: 171
 - **Test cases failed**: 0
 - **Test cases skipped**: 0
@@ -537,13 +536,17 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 
 ## Current production health
 
-At the time of this handoff, production was re-verified after the docs-only PR #50 merge:
+Production baseline is verified and healthy on:
 
-- Vercel production deployment for PR #50 merge SHA `a84bf181a4864e4342e0d7f54b677817168a64bf` reached `READY`.
-- Push-to-main `Verify Lumina` for that docs-only merge passed all steps.
-- Public MSFT live-quote smoke returned HTTP 200 with structured market data.
-
-These checks establish deployment health but do not replace live verification in a future session.
+- Baseline `main`: `55f1733f02b6f6d88baf52dfc79cd37cb35b9753`
+- Vercel production deployment: exact `main` SHA, status `READY` (`https://stock-ana-ten.vercel.app`)
+- Push-to-main `Verify Lumina` passed all steps (74 test files, 171 passed, 0 failed, 0 skipped).
+- Authoritative production smokes pass:
+  - `GET /api/health` -> minimal public payload (200 OK)
+  - `GET /api/health?detailed=true` (unauthenticated) -> minimal payload, no telemetry leak (200 OK)
+  - `GET /api/health/detailed` (unauthenticated) -> 401 Unauthorized contract
+  - `GET /api/live-quotes?symbols=MSFT` -> 200 OK with live quote payload
+  - `GET /api/sec-diff?ticker=MSFT` -> 200 OK with verified canonical SEC facts
 
 Known runtime observations:
 
