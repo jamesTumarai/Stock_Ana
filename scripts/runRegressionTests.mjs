@@ -63,10 +63,10 @@ const startTime = Date.now();
 for (let i = 0; i < allTestFiles.length; i++) {
   const absPath = allTestFiles[i];
   const relPath = relative(rootDir, absPath).replace(/\\/g, '/');
-  
+
   // Group log format for GitHub Actions
   console.log(`::group::[${i + 1}/${allTestFiles.length}] ${relPath}`);
-  
+
   const result = spawnSync(process.execPath, ['--import', 'tsx', absPath], {
     cwd: rootDir,
     env: { ...process.env, NODE_ENV: 'test' },
