@@ -16,7 +16,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 - Current working mode: **Systematic resolution of P0–P2 issues across focused protected PRs (PR A through PR I)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #66 (`9140d9c`) — Valuation Decomposition, Macro Stress Sandbox, and SEC Filing Diff Engine (Phase 12).
+- Latest merged milestone: PR #68 (`0e35cbe`) — Phase 9 Valuation Integrity Hardening & Elimination of Fabricated Defaults (PR B).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -32,7 +32,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ⚠️ | ⏳ | `Implemented` | PR #59, #60 (production UX pending) |
 | **7** | Portfolio & User Intelligence | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Partial` | PR #61 (persistence & history hardening) |
 | **8** | Monitoring & Alerts | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Prototype` | PR #62 (client on-open prototype) |
-| **9** | Comparison & Decision Tools | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Blocked` | PR #63 (valuation integrity remediation) |
+| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented (Hardened)` | PR #63, PR #68 (canonical DCF unification) |
 | **10** | Performance, Cost & Reliability | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Partial` | PR #64 (observability & cache semantics) |
 | **11** | Productization / Subscription | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Prototype` | PR #65 (client entitlement prototype) |
 | **12** | Advanced Investment Intelligence | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Experimental` | PR #66 (rebuilding against canonical DCF) |
@@ -250,6 +250,47 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Built `secFilingDiffEngine.ts`: Deterministic YoY topline/bottomline growth, operating margin expansion/compression (bps), diluted share count shifts, and working capital cash conversion divergence alerts.
 - Built `ValuationDecompositionModal.tsx`: 3-tab institutional analysis suite integrated into Section 3 (Valuation & DCF) of `ReportTemplate.tsx`.
 - 95 test suites passing with 100% success rate.
+
+### Post-Roadmap Integrity Hardening PRs
+
+#### PR #67 — Security Boundary: Cross-User JSONL Isolation & Scoped Artifact Ownership (PR A, P0-4) ✅
+- Disabled raw JSONL download endpoint (`/api/download_jsonl`) in production unless explicitly enabled via server environment variable.
+- Enforced strict caller authentication and user-scoped verification for log downloads (`run_log_<uid>_<runId>.jsonl`).
+- Replaced ticker-based log retrieval with caller-owned opaque `runId` validation.
+- Scoped artifact uploads to authenticated UID directory (`workspace/artifacts/<uid>/<fileName>`), eliminating cross-user data leakage and collisions.
+- Added 5 automated security tests verifying unauthenticated blocking, cross-user denial (403), and artifact scoping.
+- Merge SHA: `c2233a1`.
+
+#### PR #68 — Valuation Integrity: Elimination of Fabricated Defaults & Canonical DCF Unification (PR B, P0-1) ✅
+- Removed all fabricated valuation defaults (`9.0`, `2.5`, `10`, `$100`, `FCF 10`, and reverse-derived FCF formula `fv * ((wacc - tg) / 100) / 1.10`) from Phase 9 Scenario Analysis, Sensitivity Matrix, and Reverse DCF.
+- Built `src/utils/valuationSandboxAdapter.ts`:
+  - Enforces Financial Sector Guard (fail-closed for banks, lenders, insurers, FinTech platforms routing to non-FCFF models).
+  - Validates verified canonical inputs (price, revenue, shares, net cash, WACC, terminal growth, base CAGR, base FCF margin).
+  - Fails closed with explicit institutional notices (`Unavailable / Insufficient verified valuation inputs`) when inputs are missing.
+- Refactored `src/utils/decisionEngine.ts` to unify calculations with canonical `calculateStrictDCFValue` from `dcfMathEngine.ts`.
+- Rewrote Reverse DCF assessments to be descriptive and neutral rather than claiming speculative outperformance probabilities.
+- Replaced sliders in `ScenarioAnalysisModal.tsx` to recalculate strictly through `recalculateSandboxFairValue` and clearly labeled them as "User Assumptions".
+- Added 11 regression tests in `valuationSandboxAdapter.test.ts` and updated 13 tests in `decisionEngine.test.ts`. All 74 regression test files in `src/` passing.
+- Merge SHA: `0e35cbe`.
+
+#### PR #69 — Phase 12 Deterministic Revaluation Bridge & Macro Stress Engine (PR C, P0-2, P0-3, P1-12) 🔄
+- Replaced heuristic valuation sensitivity approximations (`-0.10 * prevFv`, `0.06 * prevFv`, etc.) and arbitrary 60/40 residual splits with a true Sequential Valuation Revaluation Bridge:
+  - Step 0: Previous baseline model valuation $V_0$.
+  - Step 1: Base Operating Revenue Fact update $V_1$.
+  - Step 2: Growth Assumption Revision $V_2$.
+  - Step 3: Margin Assumption Revision $V_3$.
+  - Step 4: Cost of Capital (WACC Shift) $V_4$.
+  - Step 5: Long-Term Terminal Growth $V_5$.
+  - Step 6: Capital Structure & Net Cash / Debt $V_6$.
+  - Step 7: Share Count & Dilution / Horizon $V_7$.
+  - Exact telescoping sum invariant: $\sum_{k=1}^7 \Delta V_k = V_7 - V_0$. Any difference with published report fair value is explicitly presented as `Unattributed / Model Interaction`.
+- Enforced strict financial sector guard (fail-closed for banks, lenders, insurance, and FinTech non-FCFF models) and ticker mismatch guard.
+- Removed fabricated conviction fallback default (`?? 70`); missing conviction shifts fail gracefully (`convictionShift = null`).
+- Replaced arbitrary fixed dollar threshold (`$15`) with relative percentage thresholds ($\pm 10\%$) for investment thesis health classification.
+- Rebuilt Macro Stress Sandbox (`macroStressEngine.ts`) to recalculate stressed valuations strictly via `calculateStrictDCFValue` instead of multiplying by handcrafted sensitivity heuristics.
+- Added explicit institutional labels: "System-defined illustrative stress assumptions".
+- Fixed scenario null-check crash in `dcfMathEngine.ts`.
+- Added 8 regression tests in `valuationDecompositionEngine.test.ts` and 6 tests in `macroStressEngine.test.ts`. All unit test suites passing (100%).
 
 ## Current production health
 

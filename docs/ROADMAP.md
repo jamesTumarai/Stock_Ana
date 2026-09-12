@@ -10,10 +10,10 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 1. **Phases 1–4: Core Platform Foundation** — Complete ✅
 2. **Phase 4.5: Post-Roadmap Integrity Stabilization** — Re-opened (Active 🔄)
-   - PR A: Security Boundary & Cross-User Log Isolation (P0-4)
-   - PR B: Phase 9 Valuation Integrity & Fallback Removal (P0-1)
-   - PR C: Phase 12 Deterministic Revaluation Bridge (P0-2, P0-3)
-   - PR D: SEC Filing Diff & Comparable-Period Matching (P1-1, P1-2)
+   - PR A: Security Boundary & Cross-User Log Isolation (P0-4) — Complete ✅ (PR #67)
+   - PR B: Phase 9 Valuation Integrity & Fallback Removal (P0-1) — Complete ✅ (PR #68)
+   - PR C: Phase 12 Deterministic Revaluation Bridge (P0-2, P0-3) — Complete ✅
+   - PR D: SEC Filing Diff & Comparable-Period Matching (P1-1, P1-2) — Next 🔄
    - PR E: Portfolio & History Record Hydration (P1-3, P1-4, P1-5)
    - PR F: Monitoring & Alerts Semantics (P1-8)
    - PR G: Sector-Aware Valuation Architecture (P0-6)

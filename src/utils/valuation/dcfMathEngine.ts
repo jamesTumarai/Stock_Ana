@@ -277,7 +277,8 @@ export function buildRigorousDCFModel(
   const scenarios = original?.scenarios;
   if (!scenarios?.bear || !scenarios.base || !scenarios.bull) missing.push('bear, base, and bull DCF assumptions');
   const validScenarioInputs = scenarios && [scenarios.bear, scenarios.base, scenarios.bull].every(scenario =>
-    Number.isFinite(scenario.revenue_cagr_pct)
+    Boolean(scenario)
+    && Number.isFinite(scenario.revenue_cagr_pct)
     && Number.isFinite(scenario.terminal_margin_pct)
     && scenario.terminal_margin_pct >= -100
     && scenario.terminal_margin_pct <= 100,
