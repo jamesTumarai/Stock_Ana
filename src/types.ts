@@ -327,6 +327,8 @@ export interface DCFModel {
 
 export interface DDMScenario {
   dividend_growth_rate_pct: number;
+  cost_of_equity_pct?: number;
+  terminal_growth_pct?: number;
   terminal_payout_ratio_pct: number;
   fair_value_per_share: number;
   key_assumption_note: string;

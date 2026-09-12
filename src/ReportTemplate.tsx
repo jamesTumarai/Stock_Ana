@@ -38,6 +38,7 @@ import { ValuationDecompositionModal } from './components/ValuationDecomposition
 import { estimateTokenCost } from './utils/costEstimator';
 import { getCanonicalValuationSandboxInputs } from './utils/valuationSandboxAdapter';
 import { getPreviousReport, unwrapHistoryRecord } from './utils/researchTimeline';
+import { detectValuationModel } from './utils/valuation/modelSelector';
 
 interface Props {
   data: ReportData;
@@ -321,6 +322,11 @@ export default function ReportTemplate({
   );
   const sandboxReason = sandboxEligibility.isEligible === false ? sandboxEligibility.reason : '';
   const sandboxReasonTh = sandboxEligibility.isEligible === false ? sandboxEligibility.reasonTh : '';
+
+  const valuationModelSelector = React.useMemo(() => {
+    return data.intrinsic_value?.selected_model ?? detectValuationModel(data, ticker);
+  }, [data, ticker]);
+  const isSpecializedSectorModel = ['ddm', 'fintech_pe', 'reit_affo', 'relative_only'].includes(valuationModelSelector.model_type);
 
   const [activeNav, setActiveNav] = useState('section-summary');
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -897,21 +903,52 @@ export default function ReportTemplate({
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-stone-200/60 text-stone-500 flex items-center justify-center shrink-0">
-                      <ShieldAlert className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-stone-800">
-                        {isThai ? 'แบบจำลอง Reverse DCF & Scenario ไม่เปิดใช้งาน' : 'Reverse DCF & Scenario Sandbox Unavailable'}
+                {isSpecializedSectorModel ? (
+                  <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 flex flex-col gap-3 shadow-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0b5a4b] flex items-center justify-center shrink-0 mt-0.5 border border-emerald-200">
+                          <Layers className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-stone-900">
+                              {isThai ? 'สถาปัตยกรรมประเมินมูลค่าเฉพาะกลุ่มธุรกิจ' : 'Sector-Specific Valuation Architecture'}
+                            </span>
+                            <span className="bg-emerald-100 text-[#0b5a4b] text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                              {isThai ? valuationModelSelector.model_name_th : valuationModelSelector.model_name_en}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-stone-600 mt-1 leading-relaxed">
+                            {isThai ? valuationModelSelector.reason_th : valuationModelSelector.reason_en}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[11px] text-stone-500">
-                        {isThai ? sandboxReasonTh : sandboxReason}
+                    </div>
+                    {valuationModelSelector.disclaimer_note && (
+                      <div className="text-[10px] text-stone-500 bg-white/80 px-3 py-1.5 rounded-lg border border-emerald-100 flex items-center gap-1.5">
+                        <span className="font-semibold text-[#0b5a4b]">{isThai ? 'แนวทางสถาบัน:' : 'Institutional Standard:'}</span>
+                        <span>{valuationModelSelector.disclaimer_note}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-stone-200/60 text-stone-500 flex items-center justify-center shrink-0">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-stone-800">
+                          {isThai ? 'แบบจำลอง Reverse DCF & Scenario ไม่เปิดใช้งาน' : 'Reverse DCF & Scenario Sandbox Unavailable'}
+                        </div>
+                        <div className="text-[11px] text-stone-500">
+                          {isThai ? sandboxReasonTh : sandboxReason}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Valuation Decomposition & Macro Stress Trigger */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-xl border border-stone-200 shadow-sm">

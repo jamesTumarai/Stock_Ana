@@ -219,4 +219,157 @@ const eligibleSecEnvelope = () => ({
   assert.ok(Number.isNaN(calculateStrictDCFValue(0, 100, 0, 10, 3, 6, 10, 5)), 'missing revenue must be rejected');
 }
 
+{
+  // Bank / Financial Institution (JPM) using DDM without requiring generic operating FCFF
+  const jpmReport: any = {
+    ticker: 'JPM',
+    company_profile: {
+      sector: 'Financial Services',
+      industry: 'Banks - Diversified',
+      stock_price: 200,
+    },
+    intrinsic_value: {
+      current_price: 200,
+      selected_model: {
+        model_type: 'ddm',
+        model_name_th: 'Dividend Discount Model (DDM) & Residual Income',
+        model_name_en: 'Dividend Discount Model & Residual Income',
+        sector_category: 'Financial Institutions',
+      },
+      ddm_model: {
+        assumptions: {
+          cost_of_equity_pct: 10,
+          terminal_growth_pct: 3,
+          current_dividend_per_share: 5.0,
+          current_payout_ratio_pct: 35,
+          current_roe_pct: 16,
+        },
+        book_value_per_share: 100,
+      },
+    },
+  };
+
+  const valuation = buildUniversalValuationData(jpmReport, 'JPM');
+  assert.ok(valuation !== undefined, 'Bank with valid DDM inputs must evaluate successfully');
+  assert.equal(valuation.selected_model?.model_type, 'ddm');
+  assert.ok(valuation.ddm_model !== undefined);
+  // Expected base: 5.0 * 1.03 / (0.10 - 0.03) = 5.15 / 0.07 = 73.57
+  assert.equal(valuation.ddm_model?.scenarios.base.fair_value_per_share, 73.57);
+  assert.equal(valuation.summary?.base_case_fair_value, 73.57);
+  assert.equal(valuation.summary?.fair_value_range_low, valuation.ddm_model?.scenarios.bear.fair_value_per_share);
+  assert.equal(valuation.summary?.fair_value_range_high, valuation.ddm_model?.scenarios.bull.fair_value_per_share);
+  assert.equal(valuation.summary?.verdict_text, 'Overvalued'); // 73.57 vs 200
+  // Residual income should be calculated: BVPS + BVPS * (ROE - r) / (r - g) = 100 + 100 * (0.16 - 0.10) / (0.07) = 100 + 6 / 0.07 = 185.71
+  assert.equal(valuation.ddm_model?.residual_income_fair_value, 185.71);
+}
+
+{
+  // Bank with terminal growth g >= Ke must fail closed
+  const invalidGrowthReport: any = {
+    ticker: 'JPM',
+    company_profile: { sector: 'Financial Services', industry: 'Banks', stock_price: 200 },
+    intrinsic_value: {
+      current_price: 200,
+      ddm_model: {
+        assumptions: {
+          cost_of_equity_pct: 8,
+          terminal_growth_pct: 8, // g == Ke -> infinite value -> fail closed
+          current_dividend_per_share: 5.0,
+        },
+      },
+    },
+  };
+  assert.equal(calculateDDMModel(invalidGrowthReport), undefined, 'g >= Ke in DDM must fail closed');
+  assert.equal(buildUniversalValuationData(invalidGrowthReport, 'JPM'), undefined, 'buildUniversalValuationData must fail closed when DDM fails');
+}
+
+{
+  // Bank with missing dividend and no ROE/BVPS to derive it must fail closed
+  const missingDividendReport: any = {
+    ticker: 'JPM',
+    company_profile: { sector: 'Financial Services', industry: 'Banks', stock_price: 200 },
+    intrinsic_value: {
+      current_price: 200,
+      ddm_model: {
+        assumptions: {
+          cost_of_equity_pct: 10,
+          terminal_growth_pct: 3,
+        },
+      },
+    },
+  };
+  assert.equal(calculateDDMModel(missingDividendReport), undefined, 'Missing dividend in DDM must fail closed');
+  assert.equal(buildUniversalValuationData(missingDividendReport, 'JPM'), undefined);
+}
+
+{
+  // REIT (PLD) using AFFO model
+  const reitReport: any = {
+    ticker: 'PLD',
+    company_profile: { sector: 'Real Estate', industry: 'Industrial REIT', stock_price: 120 },
+    intrinsic_value: {
+      current_price: 120,
+      selected_model: {
+        model_type: 'reit_affo',
+        model_name_th: 'FFO / AFFO Multiple Valuation',
+        model_name_en: 'FFO / AFFO Multiple Valuation',
+        sector_category: 'REITs',
+      },
+      reit_model: {
+        sub_sector: 'Industrial',
+        assumptions: {
+          current_ffo_per_share: 5.5,
+          current_affo_per_share: 4.8,
+          peer_median_affo_multiple: 26,
+        },
+        scenarios: {
+          bear: { affo_multiple: 22, affo_growth_cagr_pct: 2, fair_value_per_share: 105.6, key_assumption_note: 'Bear multiple 22x' },
+          base: { affo_multiple: 26, affo_growth_cagr_pct: 5, fair_value_per_share: 124.8, key_assumption_note: 'Base multiple 26x' },
+          bull: { affo_multiple: 30, affo_growth_cagr_pct: 8, fair_value_per_share: 144.0, key_assumption_note: 'Bull multiple 30x' },
+        },
+      },
+    },
+  };
+  const reitValuation = buildUniversalValuationData(reitReport, 'PLD');
+  assert.ok(reitValuation !== undefined, 'REIT with valid AFFO model must evaluate successfully');
+  assert.equal(reitValuation.selected_model?.model_type, 'reit_affo');
+  assert.equal(reitValuation.summary?.base_case_fair_value, 124.8);
+  assert.equal(reitValuation.summary?.fair_value_range_low, 105.6);
+  assert.equal(reitValuation.summary?.fair_value_range_high, 144.0);
+}
+
+{
+  // FinTech (SOFI) using Relative Valuation
+  const fintechReport: any = {
+    ticker: 'SOFI',
+    company_profile: { sector: 'Financial Services', industry: 'Credit Services', stock_price: 15 },
+    intrinsic_value: {
+      current_price: 15,
+      selected_model: {
+        model_type: 'fintech_pe',
+        model_name_th: 'FinTech Platform & Residual Income',
+        model_name_en: 'FinTech Platform Model',
+        sector_category: 'FinTech / Digital Banking',
+      },
+      relative_valuation: {
+        method: 'Forward P/E & Platform Multiple',
+        peer_multiple_used: 18.5,
+        metric_applied: 'Forward EPS $0.92',
+        fair_value_per_share: 17.02,
+      },
+      summary: {
+        fair_value_range_low: 14.5,
+        base_case_fair_value: 17.02,
+        fair_value_range_high: 20.0,
+        margin_of_safety_pct: 13.5,
+        verdict_text: 'Fairly Valued',
+      },
+    },
+  };
+  const fintechValuation = buildUniversalValuationData(fintechReport, 'SOFI');
+  assert.ok(fintechValuation !== undefined, 'FinTech with valid relative valuation must evaluate successfully');
+  assert.equal(fintechValuation.selected_model?.model_type, 'fintech_pe');
+  assert.equal(fintechValuation.summary?.base_case_fair_value, 17.02);
+}
+
 console.log('Valuation integrity checks passed');
