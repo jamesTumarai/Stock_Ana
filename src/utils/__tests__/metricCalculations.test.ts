@@ -103,7 +103,63 @@ const deDetail = getMetricCalculationDetail('debt_to_equity', 3, mockData);
 assert(deDetail !== null, 'Debt-to-equity detail should not be null');
 assert.equal(deDetail.key, 'debt_to_equity');
 assert.equal(deDetail.resultValue, 0.36); // 1300 / 3600
-console.log('✓ getMetricCalculationDetail - debt_to_equity verified');
+
+// PR D: Debt to Equity missing-vs-zero regression tests
+// 7a. STD null + LTD null => unavailable (null)
+const mockStdNullLtdNull: FinancialStatementsData = {
+  ...mockData,
+  balance_sheet: {
+    ...mockData.balance_sheet!,
+    total_debt: [null as any, null as any, null as any, null as any],
+    short_term_debt: [null as any, null as any, null as any, null as any],
+    long_term_debt: [null as any, null as any, null as any, null as any],
+  },
+};
+const deStdNullLtdNull = getMetricCalculationDetail('debt_to_equity', 3, mockStdNullLtdNull);
+assert.equal(deStdNullLtdNull?.resultValue, null, 'STD null + LTD null must be unavailable (null), not 0.00');
+
+// 7b. STD known + LTD null => unavailable (null)
+const mockStdKnownLtdNull: FinancialStatementsData = {
+  ...mockData,
+  balance_sheet: {
+    ...mockData.balance_sheet!,
+    total_debt: [null as any, null as any, null as any, null as any],
+    short_term_debt: [100, 100, 100, 100],
+    long_term_debt: [null as any, null as any, null as any, null as any],
+  },
+};
+const deStdKnownLtdNull = getMetricCalculationDetail('debt_to_equity', 3, mockStdKnownLtdNull);
+assert.equal(deStdKnownLtdNull?.resultValue, null, 'STD known + LTD null must be unavailable (null)');
+
+// 7c. STD null + LTD known => unavailable (null)
+const mockStdNullLtdKnown: FinancialStatementsData = {
+  ...mockData,
+  balance_sheet: {
+    ...mockData.balance_sheet!,
+    total_debt: [null as any, null as any, null as any, null as any],
+    short_term_debt: [null as any, null as any, null as any, null as any],
+    long_term_debt: [200, 200, 200, 200],
+  },
+};
+const deStdNullLtdKnown = getMetricCalculationDetail('debt_to_equity', 3, mockStdNullLtdKnown);
+assert.equal(deStdNullLtdKnown?.resultValue, null, 'STD null + LTD known must be unavailable (null)');
+
+// 7d. STD verified 0 + LTD 100 => valid (0.03 for 100 / 3600)
+const mockStdZeroLtd100: FinancialStatementsData = {
+  ...mockData,
+  balance_sheet: {
+    ...mockData.balance_sheet!,
+    total_debt: [null as any, null as any, null as any, null as any],
+    short_term_debt: [0, 0, 0, 0],
+    long_term_debt: [100, 100, 100, 100],
+  },
+};
+const deStdZeroLtd100 = getMetricCalculationDetail('debt_to_equity', 3, mockStdZeroLtd100);
+assert.equal(deStdZeroLtd100?.resultValue, 0.03, 'STD verified 0 + LTD 100 must be valid (100 / 3600 = 0.03)');
+
+// 7e. verified total_debt => valid (0.36 for 1300 / 3600)
+assert.equal(deDetail.resultValue, 0.36, 'verified total_debt must be valid');
+console.log('✓ getMetricCalculationDetail - debt_to_equity verified (including missing-vs-zero)');
 
 // 8. Margin of Safety (Valuation Context)
 const mosDetail = getMetricCalculationDetail('margin_of_safety', 0, undefined, {

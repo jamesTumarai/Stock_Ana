@@ -221,13 +221,22 @@ export function getMetricCalculationDetail(
     }
 
     case 'debt_to_equity': {
-      const td = balance?.total_debt?.[p] ?? (
-        balance?.short_term_debt?.[p] !== undefined && balance?.long_term_debt?.[p] !== undefined
-          ? (balance.short_term_debt[p] ?? 0) + (balance.long_term_debt[p] ?? 0)
-          : null
-      );
-      const eq = balance?.total_equity?.[p];
-      const de = (td !== null && td !== undefined && eq !== null && eq !== undefined && eq > 0)
+      const totalDebtRaw = balance?.total_debt?.[p];
+      let td: number | null = null;
+      if (typeof totalDebtRaw === 'number' && Number.isFinite(totalDebtRaw) && totalDebtRaw >= 0) {
+        td = totalDebtRaw;
+      } else {
+        const stdRaw = balance?.short_term_debt?.[p];
+        const ltdRaw = balance?.long_term_debt?.[p];
+        const hasStd = typeof stdRaw === 'number' && Number.isFinite(stdRaw) && stdRaw >= 0;
+        const hasLtd = typeof ltdRaw === 'number' && Number.isFinite(ltdRaw) && ltdRaw >= 0;
+        if (hasStd && hasLtd) {
+          td = stdRaw + ltdRaw;
+        }
+      }
+      const eqRaw = balance?.total_equity?.[p];
+      const eq = (typeof eqRaw === 'number' && Number.isFinite(eqRaw) && eqRaw > 0) ? eqRaw : null;
+      const de = (td !== null && eq !== null)
         ? Number((td / eq).toFixed(2))
         : null;
 
