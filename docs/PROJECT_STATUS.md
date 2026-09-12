@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Post-Hardening Review Round 2 Complete (PRs #78–#85 Merged; Phase 4.5 Pending Owner Acceptance ⏳)**.
-- Current working mode: **Post-Hardening Review Round 2 Complete (CI gate extended, LTM integrity, valuation fail-closed, reverse DCF bracketing, corporate actions UI, SEC diff adapter, honest DDM/sector models, minimal truthful public health check)**.
+- Current stage: **Post-Hardening Review Round 3 Complete (PRs #87–#95 Merged; Phase 4.5 Pending Owner Acceptance ⏳)**.
+- Current working mode: **Post-Hardening Review Round 3 (Diagnostic security, canonical valuation ranges, unclamped macro stress, strict YoY SEC matching, D/E missing-vs-zero fail-closed, fail-closed model pricing, truthful DDM provenance, period parser consistency, vulnerability triage & bundle performance analysis)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #85 (Monitoring & Operations Hardening).
+- Latest merged milestone: PR #94 (Security Audit Triage & Bundle Performance Analysis).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,15 +27,15 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete (Pending Acceptance)` | PR #67–#76, #78–#85 |
-| **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #56–#58, PR #70 |
-| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #59, #60 |
-| **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #61, PR #71 |
-| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #62, PR #72, PR #85 |
-| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #63, PR #68, PR #80, PR #81 |
-| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #64, PR #75, PR #85 |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented / Hardening Pending` | PR #67–#76, #78–#85, #87–#95 |
+| **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #56–#58, PR #70 |
+| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #59, #60 |
+| **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #61, PR #71 |
+| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #62, PR #72, PR #85 |
+| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #63, PR #68, PR #80, PR #81 |
+| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #64, PR #75, PR #85 |
 | **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
-| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #66, PR #69, PR #70, PR #73, PR #83 |
+| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #66, PR #69, PR #70, PR #73, PR #83 |
 
 ## Repository protection
 
@@ -421,8 +421,68 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - In `src/utils/costEstimator.ts`, eliminated fabricated FX defaults (returns `null` THB cost when FX rate is absent), default unknown models to `standard` tier, avoid fabricating prompt/completion counts (sets `null` with `isEstimatedBreakdown: true`). Labeled as 'Estimated AI Cost' in `ReportTemplate.tsx`.
 - Documented `SecTtlCache` as an in-memory per-instance best-effort warm cache.
 - Verified `getLastSeenAccession` in `monitoringEngine.ts` before triggering SEC filing alerts.
-- Total regression test suite: 73 test files executed (71 in `src/`, 2 in `server/`) with 149 passing test cases (100% pass rate).
+- Total regression test runner: 73 test files executed (71 in `src/`, 2 in `server/`) with 149 passing test cases (100% pass rate).
 - Merge SHA: `2cc8ae5`.
+
+### Post-Hardening Review Round 3 PRs
+
+#### PR #87 — Health Diagnostic Security & Readiness (`fix/health-diagnostic-security`) ✅
+- Removed unauthenticated query-param bypass (`?detailed=true`) for detailed diagnostic telemetry across both Express and Vercel serverless entrypoints (`server/routes/healthRoutes.ts`, `api/index.js`).
+- Public `/api/health` unconditionally returns minimal payload (`status`, `ok`, `service`, `timestamp`).
+- Reconciled readiness semantics to canonical Firebase configuration resolution (`server/auth/firebaseProject.ts`). Detailed internal telemetry protected behind `INTERNAL_DIAGNOSTICS_KEY` or authenticated admin authority.
+- Added regression tests verifying unauthenticated callers receive minimal payloads without internal leaks.
+- Merge SHA: `9c051c2`.
+
+#### PR #88 — Valuation Range & Macro Stress Integrity (`fix/valuation-range-macro-stress`) ✅
+- In `src/utils/valuation/valuationStore.ts`, eliminated synthetic $\pm 15\%$ fair-value ranges in `relative_only` and `fintech_pe`. Preserved point-only fair values with `null` range boundaries when source range is not explicitly provided.
+- In `src/utils/macroStressEngine.ts`, eliminated hidden economic floors (clamping WACC $\ge 4\%$, FCF margin $\ge 1\%$, terminal growth $\ge 0.5\%$). Base Case scenario exactly reproduces canonical base inputs. Stressed scenarios calculate exact mathematical parameters or fail closed with scenario unavailable reason when mathematically invalid ($WACC \le TG$).
+- Added regression tests verifying point-value preservation, exact base case parameter reproduction, and fail-closed stress behavior.
+- Merge SHA: `77117a5`.
+
+#### PR #89 — SEC Comparison Integrity & Provenance Guards (`fix/sec-comparison-integrity`) ✅
+- Enforced strict immediate-prior-year matching for YoY comparisons in `src/utils/secFilingDiffEngine.ts`: annual periods require `prior.fiscalYear === cur.fiscalYear - 1`; quarterly periods require `prior.quarter === cur.quarter && prior.fiscalYear === cur.fiscalYear - 1`. Non-consecutive comparisons (e.g. FY25 vs FY23) return unavailable.
+- Added SEC provenance guard on `adaptFinancialStatementsToSecPeriodStatements`: generic or legacy `ReportData` without explicit SEC verification cannot enter the SEC filing diff or claim 'Verified SEC Filing Comparison'.
+- Enforced truthful diluted shares comparison: requires historical diluted weighted average shares from verified SEC facts; returns `null` for `shareCountDeltaPct` when comparable historical shares are unavailable, strictly avoiding mixing common shares outstanding with diluted shares.
+- Added regression tests for all matching, provenance, and dilution cases.
+- Merge SHA: `1adba68`.
+
+#### PR #90 — Ratio Missing-vs-Zero D/E Follow-up (`fix/ratio-missing-vs-zero`) ✅
+- In `src/utils/metricCalculations.ts`, updated Debt-to-Equity derivation: prefers verified `total_debt`; only derives from short-term debt + long-term debt when BOTH components are finite verified numerical values. Missing or null components strictly fail closed (`null`) instead of defaulting to zero. Explicit verified zeroes remain supported.
+- Audited adjacent solvency and liquidity ratios.
+- Added regression tests for all null/finite combinations.
+- Merge SHA: `d113399`.
+
+#### PR #91 — Cost Estimator Fail-Closed Truthfulness (`fix/cost-estimator-truthfulness`) ✅
+- In `src/utils/costEstimator.ts`, eliminated default/fallback pricing for unknown models and arbitrary regex matching of "pro" to Gemini 1.5 Pro. Unknown models return `null` pricing and `estimateTokenCost` returns `isAvailable: false` with reason.
+- Attached pricing catalog metadata: source (`Google Cloud Vertex AI / Gemini API Official Pricing`), effective date, and catalog version.
+- When `totalTokens` is provided without prompt/output split, surfaces explicit approximation note: `Approximate token allocation used (75% input / 25% output assumption)`.
+- Updated `src/ReportTemplate.tsx` to display 'Unavailable' / 'ไม่พร้อมใช้งาน' for unpriced models and surface the 75/25 token allocation approximation pill and tooltip.
+- Merge SHA: `d8d98c0`.
+
+#### PR #92 — DDM Provenance Semantics (`fix/ddm-provenance-semantics`) ✅
+- In `src/types.ts` and `src/utils/valuation/ddmCalculator.ts`, separated provenance for verified company facts ($D_0$) from scenario growth, cost of equity ($K_e$), and payout assumptions.
+- Eliminated inheritance of `source_type = 'verified_dividend'` for scenario assumptions. Scenario assumptions are labeled `source_assumption` or `system_illustrative`.
+- Added regression tests in `universalValuation.test.ts`.
+- Merge SHA: `543de70`.
+
+#### PR #93 — Period Parser Consistency (`fix/period-parser-consistency`) ✅
+- In `src/utils/statementAggregation.ts`, enhanced `parseQuarterPeriod` regex to accept `Qx FYyy` and `Qx FYyyyy` (e.g. `Q1 FY26`, `FY26-Q1`) while preserving strict consecutive-quarter validation and zero-gap enforcement for LTM aggregation.
+- Added strict parsing and window detection tests in `statementAggregation.test.ts`.
+- Merge SHA: `b38197a`.
+
+#### PR #94 — Security Audit Triage & Bundle Performance Analysis (`docs/triage-audit-bundle`) ✅
+- Created `docs/SECURITY_AUDIT_TRIAGE.md` documenting the vulnerability triage of 10 moderate vulnerabilities (0 critical, 0 high), confirming why `npm audit fix --force` is rejected.
+- Analyzed production Vite bundle warning (~2.61 MB minified / 670.5 kB gzip) and proposed safe route-level and modal lazy-loading candidates for a future dedicated PR.
+- Merge SHA: `e9080df`.
+
+#### Round 3 Test Gate Metrics
+- **Test files executed**: 73
+- **src/ test files executed**: 71
+- **Server test files executed**: 2 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`)
+- **Test cases passed**: 161
+- **Test cases failed**: 0
+- **Test cases skipped**: 0
+- **Vulnerabilities**: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged)
 
 ## Current production health
 
