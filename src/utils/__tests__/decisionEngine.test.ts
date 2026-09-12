@@ -78,7 +78,7 @@ describe('decisionEngine', () => {
     // Current price = $216.71, Base FCF/share = $10, WACC = 9%, TG = 2.5%
     const res = calculateReverseDcf(216.71, 10, 9.0, 2.5, 5);
 
-    assert.ok(res.impliedGrowthPct >= 9.5 && res.impliedGrowthPct <= 10.5);
+    assert.ok(res.impliedGrowthPct !== null && res.impliedGrowthPct >= 9.5 && res.impliedGrowthPct <= 10.5);
     assert.equal(res.isHurdleHigh, false);
     // Descriptive assessment without speculative probability claims
     assert.ok(res.assessment.includes('implies approximately'));
@@ -89,13 +89,20 @@ describe('decisionEngine', () => {
   it('calculateReverseDcf: flags demanding / high hurdle when market prices aggressive growth', () => {
     const res = calculateReverseDcf(400, 10, 9.0, 2.5, 5);
 
-    assert.ok(res.impliedGrowthPct > 20);
+    assert.ok(res.impliedGrowthPct !== null && res.impliedGrowthPct > 20);
     assert.equal(res.isHurdleHigh, true);
+  });
+
+  it('calculateReverseDcf: returns null and isOutOfRange when target price is unbracketed by [-50%, +150%]', () => {
+    const res = calculateReverseDcf(50000, 10, 9.0, 2.5, 5);
+    assert.equal(res.impliedGrowthPct, null);
+    assert.equal(res.isOutOfRange, true);
+    assert.ok(res.assessment.includes('exceeds the valuation at +150%'));
   });
 
   it('calculateReverseDcf: fails closed on invalid or non-positive inputs', () => {
     const res = calculateReverseDcf(0, 10, 9.0, 2.5);
-    assert.equal(res.impliedGrowthPct, 0);
+    assert.equal(res.impliedGrowthPct, null);
     assert.ok(res.assessment.includes('missing or invalid verified inputs'));
   });
 
@@ -165,9 +172,21 @@ describe('decisionEngine', () => {
     });
 
     // Solving for targetPrice should yield the base CAGR (12.0%)
+    assert.ok(res.impliedGrowthPct !== null);
     assert.ok(Math.abs(res.impliedGrowthPct - mockCanonicalInputs.baseRevenueCagrPct) < 0.2);
     assert.ok(res.assessment.includes('implies approximately'));
     assert.ok(res.assessment.includes('Base report assumption: 12%'));
+  });
+
+  it('calculateCanonicalReverseDcf: returns null and isOutOfRange when target price is unbracketed by [-50%, +150%]', () => {
+    const res = calculateCanonicalReverseDcf({
+      ...mockCanonicalInputs,
+      currentPrice: 50000.0 // Astronomical price far exceeding +150% CAGR DCF
+    });
+
+    assert.equal(res.impliedGrowthPct, null);
+    assert.equal(res.isOutOfRange, true);
+    assert.ok(res.assessment.includes('exceeds the valuation at +150%'));
   });
 
   it('extractNormalizedPeers: extracts structured peers without fabricating missing values', () => {

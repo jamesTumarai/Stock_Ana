@@ -53,6 +53,12 @@ export function ReverseDcfCard({
   if (!result || result.currentPrice <= 0) return null;
 
   const getHurdleBadge = () => {
+    if (result.impliedGrowthPct === null || result.isOutOfRange) {
+      return {
+        label: isThai ? 'อยู่นอกกรอบการประเมิน (Out of Range)' : 'Out of Modeled Range',
+        color: 'bg-stone-100 text-stone-700 border-stone-300'
+      };
+    }
     if (result.impliedGrowthPct <= 5) {
       return {
         label: isThai ? 'เกณฑ์ต่ำ (Conservative)' : 'Conservative Hurdle',
@@ -96,8 +102,8 @@ export function ReverseDcfCard({
             </div>
             <p className="text-xs text-stone-500 font-sans">
               {isThai
-                ? 'คำนวณย้อนกลับจากราคาตลาดปัจจุบันเพื่อตรวจสอบอัตราการเติบโตของกระแสเงินสดที่ถูกสะท้อนในราคาหุ้น'
-                : 'Back-solves the annual growth hurdle baked into current price to test feasibility'}
+                ? 'คำนวณย้อนกลับจากราคาตลาดปัจจุบันเพื่อตรวจสอบอัตราการเติบโตของรายได้ (Revenue CAGR) ที่สะท้อนในราคาหุ้น'
+                : 'Back-solves the annual revenue growth hurdle (CAGR) baked into current price to test feasibility'}
             </p>
           </div>
         </div>
@@ -119,13 +125,15 @@ export function ReverseDcfCard({
         {/* Left: Implied Growth Hurdle Gauge */}
         <div className="md:col-span-4 bg-stone-50/80 rounded-2xl p-4 border border-stone-200/80 flex flex-col items-center text-center justify-center">
           <span className="text-[10px] uppercase font-bold text-stone-400 font-mono tracking-wider">
-            {isThai ? 'อัตราเติบโตต่อปีที่ราคาตลาดสะท้อน' : 'Implied Annual Growth'}
+            {isThai ? 'อัตราเติบโตรายได้ที่ราคาตลาดสะท้อน' : 'Implied Revenue CAGR'}
           </span>
-          <div className="text-3xl sm:text-4xl font-mono font-extrabold text-[#0b5a4b] mt-1.5">
-            {result.impliedGrowthPct > 0 ? `+${result.impliedGrowthPct}%` : `${result.impliedGrowthPct}%`}
+          <div className="text-2xl sm:text-3xl font-mono font-extrabold text-[#0b5a4b] mt-1.5">
+            {result.impliedGrowthPct !== null
+              ? `${result.impliedGrowthPct > 0 ? '+' : ''}${result.impliedGrowthPct}%`
+              : (result.isOutOfRange ? (isThai ? 'อยู่นอกกรอบ' : 'Out of Range') : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable'))}
           </div>
           <span className="text-[10px] text-stone-500 font-sans mt-0.5">
-            {isThai ? 'อัตราทบต้นต่อปีตลอด 5 ปีข้างหน้า' : 'CAGR required over next 5 years'}
+            {isThai ? 'อัตราเติบโตรายได้ทบต้นต่อปีตลอด 5 ปีข้างหน้า' : 'Revenue CAGR required over next 5 years'}
           </span>
 
           <div className={`mt-3 px-2.5 py-1 rounded-full text-[11px] font-bold border ${hurdle.color}`}>
@@ -150,8 +158,12 @@ export function ReverseDcfCard({
               <strong className="text-stone-900 mt-0.5">${result.currentPrice.toFixed(2)}</strong>
             </div>
             <div className="p-2.5 bg-white rounded-xl border border-stone-200/80 flex flex-col">
-              <span className="text-[10px] text-stone-400 font-sans uppercase">{isThai ? 'FCF ต่อหุ้นฐาน' : 'Base FCF/sh'}</span>
-              <strong className="text-stone-900 mt-0.5">${result.baseFcfPerShare.toFixed(2)}</strong>
+              <span className="text-[10px] text-stone-400 font-sans uppercase">
+                {sandboxInputs ? (isThai ? 'FCF Margin ฐาน' : 'Base FCF Margin') : (isThai ? 'FCF ต่อหุ้นฐาน' : 'Base FCF/sh')}
+              </span>
+              <strong className="text-stone-900 mt-0.5">
+                {sandboxInputs ? `${sandboxInputs.baseFcfMarginPct.toFixed(1)}%` : `$${result.baseFcfPerShare.toFixed(2)}`}
+              </strong>
             </div>
             <div className="p-2.5 bg-white rounded-xl border border-stone-200/80 flex flex-col">
               <span className="text-[10px] text-stone-400 font-sans uppercase">{isThai ? 'อัตราคิดลด WACC' : 'Discount Rate'}</span>
