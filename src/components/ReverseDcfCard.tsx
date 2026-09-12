@@ -1,14 +1,16 @@
 import React, { useMemo } from 'react';
 import {
-  Gauge, TrendingUp, TrendingDown, HelpCircle, Sliders, ArrowRight, ShieldCheck, Scale
+  Gauge, Sliders
 } from 'lucide-react';
 import { ReverseDcfResult } from '../types';
-import { calculateReverseDcf } from '../utils/decisionEngine';
+import { calculateCanonicalReverseDcf, calculateReverseDcf } from '../utils/decisionEngine';
+import type { CanonicalValuationSandboxInputs } from '../utils/valuationSandboxAdapter';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface Props {
-  currentPrice: number;
-  baseFcfPerShare: number;
+  sandboxInputs?: CanonicalValuationSandboxInputs;
+  currentPrice?: number;
+  baseFcfPerShare?: number;
   discountRatePct?: number;
   terminalGrowthPct?: number;
   isThai: boolean;
@@ -16,46 +18,61 @@ interface Props {
 }
 
 export function ReverseDcfCard({
+  sandboxInputs,
   currentPrice,
   baseFcfPerShare,
-  discountRatePct = 9.0,
-  terminalGrowthPct = 2.5,
+  discountRatePct,
+  terminalGrowthPct,
   isThai,
   onOpenScenarioModal
 }: Props) {
-  const result: ReverseDcfResult = useMemo(() => {
-    return calculateReverseDcf(
-      currentPrice,
-      baseFcfPerShare,
-      discountRatePct,
-      terminalGrowthPct,
-      5
-    );
-  }, [currentPrice, baseFcfPerShare, discountRatePct, terminalGrowthPct]);
+  const result: ReverseDcfResult | null = useMemo(() => {
+    if (sandboxInputs) {
+      return calculateCanonicalReverseDcf(sandboxInputs);
+    }
 
-  if (currentPrice <= 0 || baseFcfPerShare <= 0) return null;
+    if (
+      typeof currentPrice === 'number' && currentPrice > 0 &&
+      typeof baseFcfPerShare === 'number' && baseFcfPerShare > 0 &&
+      typeof discountRatePct === 'number' && discountRatePct > 0 &&
+      typeof terminalGrowthPct === 'number' && terminalGrowthPct >= 0 &&
+      discountRatePct > terminalGrowthPct
+    ) {
+      return calculateReverseDcf(
+        currentPrice,
+        baseFcfPerShare,
+        discountRatePct,
+        terminalGrowthPct,
+        5
+      );
+    }
+
+    return null;
+  }, [sandboxInputs, currentPrice, baseFcfPerShare, discountRatePct, terminalGrowthPct]);
+
+  if (!result || result.currentPrice <= 0) return null;
 
   const getHurdleBadge = () => {
     if (result.impliedGrowthPct <= 5) {
       return {
-        label: isThai ? 'เกณฑ์ต่ำ (Conservative)' : 'Low Hurdle',
+        label: isThai ? 'เกณฑ์ต่ำ (Conservative)' : 'Conservative Hurdle',
         color: 'bg-emerald-50 text-emerald-800 border-emerald-200'
       };
     }
     if (result.impliedGrowthPct <= 14) {
       return {
-        label: isThai ? 'เกณฑ์ปานกลาง (Realistic)' : 'Moderate Hurdle',
+        label: isThai ? 'เกณฑ์ปานกลาง (Moderate)' : 'Moderate Growth Hurdle',
         color: 'bg-blue-50 text-blue-800 border-blue-200'
       };
     }
     if (result.impliedGrowthPct <= 22) {
       return {
-        label: isThai ? 'เกณฑ์สูง (Demanding)' : 'Demanding Hurdle',
+        label: isThai ? 'เกณฑ์สูง (Demanding)' : 'Demanding Growth Hurdle',
         color: 'bg-amber-50 text-amber-800 border-amber-200'
       };
     }
     return {
-      label: isThai ? 'ราคาสมบูรณ์แบบ (Priced for Perfection)' : 'Priced for Perfection',
+      label: isThai ? 'เกณฑ์สูงมาก (Aggressive)' : 'Aggressive Growth Hurdle',
       color: 'bg-rose-50 text-rose-800 border-rose-200'
     };
   };
@@ -79,8 +96,8 @@ export function ReverseDcfCard({
             </div>
             <p className="text-xs text-stone-500 font-sans">
               {isThai
-                ? 'คำนวณย้อนกลับจากราคาตลาดปัจจุบันเพื่อตรวจสอบอัตราการเติบโตของ FCF ที่ถูกสะท้อนในราคาหุ้น'
-                : 'Back-solves the annual FCF growth hurdle baked into current price to test feasibility'}
+                ? 'คำนวณย้อนกลับจากราคาตลาดปัจจุบันเพื่อตรวจสอบอัตราการเติบโตของกระแสเงินสดที่ถูกสะท้อนในราคาหุ้น'
+                : 'Back-solves the annual growth hurdle baked into current price to test feasibility'}
             </p>
           </div>
         </div>
@@ -102,7 +119,7 @@ export function ReverseDcfCard({
         {/* Left: Implied Growth Hurdle Gauge */}
         <div className="md:col-span-4 bg-stone-50/80 rounded-2xl p-4 border border-stone-200/80 flex flex-col items-center text-center justify-center">
           <span className="text-[10px] uppercase font-bold text-stone-400 font-mono tracking-wider">
-            {isThai ? 'อัตราเติบโต FCF ต่อปีที่ราคาตลาดสะท้อน' : 'Implied Annual FCF Growth'}
+            {isThai ? 'อัตราเติบโตต่อปีที่ราคาตลาดสะท้อน' : 'Implied Annual Growth'}
           </span>
           <div className="text-3xl sm:text-4xl font-mono font-extrabold text-[#0b5a4b] mt-1.5">
             {result.impliedGrowthPct > 0 ? `+${result.impliedGrowthPct}%` : `${result.impliedGrowthPct}%`}

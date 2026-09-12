@@ -5,8 +5,13 @@ import {
   generateValuationScenarios,
   computeSensitivityMatrix,
   calculateReverseDcf,
-  extractNormalizedPeers
+  extractNormalizedPeers,
+  generateCanonicalScenarios,
+  computeCanonicalSensitivityMatrix,
+  calculateCanonicalReverseDcf
 } from '../decisionEngine';
+import type { CanonicalValuationSandboxInputs } from '../valuationSandboxAdapter';
+import { calculateStrictDCFValue } from '../valuation/dcfMathEngine';
 
 describe('decisionEngine', () => {
   it('calculateDcfPerShare: computes discounted cash flow and terminal value accurately', () => {
@@ -14,21 +19,17 @@ describe('decisionEngine', () => {
     const fv = calculateDcfPerShare(10, 10, 9, 2.5, 5);
 
     assert.ok(fv > 0);
-    // Rough check: 5-yr cash flows (~$11, $12.1, $13.3, $14.6, $16.1) PV ~ $51
-    // Terminal value = $16.1 * 1.025 / (0.09 - 0.025) = $254 -> PV ~ $165
-    // Total FV ~ $216
     assert.ok(fv > 200 && fv < 250);
   });
 
-  it('calculateDcfPerShare: returns 0 when WACC is less than or equal to terminal growth', () => {
-    const fv = calculateDcfPerShare(10, 10, 2.5, 2.5);
-    assert.equal(fv, 0);
-
-    const fvNegative = calculateDcfPerShare(10, 10, 2.0, 3.0);
-    assert.equal(fvNegative, 0);
+  it('calculateDcfPerShare: returns 0 when WACC is less than or equal to terminal growth or inputs invalid', () => {
+    assert.equal(calculateDcfPerShare(10, 10, 2.5, 2.5), 0);
+    assert.equal(calculateDcfPerShare(10, 10, 2.0, 3.0), 0);
+    assert.equal(calculateDcfPerShare(-5, 10, 9.0, 2.5), 0);
+    assert.equal(calculateDcfPerShare(NaN, 10, 9.0, 2.5), 0);
   });
 
-  it('generateValuationScenarios: generates deterministic Bear < Base < Bull ranking', () => {
+  it('generateValuationScenarios: generates deterministic Bear < Base < Bull ranking with explicit inputs', () => {
     const scenarios = generateValuationScenarios(10, 180, 10, 9.0, 2.5);
 
     assert.equal(scenarios.length, 3);
@@ -41,6 +42,12 @@ describe('decisionEngine', () => {
     assert.ok(base.fairValuePerShare < bull.fairValuePerShare);
     assert.ok(bear.marginOfSafetyPct < base.marginOfSafetyPct);
     assert.ok(base.marginOfSafetyPct < bull.marginOfSafetyPct);
+  });
+
+  it('generateValuationScenarios: fails closed without returning fabricated values when inputs are invalid', () => {
+    assert.deepEqual(generateValuationScenarios(NaN, 180, 10, 9.0, 2.5), []);
+    assert.deepEqual(generateValuationScenarios(10, 0, 10, 9.0, 2.5), []);
+    assert.deepEqual(generateValuationScenarios(10, 180, 10, 2.0, 2.5), []);
   });
 
   it('computeSensitivityMatrix: generates 5x5 grid with proper inverse discount rate behavior', () => {
@@ -62,22 +69,90 @@ describe('decisionEngine', () => {
     assert.ok(highestTgVal > lowestTgVal);
   });
 
-  it('calculateReverseDcf: back-solves implied growth rate matching current price', () => {
+  it('computeSensitivityMatrix: fails closed when required inputs are missing or invalid', () => {
+    const empty = computeSensitivityMatrix(0, 180, 9.0, 2.5, 10);
+    assert.deepEqual(empty, { discountRates: [], terminalGrowthRates: [], cells: [] });
+  });
+
+  it('calculateReverseDcf: back-solves implied growth rate with descriptive non-speculative language', () => {
     // Current price = $216.71, Base FCF/share = $10, WACC = 9%, TG = 2.5%
-    // We expect implied growth to be ~10%
     const res = calculateReverseDcf(216.71, 10, 9.0, 2.5, 5);
 
     assert.ok(res.impliedGrowthPct >= 9.5 && res.impliedGrowthPct <= 10.5);
     assert.equal(res.isHurdleHigh, false);
-    assert.ok(res.assessment.includes('hurdle'));
+    // Descriptive assessment without speculative probability claims
+    assert.ok(res.assessment.includes('implies approximately'));
+    assert.ok(res.assessment.includes('WACC: 9%'));
+    assert.ok(res.assessmentTh.includes('สะท้อนอัตราการเติบโต'));
   });
 
   it('calculateReverseDcf: flags demanding / high hurdle when market prices aggressive growth', () => {
-    // Current price = $400 for $10 FCF/share -> Requires very high growth
     const res = calculateReverseDcf(400, 10, 9.0, 2.5, 5);
 
     assert.ok(res.impliedGrowthPct > 20);
     assert.equal(res.isHurdleHigh, true);
+  });
+
+  it('calculateReverseDcf: fails closed on invalid or non-positive inputs', () => {
+    const res = calculateReverseDcf(0, 10, 9.0, 2.5);
+    assert.equal(res.impliedGrowthPct, 0);
+    assert.ok(res.assessment.includes('missing or invalid verified inputs'));
+  });
+
+  // Canonical Valuation Engine Integration Tests
+  const mockCanonicalInputs: CanonicalValuationSandboxInputs = {
+    ticker: 'MSFT',
+    currentPrice: 420.50,
+    startingRevenueM: 245120,
+    sharesOutstandingM: 7430,
+    netCashM: 30000,
+    waccPct: 8.5,
+    terminalGrowthPct: 3.0,
+    projectionYears: 5,
+    baseRevenueCagrPct: 12.0,
+    baseFcfMarginPct: 32.0,
+    canonicalBaseFairValue: calculateStrictDCFValue(245120, 7430, 30000, 8.5, 3.0, 12.0, 32.0, 5)
+  };
+
+  it('generateCanonicalScenarios: base scenario matches canonical DCF math exactly', () => {
+    const scenarios = generateCanonicalScenarios(mockCanonicalInputs);
+
+    assert.equal(scenarios.length, 3);
+    const base = scenarios.find(s => s.name === 'base')!;
+    const bear = scenarios.find(s => s.name === 'bear')!;
+    const bull = scenarios.find(s => s.name === 'bull')!;
+
+    assert.ok(base && bear && bull);
+    // Base fair value must match canonical DCF exactly
+    assert.equal(base.fairValuePerShare, mockCanonicalInputs.canonicalBaseFairValue);
+    assert.ok(bear.fairValuePerShare < base.fairValuePerShare);
+    assert.ok(base.fairValuePerShare < bull.fairValuePerShare);
+  });
+
+  it('computeCanonicalSensitivityMatrix: reuses calculateStrictDCFValue across grid', () => {
+    const matrix = computeCanonicalSensitivityMatrix(mockCanonicalInputs);
+
+    assert.equal(matrix.discountRates.length, 5);
+    assert.equal(matrix.terminalGrowthRates.length, 5);
+
+    // Center cell (index 2, 2) corresponds to base WACC (8.5%) and base TG (3.0%)
+    const centerCell = matrix.cells[2][2];
+    assert.equal(centerCell.discountRatePct, 8.5);
+    assert.equal(centerCell.terminalGrowthPct, 3.0);
+    assert.equal(centerCell.fairValue, mockCanonicalInputs.canonicalBaseFairValue);
+  });
+
+  it('calculateCanonicalReverseDcf: back-solves implied revenue CAGR using canonical strict DCF engine', () => {
+    const targetPrice = mockCanonicalInputs.canonicalBaseFairValue!;
+    const res = calculateCanonicalReverseDcf({
+      ...mockCanonicalInputs,
+      currentPrice: targetPrice
+    });
+
+    // Solving for targetPrice should yield the base CAGR (12.0%)
+    assert.ok(Math.abs(res.impliedGrowthPct - mockCanonicalInputs.baseRevenueCagrPct) < 0.2);
+    assert.ok(res.assessment.includes('implies approximately'));
+    assert.ok(res.assessment.includes('Base report assumption: 12%'));
   });
 
   it('extractNormalizedPeers: extracts structured peers without fabricating missing values', () => {
@@ -94,7 +169,6 @@ describe('decisionEngine', () => {
           ticker: 'GOOGL',
           name: 'Alphabet Inc.',
           pe_ratio: 24.1
-          // Missing operating_margin, gross_margin, etc.
         }
       ]
     };
@@ -108,6 +182,6 @@ describe('decisionEngine', () => {
 
     assert.equal(peers[1].ticker, 'GOOGL');
     assert.equal(peers[1].peRatio, 24.1);
-    assert.equal(peers[1].operatingMarginPct, null); // Preserved as null, NOT fabricated!
+    assert.equal(peers[1].operatingMarginPct, null);
   });
 });
