@@ -1,3 +1,7 @@
+import type { FinancialStatementsData, ReportData } from '../types';
+import type { CanonicalFinancialDataset } from '../domain/financialValue';
+import type { SecShareSnapshot } from '../services/sec/secShareSnapshot';
+
 export interface SecPeriodStatement {
   period: string;
   fiscal_year?: number;
@@ -44,6 +48,108 @@ function parseNum(val: any): number | null {
   return null;
 }
 
+/**
+ * Adapts FinancialStatementsData, CanonicalFinancialDataset, or ReportData into typed SecPeriodStatement[]
+ * for period-over-period diffing and SEC filing audit.
+ * Replaces synthetic or legacy shapes with Lumina's canonical model.
+ */
+export function adaptFinancialStatementsToSecPeriodStatements(
+  input?: FinancialStatementsData | CanonicalFinancialDataset | ReportData | null,
+  shareSnapshot?: SecShareSnapshot | null
+): SecPeriodStatement[] {
+  if (!input) return [];
+
+  // Case 1: ReportData wrapper
+  if ('ticker' in input && ('financial_statements' in input || 'sec_verification' in input)) {
+    const report = input as ReportData;
+    const fs = report.financial_statements;
+    if (!fs || !Array.isArray(fs.periods) || fs.periods.length === 0) return [];
+
+    const secShares = report.sec_verification?.dcf_financial_inputs?.current_shares_outstanding_m ?? null;
+
+    return fs.periods.map((period, i) => {
+      const isLatest = i === fs.periods.length - 1;
+      return {
+        period,
+        revenue: parseNum(fs.income_statement?.revenue?.[i]),
+        operating_income: parseNum(fs.income_statement?.operating_income?.[i]),
+        net_income: parseNum(fs.income_statement?.net_income?.[i]),
+        operating_cash_flow: parseNum(fs.cash_flow?.operating_cash_flow?.[i]),
+        capital_expenditure: parseNum(fs.cash_flow?.capex?.[i]),
+        total_debt: parseNum(fs.balance_sheet?.total_debt?.[i]),
+        stockholders_equity: parseNum(fs.balance_sheet?.total_equity?.[i]),
+        accounts_receivable: parseNum(fs.balance_sheet?.accounts_receivable?.[i]),
+        inventory: parseNum(fs.balance_sheet?.inventory?.[i]),
+        accounts_payable: parseNum(fs.balance_sheet?.accounts_payable?.[i]),
+        diluted_shares: isLatest
+          ? (secShares ?? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? shareSnapshot?.currentCommonSharesOutstanding?.sharesM ?? null))
+          : null,
+      };
+    });
+  }
+
+  // Case 2: CanonicalFinancialDataset
+  if ('schemaVersion' in input && 'values' in input && Array.isArray(input.periods)) {
+    const dataset = input as CanonicalFinancialDataset;
+    if (dataset.periods.length === 0) return [];
+
+    const getVal = (metricKey: string, period: string, index: number): number | null => {
+      const series = dataset.values[metricKey];
+      if (!Array.isArray(series)) return null;
+      const item = series.find((v) => v.period === period) ?? series[index];
+      return (item && typeof item.value === 'number' && Number.isFinite(item.value)) ? item.value : null;
+    };
+
+    return dataset.periods.map((period, i) => {
+      const isLatest = i === dataset.periods.length - 1;
+      return {
+        period,
+        revenue: getVal('income_statement.revenue', period, i),
+        operating_income: getVal('income_statement.operating_income', period, i),
+        net_income: getVal('income_statement.net_income', period, i),
+        operating_cash_flow: getVal('cash_flow.operating_cash_flow', period, i),
+        capital_expenditure: getVal('cash_flow.capex', period, i),
+        total_debt: getVal('balance_sheet.total_debt', period, i),
+        stockholders_equity: getVal('balance_sheet.total_equity', period, i),
+        accounts_receivable: getVal('balance_sheet.accounts_receivable', period, i),
+        inventory: getVal('balance_sheet.inventory', period, i),
+        accounts_payable: getVal('balance_sheet.accounts_payable', period, i),
+        diluted_shares: isLatest
+          ? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? shareSnapshot?.currentCommonSharesOutstanding?.sharesM ?? null)
+          : null,
+      };
+    });
+  }
+
+  // Case 3: FinancialStatementsData
+  if ('periods' in input && Array.isArray(input.periods)) {
+    const fs = input as FinancialStatementsData;
+    if (fs.periods.length === 0) return [];
+
+    return fs.periods.map((period, i) => {
+      const isLatest = i === fs.periods.length - 1;
+      return {
+        period,
+        revenue: parseNum(fs.income_statement?.revenue?.[i]),
+        operating_income: parseNum(fs.income_statement?.operating_income?.[i]),
+        net_income: parseNum(fs.income_statement?.net_income?.[i]),
+        operating_cash_flow: parseNum(fs.cash_flow?.operating_cash_flow?.[i]),
+        capital_expenditure: parseNum(fs.cash_flow?.capex?.[i]),
+        total_debt: parseNum(fs.balance_sheet?.total_debt?.[i]),
+        stockholders_equity: parseNum(fs.balance_sheet?.total_equity?.[i]),
+        accounts_receivable: parseNum(fs.balance_sheet?.accounts_receivable?.[i]),
+        inventory: parseNum(fs.balance_sheet?.inventory?.[i]),
+        accounts_payable: parseNum(fs.balance_sheet?.accounts_payable?.[i]),
+        diluted_shares: isLatest
+          ? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? shareSnapshot?.currentCommonSharesOutstanding?.sharesM ?? null)
+          : null,
+      };
+    });
+  }
+
+  return [];
+}
+
 interface ParsedPeriodDescriptor {
   statement: SecPeriodStatement;
   isAnnual: boolean;
@@ -72,6 +178,36 @@ function parsePeriodDescriptor(statement: SecPeriodStatement): ParsedPeriodDescr
       fiscalYear: yr,
       quarter: q,
       sortKey: yr * 10 + q,
+    };
+  }
+
+  // 1b. Check Quarterly reverse/delimited format: e.g. "2025-Q3", "2025 Q3", "2025/Q3", "FY2025-Q3"
+  const qMatchRev = raw.match(/^(?:FY\s*)?(\d{2,4})[-/\s]+Q([1-4])$/i);
+  if (qMatchRev) {
+    let yr = parseInt(qMatchRev[1], 10);
+    if (yr < 100) yr += 2000;
+    const q = parseInt(qMatchRev[2], 10) as 1 | 2 | 3 | 4;
+    return {
+      statement,
+      isAnnual: false,
+      isQuarterly: true,
+      fiscalYear: yr,
+      quarter: q,
+      sortKey: yr * 10 + q,
+    };
+  }
+
+  // 1c. Check Quarter-only if explicit fiscal_year is provided: e.g. "Q3" with fiscal_year: 2025
+  const qOnlyMatch = raw.match(/^Q([1-4])$/i);
+  if (qOnlyMatch && typeof statement.fiscal_year === 'number' && statement.fiscal_year > 1900) {
+    const q = parseInt(qOnlyMatch[1], 10) as 1 | 2 | 3 | 4;
+    return {
+      statement,
+      isAnnual: false,
+      isQuarterly: true,
+      fiscalYear: statement.fiscal_year,
+      quarter: q,
+      sortKey: statement.fiscal_year * 10 + q,
     };
   }
 

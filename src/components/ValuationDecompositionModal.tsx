@@ -23,6 +23,7 @@ import {
 } from '../utils/macroStressEngine';
 import {
   diffSecFinancialStatements,
+  adaptFinancialStatementsToSecPeriodStatements,
   type SecFilingPeriodDiff,
 } from '../utils/secFilingDiffEngine';
 import { ReportData } from '../types';
@@ -57,10 +58,7 @@ export function ValuationDecompositionModal({
 
   // 3. SEC YoY Diff Calculation via Comparable-Period Matching
   const secDiff: SecFilingPeriodDiff | null = useMemo(() => {
-    const fs = (currentReport as any).financial_statements;
-    const statements: any[] = [];
-    if (Array.isArray(fs?.annual)) statements.push(...fs.annual);
-    if (Array.isArray(fs?.quarterly)) statements.push(...fs.quarterly);
+    const statements = adaptFinancialStatementsToSecPeriodStatements(currentReport);
     if (statements.length < 2) return null;
     return diffSecFinancialStatements(statements, isThai);
   }, [currentReport, isThai]);
