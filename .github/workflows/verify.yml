@@ -38,14 +38,7 @@ jobs:
         run: npm run firebase:rules:preflight -- --project stock-analyze-a89d0
 
       - name: Run regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r -d '' file; do
-            echo "::group::$file"
-            node --import tsx "$file"
-            echo "::endgroup::"
-          done < <(find src -type f \( -name '*.test.ts' -o -name '*.test.tsx' \) -print0 | sort -z)
+        run: node scripts/runRegressionTests.mjs
 
       - name: TypeScript check
         run: npm run lint
