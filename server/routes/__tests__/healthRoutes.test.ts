@@ -29,7 +29,9 @@ describe('Health & Observability Routes (P1-10)', () => {
 
   it('buildHealthReport returns structured operational telemetry', () => {
     const report = buildHealthReport('express-server');
-    assert.equal(report.ok, true);
+    assert.equal(typeof report.ok, 'boolean');
+    assert.equal(report.ok, report.status === 'healthy');
+    assert.equal(report.service, 'lumina');
     assert.equal(report.runtime, 'express-server');
     assert.ok(typeof report.uptimeSecs === 'number');
     assert.ok(typeof report.timestamp === 'string');
@@ -44,11 +46,24 @@ describe('Health & Observability Routes (P1-10)', () => {
     }
   });
 
-  it('GET /api/health returns HTTP 200 with structured JSON', async () => {
+  it('GET /api/health returns HTTP 200 with minimal public JSON without leaking telemetry', async () => {
     const resp = await fetch(`http://127.0.0.1:${port}/api/health`);
     assert.equal(resp.status, 200);
     const data: any = await resp.json();
-    assert.equal(data.ok, true);
+    assert.equal(typeof data.ok, 'boolean');
+    assert.equal(data.service, 'lumina');
+    assert.ok(typeof data.timestamp === 'string');
+    assert.ok(['healthy', 'degraded'].includes(data.status));
+    assert.equal(data.services, undefined);
+    assert.equal(data.system, undefined);
+    assert.equal(data.runtime, undefined);
+  });
+
+  it('GET /api/health?detailed=true returns detailed system telemetry', async () => {
+    const resp = await fetch(`http://127.0.0.1:${port}/api/health?detailed=true`);
+    assert.equal(resp.status, 200);
+    const data: any = await resp.json();
+    assert.equal(data.service, 'lumina');
     assert.equal(data.runtime, 'express-server');
     assert.ok(data.services.gemini !== undefined);
     assert.ok(data.services.sec !== undefined);

@@ -1,3 +1,9 @@
+/**
+ * On-Open Research Monitoring Engine
+ * Evaluates valuation anomalies, conviction score shifts, SEC filing changes, and portfolio
+ * concentration risks when research reports are loaded or viewed in Lumina.
+ * Operates client-side on active report state (does not claim continuous background daemon polling).
+ */
 import {
   MonitoringAlert,
   MonitoringPreferences,
@@ -148,7 +154,8 @@ export function evaluateTickerAlerts(
   currentPrice?: number | null,
   previousReport?: ReportData,
   portfolioSummary?: PortfolioSummary,
-  preferences: MonitoringPreferences = DEFAULT_MONITORING_PREFERENCES
+  preferences: MonitoringPreferences = DEFAULT_MONITORING_PREFERENCES,
+  userId?: string
 ): MonitoringAlert[] {
   const alerts: MonitoringAlert[] = [];
   const cleanTicker = ticker.toUpperCase().trim();
@@ -266,7 +273,7 @@ export function evaluateTickerAlerts(
         const filingDate = majorFilingFinding.quarter_period || majorFilingFinding.date || (majorFilingFinding as any).period || repDate;
         const filingIdentifier = extractFilingIdentifier(majorFilingFinding);
 
-        // Suppress alert if previousReport already incorporated this exact filing
+        // Suppress alert if previousReport or local cache already incorporated this exact filing
         let isAlreadyCitedInPrevious = false;
         if (previousReport?.findings && previousReport.findings.length > 0) {
           isAlreadyCitedInPrevious = previousReport.findings.some(pf => {
@@ -275,7 +282,13 @@ export function evaluateTickerAlerts(
           });
         }
 
+        const lastSeen = getLastSeenAccession(cleanTicker, userId);
+        if (lastSeen && lastSeen === filingIdentifier) {
+          isAlreadyCitedInPrevious = true;
+        }
+
         if (!isAlreadyCitedInPrevious) {
+          setLastSeenAccession(cleanTicker, filingIdentifier, userId);
           const msg = majorFilingFinding.key_insights?.[0] ||
             majorFilingFinding.keyInsights?.[0] ||
             (majorFilingFinding as any).finding ||

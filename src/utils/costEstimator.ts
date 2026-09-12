@@ -19,14 +19,14 @@ export const MODEL_PRICING_CATALOG: Record<string, ModelPricing> = {
 const DEFAULT_PRICING: ModelPricing = {
   inputPerMillion: 0.10,
   outputPerMillion: 0.40,
-  tier: 'flash',
+  tier: 'standard',
 };
 
 export interface TokenCostEstimate {
   model: string;
   totalTokens: number;
-  promptTokens: number;
-  completionTokens: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
   inputCostUsd: number;
   outputCostUsd: number;
   totalCostUsd: number;
@@ -34,6 +34,7 @@ export interface TokenCostEstimate {
   formattedCostUsd: string;
   formattedCostThb: string | null;
   pricingTier: 'flash' | 'pro' | 'standard';
+  isEstimatedBreakdown?: boolean;
 }
 
 export interface EstimateCostOptions {
@@ -45,7 +46,7 @@ export interface EstimateCostOptions {
 }
 
 /**
- * Resolves the active model pricing tier with fallback to Flash standard pricing.
+ * Resolves the active model pricing tier with fallback to standard pricing.
  */
 export function getModelPricing(modelName?: string): ModelPricing {
   if (!modelName) return DEFAULT_PRICING;
@@ -62,33 +63,54 @@ export function getModelPricing(modelName?: string): ModelPricing {
 }
 
 /**
- * Pure deterministic token cost estimator for Gemini AI inferences.
+ * Deterministic token cost estimator for Gemini AI inferences.
  * If prompt/completion breakdown is omitted, institutional default distribution
- * (75% input context/filings, 25% output report) is applied.
+ * (75% input context/filings, 25% output report) is applied for cost calculation,
+ * while promptTokens and completionTokens remain null (never fabricated as actual counts).
+ * When fxRateUsdThb is omitted, totalCostThb and formattedCostThb return null.
  */
 export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstimate {
   const model = options.model?.trim() || 'gemini-3.8-flash';
   const pricing = getModelPricing(model);
 
   const rawTotal = Math.max(0, options.totalTokens ?? 0);
-  let promptTokens = Math.max(0, options.promptTokens ?? 0);
-  let completionTokens = Math.max(0, options.completionTokens ?? 0);
+  const hasExplicitPrompt = typeof options.promptTokens === 'number' && options.promptTokens >= 0;
+  const hasExplicitCompletion = typeof options.completionTokens === 'number' && options.completionTokens >= 0;
 
-  if (promptTokens === 0 && completionTokens === 0 && rawTotal > 0) {
-    promptTokens = Math.round(rawTotal * 0.75);
-    completionTokens = rawTotal - promptTokens;
-  } else if (rawTotal === 0 && (promptTokens > 0 || completionTokens > 0)) {
-    // Total derived from components
+  let promptTokens: number | null = null;
+  let completionTokens: number | null = null;
+  let inputCostUsd = 0;
+  let outputCostUsd = 0;
+  let isEstimatedBreakdown = false;
+
+  if (hasExplicitPrompt || hasExplicitCompletion) {
+    promptTokens = Math.max(0, options.promptTokens ?? 0);
+    completionTokens = Math.max(0, options.completionTokens ?? 0);
+    inputCostUsd = (promptTokens / 1_000_000) * pricing.inputPerMillion;
+    outputCostUsd = (completionTokens / 1_000_000) * pricing.outputPerMillion;
+  } else if (rawTotal > 0) {
+    isEstimatedBreakdown = true;
+    promptTokens = null;
+    completionTokens = null;
+    const estimatedPromptTokens = rawTotal * 0.75;
+    const estimatedCompletionTokens = rawTotal * 0.25;
+    inputCostUsd = (estimatedPromptTokens / 1_000_000) * pricing.inputPerMillion;
+    outputCostUsd = (estimatedCompletionTokens / 1_000_000) * pricing.outputPerMillion;
   }
 
-  const effectiveTotal = promptTokens + completionTokens > 0 ? promptTokens + completionTokens : rawTotal;
+  const effectiveTotal = (promptTokens !== null && completionTokens !== null)
+    ? promptTokens + completionTokens
+    : rawTotal;
 
-  const inputCostUsd = (promptTokens / 1_000_000) * pricing.inputPerMillion;
-  const outputCostUsd = (completionTokens / 1_000_000) * pricing.outputPerMillion;
   const totalCostUsd = inputCostUsd + outputCostUsd;
 
-  const fxRate = options.fxRateUsdThb && options.fxRateUsdThb > 0 ? options.fxRateUsdThb : 35.0;
-  const totalCostThb = totalCostUsd * fxRate;
+  let totalCostThb: number | null = null;
+  let formattedCostThb: string | null = null;
+
+  if (typeof options.fxRateUsdThb === 'number' && options.fxRateUsdThb > 0) {
+    totalCostThb = Number((totalCostUsd * options.fxRateUsdThb).toFixed(4));
+    formattedCostThb = formatCostThb(totalCostThb);
+  }
 
   return {
     model,
@@ -98,10 +120,11 @@ export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstima
     inputCostUsd: Number(inputCostUsd.toFixed(6)),
     outputCostUsd: Number(outputCostUsd.toFixed(6)),
     totalCostUsd: Number(totalCostUsd.toFixed(6)),
-    totalCostThb: Number(totalCostThb.toFixed(4)),
+    totalCostThb,
     formattedCostUsd: formatCostUsd(totalCostUsd),
-    formattedCostThb: formatCostThb(totalCostThb),
+    formattedCostThb,
     pricingTier: pricing.tier,
+    isEstimatedBreakdown,
   };
 }
 

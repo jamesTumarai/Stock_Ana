@@ -14,7 +14,7 @@ import { estimateTokenCost, getModelPricing, formatCostUsd, formatCostThb } from
   assert.equal(proPricing.outputPerMillion, 5.00);
 
   const defaultPricing = getModelPricing('unknown-model');
-  assert.equal(defaultPricing.tier, 'flash');
+  assert.equal(defaultPricing.tier, 'standard');
 }
 
 // 2. Exact token breakdown estimation
@@ -29,6 +29,7 @@ import { estimateTokenCost, getModelPricing, formatCostUsd, formatCostThb } from
   assert.equal(estimate.totalTokens, 25_000);
   assert.equal(estimate.promptTokens, 20_000);
   assert.equal(estimate.completionTokens, 5_000);
+  assert.equal(estimate.isEstimatedBreakdown, false);
 
   // Input: (20000 / 1M) * 0.10 = $0.002
   // Output: (5000 / 1M) * 0.40 = $0.002
@@ -39,10 +40,11 @@ import { estimateTokenCost, getModelPricing, formatCostUsd, formatCostThb } from
   assert.equal(estimate.formattedCostUsd, '$0.0040');
 
   // THB: 0.004 * 36 = 0.144
+  assert.equal(estimate.totalCostThb, 0.144);
   assert.equal(estimate.formattedCostThb, '฿0.14');
 }
 
-// 3. Fallback derivation when only totalTokens is provided (75% / 25% distribution)
+// 3. Fallback derivation when only totalTokens is provided (estimated distribution, null prompt/completion tokens)
 {
   const estimate = estimateTokenCost({
     totalTokens: 10_000,
@@ -50,14 +52,17 @@ import { estimateTokenCost, getModelPricing, formatCostUsd, formatCostThb } from
   });
 
   assert.equal(estimate.totalTokens, 10_000);
-  assert.equal(estimate.promptTokens, 7_500);
-  assert.equal(estimate.completionTokens, 2_500);
+  assert.equal(estimate.promptTokens, null);
+  assert.equal(estimate.completionTokens, null);
+  assert.equal(estimate.isEstimatedBreakdown, true);
 
   // Input: (7500 / 1M) * 0.10 = 0.00075
   // Output: (2500 / 1M) * 0.40 = 0.001
   // Total: 0.00175
   assert.equal(estimate.totalCostUsd, 0.00175);
   assert.equal(estimate.formattedCostUsd, '$0.0018');
+  assert.equal(estimate.totalCostThb, null);
+  assert.equal(estimate.formattedCostThb, null);
 }
 
 // 4. Zero tokens edge case
@@ -65,7 +70,8 @@ import { estimateTokenCost, getModelPricing, formatCostUsd, formatCostThb } from
   const estimate = estimateTokenCost({ totalTokens: 0 });
   assert.equal(estimate.totalCostUsd, 0);
   assert.equal(estimate.formattedCostUsd, '$0.00');
-  assert.equal(estimate.formattedCostThb, '฿0.00');
+  assert.equal(estimate.totalCostThb, null);
+  assert.equal(estimate.formattedCostThb, null);
 }
 
 // 5. Formatting helpers

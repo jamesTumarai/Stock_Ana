@@ -4,7 +4,8 @@ import { buildHealthReport } from '../../../server/routes/healthRoutes';
 // 1. Build health report in default environment
 {
   const report = buildHealthReport('express-server');
-  assert.equal(report.ok, true);
+  assert.equal(report.ok, report.status === 'healthy');
+  assert.equal(report.service, 'lumina');
   assert.equal(report.runtime, 'express-server');
   assert.ok(typeof report.uptimeSecs === 'number');
   assert.ok(report.timestamp);
@@ -29,7 +30,8 @@ import { buildHealthReport } from '../../../server/routes/healthRoutes';
 {
   const vercelReport = buildHealthReport('vercel-function');
   assert.equal(vercelReport.runtime, 'vercel-function');
-  assert.equal(vercelReport.ok, true);
+  assert.equal(vercelReport.ok, vercelReport.status === 'healthy');
+  assert.equal(vercelReport.service, 'lumina');
 }
 
 console.log('Health route checks passed');
