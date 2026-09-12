@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Post-Roadmap Integrity Hardening Complete ✅ (Institutional Integrity Baseline Established)**.
-- Current working mode: **Post-Roadmap Integrity Hardening Master Sequence Complete (PR A through PR I merged, Subscription System removed per owner directive)**.
+- Current stage: **Post-Hardening Review Round 2 Complete (PRs #78–#85 Merged; Phase 4.5 Pending Owner Acceptance ⏳)**.
+- Current working mode: **Post-Hardening Review Round 2 Complete (CI gate extended, LTM integrity, valuation fail-closed, reverse DCF bracketing, corporate actions UI, SEC diff adapter, honest DDM/sector models, minimal truthful public health check)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #76 (`cb87d22`) — Removal of Subscription System & Entitlement Gates (Full Unlimited Platform Access).
+- Latest merged milestone: PR #85 (Monitoring & Operations Hardening).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,15 +27,15 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #67–#76 |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete (Pending Acceptance)` | PR #67–#76, #78–#85 |
 | **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #56–#58, PR #70 |
 | **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #59, #60 |
 | **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #61, PR #71 |
-| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #62, PR #72 |
-| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #63, PR #68 |
-| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #64, PR #75 |
+| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #62, PR #72, PR #85 |
+| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #63, PR #68, PR #80, PR #81 |
+| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #64, PR #75, PR #85 |
 | **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
-| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #66, PR #69, PR #70, PR #73 |
+| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #66, PR #69, PR #70, PR #73, PR #83 |
 
 ## Repository protection
 
@@ -347,16 +347,11 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Upgraded `ReportTemplate.tsx` with dedicated non-FCFF sector valuation card presenting institutional DDM/AFFO metrics with methodology badges and mathematical clarity.
 - Merge SHA: `b6c6238`.
 
-#### PR #74 — Server-Side Entitlement Authority & Tier Quotas (PR H, P0-5) ✅
-- **Firebase Token Claim Ingestion**:
-  - Ingested custom subscription claims (`decoded.tier` / `decoded.subscription_tier`) in `server/auth/firebaseAuth.ts`.
-- **Authoritative Server Middleware**:
-  - Built `server/middleware/entitlementAuthority.ts` (`enforceAnalyzeEntitlements`) acting as the single source of truth at the API boundary:
-    - Model entitlement gate (rejects Pro model requests from Free users with HTTP 403 `MODEL_NOT_ENTITLED`).
-    - Feature entitlement gate (rejects Deep Think requests from Free users with HTTP 403 `FEATURE_NOT_ENTITLED`).
-    - Monthly analysis quota gate (rejects requests exceeding monthly allowance with HTTP 429 `ANALYSIS_QUOTA_EXCEEDED`).
-- **Client Interception & Upgrades**:
-  - Integrated HTTP 403/429 status handling in `src/App.tsx` to automatically trigger `SubscriptionModal` with localized upgrade messaging.
+#### PR #74 — Server-Side Entitlement Authority & Tier Quotas (PR H, P0-5) [Superseded / Removed]
+- *(Note: Built during Phase 4.5 baseline but subsequently superseded and deleted in PR #76 per explicit owner directive).*
+- Ingested custom subscription claims in `server/auth/firebaseAuth.ts`.
+- Built `server/middleware/entitlementAuthority.ts` (`enforceAnalyzeEntitlements`).
+- Integrated HTTP 403/429 status handling in `src/App.tsx`.
 - Merge SHA: `004a9e4`.
 
 #### PR #75 — Observability & Documentation Reconciliation (PR I, P1-10, P2) ✅
@@ -364,8 +359,6 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Added `server/routes/__tests__/healthRoutes.test.ts` verifying `/api/health` JSON payload (RSS memory, heap usage, process uptime, Node environment, Gemini/SEC/Firebase configuration flags, and SEC cache telemetry).
 - **Master Documentation Reconciliation**:
   - Reconciled `docs/PROJECT_STATUS.md` and `docs/ROADMAP.md` to reflect complete delivery of PR A through PR I.
-  - Closed Phase 4.5 Post-Roadmap Integrity Stabilization as Complete ✅.
-  - Total automated test suite expanded to 150 tests (136 src tests + 14 server tests) passing with 100% success.
 - Merge SHA: `7b89eff`.
 
 #### PR #76 — Removal of Subscription System & Entitlement Gates ✅
@@ -376,7 +369,60 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Removed client-side monthly quota checks (`evaluateAnalysisQuota`) and usage tracking (`recordAnalysisUsage`).
   - Removed server-side middleware `enforceAnalyzeEntitlements` from `/api/analyze`, granting unrestricted, unlimited access to all AI models (including Pro) and Deep Think for all authenticated users without quotas.
   - Purged 9 subscription/tier files across `src/domain/`, `src/services/`, `src/utils/`, and `server/middleware/`.
-  - 140 automated regression tests passing across the repository with 100% success rate.
+- Merge SHA: `cb87d22`.
+
+### Post-Hardening Review Round 2 PRs
+
+#### PR #78 — CI Gate Hardening (`ci/extend-regression-gate`) ✅
+- Expanded CI test runner `scripts/runRegressionTests.mjs` to automatically discover and execute test suites across both `src/` and `server/`.
+- Increased test file coverage from 41 to 73 test files executed under the mandatory CI regression gate.
+- Added explicit server test execution proof logging for `server/routes/__tests__/fileSecurity.test.ts` and `server/routes/__tests__/healthRoutes.test.ts`.
+- Merge SHA: `7e19bc4`.
+
+#### PR #79 — LTM & Period Integrity (`fix/ltm-consecutive-quarters`) ✅
+- In `src/services/sec/secFinancialMapper.ts`, enforced strict 4-consecutive-quarters requirement before computing LTM (Last Twelve Months) aggregates; returns unavailable (`null`) when quarterly gaps exist.
+- Aligned fiscal year end detection across all quarters.
+- Added regression tests verifying LTM fail-closed behavior on missing quarters.
+- Merge SHA: `a5b72c2`.
+
+#### PR #80 — Valuation Fail-Closed Hardening (`fix/valuation-fail-closed`) ✅
+- Hardened `src/utils/valuationSandboxAdapter.ts` to strictly fail closed (`null`) when cash flow, revenue, or shares outstanding are missing (eliminating all fallback zeroes or estimates).
+- Enforced financial sector guard preventing generic FCFF calculation for financial institutions.
+- Added comprehensive regression tests proving zero hidden fallbacks.
+- Merge SHA: `d6def73`.
+
+#### PR #81 — Reverse DCF Bracketing & Revenue CAGR Metric (`fix/reverse-dcf-bracketing`) ✅
+- In `src/utils/decisionEngine.ts`, expanded Reverse DCF bracketing search range (-50% to +100%) and bounded bisection iterations to prevent solver truncation.
+- Fixed metric calculations to compute honest historical Revenue CAGR across multi-period statements without fallback defaults.
+- Added regression tests verifying Reverse DCF bracketing convergence.
+- Merge SHA: `456924e`.
+
+#### PR #82 — Missing vs Zero UI & Solvency Ratios (`fix/missing-vs-zero-corporate-actions`) ✅
+- In `src/components/CorporateActionsCard.tsx`, displayed 'Data unavailable' / 'ไม่มีข้อมูล' for missing dividend payout ratios instead of deceptive 0.0%.
+- In `src/utils/metricCalculations.ts`, Quick Ratio strictly fails closed (`null`) if cash or current liabilities are missing/undefined.
+- Added regression tests verifying Quick Ratio fail-closed behavior.
+- Merge SHA: `92deabe`.
+
+#### PR #83 — Valuation Decomposition SEC Diff Adapter (`fix/sec-diff-canonical-adapter`) ✅
+- Exported typed canonical adapter `adaptFinancialStatementsToSecPeriodStatements` in `src/utils/secFilingDiffEngine.ts`, eliminating synthetic period hacks.
+- Updated `src/components/ValuationDecompositionModal.tsx` to use the canonical adapter.
+- Added end-to-end integration test verifying SEC filing diff with real mapper output.
+- Merge SHA: `b2b28f9`.
+
+#### PR #84 — DDM & Sector Valuation Honesty (`fix/ddm-sector-valuation-honesty`) ✅
+- In `src/utils/valuation/ddmCalculator.ts`, eliminated arbitrary `payout=50` fallback; missing payout returns `null`.
+- Tagged synthesized bear/bull scenarios as `system_illustrative`.
+- Assigned `canonical_status: 'sourced_non_canonical'` in `modelSelector.ts` for sector models (DDM, REIT AFFO, FinTech P/E, Cyclical, Relative).
+- Added regression tests verifying DDM missing payout handling and canonical status routing.
+- Merge SHA: `7a78682`.
+
+#### PR #85 — Monitoring & Operations Hardening (`fix/monitoring-operations-hardening`) ✅
+- In `server/routes/healthRoutes.ts` and `api/index.js`, public `GET /api/health` returns minimal `{ status, ok, service: "lumina", timestamp }` without leaking deep memory/heap telemetry. `ok` is `true` iff both Gemini and SEC are configured. Detailed telemetry available via `?detailed=true`.
+- In `src/utils/costEstimator.ts`, eliminated fabricated FX defaults (returns `null` THB cost when FX rate is absent), default unknown models to `standard` tier, avoid fabricating prompt/completion counts (sets `null` with `isEstimatedBreakdown: true`). Labeled as 'Estimated AI Cost' in `ReportTemplate.tsx`.
+- Documented `SecTtlCache` as an in-memory per-instance best-effort warm cache.
+- Verified `getLastSeenAccession` in `monitoringEngine.ts` before triggering SEC filing alerts.
+- Total regression test suite: 73 test files executed (71 in `src/`, 2 in `server/`) with 149 passing test cases (100% pass rate).
+- Merge SHA: `2cc8ae5`.
 
 ## Current production health
 
