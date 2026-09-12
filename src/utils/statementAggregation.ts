@@ -27,6 +27,18 @@ export interface AggregationWindow {
 }
 
 /**
+ * Detects annual period labels like '2024', 'FY 2024', 'FY24', 'Annual', 'Full Year', 'LTM', 'TTM'.
+ */
+export function isAnnualPeriodLabel(label: string): boolean {
+  if (!label || typeof label !== 'string') return false;
+  const trimmed = label.trim();
+  if (/^(?:FY\s*)?(?:19|20)\d{2}$/i.test(trimmed)) return true;
+  if (/^FY\s*\d{2}$/i.test(trimmed)) return true;
+  if (/^(?:Annual|Full\s*Year|LTM|TTM)/i.test(trimmed)) return true;
+  return false;
+}
+
+/**
  * Parses period labels like 'Q1 2024', 'Q1-2024', '2024-Q1', 'Q1 24'
  */
 export function parseQuarterPeriod(label: string, index: number): ParsedQuarterPeriod | null {
@@ -54,31 +66,43 @@ export function parseQuarterPeriod(label: string, index: number): ParsedQuarterP
 
 /**
  * Detects whether periods can be aggregated into Full Fiscal Years and/or LTM (Trailing 12 Months).
+ * Strict accounting integrity rules:
+ * 1. Rejects any period list containing annual labels (e.g. FY 2024, 2024).
+ * 2. Rejects malformed periods (all periods must parse into valid fiscal quarters).
+ * 3. Rejects duplicate quarters.
+ * 4. LTM is ONLY allowed from four proven consecutive fiscal quarters with zero gaps.
  */
 export function findAggregationWindows(periods: string[]): AggregationWindow[] {
   if (!Array.isArray(periods) || periods.length < 4) return [];
 
-  const parsed = periods
-    .map((p, idx) => parseQuarterPeriod(p, idx))
-    .filter((p): p is ParsedQuarterPeriod => p !== null);
-
-  // If fewer than 4 periods parse successfully, check if exactly 4 periods exist in sequence
-  if (parsed.length < 4) {
-    if (periods.length === 4) {
-      return [{
-        label: 'Annual (LTM)',
-        kind: 'ltm',
-        quarterIndices: [0, 1, 2, 3],
-        startingQuarterIndex: 0,
-        endingQuarterIndex: 3,
-      }];
-    }
+  // 1. Reject if any period is an annual period label
+  if (periods.some(p => isAnnualPeriodLabel(p))) {
     return [];
+  }
+
+  // 2. Parse all periods; all must be valid fiscal quarters (zero malformed allowed)
+  const parsed: ParsedQuarterPeriod[] = [];
+  for (let idx = 0; idx < periods.length; idx++) {
+    const p = parseQuarterPeriod(periods[idx], idx);
+    if (!p) {
+      return [];
+    }
+    parsed.push(p);
+  }
+
+  // 3. Reject duplicate quarters (same year and quarter)
+  const seenQuarterKeys = new Set<number>();
+  for (const p of parsed) {
+    const key = p.year * 4 + (p.quarter - 1);
+    if (seenQuarterKeys.has(key)) {
+      return [];
+    }
+    seenQuarterKeys.add(key);
   }
 
   const windows: AggregationWindow[] = [];
 
-  // 1. Check for complete fiscal years (Q1, Q2, Q3, Q4 of same year)
+  // 4. Check for complete fiscal years (Q1, Q2, Q3, Q4 of same year)
   const years = Array.from(new Set(parsed.map(p => p.year))).sort((a, b) => a - b);
   for (const yr of years) {
     const quarters = parsed.filter(p => p.year === yr).sort((a, b) => a.quarter - b.quarter);
@@ -93,23 +117,42 @@ export function findAggregationWindows(periods: string[]): AggregationWindow[] {
     }
   }
 
-  // 2. Trailing 12 Months (LTM): the 4 most recent consecutive quarters
+  // 5. Trailing 12 Months (LTM): Must be exactly 4 proven consecutive quarters
   const lastFour = parsed.slice(-4);
-  const isLastFourFY = windows.some(w =>
-    w.kind === 'annual_fy' &&
-    w.quarterIndices.join(',') === lastFour.map(p => p.index).join(',')
-  );
+  const sortedLastFour = [...lastFour].sort((a, b) => {
+    const keyA = a.year * 4 + (a.quarter - 1);
+    const keyB = b.year * 4 + (b.quarter - 1);
+    return keyA - keyB;
+  });
 
-  if (!isLastFourFY) {
-    const firstP = lastFour[0];
-    const lastP = lastFour[3];
-    windows.push({
-      label: `LTM (Q${firstP.quarter}'${String(firstP.year).slice(-2)} - Q${lastP.quarter}'${String(lastP.year).slice(-2)})`,
-      kind: 'ltm',
-      quarterIndices: lastFour.map(p => p.index),
-      startingQuarterIndex: firstP.index,
-      endingQuarterIndex: lastP.index,
-    });
+  // Strict check: key_{i+1} - key_i === 1 across all 4 quarters
+  let isStrictlyConsecutive = true;
+  for (let i = 0; i < 3; i++) {
+    const keyCurr = sortedLastFour[i].year * 4 + (sortedLastFour[i].quarter - 1);
+    const keyNext = sortedLastFour[i + 1].year * 4 + (sortedLastFour[i + 1].quarter - 1);
+    if (keyNext - keyCurr !== 1) {
+      isStrictlyConsecutive = false;
+      break;
+    }
+  }
+
+  if (isStrictlyConsecutive) {
+    const isLastFourFY = windows.some(w =>
+      w.kind === 'annual_fy' &&
+      w.quarterIndices.slice().sort().join(',') === lastFour.map(p => p.index).slice().sort().join(',')
+    );
+
+    if (!isLastFourFY) {
+      const firstP = sortedLastFour[0];
+      const lastP = sortedLastFour[3];
+      windows.push({
+        label: `LTM (Q${firstP.quarter}'${String(firstP.year).slice(-2)} - Q${lastP.quarter}'${String(lastP.year).slice(-2)})`,
+        kind: 'ltm',
+        quarterIndices: lastFour.map(p => p.index),
+        startingQuarterIndex: firstP.index,
+        endingQuarterIndex: lastP.index,
+      });
+    }
   }
 
   return windows;
@@ -154,6 +197,7 @@ export function takeInstantMetric(
  */
 export function aggregateQuarterlyToAnnual(data: FinancialStatementsData): FinancialStatementsData | null {
   if (!data?.periods || data.periods.length < 4) return null;
+  if (data.fiscal_period_type === 'annual') return null;
 
   const windows = findAggregationWindows(data.periods);
   if (windows.length === 0) return null;
