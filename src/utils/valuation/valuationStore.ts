@@ -168,9 +168,12 @@ export function buildUniversalValuationData(
       const base = relativeOnlyModel.fair_value_per_share;
       if (!isFinitePositive(base)) return undefined;
       const margin = Number((((base - currentPrice) / currentPrice) * 100).toFixed(1));
+      const sourceLow = source?.summary?.fair_value_range_low;
+      const sourceHigh = source?.summary?.fair_value_range_high;
+      const hasSourcedRange = isFinitePositive(sourceLow) && isFinitePositive(sourceHigh) && sourceLow <= base && base <= sourceHigh;
       summary = {
-        fair_value_range_low: Number((base * 0.85).toFixed(2)),
-        fair_value_range_high: Number((base * 1.15).toFixed(2)),
+        fair_value_range_low: hasSourcedRange ? sourceLow : null,
+        fair_value_range_high: hasSourcedRange ? sourceHigh : null,
         base_case_fair_value: base,
         margin_of_safety_pct: margin,
         verdict_text: margin >= 15 ? 'Undervalued' : margin <= -15 ? 'Overvalued' : 'Fairly Valued',
@@ -187,9 +190,12 @@ export function buildUniversalValuationData(
       const base = validRelVal ? relVal.fair_value_per_share : relativeOnlyModel?.fair_value_per_share;
       if (!isFinitePositive(base)) return undefined;
       const margin = Number((((base - currentPrice) / currentPrice) * 100).toFixed(1));
+      const sourceLow = source?.summary?.fair_value_range_low;
+      const sourceHigh = source?.summary?.fair_value_range_high;
+      const hasSourcedRange = isFinitePositive(sourceLow) && isFinitePositive(sourceHigh) && sourceLow <= base && base <= sourceHigh;
       summary = {
-        fair_value_range_low: Number((base * 0.85).toFixed(2)),
-        fair_value_range_high: Number((base * 1.15).toFixed(2)),
+        fair_value_range_low: hasSourcedRange ? sourceLow : null,
+        fair_value_range_high: hasSourcedRange ? sourceHigh : null,
         base_case_fair_value: base,
         margin_of_safety_pct: margin,
         verdict_text: margin >= 15 ? 'Undervalued' : margin <= -15 ? 'Overvalued' : 'Fairly Valued',

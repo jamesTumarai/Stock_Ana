@@ -127,4 +127,49 @@ describe('macroStressEngine', () => {
     assert.ok(stagflationTh.name.includes('ภาวะเงินเฟ้อสูง'));
     assert.ok(resultsTh.methodologyNoteTh?.includes('การจำลองภาวะวิกฤต'));
   });
+
+  it('reproduces canonical base inputs exactly without silent clamping (WACC 3.5, FCF margin 0.5, TG 0)', () => {
+    const lowBaseModel = {
+      ...baseCanonicalModel,
+      waccPct: 3.5,
+      fcfMarginPct: 0.5,
+      terminalGrowthPct: 0.0,
+    };
+    const results = evaluateMacroStressScenarios(lowBaseModel, false);
+    const baseCase = results.find((r) => r.id === 'base_case');
+    assert.ok(baseCase);
+    assert.equal(baseCase.stressedWacc, 3.5, 'base WACC 3.5 must remain 3.5 without silent floor');
+    assert.equal(baseCase.stressedMargin, 0.5, 'base FCF margin 0.5 must remain 0.5 without silent floor');
+    assert.equal(baseCase.stressedTerminalGrowth, 0.0, 'base TG 0 must remain 0 without silent floor');
+  });
+
+  it('preserves negative stressed margin without silently changing to +1%', () => {
+    const lowMarginModel = {
+      ...baseCanonicalModel,
+      fcfMarginPct: 0.5,
+    };
+    const results = evaluateMacroStressScenarios(lowMarginModel, false);
+    const stagflation = results.find((r) => r.id === 'stagflation_shock');
+    assert.ok(stagflation);
+    // 0.5% - 2.00% delta = -1.5%
+    assert.equal(stagflation.stressedMargin, -1.5, 'negative stressed margin must not be silently clamped to 1.0%');
+  });
+
+  it('fails closed when stress creates mathematically invalid WACC <= TG', () => {
+    // Model where AI productivity wave pushes TG > WACC
+    // AI wave: waccDeltaBps: -25 (-0.25%), tgDeltaBps: +30 (+0.30%)
+    // If base WACC=3.0% and TG=2.8%:
+    // stressedWacc = 2.75%, stressedTG = 3.10% -> invalid!
+    const tightSpreadModel = {
+      ...baseCanonicalModel,
+      waccPct: 3.0,
+      terminalGrowthPct: 2.8,
+    };
+    const results = evaluateMacroStressScenarios(tightSpreadModel, false);
+    const aiWave = results.find((r) => r.id === 'ai_productivity_wave');
+    assert.ok(aiWave);
+    assert.equal(aiWave.isAvailable, false);
+    assert.equal(aiWave.stressedFairValue, null);
+    assert.ok(aiWave.reason?.includes('must exceed terminal growth'));
+  });
 });
