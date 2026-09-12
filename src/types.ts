@@ -1236,16 +1236,22 @@ export interface PortfolioSectorExposure {
 }
 
 export interface PortfolioSummary {
-  total_market_value: number;
+  total_market_value: number | null;
   total_cost_basis: number;
-  total_unrealized_pnl: number;
-  total_unrealized_pnl_pct: number;
+  total_unrealized_pnl: number | null;
+  total_unrealized_pnl_pct: number | null;
   holdings_count: number;
   top_holding_concentration_pct: number;
   concentration_risk_alert: boolean;
   sector_breakdown: PortfolioSectorExposure[];
   weighted_margin_of_safety_pct?: number | null;
   computed_holdings: PortfolioComputedHolding[];
+  priced_holdings_count: number;
+  unpriced_holdings_count: number;
+  pricing_coverage_pct: number;
+  priced_market_value: number;
+  unpriced_cost_basis: number;
+  is_fully_priced: boolean;
 }
 
 export interface HistoricalReportDelta {

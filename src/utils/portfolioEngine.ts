@@ -46,6 +46,8 @@ export function calculateHoldingMetrics(
   };
 }
 
+export const SUGGESTED_WATCHLIST_TICKERS = ['MSFT', 'AAPL', 'NVDA', 'SOFI'];
+
 export function calculatePortfolioSummary(
   holdings: PortfolioHolding[],
   quotes: Record<string, number | { price?: number } | undefined> = {},
@@ -62,7 +64,13 @@ export function calculatePortfolioSummary(
       concentration_risk_alert: false,
       sector_breakdown: [],
       weighted_margin_of_safety_pct: null,
-      computed_holdings: []
+      computed_holdings: [],
+      priced_holdings_count: 0,
+      unpriced_holdings_count: 0,
+      pricing_coverage_pct: 100,
+      priced_market_value: 0,
+      unpriced_cost_basis: 0,
+      is_fully_priced: true
     };
   }
 
@@ -83,49 +91,69 @@ export function calculatePortfolioSummary(
     return calculateHoldingMetrics(h, price, fv);
   });
 
-  // 2. Aggregate totals
-  let totalMarketValue = 0;
+  // 2. Aggregate totals & track pricing coverage (P1-4: No fake cost-basis substitution)
+  let pricedMarketValue = 0;
+  let unpricedCostBasis = 0;
   let totalCostBasis = 0;
+  let pricedHoldingsCount = 0;
+  let unpricedHoldingsCount = 0;
 
   for (const item of computedList) {
     totalCostBasis += item.total_cost;
-    if (typeof item.market_value === 'number') {
-      totalMarketValue += item.market_value;
+    if (typeof item.market_value === 'number' && Number.isFinite(item.market_value)) {
+      pricedMarketValue += item.market_value;
+      pricedHoldingsCount++;
     } else {
-      // If live quote is missing, fallback to cost basis for allocation weighting
-      totalMarketValue += item.total_cost;
+      unpricedCostBasis += item.total_cost;
+      unpricedHoldingsCount++;
     }
   }
 
-  totalMarketValue = Number(totalMarketValue.toFixed(2));
+  pricedMarketValue = Number(pricedMarketValue.toFixed(2));
+  unpricedCostBasis = Number(unpricedCostBasis.toFixed(2));
   totalCostBasis = Number(totalCostBasis.toFixed(2));
 
-  const totalUnrealizedPnl = Number((totalMarketValue - totalCostBasis).toFixed(2));
-  const totalUnrealizedPnlPct = totalCostBasis > 0
-    ? Number((((totalMarketValue - totalCostBasis) / totalCostBasis) * 100).toFixed(2))
-    : 0;
+  const totalHoldingsCount = holdings.length;
+  const isFullyPriced = unpricedHoldingsCount === 0;
+  const pricingCoveragePct = totalHoldingsCount > 0
+    ? Number(((pricedHoldingsCount / totalHoldingsCount) * 100).toFixed(1))
+    : 100;
 
-  // 3. Compute allocations and concentration
+  // If any holding is unpriced, total market value and total unrealized P/L are strictly UNAVAILABLE (null).
+  const totalMarketValue = isFullyPriced ? pricedMarketValue : null;
+  const totalUnrealizedPnl = isFullyPriced
+    ? Number((pricedMarketValue - totalCostBasis).toFixed(2))
+    : null;
+  const totalUnrealizedPnlPct = (isFullyPriced && totalCostBasis > 0)
+    ? Number((((pricedMarketValue - totalCostBasis) / totalCostBasis) * 100).toFixed(2))
+    : null;
+
+  // 3. Compute allocations and concentration across priced holdings
   let topConcentration = 0;
   const sectorMap: Record<string, number> = {};
   let weightedMosNumerator = 0;
   let weightedMosDenominator = 0;
 
+  // Baseline for allocation is priced market value if available; otherwise cost basis
+  const allocationBase = pricedMarketValue > 0 ? pricedMarketValue : totalCostBasis;
+
   for (const item of computedList) {
-    const itemVal = typeof item.market_value === 'number' ? item.market_value : item.total_cost;
-    const alloc = totalMarketValue > 0 ? Number(((itemVal / totalMarketValue) * 100).toFixed(1)) : 0;
+    const itemVal = typeof item.market_value === 'number' ? item.market_value : 0;
+    const alloc = allocationBase > 0 ? Number(((itemVal / allocationBase) * 100).toFixed(1)) : 0;
     item.allocation_pct = alloc;
 
     if (alloc > topConcentration) {
       topConcentration = alloc;
     }
 
-    const sectorName = item.sector?.trim() || 'Other';
-    sectorMap[sectorName] = (sectorMap[sectorName] || 0) + itemVal;
+    if (itemVal > 0) {
+      const sectorName = item.sector?.trim() || 'Other';
+      sectorMap[sectorName] = (sectorMap[sectorName] || 0) + itemVal;
 
-    if (typeof item.margin_of_safety_pct === 'number' && itemVal > 0) {
-      weightedMosNumerator += (item.margin_of_safety_pct * itemVal);
-      weightedMosDenominator += itemVal;
+      if (typeof item.margin_of_safety_pct === 'number' && itemVal > 0) {
+        weightedMosNumerator += (item.margin_of_safety_pct * itemVal);
+        weightedMosDenominator += itemVal;
+      }
     }
   }
 
@@ -134,7 +162,7 @@ export function calculatePortfolioSummary(
     .map(([sec, val]) => ({
       sector: sec,
       market_value: Number(val.toFixed(2)),
-      allocation_pct: totalMarketValue > 0 ? Number(((val / totalMarketValue) * 100).toFixed(1)) : 0
+      allocation_pct: pricedMarketValue > 0 ? Number(((val / pricedMarketValue) * 100).toFixed(1)) : 0
     }))
     .sort((a, b) => b.market_value - a.market_value);
 
@@ -153,27 +181,48 @@ export function calculatePortfolioSummary(
     concentration_risk_alert: topConcentration >= 30, // Institutional concentration threshold
     sector_breakdown: sectorBreakdown,
     weighted_margin_of_safety_pct: weightedMos,
-    computed_holdings: computedList
+    computed_holdings: computedList,
+    priced_holdings_count: pricedHoldingsCount,
+    unpriced_holdings_count: unpricedHoldingsCount,
+    pricing_coverage_pct: pricingCoveragePct,
+    priced_market_value: pricedMarketValue,
+    unpriced_cost_basis: unpricedCostBasis,
+    is_fully_priced: isFullyPriced
   };
+}
+
+function getSafeLocalStorage(): Storage | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+    if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) return (globalThis as any).localStorage;
+    if (typeof localStorage !== 'undefined') return localStorage;
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function loadLocalWatchlist(userId?: string): string[] {
   try {
+    const storage = getSafeLocalStorage();
+    if (!storage) return [];
     const key = userId ? `${WATCHLIST_STORAGE_KEY}_${userId}` : WATCHLIST_STORAGE_KEY;
-    const raw = localStorage.getItem(key);
-    if (!raw) return ['MSFT', 'AAPL', 'NVDA', 'SOFI'];
+    const raw = storage.getItem(key);
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map((s: string) => String(s).toUpperCase().trim()) : [];
+    return Array.isArray(parsed) ? parsed.map((s: string) => String(s).toUpperCase().trim()).filter(Boolean) : [];
   } catch {
-    return ['MSFT', 'AAPL', 'NVDA', 'SOFI'];
+    return [];
   }
 }
 
 export function saveLocalWatchlist(watchlist: string[], userId?: string): void {
   try {
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
     const key = userId ? `${WATCHLIST_STORAGE_KEY}_${userId}` : WATCHLIST_STORAGE_KEY;
     const clean = Array.from(new Set(watchlist.map(s => String(s).toUpperCase().trim()).filter(Boolean)));
-    localStorage.setItem(key, JSON.stringify(clean));
+    storage.setItem(key, JSON.stringify(clean));
   } catch (e) {
     console.warn('Failed to save watchlist to localStorage:', e);
   }
@@ -181,8 +230,10 @@ export function saveLocalWatchlist(watchlist: string[], userId?: string): void {
 
 export function loadLocalPortfolio(userId?: string): PortfolioHolding[] {
   try {
+    const storage = getSafeLocalStorage();
+    if (!storage) return [];
     const key = userId ? `${PORTFOLIO_STORAGE_KEY}_${userId}` : PORTFOLIO_STORAGE_KEY;
-    const raw = localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -193,8 +244,10 @@ export function loadLocalPortfolio(userId?: string): PortfolioHolding[] {
 
 export function saveLocalPortfolio(holdings: PortfolioHolding[], userId?: string): void {
   try {
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
     const key = userId ? `${PORTFOLIO_STORAGE_KEY}_${userId}` : PORTFOLIO_STORAGE_KEY;
-    localStorage.setItem(key, JSON.stringify(holdings));
+    storage.setItem(key, JSON.stringify(holdings));
   } catch (e) {
     console.warn('Failed to save portfolio to localStorage:', e);
   }

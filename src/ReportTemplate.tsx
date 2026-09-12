@@ -37,6 +37,7 @@ import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
 import { estimateTokenCost } from './utils/costEstimator';
 import { getCanonicalValuationSandboxInputs } from './utils/valuationSandboxAdapter';
+import { getPreviousReport, unwrapHistoryRecord } from './utils/researchTimeline';
 
 interface Props {
   data: ReportData;
@@ -330,21 +331,8 @@ export default function ReportTemplate({
   const [showDecompositionModal, setShowDecompositionModal] = useState(false);
 
   const previousReport = React.useMemo(() => {
-    if (!Array.isArray(historyReports) || historyReports.length === 0) return null;
-    const cleanTicker = ticker.toUpperCase().trim();
-    const matches = historyReports.filter(r => {
-      const t = (r.ticker || r.data?.ticker || r.company_profile?.overview?.symbol || '').toUpperCase().trim();
-      return t === cleanTicker;
-    });
-    if (matches.length === 0) return null;
-    const sorted = [...matches].sort((a, b) => {
-      const timeA = a.created_at?.toMillis ? a.created_at.toMillis() : Date.parse(a.report_date || a.created_at) || 0;
-      const timeB = b.created_at?.toMillis ? b.created_at.toMillis() : Date.parse(b.report_date || b.created_at) || 0;
-      return timeB - timeA;
-    });
-    const first = sorted[0];
-    return first.data || first;
-  }, [historyReports, ticker]);
+    return getPreviousReport(ticker, historyReports, data);
+  }, [historyReports, ticker, data]);
 
   useEffect(() => {
     let cancelled = false;

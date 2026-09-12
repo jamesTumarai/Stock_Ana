@@ -6,7 +6,8 @@ import {
   loadLocalWatchlist,
   saveLocalWatchlist,
   loadLocalPortfolio,
-  saveLocalPortfolio
+  saveLocalPortfolio,
+  SUGGESTED_WATCHLIST_TICKERS
 } from '../portfolioEngine';
 import { PortfolioHolding } from '../../types';
 
@@ -117,5 +118,63 @@ describe('portfolioEngine', () => {
     assert.equal(summary.concentration_risk_alert, false);
     assert.equal(summary.sector_breakdown.length, 0);
     assert.equal(summary.weighted_margin_of_safety_pct, null);
+    assert.equal(summary.is_fully_priced, true);
+    assert.equal(summary.pricing_coverage_pct, 100);
+  });
+
+  it('calculatePortfolioSummary: unpriced holdings must NOT substitute cost basis for market value (P1-4)', () => {
+    const holdings: PortfolioHolding[] = [
+      { ticker: 'MSFT', quantity: 10, average_cost: 400, sector: 'Technology' }, // Total Cost = 4000
+      { ticker: 'AMZN', quantity: 10, average_cost: 150, sector: 'Consumer' }     // Total Cost = 1500 (No quote!)
+    ];
+
+    const quotes = {
+      MSFT: 450 // MV = 4500
+      // AMZN quote missing
+    };
+
+    const summary = calculatePortfolioSummary(holdings, quotes);
+
+    assert.equal(summary.holdings_count, 2);
+    assert.equal(summary.total_cost_basis, 5500); // 4000 + 1500
+
+    // P1-4 INVARIANT: Total Market Value & Total P/L MUST NOT be fabricated by substituting cost basis!
+    assert.equal(summary.total_market_value, null);
+    assert.equal(summary.total_unrealized_pnl, null);
+    assert.equal(summary.total_unrealized_pnl_pct, null);
+
+    // Telemetry tracks pricing coverage accurately
+    assert.equal(summary.is_fully_priced, false);
+    assert.equal(summary.priced_holdings_count, 1);
+    assert.equal(summary.unpriced_holdings_count, 1);
+    assert.equal(summary.pricing_coverage_pct, 50.0);
+    assert.equal(summary.priced_market_value, 4500);
+    assert.equal(summary.unpriced_cost_basis, 1500);
+  });
+
+  it('loadLocalWatchlist: returns empty array when storage is empty, without masquerading starter tickers (P1-5)', () => {
+    // Setup in-memory mock for globalThis.localStorage in Node test environment
+    const storageMap = new Map<string, string>();
+    (globalThis as any).localStorage = {
+      getItem: (key: string) => storageMap.get(key) ?? null,
+      setItem: (key: string, val: string) => storageMap.set(key, String(val)),
+      removeItem: (key: string) => storageMap.delete(key),
+      clear: () => storageMap.clear()
+    };
+
+    const testUserId = 'test_user_empty_watchlist_' + Date.now();
+
+    // Verify empty storage returns empty array []
+    const emptyList = loadLocalWatchlist(testUserId);
+    assert.deepEqual(emptyList, []);
+
+    // Verify starter suggestions exist as separate export
+    assert.ok(Array.isArray(SUGGESTED_WATCHLIST_TICKERS));
+    assert.deepEqual(SUGGESTED_WATCHLIST_TICKERS, ['MSFT', 'AAPL', 'NVDA', 'SOFI']);
+
+    // Verify explicit user save and load works
+    saveLocalWatchlist(['TSLA', 'GOOGL'], testUserId);
+    const savedList = loadLocalWatchlist(testUserId);
+    assert.deepEqual(savedList, ['TSLA', 'GOOGL']);
   });
 });
