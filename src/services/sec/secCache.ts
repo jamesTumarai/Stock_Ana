@@ -20,9 +20,12 @@ interface CacheEntry<T> {
 }
 
 /**
- * Institutional in-memory TTL cache for SEC filing facts and company bundles.
- * Enforces bounded capacity (LRU eviction) to eliminate redundant multi-megabyte
- * SEC EDGAR network transfers while strictly adhering to time-to-live freshness boundaries.
+ * Per-instance best-effort warm cache for SEC filing facts and company bundles.
+ * Enforces bounded in-memory capacity (LRU eviction, default max 50 companies) and
+ * time-to-live freshness (default 15-minute TTL) per Node runtime / serverless instance.
+ * Eliminates redundant multi-megabyte SEC EDGAR network transfers while adhering to
+ * fair-use rate limits. Note: This cache is in-memory only (not distributed or persistent)
+ * and resets across container cold starts or process restarts.
  */
 export class SecTtlCache {
   private readonly defaultTtlMs: number;

@@ -1,10 +1,14 @@
 import type { Express, Request, Response } from 'express';
 import { getGlobalSecCache, type SecCacheStats } from '../../src/services/sec/secCache.ts';
 
-export interface HealthStatusResponse {
-  status: 'healthy' | 'degraded';
+export interface PublicHealthResponse {
   ok: boolean;
+  status: 'healthy' | 'degraded';
+  service: 'lumina';
   timestamp: string;
+}
+
+export interface DetailedHealthStatusResponse extends PublicHealthResponse {
   uptimeSecs: number;
   runtime: 'express-server' | 'vercel-function';
   services: {
@@ -29,6 +33,8 @@ export interface HealthStatusResponse {
   };
 }
 
+export type HealthStatusResponse = DetailedHealthStatusResponse;
+
 export function buildHealthReport(runtime: 'express-server' | 'vercel-function' = 'express-server'): HealthStatusResponse {
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY?.trim());
   const secConfigured = Boolean(process.env.SEC_USER_AGENT?.trim());
@@ -41,7 +47,8 @@ export function buildHealthReport(runtime: 'express-server' | 'vercel-function' 
 
   return {
     status: isHealthy ? 'healthy' : 'degraded',
-    ok: true,
+    ok: isHealthy,
+    service: 'lumina',
     timestamp: new Date().toISOString(),
     uptimeSecs: typeof process !== 'undefined' && process.uptime ? Math.round(process.uptime()) : 0,
     runtime,
@@ -68,9 +75,21 @@ export function buildHealthReport(runtime: 'express-server' | 'vercel-function' 
   };
 }
 
-export function handleHealthCheck(_req: Request, res: Response) {
+export function handleHealthCheck(req: Request, res: Response) {
+  const isDetailed = req.query.detailed === 'true';
   const report = buildHealthReport('express-server');
-  return res.status(200).json(report);
+
+  if (isDetailed) {
+    return res.status(200).json(report);
+  }
+
+  const minimal: PublicHealthResponse = {
+    status: report.status,
+    ok: report.ok,
+    service: 'lumina',
+    timestamp: report.timestamp,
+  };
+  return res.status(200).json(minimal);
 }
 
 export function registerHealthRoutes(app: Express) {

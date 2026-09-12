@@ -774,9 +774,9 @@ export default function ReportTemplate({
                      </div>
                    </div>
                    <div className="flex flex-col items-center border-l border-stone-200" title={isThai ? `ประมาณการต้นทุน AI (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.formattedCostThb ? ` (~${tokenCostEstimate.formattedCostThb})` : ''}` : `Estimated AI inference cost (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}`}>
-                     <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "ต้นทุน" : "Cost"}</div>
+                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "ประมาณการต้นทุน AI" : "Estimated AI Cost"}</div>
                      <div className="text-xs font-mono font-bold text-emerald-700">
-                       {tokenCount > 0 ? (currencyMode === 'THB' && hasUsdThbRate ? tokenCostEstimate.formattedCostThb : tokenCostEstimate.formattedCostUsd) : '-'}
+                       {tokenCount > 0 ? (currencyMode === 'THB' && hasUsdThbRate && tokenCostEstimate.formattedCostThb ? tokenCostEstimate.formattedCostThb : tokenCostEstimate.formattedCostUsd) : '-'}
                      </div>
                    </div>
                  </div>
