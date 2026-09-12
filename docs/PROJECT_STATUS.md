@@ -1,6 +1,6 @@
 # Lumina / Stock_Ana — Master Project Status
 
-Last updated: 2026-09-11 (Asia/Bangkok)
+Last updated: 2026-09-12 (Asia/Bangkok)
 
 This file is the durable engineering handoff for new ChatGPT/Codex sessions. Prefer live GitHub, CI, Vercel, Firebase, and issue evidence over old chat history whenever they disagree.
 
@@ -13,10 +13,10 @@ Always query live `main` before starting work. SHAs below identify stable applic
 ## Current state
 
 - Current stage: **Post-Roadmap Integrity Hardening Complete ✅ (Institutional Integrity Baseline Established)**.
-- Current working mode: **Post-Roadmap Integrity Hardening Master Sequence Complete (PR A through PR I merged and verified)**.
+- Current working mode: **Post-Roadmap Integrity Hardening Master Sequence Complete (PR A through PR I merged, Subscription System removed per owner directive)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #74 (`004a9e4`) — Phase 11 Server-Side Entitlement Authority & Tier Quota Enforcement (PR H); PR #75 — Operational Observability & Documentation Reconciliation (PR I).
+- Latest merged milestone: PR #76 (`cb87d22`) — Removal of Subscription System & Entitlement Gates (Full Unlimited Platform Access).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,7 +27,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #67–#75 (PR A – PR I) |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #67–#76 |
 | **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #56–#58, PR #70 |
 | **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #59, #60 |
 | **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #61, PR #71 |
