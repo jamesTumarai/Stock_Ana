@@ -773,13 +773,35 @@ export default function ReportTemplate({
                         {tokenCount > 0 ? (tokenCount / 1000).toFixed(1) + 'k' : '-'}
                      </div>
                    </div>
-                   <div className="flex flex-col items-center border-l border-stone-200" title={isThai ? `ประมาณการต้นทุน AI (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.formattedCostThb ? ` (~${tokenCostEstimate.formattedCostThb})` : ''}` : `Estimated AI inference cost (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}`}>
-                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "ประมาณการต้นทุน AI" : "Estimated AI Cost"}</div>
-                     <div className="text-xs font-mono font-bold text-emerald-700">
-                       {tokenCount > 0 ? (currencyMode === 'THB' && hasUsdThbRate && tokenCostEstimate.formattedCostThb ? tokenCostEstimate.formattedCostThb : tokenCostEstimate.formattedCostUsd) : '-'}
-                     </div>
-                   </div>
-                 </div>
+                    <div
+                      className="flex flex-col items-center border-l border-stone-200"
+                      title={
+                        !tokenCostEstimate.isAvailable
+                          ? (isThai ? `ไม่พร้อมใช้งาน: ${tokenCostEstimate.reason}` : `Unavailable: ${tokenCostEstimate.reason}`)
+                          : isThai
+                            ? `ประมาณการต้นทุน AI (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.formattedCostThb ? ` (~${tokenCostEstimate.formattedCostThb})` : ''}${tokenCostEstimate.approximationNoteTh ? ` • ${tokenCostEstimate.approximationNoteTh}` : ''}`
+                            : `Estimated AI inference cost (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.approximationNote ? ` • ${tokenCostEstimate.approximationNote}` : ''}`
+                      }
+                    >
+                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">
+                        {isThai ? "ประมาณการต้นทุน AI" : "Estimated AI Cost"}
+                      </div>
+                      <div className={`text-xs font-mono font-bold ${tokenCostEstimate.isAvailable ? 'text-emerald-700' : 'text-stone-500'}`}>
+                        {tokenCount > 0
+                          ? (tokenCostEstimate.isAvailable
+                              ? (currencyMode === 'THB' && hasUsdThbRate && tokenCostEstimate.formattedCostThb
+                                  ? tokenCostEstimate.formattedCostThb
+                                  : tokenCostEstimate.formattedCostUsd)
+                              : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable'))
+                          : '-'}
+                      </div>
+                      {tokenCount > 0 && tokenCostEstimate.isAvailable && tokenCostEstimate.isEstimatedBreakdown && (
+                        <div className="text-[8px] font-sans text-stone-600 tracking-tight mt-0.5">
+                          {isThai ? "สมมติฐาน 75/25" : "Approx. 75/25"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
               </div>
             </div>
           </AnalysisCard>
