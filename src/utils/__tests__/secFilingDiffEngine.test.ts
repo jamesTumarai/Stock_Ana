@@ -224,12 +224,16 @@ describe('secFilingDiffEngine', () => {
     assert.equal(diff.revenueYoYPct, 20);
   });
 
-  it('adapts ReportData and attaches SEC shares to latest period', () => {
+  it('adapts ReportData with SEC verification and attaches verified diluted shares', () => {
     const report: Partial<ReportData> = {
       ticker: 'AAPL',
       financial_statements: {
         periods: ['2023', '2024'],
-        income_statement: { revenue: [383285, 391035], net_income: [96995, 93736] },
+        income_statement: {
+          revenue: [383285, 391035],
+          net_income: [96995, 93736],
+          eps_diluted: [6.13, 6.11],
+        },
         balance_sheet: {},
         cash_flow: {},
       },
@@ -265,8 +269,12 @@ describe('secFilingDiffEngine', () => {
 
     const statements = adaptFinancialStatementsToSecPeriodStatements(report as ReportData);
     assert.equal(statements.length, 2);
-    assert.equal(statements[0].diluted_shares, null);
-    assert.equal(statements[1].diluted_shares, 15116);
+    // Verified diluted shares mapped from net_income / eps_diluted
+    assert.ok(statements[0].diluted_shares !== null);
+    assert.ok(statements[1].diluted_shares !== null);
+    const diff = diffSecFinancialStatements(statements);
+    assert.ok(diff);
+    assert.ok(diff.shareCountDeltaPct !== null);
   });
 
   it('parses reverse quarterly period formats (2025-Q3 vs 2024-Q3)', () => {
@@ -379,5 +387,92 @@ describe('secFilingDiffEngine', () => {
     assert.equal(diff.ocfYoYPct, 30);
     // FCF: (26 - 6 = 20) vs (20 - 5 = 15) -> (20 - 15) / 15 = +33.33%
     assert.equal(diff.fcfYoYPct, 33.33);
+  });
+
+  describe('PR C — SEC Comparison Integrity & Provenance Guards', () => {
+    it('immediate-prior-year matching: FY2025 + FY2023 returns unavailable (null)', () => {
+      const gappedAnnuals = [
+        { period: 'FY2025', revenue: 1000 },
+        { period: 'FY2023', revenue: 800 },
+      ];
+      const diff = diffSecFinancialStatements(gappedAnnuals);
+      assert.equal(diff, null, 'Gapped annual comparison (FY2025 vs FY2023) must return null');
+    });
+
+    it('immediate-prior-year matching: Q3 2025 + Q3 2023 returns unavailable (null)', () => {
+      const gappedQuarters = [
+        { period: 'Q3 2025', revenue: 500 },
+        { period: 'Q3 2023', revenue: 400 },
+      ];
+      const diff = diffSecFinancialStatements(gappedQuarters);
+      assert.equal(diff, null, 'Gapped quarter comparison (Q3 2025 vs Q3 2023) must return null');
+    });
+
+    it('immediate-prior-year matching: FY2025 + FY2024 is valid', () => {
+      const validAnnuals = [
+        { period: 'FY2025', revenue: 1100 },
+        { period: 'FY2024', revenue: 1000 },
+      ];
+      const diff = diffSecFinancialStatements(validAnnuals);
+      assert.ok(diff, 'Consecutive annuals (FY2025 vs FY2024) must evaluate successfully');
+      assert.equal(diff.currentPeriod, 'FY2025');
+      assert.equal(diff.priorPeriod, 'FY2024');
+      assert.equal(diff.revenueYoYPct, 10);
+    });
+
+    it('immediate-prior-year matching: Q3 2025 + Q3 2024 is valid', () => {
+      const validQuarters = [
+        { period: 'Q3 2025', revenue: 550 },
+        { period: 'Q3 2024', revenue: 500 },
+      ];
+      const diff = diffSecFinancialStatements(validQuarters);
+      assert.ok(diff, 'Same-quarter YoY (Q3 2025 vs Q3 2024) must evaluate successfully');
+      assert.equal(diff.currentPeriod, 'Q3 2025');
+      assert.equal(diff.priorPeriod, 'Q3 2024');
+      assert.equal(diff.revenueYoYPct, 10);
+    });
+
+    it('SEC provenance guard: unverified ReportData with valid statement shape must NOT become Verified SEC Filing Comparison', () => {
+      const unverifiedReport: Partial<ReportData> = {
+        ticker: 'TSLA',
+        financial_statements: {
+          periods: ['FY2024', 'FY2025'],
+          income_statement: {
+            revenue: [96773, 97690],
+            net_income: [14997, 7084],
+          },
+          balance_sheet: {},
+          cash_flow: {},
+        },
+        // sec_verification is completely absent / unverified
+      };
+
+      const statements = adaptFinancialStatementsToSecPeriodStatements(unverifiedReport as ReportData);
+      assert.deepEqual(statements, [], 'Unverified ReportData must produce empty statements array');
+      const diff = diffSecFinancialStatements(statements);
+      assert.equal(diff, null, 'Unverified ReportData must NOT become Verified SEC Filing Comparison');
+    });
+
+    it('historical diluted shares: returns shareCountDeltaPct = null when prior comparable shares are unavailable', () => {
+      const statementsWithOnlyLatestShares = [
+        { period: 'FY2025', revenue: 1000, diluted_shares: 500 },
+        { period: 'FY2024', revenue: 900, diluted_shares: null },
+      ];
+      const diff = diffSecFinancialStatements(statementsWithOnlyLatestShares);
+      assert.ok(diff);
+      assert.equal(diff.shareCountDeltaPct, null, 'Missing prior diluted shares must result in null shareCountDeltaPct');
+    });
+
+    it('historical diluted shares: calculates correct shareCountDeltaPct when comparable historical diluted shares are available', () => {
+      const statementsWithBothShares = [
+        { period: 'FY2025', revenue: 1000, diluted_shares: 480 },
+        { period: 'FY2024', revenue: 900, diluted_shares: 500 },
+      ];
+      const diff = diffSecFinancialStatements(statementsWithBothShares);
+      assert.ok(diff);
+      // (480 - 500) / 500 * 100 = -4.00%
+      assert.equal(diff.shareCountDeltaPct, -4.0);
+      assert.equal(diff.dilutionOrBuyback, 'buybacks');
+    });
   });
 });

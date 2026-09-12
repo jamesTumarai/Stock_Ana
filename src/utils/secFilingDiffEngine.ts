@@ -65,10 +65,34 @@ export function adaptFinancialStatementsToSecPeriodStatements(
     const fs = report.financial_statements;
     if (!fs || !Array.isArray(fs.periods) || fs.periods.length === 0) return [];
 
-    const secShares = report.sec_verification?.dcf_financial_inputs?.current_shares_outstanding_m ?? null;
+    // SEC Provenance Guard:
+    // ReportData must be verified by SEC EDGAR before entering Verified SEC Filing Comparison.
+    const secVerification = report.sec_verification;
+    const isSecVerified = Boolean(
+      secVerification
+      && secVerification.status === 'verified_eligible'
+      && (secVerification.provenance_status === 'verified' || secVerification.dcf_financial_inputs?.eligible === true)
+    );
+    if (!isSecVerified) {
+      return [];
+    }
 
     return fs.periods.map((period, i) => {
       const isLatest = i === fs.periods.length - 1;
+      // Map comparable Diluted Weighted Average Shares.
+      // Important: Current Common Shares Outstanding != Diluted Weighted Average Shares.
+      // Never mix them to manufacture dilution comparison.
+      let dilutedShares: number | null = null;
+      if (isLatest && shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM) {
+        dilutedShares = shareSnapshot.latestDilutedWeightedAverageShares.sharesM;
+      } else {
+        const netInc = parseNum(fs.income_statement?.net_income?.[i]);
+        const epsDil = parseNum(fs.income_statement?.eps_diluted?.[i]);
+        if (netInc !== null && epsDil !== null && epsDil > 0) {
+          dilutedShares = Number((netInc / epsDil).toFixed(2));
+        }
+      }
+
       return {
         period,
         revenue: parseNum(fs.income_statement?.revenue?.[i]),
@@ -81,9 +105,7 @@ export function adaptFinancialStatementsToSecPeriodStatements(
         accounts_receivable: parseNum(fs.balance_sheet?.accounts_receivable?.[i]),
         inventory: parseNum(fs.balance_sheet?.inventory?.[i]),
         accounts_payable: parseNum(fs.balance_sheet?.accounts_payable?.[i]),
-        diluted_shares: isLatest
-          ? (secShares ?? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? shareSnapshot?.currentCommonSharesOutstanding?.sharesM ?? null))
-          : null,
+        diluted_shares: dilutedShares,
       };
     });
   }
@@ -115,7 +137,7 @@ export function adaptFinancialStatementsToSecPeriodStatements(
         inventory: getVal('balance_sheet.inventory', period, i),
         accounts_payable: getVal('balance_sheet.accounts_payable', period, i),
         diluted_shares: isLatest
-          ? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? shareSnapshot?.currentCommonSharesOutstanding?.sharesM ?? null)
+          ? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? null)
           : null,
       };
     });
@@ -128,6 +150,17 @@ export function adaptFinancialStatementsToSecPeriodStatements(
 
     return fs.periods.map((period, i) => {
       const isLatest = i === fs.periods.length - 1;
+      let dilutedShares: number | null = null;
+      if (isLatest && shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM) {
+        dilutedShares = shareSnapshot.latestDilutedWeightedAverageShares.sharesM;
+      } else {
+        const netInc = parseNum(fs.income_statement?.net_income?.[i]);
+        const epsDil = parseNum(fs.income_statement?.eps_diluted?.[i]);
+        if (netInc !== null && epsDil !== null && epsDil > 0) {
+          dilutedShares = Number((netInc / epsDil).toFixed(2));
+        }
+      }
+
       return {
         period,
         revenue: parseNum(fs.income_statement?.revenue?.[i]),
@@ -140,9 +173,7 @@ export function adaptFinancialStatementsToSecPeriodStatements(
         accounts_receivable: parseNum(fs.balance_sheet?.accounts_receivable?.[i]),
         inventory: parseNum(fs.balance_sheet?.inventory?.[i]),
         accounts_payable: parseNum(fs.balance_sheet?.accounts_payable?.[i]),
-        diluted_shares: isLatest
-          ? (shareSnapshot?.latestDilutedWeightedAverageShares?.sharesM ?? shareSnapshot?.currentCommonSharesOutstanding?.sharesM ?? null)
-          : null,
+        diluted_shares: dilutedShares,
       };
     });
   }
@@ -282,8 +313,8 @@ export function diffSecFinancialStatements(
 
   if (annuals.length >= 2) {
     curDesc = annuals[0];
-    // Find the immediate preceding annual period
-    const matchedPrior = annuals.find((d) => d.fiscalYear < curDesc!.fiscalYear);
+    // Find the immediately preceding annual period (strictly fiscalYear - 1)
+    const matchedPrior = annuals.find((d) => d.fiscalYear === curDesc!.fiscalYear - 1);
     if (matchedPrior) {
       priorDesc = matchedPrior;
       comparisonType = 'annual_yoy';
@@ -298,9 +329,9 @@ export function diffSecFinancialStatements(
 
     if (quarterlies.length >= 2) {
       const candidateCur = quarterlies[0];
-      // Find matching prior year quarter (same quarter, earlier fiscal year)
+      // Find matching prior year quarter (strictly same quarter, immediately preceding fiscalYear - 1)
       const matchedPriorQuarter = quarterlies.find(
-        (d) => d.quarter === candidateCur.quarter && d.fiscalYear < candidateCur.fiscalYear
+        (d) => d.quarter === candidateCur.quarter && d.fiscalYear === candidateCur.fiscalYear - 1
       );
 
       if (matchedPriorQuarter) {
