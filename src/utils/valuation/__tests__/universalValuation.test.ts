@@ -6,6 +6,7 @@ import { calculateDDMModel } from '../ddmCalculator';
 import { calculateREITModel } from '../reitCalculator';
 import { calculateCyclicalModel } from '../cyclicalNormalizer';
 import { calculateRegionAwareCostOfCapital } from '../costOfCapital';
+import { detectValuationModel } from '../modelSelector';
 
 console.log('Running valuation integrity checks...');
 
@@ -300,6 +301,49 @@ const eligibleSecEnvelope = () => ({
   };
   assert.equal(calculateDDMModel(missingDividendReport), undefined, 'Missing dividend in DDM must fail closed');
   assert.equal(buildUniversalValuationData(missingDividendReport, 'JPM'), undefined);
+}
+
+{
+  // Bank with missing payout ratio does NOT assume 50%; preserves null
+  const noPayoutReport: any = {
+    ticker: 'JPM',
+    company_profile: { sector: 'Financial Services', industry: 'Banks', stock_price: 200 },
+    intrinsic_value: {
+      current_price: 200,
+      ddm_model: {
+        assumptions: {
+          cost_of_equity_pct: 10,
+          terminal_growth_pct: 3,
+          current_dividend_per_share: 5.0,
+        },
+      },
+    },
+  };
+  const ddm = calculateDDMModel(noPayoutReport);
+  assert.ok(ddm !== undefined);
+  assert.equal(ddm.assumptions.current_payout_ratio_pct, null, 'Must not assume payout=0 or payout=50');
+  assert.equal(ddm.scenarios.base.terminal_payout_ratio_pct, null, 'Must not assume payout=50 for terminal');
+  assert.equal(ddm.scenarios.bear.source_type, 'system_illustrative');
+  assert.equal(ddm.scenarios.bull.source_type, 'system_illustrative');
+}
+
+{
+  // Sector valuation models are documented as sourced_non_canonical, standard DCF as canonical_dcf
+  const bankModel = detectValuationModel({ company_profile: { sector: 'Financial Services', industry: 'Banks' } }, 'JPM');
+  assert.equal(bankModel.model_type, 'ddm');
+  assert.equal(bankModel.canonical_status, 'sourced_non_canonical');
+
+  const reitModel = detectValuationModel({ company_profile: { sector: 'Real Estate', industry: 'REIT' } }, 'PLD');
+  assert.equal(reitModel.model_type, 'reit_affo');
+  assert.equal(reitModel.canonical_status, 'sourced_non_canonical');
+
+  const cyclicalModel = detectValuationModel({ company_profile: { sector: 'Energy', industry: 'Oil & Gas' } }, 'XOM');
+  assert.equal(cyclicalModel.model_type, 'dcf_cyclical');
+  assert.equal(cyclicalModel.canonical_status, 'sourced_non_canonical');
+
+  const standardModel = detectValuationModel({ company_profile: { sector: 'Technology', industry: 'Consumer Electronics' } }, 'AAPL');
+  assert.equal(standardModel.model_type, 'dcf_standard');
+  assert.equal(standardModel.canonical_status, 'canonical_dcf');
 }
 
 {

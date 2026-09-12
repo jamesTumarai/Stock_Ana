@@ -87,11 +87,21 @@ export function IntrinsicValueEngine({
               </p>
               {modelSelector && (
                 <div className="mt-3.5 p-3 rounded-xl bg-white/80 border border-sky-200/80 text-xs text-sky-900">
-                  <div className="font-semibold text-sky-950">
-                    {isThai ? 'แบบจำลองที่เหมาะสมตามประเภทธุรกิจ:' : 'Recommended sector methodology:'} {isThai ? (modelSelector.model_name_th || modelSelector.model_name_en) : modelSelector.model_name_en}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="font-semibold text-sky-950">
+                      {isThai ? 'แบบจำลองที่เหมาะสมตามประเภทธุรกิจ:' : 'Recommended sector methodology:'} {isThai ? (modelSelector.model_name_th || modelSelector.model_name_en) : modelSelector.model_name_en}
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+                      {isThai ? 'แบบจำลองเฉพาะกลุ่ม / Non-Canonical' : 'Sourced Non-Canonical'}
+                    </span>
                   </div>
                   <div className="mt-1 leading-relaxed opacity-85">
                     {isThai ? (modelSelector.reason_th || modelSelector.reason_en) : (modelSelector.reason_en || modelSelector.reason_th)}
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-sky-100 text-[11px] text-sky-800">
+                    {isThai
+                      ? 'หมายเหตุ: แบบจำลองเฉพาะกลุ่มอุตสาหกรรม (เช่น DDM, FinTech Residual Income, REIT AFFO, Through-Cycle Cyclical) อิงข้อมูลรายงาน/ประมาณการภายนอกที่ผ่านการตรวจสอบความสมเหตุสมผล ไม่จัดเป็น Canonical SEC XBRL FCFF DCF'
+                      : 'Note: Sector methodologies (DDM, FinTech Residual Income, REIT AFFO, Through-Cycle Cyclical) are validated non-canonical methodologies and do not claim canonical SEC XBRL FCFF DCF status.'}
                   </div>
                 </div>
               )}
@@ -371,6 +381,11 @@ export function IntrinsicValueEngine({
               {modelSelector?.sector_category && (
                 <span className="bg-emerald-100/70 text-[#0b5a4b] text-[10px] font-sans font-bold px-2 py-0.5 rounded-full border border-emerald-200">
                   {modelSelector.sector_category}
+                </span>
+              )}
+              {modelSelector?.canonical_status === 'sourced_non_canonical' && (
+                <span className="bg-amber-100/80 text-amber-900 text-[10px] font-sans font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                  {isThai ? 'Sourced Non-Canonical' : 'Sourced Non-Canonical'}
                 </span>
               )}
               <span className="text-stone-300">•</span>
@@ -711,6 +726,9 @@ export function IntrinsicValueEngine({
                 <Scale className="w-4 h-4" />
                 {isThai ? 'การประเมินแบบเปรียบเทียบ (Relative Valuation)' : 'Relative Valuation'}
               </span>
+              <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200">
+                Sourced Non-Canonical
+              </span>
             </div>
             <div className="my-3 flex items-baseline justify-between">
               <div>
@@ -730,7 +748,12 @@ export function IntrinsicValueEngine({
             </div>
             <div className="bg-stone-50 p-3 rounded-xl border border-stone-100 text-xs text-stone-600 font-sans leading-relaxed">
               <strong className="text-stone-800 block mb-0.5">{isThai ? 'วิธีประเมิน:' : 'Methodology:'}</strong>
-              {data.relative_valuation?.method || 'Market multiples approach'}
+              <div>{data.relative_valuation?.method || 'Market multiples approach'}</div>
+              <div className="text-[10.5px] text-stone-500 mt-1.5 pt-1.5 border-t border-stone-200/60">
+                {isThai
+                  ? 'แบบจำลองเปรียบเทียบเชิงสัมพัทธ์ (Relative Valuation) อิงตัวคูณกลุ่มอุตสาหกรรมภายนอก จัดเป็น Sourced Non-Canonical'
+                  : 'Relative Valuation relies on external peer multiples and is documented as a sourced non-canonical methodology.'}
+              </div>
             </div>
           </div>
         </div>

@@ -257,6 +257,7 @@ export interface ModelSelectorResult {
   sector_category: string;
   alternative_models?: ValuationModelType[];
   disclaimer_note?: string;
+  canonical_status?: 'canonical_dcf' | 'sourced_non_canonical';
 }
 
 export interface CostOfCapitalResult {
@@ -329,9 +330,10 @@ export interface DDMScenario {
   dividend_growth_rate_pct: number;
   cost_of_equity_pct?: number;
   terminal_growth_pct?: number;
-  terminal_payout_ratio_pct: number;
+  terminal_payout_ratio_pct: number | null;
   fair_value_per_share: number;
   key_assumption_note: string;
+  source_type?: 'verified_dividend' | 'system_illustrative';
 }
 
 export interface DDMModel {
@@ -339,8 +341,8 @@ export interface DDMModel {
     cost_of_equity_pct: number;
     terminal_growth_pct: number;
     current_dividend_per_share: number;
-    current_payout_ratio_pct: number;
-    current_roe_pct: number;
+    current_payout_ratio_pct: number | null;
+    current_roe_pct: number | null;
   };
   scenarios: {
     bear: DDMScenario;
