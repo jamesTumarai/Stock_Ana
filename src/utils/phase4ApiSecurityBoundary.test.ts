@@ -16,7 +16,7 @@ assert.ok(
 );
 assert.ok(fileRoutes.includes('safeArtifactFilename(req.query.name)'), 'artifact filename must be validated before filesystem use');
 assert.ok(fileRoutes.includes("path.join('/tmp', 'artifacts')"), 'Vercel artifact writes must use writable /tmp');
-assert.ok(fileRoutes.includes('path.dirname(artifactPath) !== localArtifactsDir'), 'artifact path must remain confined to the artifact directory');
+assert.ok(fileRoutes.includes('path.dirname(artifactPath) !== userArtifactsDir'), 'artifact path must remain confined to the user artifact directory');
 assert.ok(fileRoutes.includes('normalizeTicker(req.query.ticker)'), 'JSONL ticker must be canonicalized before file lookup');
 assert.ok(server.includes('normalizeAnalysisType(body.analysisType)'), 'Analyze type must be normalized before prompt construction');
 assert.ok(server.includes('normalizeAnalysisLanguage(body.language)'), 'Analyze language must be normalized before prompt construction');
@@ -24,6 +24,6 @@ assert.ok(server.includes('normalizeGeminiModel(body.model)'), 'Analyze model mu
 assert.ok(server.includes('normalizeOptionalText(body.instruction, 4000)'), 'Analyze instruction must have a bounded length');
 assert.equal(server.includes("app.use('/run_logs'"), false, 'raw run logs must not be publicly mounted');
 assert.equal(server.includes("app.use('/latest_log'"), false, 'project root must not be publicly mounted');
-assert.ok(app.includes('authenticatedFetch(evt.jsonlLogUrl)'), 'optional JSONL download must attach Firebase auth');
+assert.equal(app.includes('authenticatedFetch(evt.jsonlLogUrl)'), false, 'automatic raw JSONL download is retired from frontend');
 
 console.log('Phase 4C API security boundary source checks passed');

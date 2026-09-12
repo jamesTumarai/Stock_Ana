@@ -6,33 +6,27 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-## Authorized Phase Order
+## Authorized Phase Order & Current Status
 
-1. **Phase 4** — Complete ✅
-2. **Phase 4.5 Stabilization** — Complete ✅
-3. **Phase 5** — Analysis Quality & Data Coverage — Complete ✅
-4. **Phase 6** — Report Experience / UX — Complete ✅
-5. **Phase 7** — Portfolio & User Intelligence — Complete ✅
-6. **Phase 8** — Monitoring & Alerts — Complete ✅
-7. **Phase 9** — Comparison & Decision Tools — Complete ✅
-8. **Phase 10** — Performance, Cost & Reliability — Complete ✅
-9. **Phase 11** — Productization / Subscription Readiness 🔄 Active
-10. **Phase 12** — Advanced Investment Intelligence
+1. **Phases 1–4: Core Platform Foundation** — Complete ✅
+2. **Phase 4.5: Post-Roadmap Integrity Stabilization** — Re-opened (Active 🔄)
+   - PR A: Security Boundary & Cross-User Log Isolation (P0-4)
+   - PR B: Phase 9 Valuation Integrity & Fallback Removal (P0-1)
+   - PR C: Phase 12 Deterministic Revaluation Bridge (P0-2, P0-3)
+   - PR D: SEC Filing Diff & Comparable-Period Matching (P1-1, P1-2)
+   - PR E: Portfolio & History Record Hydration (P1-3, P1-4, P1-5)
+   - PR F: Monitoring & Alerts Semantics (P1-8)
+   - PR G: Sector-Aware Valuation Architecture (P0-6)
+   - PR H: Server-Side Entitlement Authority (P0-5)
+   - PR I: Operational Observability & Documentation Reconciliation (P1-10, P2)
 
 ---
 
-## Current Stage
+## Current Priority
 
-### Phase 11 — Productization / Subscription Readiness (Active 🔄)
+### Post-Roadmap Integrity Hardening (Active 🔄)
 
-**Goal:** Establish subscription tiers, quota entitlements, account management, and institutional access controls while strictly isolating entitlements from canonical valuation calculations.
-
-**Work includes:**
-- Usage tiers & quota governance (Free, Pro, Institutional)
-- User entitlement evaluation boundary
-- Onboarding & account profile management
-- Billing foundations & usage monitoring
-- Privacy, disclosures, and regulatory compliance readiness
+**Goal:** Eliminate all heuristic valuation fallbacks, establish cross-user security isolation, rebuild decomposition on true sequential revaluation, enforce server-side authority, and achieve institutional financial integrity before any further feature development.
 - Zero interference with deterministic financial calculations
 
 **Exit criteria:** Tiered access and entitlement guards operate seamlessly without altering underlying valuation mathematics or verified financial data integrity.
