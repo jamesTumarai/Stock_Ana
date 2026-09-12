@@ -17,6 +17,9 @@ describe('valuationDecompositionEngine', () => {
         margin_of_safety: 12.5,
       },
       dcf_model: {
+        assumptions: {
+          projection_years: 5,
+        },
         scenarios: {
           base: {
             fair_value_per_share: 400,
@@ -54,6 +57,9 @@ describe('valuationDecompositionEngine', () => {
         margin_of_safety: 10.9,
       },
       dcf_model: {
+        assumptions: {
+          projection_years: 5,
+        },
         scenarios: {
           base: {
             fair_value_per_share: 460,
@@ -141,6 +147,23 @@ describe('valuationDecompositionEngine', () => {
     assert.ok(res);
     assert.equal(res.isAvailable, false);
     assert.ok(res.reason.includes('non-FCFF'));
+  });
+
+  it('fails closed when projection horizon is missing', () => {
+    const noProjectionCur = {
+      ...mockCurrentReport,
+      intrinsic_value: {
+        ...mockCurrentReport.intrinsic_value,
+        dcf_model: {
+          ...mockCurrentReport.intrinsic_value.dcf_model,
+          assumptions: {},
+        },
+      },
+    };
+    const res: any = decomposeValuationDelta(noProjectionCur, mockPastReport, false);
+    assert.ok(res);
+    assert.equal(res.isAvailable, false);
+    assert.ok(res.reason.includes('projection horizon years'));
   });
 
   it('handles missing conviction score without fabricated ?? 70 defaults', () => {

@@ -152,7 +152,8 @@ export function ScenarioAnalysisModal({
     if (defaultTg !== undefined) setTerminalGrowthPct(defaultTg);
   };
 
-  const getCellBg = (mos: number) => {
+  const getCellBg = (mos: number | null) => {
+    if (mos === null) return 'bg-stone-50 text-stone-400 border-stone-200';
     if (mos >= 20) return 'bg-emerald-100 text-emerald-950 font-bold border-emerald-300';
     if (mos > 0) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     if (mos > -15) return 'bg-rose-50 text-rose-800 border-rose-200';
@@ -250,15 +251,19 @@ export function ScenarioAnalysisModal({
                           <span className="text-xs font-bold uppercase tracking-wider text-stone-600">
                             {sc.name === 'bear' ? (isThai ? 'กรณีแย่ (Bear)' : 'Bear Case') : sc.name === 'base' ? (isThai ? 'กรณีฐาน (Base)' : 'Base Case') : (isThai ? 'กรณีดี (Bull)' : 'Bull Case')}
                           </span>
-                          <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${sc.marginOfSafetyPct >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                            {sc.marginOfSafetyPct >= 0 ? '+' : ''}{sc.marginOfSafetyPct}% MoS
+                          <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                            sc.marginOfSafetyPct !== null
+                              ? (sc.marginOfSafetyPct >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')
+                              : 'bg-stone-100 text-stone-500'
+                          }`}>
+                            {sc.marginOfSafetyPct !== null ? `${sc.marginOfSafetyPct >= 0 ? '+' : ''}${sc.marginOfSafetyPct}% MoS` : 'N/A'}
                           </span>
                         </div>
 
                         <div className="flex flex-col">
                           <span className="text-[10px] text-stone-400 font-sans">{isThai ? 'มูลค่าประเมินต่อหุ้น' : 'Fair Value'}</span>
                           <span className="text-2xl font-mono font-extrabold text-stone-900">
-                            ${sc.fairValuePerShare.toFixed(2)}
+                            {sc.fairValuePerShare !== null ? `$${sc.fairValuePerShare.toFixed(2)}` : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable')}
                           </span>
                         </div>
 
@@ -394,10 +399,18 @@ export function ScenarioAnalysisModal({
                               <td
                                 key={colIdx}
                                 className={`p-2.5 border-r border-stone-100 last:border-r-0 transition-colors ${getCellBg(cell.marginOfSafetyPct)}`}
-                                title={`Fair Value: $${cell.fairValue.toFixed(2)} (${cell.marginOfSafetyPct > 0 ? '+' : ''}${cell.marginOfSafetyPct}% MoS)`}
+                                title={
+                                  cell.fairValue !== null
+                                    ? `Fair Value: $${cell.fairValue.toFixed(2)} (${cell.marginOfSafetyPct !== null && cell.marginOfSafetyPct > 0 ? '+' : ''}${cell.marginOfSafetyPct ?? '—'}% MoS)`
+                                    : (isThai ? 'ไม่สามารถประเมินได้ (WACC <= Terminal Growth)' : 'Invalid: WACC <= Terminal Growth')
+                                }
                               >
-                                <div className="font-bold text-xs">${cell.fairValue.toFixed(0)}</div>
-                                <div className="text-[9px] opacity-80">{cell.marginOfSafetyPct > 0 ? '+' : ''}{cell.marginOfSafetyPct.toFixed(0)}%</div>
+                                <div className="font-bold text-xs">{cell.fairValue !== null ? `$${cell.fairValue.toFixed(0)}` : '—'}</div>
+                                <div className="text-[9px] opacity-80">
+                                  {cell.marginOfSafetyPct !== null
+                                    ? `${cell.marginOfSafetyPct > 0 ? '+' : ''}${cell.marginOfSafetyPct.toFixed(0)}%`
+                                    : 'N/A'}
+                                </div>
                               </td>
                             ))}
                           </tr>

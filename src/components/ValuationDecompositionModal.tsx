@@ -365,28 +365,32 @@ export function ValuationDecompositionModal({
                           <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs">
                             <div className="flex justify-between">
                               <span className="text-stone-400">{isThai ? 'Fair Value ภายใต้แรงกดดัน:' : 'Stressed Fair Value:'}</span>
-                              <span className="font-bold text-white font-mono">${scenario.stressedFairValue.toFixed(2)}</span>
+                              <span className="font-bold text-white font-mono">
+                                {scenario.stressedFairValue !== null ? `$${scenario.stressedFairValue.toFixed(2)}` : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable')}
+                              </span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-stone-400">{isThai ? 'ผลกระทบต่อมูลค่า:' : 'Fair Value Impact:'}</span>
                               <span
                                 className={`font-bold font-mono ${
-                                  scenario.fairValueChangePct >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                  scenario.fairValueChangePct !== null && scenario.fairValueChangePct >= 0 ? 'text-emerald-400' : 'text-rose-400'
                                 }`}
                               >
-                                {scenario.fairValueChangePct >= 0 ? '+' : ''}
-                                {scenario.fairValueChangePct.toFixed(1)}%
+                                {scenario.fairValueChangePct !== null
+                                  ? `${scenario.fairValueChangePct >= 0 ? '+' : ''}${scenario.fairValueChangePct.toFixed(1)}%`
+                                  : '—'}
                               </span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-stone-400">{isThai ? 'Margin of Safety ภายใต้แรงกดดัน:' : 'Stressed MoS:'}</span>
                               <span
                                 className={`font-bold font-mono ${
-                                  scenario.stressedMarginOfSafety >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                  scenario.stressedMarginOfSafety !== null && scenario.stressedMarginOfSafety >= 0 ? 'text-emerald-400' : 'text-rose-400'
                                 }`}
                               >
-                                {scenario.stressedMarginOfSafety >= 0 ? '+' : ''}
-                                {scenario.stressedMarginOfSafety.toFixed(1)}%
+                                {scenario.stressedMarginOfSafety !== null
+                                  ? `${scenario.stressedMarginOfSafety >= 0 ? '+' : ''}${scenario.stressedMarginOfSafety.toFixed(1)}%`
+                                  : '—'}
                               </span>
                             </div>
                           </div>

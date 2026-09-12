@@ -36,9 +36,9 @@ export interface MacroStressScenario {
   stressedTerminalGrowth: number;
   stressedGrowth: number;
   stressedMargin: number;
-  stressedFairValue: number;
-  stressedMarginOfSafety: number;
-  fairValueChangePct: number;
+  stressedFairValue: number | null;
+  stressedMarginOfSafety: number | null;
+  fairValueChangePct: number | null;
   driverImpacts: {
     waccDeltaBps: number;
     growthDeltaBps: number;
@@ -54,7 +54,7 @@ export type MacroStressScenariosResult = MacroStressScenario[] & {
   methodologyNote?: string;
   methodologyNoteTh?: string;
   baseFairValue?: number;
-  currentPrice?: number;
+  currentPrice?: number | null;
 };
 
 function parseNum(val: any): number | null {
@@ -76,7 +76,7 @@ interface ResolvedStressInputs {
   revenueCagrPct: number;
   fcfMarginPct: number;
   projectionYears: number;
-  currentPrice: number;
+  currentPrice: number | null;
   baseFairValue?: number;
 }
 
@@ -137,24 +137,26 @@ function resolveInputs(input: MacroStressInput, tickerSymbol?: string):
   // 3. Extract direct canonical fields
   const startingRevenueM = parseNum(rawAny.startingRevenueM ?? rawAny.revenue);
   const sharesOutstandingM = parseNum(rawAny.sharesOutstandingM ?? rawAny.shares);
-  const netCashM = parseNum(rawAny.netCashM ?? rawAny.netCash) ?? 0;
+  const netCashM = parseNum(rawAny.netCashM ?? rawAny.netCash);
   const waccPct = parseNum(rawAny.waccPct ?? rawAny.wacc);
   const terminalGrowthPct = parseNum(rawAny.terminalGrowthPct ?? rawAny.terminalGrowth);
   const revenueCagrPct = parseNum(rawAny.revenueCagrPct ?? rawAny.baseRevenueCagrPct ?? rawAny.revenueGrowth);
   const fcfMarginPct = parseNum(rawAny.fcfMarginPct ?? rawAny.baseFcfMarginPct ?? rawAny.operatingMargin);
-  const projectionYears = parseNum(rawAny.projectionYears) ?? 5;
-  const currentPrice = parseNum(rawAny.currentPrice) ?? 0;
+  const projectionYears = parseNum(rawAny.projectionYears);
+  const currentPrice = parseNum(rawAny.currentPrice);
   const baseFairValue = parseNum(rawAny.canonicalBaseFairValue ?? rawAny.fairValue);
 
   const missing: string[] = [];
   if (startingRevenueM === null || startingRevenueM <= 0) missing.push('starting revenue (USD millions)');
   if (sharesOutstandingM === null || sharesOutstandingM <= 0) missing.push('shares outstanding');
+  if (netCashM === null) missing.push('net cash / debt (USD millions)');
   if (waccPct === null || waccPct <= 0) missing.push('WACC discount rate');
   if (terminalGrowthPct === null || terminalGrowthPct < 0 || (waccPct !== null && terminalGrowthPct >= waccPct)) {
     missing.push('terminal growth rate (< WACC)');
   }
   if (revenueCagrPct === null) missing.push('projected revenue CAGR');
   if (fcfMarginPct === null) missing.push('FCF / operating margin');
+  if (projectionYears === null || projectionYears <= 0) missing.push('projection horizon years');
 
   if (missing.length > 0) {
     return {
@@ -170,12 +172,12 @@ function resolveInputs(input: MacroStressInput, tickerSymbol?: string):
       ticker: sym,
       startingRevenueM: startingRevenueM!,
       sharesOutstandingM: sharesOutstandingM!,
-      netCashM,
+      netCashM: netCashM!,
       waccPct: waccPct!,
       terminalGrowthPct: terminalGrowthPct!,
       revenueCagrPct: revenueCagrPct!,
       fcfMarginPct: fcfMarginPct!,
-      projectionYears,
+      projectionYears: projectionYears!,
       currentPrice,
       baseFairValue: baseFairValue ?? undefined,
     },
@@ -331,11 +333,17 @@ export function evaluateMacroStressScenarios(
           projectionYears
         );
 
-    const stressedFv = Number((Number.isFinite(stressedFvRaw) && stressedFvRaw > 0 ? stressedFvRaw : 0.01).toFixed(2));
+    const stressedFv = (Number.isFinite(stressedFvRaw) && stressedFvRaw > 0)
+      ? Number(stressedFvRaw.toFixed(2))
+      : null;
 
-    const price = currentPrice > 0 ? currentPrice : baselineFv;
-    const stressedMos = Number((((stressedFv - price) / price) * 100).toFixed(1));
-    const fvChangePct = Number((((stressedFv - baselineFv) / baselineFv) * 100).toFixed(1));
+    const price = (typeof currentPrice === 'number' && currentPrice > 0) ? currentPrice : null;
+    const stressedMos = (stressedFv !== null && price !== null && price > 0)
+      ? Number((((stressedFv - price) / price) * 100).toFixed(1))
+      : null;
+    const fvChangePct = (stressedFv !== null && baselineFv > 0)
+      ? Number((((stressedFv - baselineFv) / baselineFv) * 100).toFixed(1))
+      : null;
 
     return {
       id: def.id,

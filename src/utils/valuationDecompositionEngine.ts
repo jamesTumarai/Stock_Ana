@@ -177,7 +177,7 @@ function extractCanonicalParams(
     }
   }
 
-  const projectionYears = parseNumber(dcfAssumptions?.projection_years) ?? 5;
+  const projectionYears = parseNumber(dcfAssumptions?.projection_years ?? baseScenario?.projection_years ?? dcfInputs?.projectionYears);
 
   const missing: string[] = [];
   if (startingRevenueM === null || startingRevenueM <= 0) missing.push('starting revenue (USD millions)');
@@ -189,6 +189,7 @@ function extractCanonicalParams(
   }
   if (baseRevenueCagrPct === null) missing.push('projected growth rate');
   if (baseFcfMarginPct === null) missing.push('FCF / operating margin');
+  if (projectionYears === null || projectionYears <= 0) missing.push('projection horizon years');
 
   if (missing.length > 0) {
     return {
@@ -585,10 +586,9 @@ export function classifyThesisHealth(
     : null;
 
   const prevFv = previousFairValue
-    ?? parseNumber(previousReport.intrinsic_value?.summary?.base_case_fair_value ?? previousReport.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share)
-    ?? 100;
+    ?? parseNumber(previousReport.intrinsic_value?.summary?.base_case_fair_value ?? previousReport.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share);
 
-  const totalDeltaPct = prevFv > 0 ? (totalDeltaDollars / prevFv) * 100 : 0;
+  const totalDeltaPct = (typeof prevFv === 'number' && prevFv > 0) ? (totalDeltaDollars / prevFv) * 100 : 0;
 
   // Check if WACC was the overwhelming driver of a fair value drop (>= 70% of negative delta)
   if (drivers && totalDeltaDollars < 0) {
