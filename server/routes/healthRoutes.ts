@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import { getGlobalSecCache, type SecCacheStats } from '../../src/services/sec/secCache.ts';
+import { resolveFirebaseAdminProjectId } from '../auth/firebaseProject.ts';
 
 export interface PublicHealthResponse {
   ok: boolean;
@@ -35,13 +36,40 @@ export interface DetailedHealthStatusResponse extends PublicHealthResponse {
 
 export type HealthStatusResponse = DetailedHealthStatusResponse;
 
+export function isInternalAdminAuthorized(req: Request): boolean {
+  const adminSecret = process.env.ADMIN_SECRET?.trim() || process.env.INTERNAL_API_KEY?.trim();
+  if (!adminSecret) {
+    return false;
+  }
+  const headerKey = req.headers['x-admin-key'] || req.headers['x-internal-key'];
+  if (typeof headerKey === 'string' && headerKey.trim() === adminSecret) {
+    return true;
+  }
+  const authHeader = req.headers['authorization'];
+  if (typeof authHeader === 'string' && authHeader.trim() === `Bearer ${adminSecret}`) {
+    return true;
+  }
+  return false;
+}
+
 export function buildHealthReport(runtime: 'express-server' | 'vercel-function' = 'express-server'): HealthStatusResponse {
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY?.trim());
   const secConfigured = Boolean(process.env.SEC_USER_AGENT?.trim());
-  const firebaseConfigured = Boolean(process.env.FIREBASE_PROJECT_ID?.trim() || process.env.VITE_FIREBASE_PROJECT_ID?.trim());
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID?.trim() || process.env.VITE_FIREBASE_PROJECT_ID?.trim() || undefined;
 
-  const isHealthy = geminiConfigured && secConfigured;
+  let firebaseConfigured = false;
+  let firebaseProjectId: string | undefined = undefined;
+  try {
+    const resolved = resolveFirebaseAdminProjectId(process.env);
+    if (resolved && resolved.projectId) {
+      firebaseConfigured = true;
+      firebaseProjectId = resolved.projectId;
+    }
+  } catch {
+    firebaseConfigured = false;
+  }
+
+  // Readiness: all core dependencies required for production analysis are configured
+  const isHealthy = geminiConfigured && secConfigured && firebaseConfigured;
   const mem = typeof process !== 'undefined' && process.memoryUsage ? process.memoryUsage() : null;
   const secCache = getGlobalSecCache();
 
@@ -76,12 +104,8 @@ export function buildHealthReport(runtime: 'express-server' | 'vercel-function' 
 }
 
 export function handleHealthCheck(req: Request, res: Response) {
-  const isDetailed = req.query.detailed === 'true';
+  const isDetailedRequested = req.query.detailed === 'true' || (req.path && req.path.endsWith('/detailed'));
   const report = buildHealthReport('express-server');
-
-  if (isDetailed) {
-    return res.status(200).json(report);
-  }
 
   const minimal: PublicHealthResponse = {
     status: report.status,
@@ -89,9 +113,22 @@ export function handleHealthCheck(req: Request, res: Response) {
     service: 'lumina',
     timestamp: report.timestamp,
   };
+
+  if (isDetailedRequested) {
+    if (!isInternalAdminAuthorized(req)) {
+      if (req.path && req.path.endsWith('/detailed')) {
+        return res.status(401).json({ error: 'Unauthorized: internal admin authorization required for detailed telemetry' });
+      }
+      // Public /api/health?detailed=true without authorization strictly returns minimal payload
+      return res.status(200).json(minimal);
+    }
+    return res.status(200).json(report);
+  }
+
   return res.status(200).json(minimal);
 }
 
 export function registerHealthRoutes(app: Express) {
   app.get('/api/health', handleHealthCheck);
+  app.get('/api/health/detailed', handleHealthCheck);
 }

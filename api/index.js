@@ -13,11 +13,28 @@ export default async function handler(req, res) {
   if (req.method === 'GET' && (req.url || '').startsWith('/api/health')) {
     const geminiConfigured = Boolean(process.env.GEMINI_API_KEY?.trim());
     const secConfigured = Boolean(process.env.SEC_USER_AGENT?.trim());
-    const isHealthy = geminiConfigured && secConfigured;
+    const explicitFirebase = Boolean(process.env.FIREBASE_PROJECT_ID?.trim() || process.env.VITE_FIREBASE_PROJECT_ID?.trim());
+    const vercelEnv = (process.env.VERCEL_ENV || '').trim().toLowerCase();
+    const isNonProd = vercelEnv === 'preview' || vercelEnv === 'development' || (process.env.NODE_ENV || '').trim().toLowerCase() === 'development';
+    const firebaseConfigured = explicitFirebase || (!isNonProd);
+
+    // Readiness: all core dependencies required for production analysis are configured
+    const isHealthy = geminiConfigured && secConfigured && firebaseConfigured;
+
     const urlObj = new URL(req.url, 'http://localhost');
     const isDetailed = urlObj.searchParams.get('detailed') === 'true';
 
-    if (!isDetailed) {
+    const adminSecret = process.env.ADMIN_SECRET?.trim() || process.env.INTERNAL_API_KEY?.trim();
+    const headerKey = req.headers['x-admin-key'] || req.headers['x-internal-key'];
+    const authHeader = req.headers['authorization'];
+    const isAuthorized = Boolean(
+      adminSecret && (
+        headerKey === adminSecret ||
+        authHeader === `Bearer ${adminSecret}`
+      )
+    );
+
+    if (!isDetailed || !isAuthorized) {
       return res.status(200).json({
         status: isHealthy ? 'healthy' : 'degraded',
         ok: isHealthy,
@@ -27,7 +44,6 @@ export default async function handler(req, res) {
     }
 
     const mem = typeof process !== 'undefined' && process.memoryUsage ? process.memoryUsage() : null;
-    const firebaseConfigured = Boolean(process.env.FIREBASE_PROJECT_ID?.trim() || process.env.VITE_FIREBASE_PROJECT_ID?.trim());
     return res.status(200).json({
       status: isHealthy ? 'healthy' : 'degraded',
       ok: isHealthy,
