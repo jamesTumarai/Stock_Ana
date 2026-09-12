@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Final Integrity Cleanup Complete (PRs #96, #97, #98; Phase 4.5 Pending Owner Acceptance ⏳)**.
+- Current stage: **Final Integrity Cleanup Complete (PRs #96–#99 Merged; Phase 4.5 Pending Owner Acceptance ⏳)**.
 - Current working mode: **Final Integrity Cleanup (Verified SEC fact diff, Cash conversion semantics, Health contract parity, Actual model AI cost, Quick ratio STI verification, Terminal growth transparency, Canonical sandbox unification, History soft-delete UX & Master documentation reconciliation)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #97 (Health Contract Parity) / PR #98 in flight.
+- Latest merged milestone: PR #99 (Live Quotes Serverless Bundle Routing).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,7 +27,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented / Hardening Complete (Pending Owner Acceptance ⏳)` | PR #67–#76, #78–#85, #87–#98 |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented / Hardening Complete (Pending Owner Acceptance ⏳)` | PR #67–#76, #78–#85, #87–#99 |
 | **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #56–#58, PR #70 |
 | **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #59, #60 |
 | **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #61, PR #71 |
@@ -518,6 +518,13 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Updated `src/components/HistoryModal.tsx` confirmation copy: *"This report will be removed from your visible history."* (truthful soft-delete copy).
 - **Master Documentation Reconciliation**:
   - Reconciled all metrics, contracts, and status fields across `docs/ROADMAP.md` and `docs/PROJECT_STATUS.md`.
+- Merge SHA: `559a4e0789d190001f0a4bc555b5e245574c942b`.
+
+#### PR #99 — Live Quotes Serverless Bundle Routing & Trace (`fix/vercel-live-quotes-handler`) ✅
+- Routed `/api/live-quotes` through the self-contained `dist/sec-preview.cjs` bundle with universal request query handling.
+- Statically imported core server dependencies (`express`, `firebase-admin/app`, `firebase-admin/auth`, `@google/genai`) in `api/index.js` for serverless bundle resilience.
+- Wrapped `createApp` in try/catch to return structured error JSON rather than crashing the lambda invocation.
+- Merge SHA: `fa931a46657bd31eeff6eabeca1fa5d3f9d98305`.
 
 #### Final Integrity Test Gate Metrics
 - **Test files executed**: 74

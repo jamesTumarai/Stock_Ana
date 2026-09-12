@@ -43,6 +43,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
      - PR 1: Verified SEC Canonical Fact Diff & Integrity (Blockers 1, 2, Integrity 8) — Merged ✅ (PR #96)
      - PR 2: Health Contract Parity & Single Source of Truth (Blocker 3) — Merged ✅ (PR #97)
      - PR 3: AI Cost Actual Model, Quick Ratio STI Verification, Terminal Growth Transparency & Canonical Sandbox Hardening — Merged ✅ (PR #98)
+     - PR 4: Live Quotes Serverless Bundle Routing & Trace — Merged ✅ (PR #99)
 3. **Phase 5: Analysis Quality & Data Coverage** — Implemented — Revalidation Required ⏳ (PR #56–#58, PR #70)
 4. **Phase 6: Report Experience & UI Polish** — Implemented — Revalidation Required ⏳ (PR #59, #60)
 5. **Phase 7: Portfolio & User Intelligence** — Implemented — Revalidation Required ⏳ (PR #61, PR #71)
