@@ -2,9 +2,18 @@ export interface ModelPricing {
   inputPerMillion: number;
   outputPerMillion: number;
   tier: 'flash' | 'pro' | 'standard';
+  source?: string;
+  effectiveDate?: string;
+  catalogVersion?: string;
 }
 
-export const MODEL_PRICING_CATALOG: Record<string, ModelPricing> = {
+export const PRICING_CATALOG_METADATA = {
+  version: '2026.1',
+  effectiveDate: '2025-11-01',
+  source: 'Google Cloud Vertex AI / Gemini API Official Pricing',
+};
+
+export const MODEL_PRICING_CATALOG: Record<string, Omit<ModelPricing, 'source' | 'effectiveDate' | 'catalogVersion'>> = {
   // Gemini Flash family (Standard institutional models in Lumina)
   'gemini-3.8-flash': { inputPerMillion: 0.10, outputPerMillion: 0.40, tier: 'flash' },
   'gemini-3.7-flash': { inputPerMillion: 0.10, outputPerMillion: 0.40, tier: 'flash' },
@@ -16,25 +25,28 @@ export const MODEL_PRICING_CATALOG: Record<string, ModelPricing> = {
   'gemini-1.5-pro': { inputPerMillion: 1.25, outputPerMillion: 5.00, tier: 'pro' },
 };
 
-const DEFAULT_PRICING: ModelPricing = {
-  inputPerMillion: 0.10,
-  outputPerMillion: 0.40,
-  tier: 'standard',
-};
-
 export interface TokenCostEstimate {
+  isAvailable: boolean;
+  reason?: string;
   model: string;
   totalTokens: number;
   promptTokens: number | null;
   completionTokens: number | null;
-  inputCostUsd: number;
-  outputCostUsd: number;
-  totalCostUsd: number;
+  inputCostUsd: number | null;
+  outputCostUsd: number | null;
+  totalCostUsd: number | null;
   totalCostThb: number | null;
   formattedCostUsd: string;
   formattedCostThb: string | null;
-  pricingTier: 'flash' | 'pro' | 'standard';
+  pricingTier: 'flash' | 'pro' | 'standard' | null;
   isEstimatedBreakdown?: boolean;
+  approximationNote?: string;
+  approximationNoteTh?: string;
+  pricingMetadata?: {
+    source: string;
+    effectiveDate: string;
+    catalogVersion: string;
+  };
 }
 
 export interface EstimateCostOptions {
@@ -46,27 +58,35 @@ export interface EstimateCostOptions {
 }
 
 /**
- * Resolves the active model pricing tier with fallback to standard pricing.
+ * Resolves the active model pricing tier.
+ * Returns null if the model is unrecognized or absent from the pricing catalog.
+ * Never guesses or falls back to arbitrary standard/pro pricing for unknown models.
  */
-export function getModelPricing(modelName?: string): ModelPricing {
-  if (!modelName) return DEFAULT_PRICING;
+export function getModelPricing(modelName?: string): ModelPricing | null {
+  if (!modelName) return null;
   const normalized = modelName.trim().toLowerCase();
+
   for (const [key, pricing] of Object.entries(MODEL_PRICING_CATALOG)) {
-    if (normalized.includes(key) || key.includes(normalized)) {
-      return pricing;
+    if (normalized === key || normalized === `models/${key}`) {
+      return {
+        ...pricing,
+        source: PRICING_CATALOG_METADATA.source,
+        effectiveDate: PRICING_CATALOG_METADATA.effectiveDate,
+        catalogVersion: PRICING_CATALOG_METADATA.version,
+      };
     }
   }
-  if (normalized.includes('pro')) {
-    return MODEL_PRICING_CATALOG['gemini-1.5-pro'];
-  }
-  return DEFAULT_PRICING;
+
+  // Unknown model: fail closed
+  return null;
 }
 
 /**
  * Deterministic token cost estimator for Gemini AI inferences.
+ * If model pricing is unrecognized, returns isAvailable: false with reason.
  * If prompt/completion breakdown is omitted, institutional default distribution
  * (75% input context/filings, 25% output report) is applied for cost calculation,
- * while promptTokens and completionTokens remain null (never fabricated as actual counts).
+ * clearly surfaced as an approximation assumption in approximationNote.
  * When fxRateUsdThb is omitted, totalCostThb and formattedCostThb return null.
  */
 export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstimate {
@@ -77,11 +97,31 @@ export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstima
   const hasExplicitPrompt = typeof options.promptTokens === 'number' && options.promptTokens >= 0;
   const hasExplicitCompletion = typeof options.completionTokens === 'number' && options.completionTokens >= 0;
 
+  if (!pricing) {
+    return {
+      isAvailable: false,
+      reason: `Pricing unavailable for unrecognized model '${model}'.`,
+      model,
+      totalTokens: rawTotal,
+      promptTokens: hasExplicitPrompt ? options.promptTokens! : null,
+      completionTokens: hasExplicitCompletion ? options.completionTokens! : null,
+      inputCostUsd: null,
+      outputCostUsd: null,
+      totalCostUsd: null,
+      totalCostThb: null,
+      formattedCostUsd: 'N/A',
+      formattedCostThb: null,
+      pricingTier: null,
+    };
+  }
+
   let promptTokens: number | null = null;
   let completionTokens: number | null = null;
   let inputCostUsd = 0;
   let outputCostUsd = 0;
   let isEstimatedBreakdown = false;
+  let approximationNote: string | undefined;
+  let approximationNoteTh: string | undefined;
 
   if (hasExplicitPrompt || hasExplicitCompletion) {
     promptTokens = Math.max(0, options.promptTokens ?? 0);
@@ -90,6 +130,8 @@ export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstima
     outputCostUsd = (completionTokens / 1_000_000) * pricing.outputPerMillion;
   } else if (rawTotal > 0) {
     isEstimatedBreakdown = true;
+    approximationNote = 'Approximate token allocation used (75% input / 25% output assumption)';
+    approximationNoteTh = 'ประมาณการสัดส่วนโทเค็น (สมมติฐาน 75% ข้อมูลนำเข้า / 25% ผลลัพธ์รายงาน)';
     promptTokens = null;
     completionTokens = null;
     const estimatedPromptTokens = rawTotal * 0.75;
@@ -113,6 +155,7 @@ export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstima
   }
 
   return {
+    isAvailable: true,
     model,
     totalTokens: effectiveTotal,
     promptTokens,
@@ -125,6 +168,13 @@ export function estimateTokenCost(options: EstimateCostOptions): TokenCostEstima
     formattedCostThb,
     pricingTier: pricing.tier,
     isEstimatedBreakdown,
+    approximationNote,
+    approximationNoteTh,
+    pricingMetadata: {
+      source: pricing.source || PRICING_CATALOG_METADATA.source,
+      effectiveDate: pricing.effectiveDate || PRICING_CATALOG_METADATA.effectiveDate,
+      catalogVersion: pricing.catalogVersion || PRICING_CATALOG_METADATA.version,
+    },
   };
 }
 
