@@ -7,7 +7,8 @@ import { ReportData } from '../types';
 import {
   buildResearchTimeline,
   computeHistoricalDelta,
-  extractReportDate
+  extractReportDate,
+  getPreviousReport
 } from '../utils/researchTimeline';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
@@ -30,20 +31,14 @@ export function ResearchTimelineCard({
     return buildResearchTimeline(ticker, historyReports, currentReport);
   }, [ticker, historyReports, currentReport]);
 
-  const pastReports = useMemo(() => {
-    const cleanTicker = ticker.toUpperCase().trim();
-    return historyReports.filter(r => {
-      const t = (r.ticker || r.company_profile?.overview?.symbol || '').toUpperCase().trim();
-      const d = extractReportDate(r);
-      const curDate = extractReportDate(currentReport);
-      return t === cleanTicker && d !== curDate;
-    });
+  const previousReport = useMemo(() => {
+    return getPreviousReport(ticker, historyReports, currentReport);
   }, [ticker, historyReports, currentReport]);
 
   const delta = useMemo(() => {
-    if (pastReports.length === 0) return null;
-    return computeHistoricalDelta(currentReport, pastReports[0]);
-  }, [currentReport, pastReports]);
+    if (!previousReport) return null;
+    return computeHistoricalDelta(currentReport, previousReport);
+  }, [currentReport, previousReport]);
 
   // If there is only 1 report and no previous history, show an initial baseline badge
   if (timeline.length <= 1 && !delta) {
@@ -67,7 +62,7 @@ export function ResearchTimelineCard({
             </div>
             <p className="text-xs text-stone-500 font-sans">
               {isThai
-                ? `เปรียบเทียบข้อเท็จจริงกับบทวิเคราะห์ก่อนหน้า (${pastReports.length} บันทึกประวัติศาสตร์)`
+                ? `เปรียบเทียบข้อเท็จจริงกับบทวิเคราะห์ก่อนหน้า (${timeline.length > 1 ? timeline.length - 1 : 0} บันทึกประวัติศาสตร์)`
                 : `Empirical comparison across ${timeline.length} documented analysis snapshots`}
             </p>
           </div>

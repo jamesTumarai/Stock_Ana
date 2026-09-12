@@ -10,7 +10,8 @@ import {
   loadLocalPortfolio,
   saveLocalPortfolio,
   loadLocalWatchlist,
-  saveLocalWatchlist
+  saveLocalWatchlist,
+  SUGGESTED_WATCHLIST_TICKERS
 } from '../utils/portfolioEngine';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { fetchLiveQuotes } from '../services/marketDataService';
@@ -326,10 +327,22 @@ export function PortfolioModal({
                     {isThai ? 'มูลค่าพอร์ตรวม' : 'Total Market Value'}
                   </span>
                   <span className="text-xl font-mono font-extrabold text-stone-900 mt-1">
-                    ${summary.total_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {summary.total_market_value !== null
+                      ? `$${summary.total_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : summary.priced_market_value > 0
+                      ? `$${summary.priced_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : (isThai ? 'ไม่สามารถระบุได้' : 'Unavailable')}
                   </span>
                   <span className="text-[10px] text-stone-500 font-mono mt-0.5">
-                    {isThai ? 'ต้นทุน:' : 'Cost Basis:'} ${summary.total_cost_basis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {summary.unpriced_holdings_count > 0 ? (
+                      <span className="text-amber-700 font-sans">
+                        {isThai
+                          ? `ครอบคลุมราคา ${summary.pricing_coverage_pct}% (${summary.unpriced_holdings_count} รายการขาดราคาตลาด)`
+                          : `${summary.pricing_coverage_pct}% priced (${summary.unpriced_holdings_count} missing quote)`}
+                      </span>
+                    ) : (
+                      <>{isThai ? 'ต้นทุน:' : 'Cost Basis:'} ${summary.total_cost_basis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                    )}
                   </span>
                 </div>
 
@@ -338,14 +351,29 @@ export function PortfolioModal({
                   <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
                     {isThai ? 'กำไร/ขาดทุนที่ยังไม่รับรู้' : 'Unrealized Gain / Loss'}
                   </span>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span className={`text-xl font-mono font-extrabold ${summary.total_unrealized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {summary.total_unrealized_pnl >= 0 ? '+' : ''}${summary.total_unrealized_pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <span className={`text-[10px] font-mono font-bold ${summary.total_unrealized_pnl_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {summary.total_unrealized_pnl_pct >= 0 ? '+' : ''}{summary.total_unrealized_pnl_pct.toFixed(2)}%
-                  </span>
+                  {summary.total_unrealized_pnl !== null && summary.total_unrealized_pnl_pct !== null ? (
+                    <>
+                      <div className="flex items-baseline gap-1.5 mt-1">
+                        <span className={`text-xl font-mono font-extrabold ${summary.total_unrealized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {summary.total_unrealized_pnl >= 0 ? '+' : ''}${summary.total_unrealized_pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-mono font-bold ${summary.total_unrealized_pnl_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {summary.total_unrealized_pnl_pct >= 0 ? '+' : ''}{summary.total_unrealized_pnl_pct.toFixed(2)}%
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm font-semibold text-stone-600 mt-1">
+                        {isThai ? 'ไม่สามารถคำนวณกำไร/ขาดทุนรวมได้' : 'Total P/L Unavailable'}
+                      </div>
+                      <span className="text-[10px] text-amber-700 font-sans mt-0.5">
+                        {isThai
+                          ? `ขาดราคาตลาดสด ${summary.unpriced_holdings_count} รายการ`
+                          : `${summary.unpriced_holdings_count} holdings missing live price`}
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 {/* Top Concentration Risk */}
@@ -531,8 +559,32 @@ export function PortfolioModal({
               {/* Watchlist Table */}
               <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs divide-y divide-stone-100">
                 {watchlist.length === 0 ? (
-                  <div className="p-8 text-center text-stone-400 text-xs italic">
-                    {isThai ? 'ไม่มีหุ้นใน Watchlist' : 'No stocks on your watchlist.'}
+                  <div className="p-8 text-center space-y-3">
+                    <p className="text-stone-400 text-xs italic">
+                      {isThai ? 'ยังไม่มีหุ้นใน Watchlist ของคุณ' : 'No stocks on your watchlist.'}
+                    </p>
+                    <div className="pt-2">
+                      <span className="text-xs text-stone-500 font-semibold block mb-2">
+                        {isThai ? 'หุ้นแนะนำเริ่มต้น (Suggested Tickers):' : 'Suggested Tickers:'}
+                      </span>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {SUGGESTED_WATCHLIST_TICKERS.map((sug) => (
+                          <button
+                            key={sug}
+                            type="button"
+                            onClick={() => {
+                              const next = Array.from(new Set([...watchlist, sug]));
+                              setWatchlist(next);
+                              saveLocalWatchlist(next, user?.uid);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-mono font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3 text-[#0b5a4b]" />
+                            <span>{sug}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   watchlist.map((tick) => {

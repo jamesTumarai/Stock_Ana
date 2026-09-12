@@ -293,7 +293,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Added 8 regression tests in `valuationDecompositionEngine.test.ts` and 6 tests in `macroStressEngine.test.ts`. All unit test suites passing (100%).
 - Merge SHA: `b430e0d`.
 
-#### PR #70 — SEC Filing Diff & Comparable-Period Matching (PR D, P1-1, P1-2) 🔄
+#### PR #70 — SEC Filing Diff & Comparable-Period Matching (PR D, P1-1, P1-2) ✅
 - Enforced strict Comparable Period Matching in `src/utils/secFilingDiffEngine.ts`:
   - Parses period descriptors and normalizes statements.
   - Matches either consecutive annuals (Annual YoY: FY2025 vs FY2024) or same quarters across consecutive fiscal years (Same-Quarter YoY: Q3 2025 vs Q3 2024).
@@ -309,6 +309,23 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Added FCF YoY, Cash Conversion Ratio ($OCF/NI$), Operating Margin bps delta, and Share count dilution/buyback badges.
   - Added display for factual working capital divergence alerts.
 - Added 9 unit tests in `src/utils/__tests__/secFilingDiffEngine.test.ts`. All unit tests passing.
+- Merge SHA: `d2a1804`.
+
+#### PR #71 — Portfolio & History Record Hydration (PR E, P1-3, P1-4, P1-5) 🔄
+- **Research Timeline & Firestore Record Adapter (P1-3)**:
+  - Built canonical `unwrapHistoryRecord` in `src/utils/researchTimeline.ts` seamlessly extracting report payload from Firestore wrappers (`{ id, ticker, createdAt, data: report }`), legacy records, and direct reports.
+  - Fixed same-day multiple analysis collision: replaced fragile date-only Map keys with composite keys (`reportId` + `createdTimestamp`), ensuring multiple same-day analyses for the same ticker are retained in chronological order.
+  - Implemented `getPreviousReport` helper to strictly locate the latest previous analysis strictly prior to the active report.
+  - Refactored `ResearchTimelineCard.tsx` and `ReportTemplate.tsx` to use canonical `getPreviousReport`.
+- **Portfolio Missing Quote Integrity (P1-4)**:
+  - Eliminated dangerous fallback that substituted cost basis as market value when quotes were missing in `calculatePortfolioSummary`.
+  - Added quote coverage metrics: `priced_holdings_count`, `unpriced_holdings_count`, `pricing_coverage_pct`, `priced_market_value`, and `unpriced_cost_basis`.
+  - Strictly sets `total_market_value = null` and `total_unrealized_pnl = null` when any holding lacks a live quote, preventing the illusion of verified aggregate market value.
+  - Updated `PortfolioModal.tsx` to clearly display coverage percentages and missing price alerts.
+- **Starter Watchlist Disaggregation (P1-5)**:
+  - Disaggregated starter ticker suggestions (`SUGGESTED_WATCHLIST_TICKERS = ['MSFT', 'AAPL', 'NVDA', 'SOFI']`) from user's explicit watchlist.
+  - `loadLocalWatchlist` returns empty array `[]` when storage is empty, without falsely masquerading starter tickers as saved user holdings.
+  - Added opt-in suggested ticker pill buttons with one-click addition in `PortfolioModal.tsx`.
 
 ## Current production health
 

@@ -113,6 +113,12 @@ describe('monitoringEngine', () => {
       top_holding_concentration_pct: 45,
       concentration_risk_alert: true,
       sector_breakdown: [],
+      priced_holdings_count: 2,
+      unpriced_holdings_count: 0,
+      pricing_coverage_pct: 100,
+      priced_market_value: 10000,
+      unpriced_cost_basis: 0,
+      is_fully_priced: true,
       computed_holdings: [
         { ticker: 'MSFT', quantity: 10, average_cost: 400, total_cost: 4000, allocation_pct: 45 },
         { ticker: 'AAPL', quantity: 20, average_cost: 250, total_cost: 5000, allocation_pct: 55 }
