@@ -9,7 +9,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 ## Authorized Phase Order & Current Status
 
 1. **Phases 1–4: Core Platform Foundation** — Complete ✅
-2. **Phase 4.5: Post-Roadmap Integrity Stabilization** — Code Complete (Pending Owner Acceptance ⏳)
+2. **Phase 4.5: Post-Roadmap Integrity Stabilization** — Implemented / Hardening Pending (Pending Owner Acceptance ⏳)
    - PR A: Security Boundary & Cross-User Log Isolation (P0-4) — Complete ✅ (PR #67)
    - PR B: Phase 9 Valuation Integrity & Fallback Removal (P0-1) — Complete ✅ (PR #68)
    - PR C: Phase 12 Deterministic Revaluation Bridge (P0-2, P0-3) — Complete ✅ (PR #69)
@@ -29,24 +29,38 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
      - PR 6: Valuation Decomposition SEC Diff Adapter — Complete ✅ (PR #83)
      - PR 7: DDM & Sector Valuation Honesty — Complete ✅ (PR #84)
      - PR 8: Monitoring & Operations Hardening — Complete ✅ (PR #85)
-3. **Phase 5: Analysis Quality & Data Coverage** — Complete ✅ (PR #56–#58, PR #70)
-4. **Phase 6: Report Experience & UI Polish** — Complete ✅ (PR #59, #60)
-5. **Phase 7: Portfolio & User Intelligence** — Complete ✅ (PR #61, PR #71)
-6. **Phase 8: Monitoring & Alerts** — Complete ✅ (PR #62, PR #72, PR #85)
-7. **Phase 9: Comparison & Decision Tools** — Complete ✅ (PR #63, PR #68, PR #80, PR #81)
-8. **Phase 10: Performance, Cost & Reliability** — Complete ✅ (PR #64, PR #75, PR #85)
+   - Post-Hardening Review Round 3:
+     - PR A: Health Diagnostic Security & Readiness — Merged ✅ (PR #87)
+     - PR B: Valuation Range & Macro Stress Integrity — Merged ✅ (PR #88)
+     - PR C: SEC Comparison Integrity & Provenance Guards — Merged ✅ (PR #89)
+     - PR D: Ratio Missing-vs-Zero D/E Follow-up — Merged ✅ (PR #90)
+     - PR E: Cost Estimator Fail-Closed Truthfulness — Merged ✅ (PR #91)
+     - PR F: DDM Provenance Semantics — Merged ✅ (PR #92)
+     - PR G: Period Parser Consistency — Merged ✅ (PR #93)
+     - PR H: Dependency Audit Triage & Bundle Analysis — Merged ✅ (PR #94)
+     - PR I: Documentation Reclassification — Merged ✅ (PR #95)
+3. **Phase 5: Analysis Quality & Data Coverage** — Implemented — Revalidation Required ⏳ (PR #56–#58, PR #70)
+4. **Phase 6: Report Experience & UI Polish** — Implemented — Revalidation Required ⏳ (PR #59, #60)
+5. **Phase 7: Portfolio & User Intelligence** — Implemented — Revalidation Required ⏳ (PR #61, PR #71)
+6. **Phase 8: Monitoring & Alerts** — Implemented — Revalidation Required ⏳ (PR #62, PR #72, PR #85)
+7. **Phase 9: Comparison & Decision Tools** — Implemented — Revalidation Required ⏳ (PR #63, PR #68, PR #80, PR #81)
+8. **Phase 10: Performance, Cost & Reliability** — Implemented — Revalidation Required ⏳ (PR #64, PR #75, PR #85)
 9. **Phase 11: Productization / Subscription** — Removed per owner directive (PR #76) (Unlimited Platform Access)
-10. **Phase 12: Advanced Investment Intelligence** — Complete ✅ (PR #66, PR #69, PR #70, PR #73, PR #83)
+10. **Phase 12: Advanced Investment Intelligence** — Implemented — Revalidation Required ⏳ (PR #66, PR #69, PR #70, PR #73, PR #83)
 
 ---
 
 ## Current Priority
 
-### Post-Roadmap Integrity Hardening (Code Complete; Pending Owner Acceptance ⏳)
+### Post-Roadmap Integrity Hardening (Implemented / Hardening Pending; Pending Owner Acceptance ⏳)
 
 **Goal Achieved:** All heuristic valuation fallbacks eliminated, cross-user security isolation established, decomposition rebuilt on true sequential revaluation, subscription/entitlement system removed per owner directive (unlimited platform access), and institutional financial integrity baseline locked before further feature development.
 - Zero interference with deterministic financial calculations.
-- 73 test files, 149 automated regression tests passing across entire repository.
+- Test Metrics:
+  - Test files executed: 73 (71 src + 2 server)
+  - Test cases passed: 161
+  - Server test files executed: 2
+  - Vulnerability status: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged in `docs/SECURITY_AUDIT_TRIAGE.md`)
 
 ---
 
