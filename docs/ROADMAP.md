@@ -19,6 +19,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
    - PR G: Sector-Aware Valuation Architecture (P0-6) — Complete ✅ (PR #73)
    - PR H: Server-Side Entitlement Authority (P0-5) — Complete ✅ (PR #74)
    - PR I: Operational Observability & Documentation Reconciliation (P1-10, P2) — Complete ✅ (PR #75)
+   - PR J / Post-Hardening: Removal of Subscription System & Entitlement Gates per Owner Directive — Complete ✅ (PR #76)
 3. **Phase 5: Analysis Quality & Data Coverage** — Complete ✅ (PR #56–#58, PR #70)
 4. **Phase 6: Report Experience & UI Polish** — Complete ✅ (PR #59, #60)
 5. **Phase 7: Portfolio & User Intelligence** — Complete ✅ (PR #61, PR #71)
