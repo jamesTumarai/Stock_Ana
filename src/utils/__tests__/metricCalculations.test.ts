@@ -96,6 +96,29 @@ const mockMissingRec: FinancialStatementsData = {
 };
 const qrMissingRec = getMetricCalculationDetail('quick_ratio', 3, mockMissingRec);
 assert.equal(qrMissingRec.resultValue, null, 'Quick ratio must be null when receivables are missing');
+
+// Quick Ratio fails closed if short_term_investments property is absent
+const mockAbsentSti: FinancialStatementsData = {
+  ...mockData,
+  balance_sheet: {
+    ...mockData.balance_sheet!,
+    short_term_investments: undefined,
+  }
+};
+const qrAbsentSti = getMetricCalculationDetail('quick_ratio', 3, mockAbsentSti);
+assert.equal(qrAbsentSti.resultValue, null, 'Quick ratio must be null when short_term_investments property is absent');
+
+// Quick Ratio succeeds when short_term_investments is an explicit verified zero
+const mockExplicitZeroSti: FinancialStatementsData = {
+  ...mockData,
+  balance_sheet: {
+    ...mockData.balance_sheet!,
+    short_term_investments: [0, 0, 0, 0],
+  }
+};
+const qrExplicitZeroSti = getMetricCalculationDetail('quick_ratio', 3, mockExplicitZeroSti);
+// (1000 + 0 + 650) / 1200 = 1650 / 1200 = 1.38
+assert.equal(qrExplicitZeroSti.resultValue, 1.38, 'Quick ratio must calculate correctly when short_term_investments is an explicit verified zero');
 console.log('✓ getMetricCalculationDetail - quick_ratio verified');
 
 // 7. Debt to Equity

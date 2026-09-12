@@ -196,3 +196,5 @@ export async function handleSecCompare(req: any, res: any) {
     return secErrorResponse(res, error, '/api/sec-compare');
   }
 }
+
+export { handleHealthCheck } from './routes/healthRoutes.ts';

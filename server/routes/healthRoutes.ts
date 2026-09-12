@@ -103,8 +103,9 @@ export function buildHealthReport(runtime: 'express-server' | 'vercel-function' 
   };
 }
 
-export function handleHealthCheck(req: Request, res: Response) {
-  const isDetailedRequested = req.query.detailed === 'true' || (req.path && req.path.endsWith('/detailed'));
+export function handleHealthCheck(req: Request | any, res: Response | any) {
+  const urlObj = new URL(req.url || '', 'http://localhost');
+  const isDetailedRequested = req.query?.detailed === 'true' || urlObj.searchParams.get('detailed') === 'true' || (typeof req.path === 'string' && req.path.endsWith('/detailed')) || urlObj.pathname.endsWith('/detailed');
   const runtime = (process.env.VERCEL || req.headers?.['x-vercel-id']) ? 'vercel-function' : 'express-server';
   const report = buildHealthReport(runtime);
 
@@ -117,7 +118,7 @@ export function handleHealthCheck(req: Request, res: Response) {
 
   if (isDetailedRequested) {
     if (!isInternalAdminAuthorized(req)) {
-      if (req.path && req.path.endsWith('/detailed')) {
+      if ((typeof req.path === 'string' && req.path.endsWith('/detailed')) || urlObj.pathname.endsWith('/detailed')) {
         return res.status(401).json({ error: 'Unauthorized: internal admin authorization required for detailed telemetry' });
       }
       // Public /api/health?detailed=true without authorization strictly returns minimal payload

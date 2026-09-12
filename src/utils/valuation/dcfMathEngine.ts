@@ -15,6 +15,10 @@ export interface DCFEngineInputs {
   netCashM: number | null;
   waccPct: number | null;
   terminalGrowthPct: number | null;
+  requestedTerminalGrowthPct?: number | null;
+  usedTerminalGrowthPct?: number | null;
+  terminalGrowthPolicyApplied?: boolean;
+  terminalGrowthPolicyReason?: string;
   projectionYears: number | null;
   isValid: boolean;
   sourcePeriod?: string;
@@ -263,9 +267,18 @@ export function buildRigorousDCFModel(
   if (!Number.isFinite(rawWacc)) missing.push('discount rate (WACC)');
   if (!Number.isFinite(rawTerminalGrowth)) missing.push('terminal growth rate');
   const waccPct = Number.isFinite(rawWacc) ? rawWacc as number : null;
-  const terminalGrowthPct = Number.isFinite(rawTerminalGrowth)
-    ? Math.min(MACRO_TERMINAL_GROWTH_MAX_CAP_PCT, Math.max(MACRO_TERMINAL_GROWTH_MIN_PCT, rawTerminalGrowth as number))
+
+  const rawTerminalGrowthNum = Number.isFinite(rawTerminalGrowth) ? (rawTerminalGrowth as number) : null;
+  const terminalGrowthPct = rawTerminalGrowthNum !== null
+    ? Math.min(MACRO_TERMINAL_GROWTH_MAX_CAP_PCT, Math.max(MACRO_TERMINAL_GROWTH_MIN_PCT, rawTerminalGrowthNum))
     : null;
+  const terminalGrowthPolicyApplied = rawTerminalGrowthNum !== null && terminalGrowthPct !== null && rawTerminalGrowthNum !== terminalGrowthPct;
+  const terminalGrowthPolicyReason = terminalGrowthPolicyApplied
+    ? (rawTerminalGrowthNum > MACRO_TERMINAL_GROWTH_MAX_CAP_PCT
+        ? `Terminal growth capped at policy maximum of ${MACRO_TERMINAL_GROWTH_MAX_CAP_PCT.toFixed(1)}% (cannot exceed long-term GDP growth ceiling)`
+        : `Terminal growth floor adjusted to policy minimum of ${MACRO_TERMINAL_GROWTH_MIN_PCT.toFixed(1)}%`)
+    : undefined;
+
   if (waccPct === null || terminalGrowthPct === null || terminalGrowthPct >= waccPct) {
     missing.push('discount rate greater than terminal growth');
   }
@@ -293,6 +306,10 @@ export function buildRigorousDCFModel(
     netCashM,
     waccPct,
     terminalGrowthPct,
+    requestedTerminalGrowthPct: rawTerminalGrowthNum,
+    usedTerminalGrowthPct: terminalGrowthPct,
+    terminalGrowthPolicyApplied,
+    terminalGrowthPolicyReason,
     projectionYears,
     isValid: missing.length === 0,
     sourcePeriod,
@@ -309,7 +326,15 @@ export function buildRigorousDCFModel(
     return {
       inputs,
       dcfModel: {
-        assumptions: { wacc_pct: waccPct, terminal_growth_pct: terminalGrowthPct, projection_years: projectionYears },
+        assumptions: {
+          wacc_pct: waccPct,
+          terminal_growth_pct: terminalGrowthPct,
+          projection_years: projectionYears,
+          requested_terminal_growth_pct: rawTerminalGrowthNum,
+          used_terminal_growth_pct: terminalGrowthPct,
+          terminal_growth_policy_applied: terminalGrowthPolicyApplied,
+          terminal_growth_policy_reason: terminalGrowthPolicyReason,
+        },
         inputs,
         scenarios: { bear: unavailableScenario(note), base: unavailableScenario(note), bull: unavailableScenario(note) },
       },
@@ -341,7 +366,15 @@ export function buildRigorousDCFModel(
   return {
     inputs,
     dcfModel: {
-      assumptions: { wacc_pct: waccPct, terminal_growth_pct: validTerminalGrowthPct, projection_years: validProjectionYears },
+      assumptions: {
+        wacc_pct: waccPct,
+        terminal_growth_pct: validTerminalGrowthPct,
+        projection_years: validProjectionYears,
+        requested_terminal_growth_pct: rawTerminalGrowthNum,
+        used_terminal_growth_pct: validTerminalGrowthPct,
+        terminal_growth_policy_applied: terminalGrowthPolicyApplied,
+        terminal_growth_policy_reason: terminalGrowthPolicyReason,
+      },
       inputs,
       scenarios: { bear, base, bull },
     },

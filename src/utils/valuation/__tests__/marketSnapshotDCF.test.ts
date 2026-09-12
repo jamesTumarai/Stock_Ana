@@ -73,4 +73,71 @@ const withoutSnapshot = buildRigorousDCFModel(baseReport, 'TEST');
 assert.equal(withoutSnapshot.inputs.currentPrice, 100);
 assert.equal(withoutSnapshot.inputs.priceSource, 'intrinsic_value');
 
+// Terminal Growth Policy Transparency Tests
+// 1. Raw assumption 4% clamped to 3% with full disclosure
+const reportWith4PctGrowth = {
+  ...baseReport,
+  intrinsic_value: {
+    ...baseReport.intrinsic_value,
+    dcf_model: {
+      ...baseReport.intrinsic_value.dcf_model,
+      assumptions: {
+        ...baseReport.intrinsic_value.dcf_model.assumptions,
+        terminal_growth_pct: 4,
+      },
+    },
+  },
+} as unknown as ReportData;
+
+const res4Pct = buildRigorousDCFModel(reportWith4PctGrowth, 'TEST');
+assert.equal(res4Pct.inputs.requestedTerminalGrowthPct, 4);
+assert.equal(res4Pct.inputs.usedTerminalGrowthPct, 3);
+assert.equal(res4Pct.inputs.terminalGrowthPolicyApplied, true);
+assert.ok(res4Pct.inputs.terminalGrowthPolicyReason?.includes('policy maximum'));
+assert.equal(res4Pct.dcfModel.assumptions.requested_terminal_growth_pct, 4);
+assert.equal(res4Pct.dcfModel.assumptions.used_terminal_growth_pct, 3);
+assert.equal(res4Pct.dcfModel.assumptions.terminal_growth_policy_applied, true);
+
+// 2. Raw assumption 0.5% raised to 1% floor with full disclosure
+const reportWith05PctGrowth = {
+  ...baseReport,
+  intrinsic_value: {
+    ...baseReport.intrinsic_value,
+    dcf_model: {
+      ...baseReport.intrinsic_value.dcf_model,
+      assumptions: {
+        ...baseReport.intrinsic_value.dcf_model.assumptions,
+        terminal_growth_pct: 0.5,
+      },
+    },
+  },
+} as unknown as ReportData;
+
+const res05Pct = buildRigorousDCFModel(reportWith05PctGrowth, 'TEST');
+assert.equal(res05Pct.inputs.requestedTerminalGrowthPct, 0.5);
+assert.equal(res05Pct.inputs.usedTerminalGrowthPct, 1);
+assert.equal(res05Pct.inputs.terminalGrowthPolicyApplied, true);
+assert.ok(res05Pct.inputs.terminalGrowthPolicyReason?.includes('policy minimum'));
+
+// 3. Raw assumption 2.5% unchanged within policy range
+const reportWith25PctGrowth = {
+  ...baseReport,
+  intrinsic_value: {
+    ...baseReport.intrinsic_value,
+    dcf_model: {
+      ...baseReport.intrinsic_value.dcf_model,
+      assumptions: {
+        ...baseReport.intrinsic_value.dcf_model.assumptions,
+        terminal_growth_pct: 2.5,
+      },
+    },
+  },
+} as unknown as ReportData;
+
+const res25Pct = buildRigorousDCFModel(reportWith25PctGrowth, 'TEST');
+assert.equal(res25Pct.inputs.requestedTerminalGrowthPct, 2.5);
+assert.equal(res25Pct.inputs.usedTerminalGrowthPct, 2.5);
+assert.equal(res25Pct.inputs.terminalGrowthPolicyApplied, false);
+assert.equal(res25Pct.inputs.terminalGrowthPolicyReason, undefined);
+
 console.log('Market snapshot DCF checks passed');

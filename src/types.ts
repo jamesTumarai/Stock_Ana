@@ -299,6 +299,10 @@ export interface DCFModel {
     wacc_pct: number | null;
     terminal_growth_pct: number | null;
     projection_years: number | null;
+    requested_terminal_growth_pct?: number | null;
+    used_terminal_growth_pct?: number | null;
+    terminal_growth_policy_applied?: boolean;
+    terminal_growth_policy_reason?: string;
     cost_of_equity_pct?: number;
     stages_count?: number;
   };
@@ -310,6 +314,10 @@ export interface DCFModel {
     netCashM: number | null;
     waccPct: number | null;
     terminalGrowthPct: number | null;
+    requestedTerminalGrowthPct?: number | null;
+    usedTerminalGrowthPct?: number | null;
+    terminalGrowthPolicyApplied?: boolean;
+    terminalGrowthPolicyReason?: string;
     projectionYears: number | null;
     /** True only when all inputs came from the four disclosed quarters in this report. */
     isValid?: boolean;

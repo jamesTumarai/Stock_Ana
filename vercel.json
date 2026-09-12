@@ -5,7 +5,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
-      "includeFiles": "{dist/server.cjs,agent/**}"
+      "includeFiles": "{dist/*.cjs,agent/**}"
     }
   },
   "rewrites": [

@@ -537,16 +537,16 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
                   <AlertTriangle className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-bold text-white">Confirm Deletion</h3>
+                  <h3 className="text-base sm:text-lg font-bold text-white">Confirm Removal</h3>
                   <p className="text-xs sm:text-sm text-white/60 mt-1.5 leading-relaxed">
                     {confirmState.type === 'multi' && (
-                      `Are you sure you want to delete ${selectedIds.length} selected report(s)? This action cannot be undone.`
+                      `Are you sure you want to remove ${selectedIds.length} selected report(s)? These reports will be removed from your visible history.`
                     )}
                     {confirmState.type === 'group' && (
-                      `Are you sure you want to delete all ${confirmState.ids?.length || 0} historical reports for ${confirmState.ticker}? This action cannot be undone.`
+                      `Are you sure you want to remove all ${confirmState.ids?.length || 0} historical reports for ${confirmState.ticker}? These reports will be removed from your visible history.`
                     )}
                     {confirmState.type === 'single' && (
-                      'Are you sure you want to delete this historical report? This action cannot be undone.'
+                      'Are you sure you want to remove this historical report? This report will be removed from your visible history.'
                     )}
                   </p>
                 </div>

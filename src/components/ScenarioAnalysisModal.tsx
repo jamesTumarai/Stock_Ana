@@ -4,10 +4,7 @@ import {
 } from 'lucide-react';
 import {
   generateCanonicalScenarios,
-  computeCanonicalSensitivityMatrix,
-  generateValuationScenarios,
-  computeSensitivityMatrix,
-  calculateDcfPerShare
+  computeCanonicalSensitivityMatrix
 } from '../utils/decisionEngine';
 import type { CanonicalValuationSandboxInputs } from '../utils/valuationSandboxAdapter';
 import { recalculateSandboxFairValue } from '../utils/valuationSandboxAdapter';
@@ -67,82 +64,37 @@ export function ScenarioAnalysisModal({
     if (defaultTg !== undefined) setTerminalGrowthPct(defaultTg);
   }, [defaultGrowth, defaultWacc, defaultTg]);
 
-  // Compute customized DCF per share using canonical engine or strict fallback
+  // Compute customized DCF per share using canonical sandbox engine only
   const customFairValue = useMemo(() => {
-    if (!isEligible) return 0;
-
-    if (sandboxInputs) {
-      const fv = recalculateSandboxFairValue(sandboxInputs, {
-        revenueCagrPct: growthPct,
-        waccPct,
-        terminalGrowthPct
-      });
-      return Number.isFinite(fv) && fv > 0 ? fv : 0;
-    }
-
-    if (propFcf && propFcf > 0 && waccPct > terminalGrowthPct) {
-      return calculateDcfPerShare(
-        propFcf,
-        growthPct,
-        waccPct,
-        terminalGrowthPct,
-        5
-      );
-    }
-
-    return 0;
-  }, [isEligible, sandboxInputs, propFcf, growthPct, waccPct, terminalGrowthPct]);
+    if (!isEligible || !sandboxInputs) return 0;
+    const fv = recalculateSandboxFairValue(sandboxInputs, {
+      revenueCagrPct: growthPct,
+      waccPct,
+      terminalGrowthPct
+    });
+    return Number.isFinite(fv) && fv > 0 ? fv : 0;
+  }, [isEligible, sandboxInputs, growthPct, waccPct, terminalGrowthPct]);
 
   const customMosPct = useMemo(() => {
     if (customFairValue <= 0 || effectivePrice <= 0) return 0;
     return Number((((customFairValue - effectivePrice) / effectivePrice) * 100).toFixed(1));
   }, [customFairValue, effectivePrice]);
 
-  // Compute Bear, Base, Bull Scenarios
+  // Compute Bear, Base, Bull Scenarios via canonical sandbox inputs only
   const scenarios = useMemo(() => {
-    if (!isEligible) return [];
+    if (!isEligible || !sandboxInputs) return [];
+    return generateCanonicalScenarios(sandboxInputs, {
+      growthPct: defaultGrowth,
+      waccPct: defaultWacc,
+      terminalGrowthPct: defaultTg
+    });
+  }, [isEligible, sandboxInputs, defaultGrowth, defaultWacc, defaultTg]);
 
-    if (sandboxInputs) {
-      return generateCanonicalScenarios(sandboxInputs, {
-        growthPct: defaultGrowth,
-        waccPct: defaultWacc,
-        terminalGrowthPct: defaultTg
-      });
-    }
-
-    if (propFcf && propFcf > 0 && typeof defaultGrowth === 'number' && typeof defaultWacc === 'number' && typeof defaultTg === 'number') {
-      return generateValuationScenarios(
-        propFcf,
-        effectivePrice,
-        defaultGrowth,
-        defaultWacc,
-        defaultTg
-      );
-    }
-
-    return [];
-  }, [isEligible, sandboxInputs, propFcf, effectivePrice, defaultGrowth, defaultWacc, defaultTg]);
-
-  // Compute 5x5 Sensitivity Matrix
+  // Compute 5x5 Sensitivity Matrix via canonical sandbox inputs only
   const sensitivityMatrix = useMemo(() => {
-    if (!isEligible) return { discountRates: [], terminalGrowthRates: [], cells: [] };
-
-    if (sandboxInputs) {
-      return computeCanonicalSensitivityMatrix(sandboxInputs, growthPct);
-    }
-
-    if (propFcf && propFcf > 0 && typeof defaultWacc === 'number' && typeof defaultTg === 'number') {
-      return computeSensitivityMatrix(
-        propFcf,
-        effectivePrice,
-        waccPct,
-        terminalGrowthPct,
-        growthPct
-      );
-    }
-
-    return { discountRates: [], terminalGrowthRates: [], cells: [] };
-  }, [isEligible, sandboxInputs, propFcf, effectivePrice, waccPct, terminalGrowthPct, growthPct, defaultWacc, defaultTg]);
+    if (!isEligible || !sandboxInputs) return { discountRates: [], terminalGrowthRates: [], cells: [] };
+    return computeCanonicalSensitivityMatrix(sandboxInputs, growthPct);
+  }, [isEligible, sandboxInputs, growthPct]);
 
   if (!isOpen) return null;
 

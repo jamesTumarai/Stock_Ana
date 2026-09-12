@@ -52,6 +52,7 @@ interface Props {
   hideHeader?: boolean;
   historyReports?: any[];
   model?: string;
+  actualModel?: string;
 }
 
 const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number | string, isThai: boolean, onOpenMethodology?: () => void }) => {
@@ -297,7 +298,8 @@ export default function ReportTemplate({
   language = 'English', 
   hideHeader = false, 
   historyReports = [],
-  model = 'gemini-3.8-flash'
+  model = 'gemini-3.8-flash',
+  actualModel,
 }: Props) {
   const isThai = language === 'Thai';
   const [liveOverrides, setLiveOverrides] = useState<Record<string, any>>({});
@@ -398,13 +400,14 @@ export default function ReportTemplate({
   const currencyRate = fxSnapshot?.rate;
   const hasUsdThbRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
 
+  const effectiveActualModel = actualModel || (data as any)?.metadata?.actualModel;
   const tokenCostEstimate = React.useMemo(() => {
     return estimateTokenCost({
       totalTokens: tokenCount,
-      model,
+      model: effectiveActualModel,
       fxRateUsdThb: typeof currencyRate === 'number' ? currencyRate : undefined,
     });
-  }, [tokenCount, model, currencyRate]);
+  }, [tokenCount, effectiveActualModel, currencyRate]);
 
   const formatPrice = (val?: number | string) => {
     if (val === undefined || val === null || val === '') return '-';

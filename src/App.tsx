@@ -154,6 +154,7 @@ export default function App() {
   const [toolRuns, setToolRuns] = useState<number>(0);
   const [durationSecs, setDurationSecs] = useState<number>(0);
   const [startTime, setStartTime] = useState<number | null>(null);
+  const [actualModel, setActualModel] = useState<string | undefined>(undefined);
 
   const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
   const [isSummaryCopied, setIsSummaryCopied] = useState<boolean>(false);
@@ -480,7 +481,8 @@ export default function App() {
     setDur: any,
     setStart: any,
     aRef: any,
-    eIdRef: any
+    eIdRef: any,
+    setActModel?: any
   ) => {
     if (!firebaseDataAccessAllowed) {
       setErr('Firebase is not configured for this environment. Analysis is blocked to prevent production-account cross-environment access.');
@@ -493,6 +495,7 @@ export default function App() {
     setTok(0);
     setTRuns(0);
     setDur(0);
+    if (setActModel) setActModel(undefined);
     setStart(Date.now());
     eIdRef.current = 0;
 
@@ -581,6 +584,7 @@ export default function App() {
               } else if (evt.type === 'final_stats') {
                   if (evt.tokens > 0) setTok(evt.tokens);
                   if (evt.duration > 0) setDur(Math.round(evt.duration));
+                  if (evt.actualModel && setActModel) setActModel(evt.actualModel);
               }
             } catch { /* skip malformed */ }
           }
@@ -689,6 +693,7 @@ export default function App() {
     setEvents([]);
     setPastReports([]);
     setCurrentReport(undefined);
+    setActualModel(undefined);
     setIsReportOpen(false);
     window.scrollTo(0, 0);
   };
@@ -704,11 +709,12 @@ export default function App() {
     // Reset old data when running a new analysis
     setPastReports([]);
     setCurrentReport(null);
+    setActualModel(undefined);
     
     setIsReportOpen(false);
     window.scrollTo(0, 0);
     
-    startStream(selectedModel, analysisType, setRunning, setError, setCurrentReport, setEvents, pushEvent, setTokenCount, setToolRuns, setDurationSecs, setStartTime, abortRef, eventIdRef);
+    startStream(selectedModel, analysisType, setRunning, setError, setCurrentReport, setEvents, pushEvent, setTokenCount, setToolRuns, setDurationSecs, setStartTime, abortRef, eventIdRef, setActualModel);
   };
 
   const handleCloseReport = () => {
@@ -757,6 +763,7 @@ export default function App() {
                  language={selectedLanguage}
                  hideHeader={idx > 0}
                  model={selectedModel}
+                 actualModel={idx === allReports.length - 1 ? actualModel : (report as any)?.metadata?.actualModel}
                />
              </ErrorBoundary>
           ))}

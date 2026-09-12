@@ -9,7 +9,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 ## Authorized Phase Order & Current Status
 
 1. **Phases 1–4: Core Platform Foundation** — Complete ✅
-2. **Phase 4.5: Post-Roadmap Integrity Stabilization** — Implemented / Hardening Pending (Pending Owner Acceptance ⏳)
+2. **Phase 4.5: Post-Roadmap Integrity Stabilization** — Implemented / Hardening Complete (Pending Owner Acceptance ⏳)
    - PR A: Security Boundary & Cross-User Log Isolation (P0-4) — Complete ✅ (PR #67)
    - PR B: Phase 9 Valuation Integrity & Fallback Removal (P0-1) — Complete ✅ (PR #68)
    - PR C: Phase 12 Deterministic Revaluation Bridge (P0-2, P0-3) — Complete ✅ (PR #69)
@@ -39,10 +39,14 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
      - PR G: Period Parser Consistency — Merged ✅ (PR #93)
      - PR H: Dependency Audit Triage & Bundle Analysis — Merged ✅ (PR #94)
      - PR I: Documentation Reclassification — Merged ✅ (PR #95)
+   - Final Integrity Cleanup:
+     - PR 1: Verified SEC Canonical Fact Diff & Integrity (Blockers 1, 2, Integrity 8) — Merged ✅ (PR #96)
+     - PR 2: Health Contract Parity & Single Source of Truth (Blocker 3) — Merged ✅ (PR #97)
+     - PR 3: AI Cost Actual Model, Quick Ratio STI Verification, Terminal Growth Transparency & Canonical Sandbox Hardening — Merged ✅ (PR #98)
 3. **Phase 5: Analysis Quality & Data Coverage** — Implemented — Revalidation Required ⏳ (PR #56–#58, PR #70)
 4. **Phase 6: Report Experience & UI Polish** — Implemented — Revalidation Required ⏳ (PR #59, #60)
 5. **Phase 7: Portfolio & User Intelligence** — Implemented — Revalidation Required ⏳ (PR #61, PR #71)
-6. **Phase 8: Monitoring & Alerts** — Implemented — Revalidation Required ⏳ (PR #62, PR #72, PR #85)
+6. **Phase 8: On-Open Research Checks & Alerts** — Implemented — Revalidation Required ⏳ (PR #62, PR #72, PR #85)
 7. **Phase 9: Comparison & Decision Tools** — Implemented — Revalidation Required ⏳ (PR #63, PR #68, PR #80, PR #81)
 8. **Phase 10: Performance, Cost & Reliability** — Implemented — Revalidation Required ⏳ (PR #64, PR #75, PR #85)
 9. **Phase 11: Productization / Subscription** — Removed per owner directive (PR #76) (Unlimited Platform Access)
@@ -52,19 +56,19 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ## Current Priority
 
-### Post-Roadmap Integrity Hardening (Implemented / Hardening Pending; Pending Owner Acceptance ⏳)
+### Post-Roadmap Integrity Hardening (Implemented / Hardening Complete; Pending Owner Acceptance ⏳)
 
 **Goal Achieved:** All heuristic valuation fallbacks eliminated, cross-user security isolation established, decomposition rebuilt on true sequential revaluation, subscription/entitlement system removed per owner directive (unlimited platform access), and institutional financial integrity baseline locked before further feature development.
 - Zero interference with deterministic financial calculations.
 - Test Metrics:
-  - Test files executed: 73 (71 src + 2 server)
-  - Test cases passed: 161
-  - Server test files executed: 2
+  - Test files executed: 74 (71 src + 3 server)
+  - Test cases passed: 171
+  - Server test files executed: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
   - Vulnerability status: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged in `docs/SECURITY_AUDIT_TRIAGE.md`)
 
 ---
 
-### Phase 6 — Report Experience / UX (Complete ✅)
+### Phase 6 — Report Experience / UX (Implemented — Revalidation Required ⏳)
 **Delivered Capabilities:**
 - Stronger information hierarchy:
   - Executive Summary
@@ -91,7 +95,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 7 — Portfolio & User Intelligence (Complete ✅)
+### Phase 7 — Portfolio & User Intelligence (Implemented — Revalidation Required ⏳)
 **Delivered capabilities:**
 - Watchlist management (pure localStorage fallback + user scoped persistence).
 - Portfolio holdings tracking (ticker, quantity, average cost, live market value, unrealized P/L ($ and %), allocation %, sector exposure).
@@ -103,7 +107,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 8 — Monitoring & Alerts (Complete ✅)
+### Phase 8 — On-Open Research Checks & Alerts (Implemented — Revalidation Required ⏳)
 **Delivered capabilities:**
 - Institutional Monitoring & Alerts Engine (`monitoringEngine.ts`) with deterministic rules and materiality thresholds.
 - Valuation & MoS Breach Tracking (fires when price trades significantly below DCF Base Fair Value or exceeds threshold).
@@ -116,9 +120,9 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 9 — Comparison & Decision Tools (Complete ✅)
+### Phase 9 — Comparison & Decision Tools (Implemented — Revalidation Required ⏳)
 **Delivered capabilities:**
-- Reverse DCF Engine: back-solves implied annual FCF growth hurdle baked into current price and tests institutional feasibility.
+- Reverse DCF Engine: back-solves implied annual Revenue CAGR hurdle baked into current price and tests institutional feasibility.
 - Interactive Scenario & Sensitivity Sandbox (`ScenarioAnalysisModal`): real-time recalculation of fair value and Margin of Safety across adjustable Growth, WACC, and Terminal Growth sliders.
 - 2D Sensitivity Matrix: 5x5 grid evaluating WACC vs Terminal Growth with color-coded value discount/premium indicators.
 - Deterministic 3-Stage Scenarios (Bear, Base, Bull) with explicit financial parameter attribution.
@@ -127,12 +131,12 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 10 — Performance, Cost & Reliability (Complete ✅)
+### Phase 10 — Performance, Cost & Reliability (Implemented — Revalidation Required ⏳)
 **Delivered capabilities:**
 - Safe reuse / caching of verified datasets: Bounded in-memory TTL cache (`SecTtlCache`) with LRU eviction for SEC EDGAR company facts, submissions, and packages. Documented as a per-instance best-effort warm cache respecting EDGAR fair-use policies.
 - AI usage & cost visibility (`costEstimator.ts`): Model pricing catalog (Flash, Pro, and standard tiers), prompt/completion token cost calculation without fabricated FX rates (returns null when FX is omitted), and explicit "Estimated AI Cost" labeling in `ReportTemplate.tsx`.
 - Executive Summary 5-Column Metrics Grid in `ReportTemplate.tsx`: Displays Docs, Time, Runs, Tokens, and Estimated AI Cost with localized tooltips and USD/THB FX conversion.
-- Structured diagnostics & health endpoint: Minimal truthful public health status (`GET /api/health`), with deep diagnostic telemetry available via `GET /api/health?detailed=true`.
+- Structured diagnostics & health endpoint: Minimal truthful public health status (`GET /api/health`), with deep diagnostic telemetry available via authenticated `GET /api/health/detailed`.
 - Stage-level latency tracking (`LatencyTracker`): Measures timings for market snapshots, Gemini stream, and valuation assumption normalization; transmits structured breakdown via SSE `final_stats` event and writes to run logs.
 - Full unit and regression test coverage across all newly introduced modules.
 
@@ -143,7 +147,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 12 — Advanced Investment Intelligence (Complete ✅)
+### Phase 12 — Advanced Investment Intelligence (Implemented — Revalidation Required ⏳)
 **Delivered capabilities:**
 - Pure Deterministic Valuation Decomposition Engine (`src/utils/valuationDecompositionEngine.ts`):
   - Empirical marginal driver attribution decomposing historical Fair Value shifts ($\Delta$ Cash Flow Growth, $\Delta$ Operating Margin, $\Delta$ WACC / Discount Rate, $\Delta$ Terminal Growth, $\Delta$ Capital Structure & Dilution).
@@ -162,7 +166,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
   - 3-tab analysis suite (Valuation Waterfall, Macro Stress Sandbox, SEC Filing YoY Diff).
   - Full bilingual English/Thai localized presentation.
   - Integrated into Section 3 (Valuation & DCF) of `src/ReportTemplate.tsx`.
-- Comprehensive Unit Test Suites: 73 test files with 149 passing regression test cases (100% success rate across all repository suites).
+- Comprehensive Unit Test Suites: 74 test files (71 src + 3 server) with 171 passing regression test cases (100% success rate across all repository suites).
 
 ---
 
@@ -171,4 +175,4 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 1. **Financial Integrity:** Verified Data → Deterministic Calculations → User Context / History → AI Interpretation. AI never invents financial facts.
 2. **Deterministic Ownership:** DCF math, margin of safety, ratios, canonical valuation, and conviction score remain 100% deterministic code.
 3. **Bug-Fix Discipline:** Reproduce → Root cause → Focused fix → Regression protection → PR → Verify Lumina → Protected merge → Exact-SHA production deployment → Production smoke.
-4. **Phase Discipline:** Do NOT begin Phase 5 until the owner explicitly authorizes Phase 5.
+4. **Post-Hardening Discipline:** Do NOT begin new product features, Phase 13, Roadmap V2, or COIN KING context bootstrap until final owner review and acceptance.

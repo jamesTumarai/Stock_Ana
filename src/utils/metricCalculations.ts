@@ -182,15 +182,15 @@ export function getMetricCalculationDetail(
       const recRaw = balance?.receivables?.[p] ?? balance?.accounts_receivable?.[p];
       const cl = balance?.total_current_liabilities?.[p];
 
-      // Fail-closed solvency verification: never assume missing cash, ST investments, or receivables are zero
+      // Fail-closed solvency verification: never assume missing cash, ST investments, or receivables are zero.
+      // Short-term investments must be an explicit verified number (including 0 if explicitly reported as 0).
+      // If the field is absent, undefined, or null, Quick Ratio is unavailable.
       const hasCash = typeof cashRaw === 'number' && Number.isFinite(cashRaw) && cashRaw >= 0;
       const hasRec = typeof recRaw === 'number' && Number.isFinite(recRaw) && recRaw >= 0;
-      // Short-term investments: if present, must be valid number >= 0. If field is explicitly absent from balance sheet structure, treat as 0 (no separate marketable securities line); if the array exists but this period is missing/null, it is unverified missing data.
-      const stiVal = (typeof stiRaw === 'number' && Number.isFinite(stiRaw) && stiRaw >= 0)
-        ? stiRaw
-        : (balance?.short_term_investments === undefined ? 0 : null);
+      const hasSti = typeof stiRaw === 'number' && Number.isFinite(stiRaw) && stiRaw >= 0;
+      const stiVal = hasSti ? stiRaw! : null;
 
-      const hasValidInputs = hasCash && hasRec && stiVal !== null &&
+      const hasValidInputs = hasCash && hasRec && hasSti &&
         typeof cl === 'number' && Number.isFinite(cl) && cl > 0;
 
       const quickAssets = hasValidInputs ? (cashRaw! + stiVal! + recRaw!) : null;
@@ -198,7 +198,7 @@ export function getMetricCalculationDetail(
         ? Number((quickAssets / cl).toFixed(2))
         : null;
 
-      const cashSecVal = (hasCash && stiVal !== null) ? cashRaw! + stiVal! : (hasCash ? cashRaw! : null);
+      const cashSecVal = (hasCash && hasSti) ? cashRaw! + stiVal! : null;
 
       return {
         key: 'quick_ratio',
