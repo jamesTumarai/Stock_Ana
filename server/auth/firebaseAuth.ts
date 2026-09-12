@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import type { SubscriptionTierId } from '../../src/domain/subscriptionTiers.ts';
 import { resolveFirebaseAdminProjectId } from './firebaseProject.ts';
 
 const ADMIN_APP_NAME = 'lumina-server-auth';
@@ -8,6 +9,7 @@ const ADMIN_APP_NAME = 'lumina-server-auth';
 export interface VerifiedFirebaseIdentity {
   uid: string;
   email?: string;
+  tier?: SubscriptionTierId;
 }
 
 export type FirebaseTokenVerifier = (idToken: string) => Promise<VerifiedFirebaseIdentity>;
@@ -27,7 +29,9 @@ function getFirebaseAdminApp() {
 
 export async function verifyFirebaseIdToken(idToken: string): Promise<VerifiedFirebaseIdentity> {
   const decoded = await getAuth(getFirebaseAdminApp()).verifyIdToken(idToken);
-  return { uid: decoded.uid, email: decoded.email };
+  const rawTier = decoded.tier || decoded.subscription_tier;
+  const tier: SubscriptionTierId | undefined = (rawTier === 'pro' || rawTier === 'institutional') ? rawTier : (rawTier === 'free' ? 'free' : undefined);
+  return { uid: decoded.uid, email: decoded.email, ...(tier ? { tier } : {}) };
 }
 
 export function createRequireFirebaseAuth(
@@ -43,9 +47,16 @@ export function createRequireFirebaseAuth(
     try {
       const identity = await verifier(idToken);
       if (!identity?.uid) throw new Error('Token did not contain a uid.');
+      const resolvedTier: SubscriptionTierId = identity.tier === 'pro' || identity.tier === 'institutional' ? identity.tier : 'free';
       res.locals.authUser = {
         uid: identity.uid,
         email: identity.email ?? null,
+        ...(identity.tier ? { tier: identity.tier } : {}),
+      };
+      (req as any).auth = {
+        uid: identity.uid,
+        email: identity.email ?? null,
+        tier: resolvedTier,
       };
       next();
     } catch {

@@ -20,6 +20,7 @@ import { registerFileRoutes } from "./server/routes/fileRoutes.ts";
 import { registerMarketRoutes } from "./server/routes/marketRoutes.ts";
 import { registerSecRoutes } from "./server/routes/secRoutes.ts";
 import { registerHealthRoutes } from "./server/routes/healthRoutes.ts";
+import { enforceAnalyzeEntitlements } from "./server/middleware/entitlementAuthority.ts";
 
 import { streamInteraction } from "./server/lib/agentClient.ts";
 import { loadAgentFiles } from "./server/lib/agentFiles.ts";
@@ -62,7 +63,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   registerSecRoutes(app);
   registerHealthRoutes(app);
 
-  app.post("/api/analyze", requireFirebaseAuth, analyzeRateLimit, analyzeConcurrencyLimit, async (req, res) => {
+  app.post("/api/analyze", requireFirebaseAuth, analyzeRateLimit, analyzeConcurrencyLimit, enforceAnalyzeEntitlements, async (req, res) => {
     try {
       const body = req.body || {};
       const ticker = normalizeTicker(body.ticker);

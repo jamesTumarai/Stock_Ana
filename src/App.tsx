@@ -534,6 +534,15 @@ export default function App() {
       });
 
       if (!resp.ok || !resp.body) {
+        if (resp.status === 403 || resp.status === 429) {
+          const errData = await resp.json().catch(() => null);
+          if (errData?.code === 'FEATURE_NOT_ENTITLED' || errData?.code === 'MODEL_NOT_ENTITLED' || errData?.code === 'ANALYSIS_QUOTA_EXCEEDED') {
+            setIsSubscriptionOpen(true);
+            setErr(errData.error || (selectedLanguage === 'Thai' ? 'สิทธิ์การใช้งานไม่เพียงพอ กรุณาอัปเกรดแพ็กเกจ' : 'Insufficient subscription tier entitlements.'));
+            setRun(false);
+            return;
+          }
+        }
         throw new Error(`Server responded ${resp.status}`);
       }
 
