@@ -12,11 +12,11 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Post-Roadmap Integrity Hardening (Active 🔄; Feature expansion frozen until P0–P2 integrity hardening is accepted)**.
-- Current working mode: **Systematic resolution of P0–P2 issues across focused protected PRs (PR A through PR I)**.
+- Current stage: **Post-Roadmap Integrity Hardening Complete ✅ (Institutional Integrity Baseline Established)**.
+- Current working mode: **Post-Roadmap Integrity Hardening Master Sequence Complete (PR A through PR I merged and verified)**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #68 (`0e35cbe`) — Phase 9 Valuation Integrity Hardening & Elimination of Fabricated Defaults (PR B).
+- Latest merged milestone: PR #74 (`004a9e4`) — Phase 11 Server-Side Entitlement Authority & Tier Quota Enforcement (PR H); PR #75 — Operational Observability & Documentation Reconciliation (PR I).
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,15 +27,15 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | 🔄 | 🔄 | 🔄 | ⏳ | `Re-opened` | PR A – PR I Hardening |
-| **5** | Analysis Quality & Data Coverage | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Implemented partially` | PR #56–#58 (revalidation required) |
-| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ⚠️ | ⏳ | `Implemented` | PR #59, #60 (production UX pending) |
-| **7** | Portfolio & User Intelligence | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Partial` | PR #61 (persistence & history hardening) |
-| **8** | Monitoring & Alerts | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Prototype` | PR #62 (client on-open prototype) |
-| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented (Hardened)` | PR #63, PR #68 (canonical DCF unification) |
-| **10** | Performance, Cost & Reliability | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Partial` | PR #64 (observability & cache semantics) |
-| **11** | Productization / Subscription | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Prototype` | PR #65 (client entitlement prototype) |
-| **12** | Advanced Investment Intelligence | ✅ | ⚠️ | ✅ | ⚠️ | ⏳ | `Experimental` | PR #66 (rebuilding against canonical DCF) |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #67–#75 (PR A – PR I) |
+| **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #56–#58, PR #70 |
+| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #59, #60 |
+| **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #61, PR #71 |
+| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #62, PR #72 |
+| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #63, PR #68 |
+| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #64, PR #75 |
+| **11** | Productization / Subscription | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #65, PR #74 |
+| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #66, PR #69, PR #70, PR #73 |
 
 ## Repository protection
 
@@ -312,7 +312,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Added 9 unit tests in `src/utils/__tests__/secFilingDiffEngine.test.ts`. All unit tests passing.
 - Merge SHA: `d2a1804`.
 
-#### PR #71 — Portfolio & History Record Hydration (PR E, P1-3, P1-4, P1-5) 🔄
+#### PR #71 — Portfolio & History Record Hydration (PR E, P1-3, P1-4, P1-5) ✅
 - **Research Timeline & Firestore Record Adapter (P1-3)**:
   - Built canonical `unwrapHistoryRecord` in `src/utils/researchTimeline.ts` seamlessly extracting report payload from Firestore wrappers (`{ id, ticker, createdAt, data: report }`), legacy records, and direct reports.
   - Fixed same-day multiple analysis collision: replaced fragile date-only Map keys with composite keys (`reportId` + `createdTimestamp`), ensuring multiple same-day analyses for the same ticker are retained in chronological order.
@@ -327,6 +327,49 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Disaggregated starter ticker suggestions (`SUGGESTED_WATCHLIST_TICKERS = ['MSFT', 'AAPL', 'NVDA', 'SOFI']`) from user's explicit watchlist.
   - `loadLocalWatchlist` returns empty array `[]` when storage is empty, without falsely masquerading starter tickers as saved user holdings.
   - Added opt-in suggested ticker pill buttons with one-click addition in `PortfolioModal.tsx`.
+- Merge SHA: `2c698db`.
+
+#### PR #72 — Monitoring Semantics & Alert Correctness (PR F, P1-8) ✅
+- **Honest On-Open Semantics**:
+  - Eliminated misleading background worker/daemon claims; clearly documented client-side on-open evaluation semantics in `AlertsModal.tsx` and navbar badge tooltips.
+- **Stable Fingerprinting**:
+  - Replaced non-deterministic random IDs with deterministic fingerprints (`alert_${ticker}_${type}_${metric}`), preserving read state across sessions and application restarts.
+- **Live Market Evaluation & Dynamic Derived State**:
+  - Wired live quotes (`liveQuotes`) into `runMonitoringChecks(reports, watchlist, config, liveQuotes)` in `App.tsx` for real-time breach detection.
+  - Replaced stale report snapshot valuation with live market quotes.
+  - Dynamically recalculated `portfolioSummary` and concentration risk on-the-fly.
+  - Added real-time threshold customization slider controls with instant reactive trigger recalculation.
+- Merge SHA: `571fd1a`.
+
+#### PR #73 — Sector Valuation Architecture & Deterministic DDM (PR G, P0-6) ✅
+- **Decoupled Model Validation Architecture**:
+  - Refactored `src/domain/valuationStore.ts` to enforce sector-specific valuation prerequisites: standard DCF strictly requires operating-company FCFF inputs, while Dividend Discount Model (DDM), REIT AFFO, FinTech P/E, and Relative models validate against their respective sector inputs.
+- **Deterministic Closed-Form DDM Calculations**:
+  - Implemented Gordon Growth Model and Residual Income valuation engine in `src/utils/valuation/ddmCalculator.ts`.
+  - Added deterministic sensitivity analysis and fail-closed handling when dividend inputs or required returns are unavailable.
+- **Sector Valuation Architecture Card**:
+  - Upgraded `ReportTemplate.tsx` with dedicated non-FCFF sector valuation card presenting institutional DDM/AFFO metrics with methodology badges and mathematical clarity.
+- Merge SHA: `b6c6238`.
+
+#### PR #74 — Server-Side Entitlement Authority & Tier Quotas (PR H, P0-5) ✅
+- **Firebase Token Claim Ingestion**:
+  - Ingested custom subscription claims (`decoded.tier` / `decoded.subscription_tier`) in `server/auth/firebaseAuth.ts`.
+- **Authoritative Server Middleware**:
+  - Built `server/middleware/entitlementAuthority.ts` (`enforceAnalyzeEntitlements`) acting as the single source of truth at the API boundary:
+    - Model entitlement gate (rejects Pro model requests from Free users with HTTP 403 `MODEL_NOT_ENTITLED`).
+    - Feature entitlement gate (rejects Deep Think requests from Free users with HTTP 403 `FEATURE_NOT_ENTITLED`).
+    - Monthly analysis quota gate (rejects requests exceeding monthly allowance with HTTP 429 `ANALYSIS_QUOTA_EXCEEDED`).
+- **Client Interception & Upgrades**:
+  - Integrated HTTP 403/429 status handling in `src/App.tsx` to automatically trigger `SubscriptionModal` with localized upgrade messaging.
+- Merge SHA: `004a9e4`.
+
+#### PR #75 — Observability & Documentation Reconciliation (PR I, P1-10, P2) ✅
+- **Health & Operational Observability Testing**:
+  - Added `server/routes/__tests__/healthRoutes.test.ts` verifying `/api/health` JSON payload (RSS memory, heap usage, process uptime, Node environment, Gemini/SEC/Firebase configuration flags, and SEC cache telemetry).
+- **Master Documentation Reconciliation**:
+  - Reconciled `docs/PROJECT_STATUS.md` and `docs/ROADMAP.md` to reflect complete delivery of PR A through PR I.
+  - Closed Phase 4.5 Post-Roadmap Integrity Stabilization as Complete ✅.
+  - Total automated test suite expanded to 150 tests (136 src tests + 14 server tests) passing with 100% success.
 
 ## Current production health
 
