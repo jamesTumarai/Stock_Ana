@@ -34,7 +34,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #62, PR #72 |
 | **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #63, PR #68 |
 | **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #64, PR #75 |
-| **11** | Productization / Subscription | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #65, PR #74 |
+| **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
 | **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Complete` | PR #66, PR #69, PR #70, PR #73 |
 
 ## Repository protection
@@ -236,13 +236,9 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Built `LatencyTracker` (`latencyTracker.ts`): Stage-level latency tracking for market snapshots, Gemini stream, and valuation assumption bridge, emitted in SSE `final_stats` events.
 - 62 regression test suites passing with 100% success.
 
-### Phase 11 — Productization / Subscription Readiness ✅
-- Built 3 institutional subscription tiers (`subscriptionTiers.ts`): Explorer / Free, Pro Analyst, Institutional Desk, specifying feature gates, monthly quotas, model access, and SLA indicators.
-- Implemented pure deterministic `entitlementEngine.ts`: Feature entitlement evaluation, monthly analysis quota enforcement, and portfolio holdings limitation. Strict architectural invariant: entitlements operate strictly at the access boundary; canonical DCF formulas, SEC filings integrity, and mathematical calculations are never altered or degraded by tier.
-- Client subscription service (`subscriptionService.ts`): Local storage and Node-safe tracking of billing cycles (YYYY-MM), monthly analysis counts, and token consumption.
-- Interactive `SubscriptionModal.tsx`: Plan comparison matrix, live monthly quota consumption progress bar, upgrade actions, and financial integrity guarantee.
-- UI integration (`LandingView.tsx`, `App.tsx`): Crown tier badge pill in desktop & mobile headers, pre-analysis quota checks, and usage recording upon report generation.
-- Full unit test coverage across all tier definitions, entitlement checks, and usage services.
+### Phase 11 — Productization / Subscription Readiness (Removed per owner directive)
+- **Status**: The entire subscription, tier gating, and quota system has been removed per owner directive (2026-09-12).
+- Lumina provides full, unrestricted, unlimited access to all AI models (including Pro), Deep Think features, and financial valuation tools for all authenticated users without subscription badges or paywalls.
 
 ### Phase 12 — Advanced Investment Intelligence ✅
 - Built `valuationDecompositionEngine.ts`: Pure deterministic marginal attribution of Fair Value deltas across historical reports ($\Delta$ Cash Flow Growth, $\Delta$ WACC / Discount Rate, $\Delta$ Terminal Growth, $\Delta$ Capital Structure & Dilution) with zero qualitative hallucination.
@@ -370,6 +366,17 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
   - Reconciled `docs/PROJECT_STATUS.md` and `docs/ROADMAP.md` to reflect complete delivery of PR A through PR I.
   - Closed Phase 4.5 Post-Roadmap Integrity Stabilization as Complete ✅.
   - Total automated test suite expanded to 150 tests (136 src tests + 14 server tests) passing with 100% success.
+- Merge SHA: `7b89eff`.
+
+#### PR #76 — Removal of Subscription System & Entitlement Gates ✅
+- **Complete Deletion of Subscription System**:
+  - Per owner directive, removed all subscription tiers (`Explorer / Free`, `Pro Analyst`, `Institutional Desk`), monthly analysis quotas, model access barriers, and header crown badges.
+  - Removed `👑 Institutional` / `Pro` / `Free` crown button and badge from both desktop and mobile headers in `LandingView.tsx` and `App.tsx`.
+  - Removed `SubscriptionModal.tsx` and all tier upgrade dialogs.
+  - Removed client-side monthly quota checks (`evaluateAnalysisQuota`) and usage tracking (`recordAnalysisUsage`).
+  - Removed server-side middleware `enforceAnalyzeEntitlements` from `/api/analyze`, granting unrestricted, unlimited access to all AI models (including Pro) and Deep Think for all authenticated users without quotas.
+  - Purged 9 subscription/tier files across `src/domain/`, `src/services/`, `src/utils/`, and `server/middleware/`.
+  - 140 automated regression tests passing across the repository with 100% success rate.
 
 ## Current production health
 

@@ -25,7 +25,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 6. **Phase 8: Monitoring & Alerts** — Complete ✅ (PR #62, PR #72)
 7. **Phase 9: Comparison & Decision Tools** — Complete ✅ (PR #63, PR #68)
 8. **Phase 10: Performance, Cost & Reliability** — Complete ✅ (PR #64, PR #75)
-9. **Phase 11: Productization / Subscription** — Complete ✅ (PR #65, PR #74)
+9. **Phase 11: Productization / Subscription** — Removed per owner directive (PR #76) (Unlimited Platform Access)
 10. **Phase 12: Advanced Investment Intelligence** — Complete ✅ (PR #66, PR #69, PR #70, PR #73)
 
 ---
@@ -36,7 +36,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 **Goal Achieved:** All heuristic valuation fallbacks eliminated, cross-user security isolation established, decomposition rebuilt on true sequential revaluation, server-side entitlement authority enforced, and institutional financial integrity baseline locked before further feature development.
 - Zero interference with deterministic financial calculations.
-- 150 automated regression tests passing across entire repository.
+- 140 automated regression tests passing across entire repository.
 
 ---
 
@@ -114,14 +114,8 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 
 ---
 
-### Phase 11 — Productization / Subscription Readiness (Complete ✅)
-**Delivered capabilities:**
-- Subscription Tier Architecture (`src/domain/subscriptionTiers.ts`): 3 institutional tiers (Explorer / Free, Pro Analyst, Institutional Desk) with feature sets, monthly quotas, model access, and SLA indicators.
-- Pure Deterministic Entitlement Engine (`src/utils/entitlementEngine.ts`): feature gating, monthly quota evaluation, and portfolio holdings limit enforcement. Strict architectural invariant: entitlements operate strictly at the access boundary; canonical DCF formulas, SEC filings integrity, and mathematical calculations are never altered or degraded by tier.
-- Client Subscription & Usage Service (`src/services/subscriptionService.ts`): local storage & Node test runner compatible tracking of billing cycles (YYYY-MM), monthly analysis counts, and token consumption.
-- Institutional Subscription Modal (`src/components/SubscriptionModal.tsx`): interactive tier selector, live monthly quota consumption progress bar, feature comparison matrix, and financial integrity guarantee.
-- UI & Flow Integration (`LandingView.tsx`, `App.tsx`): Crown tier badge pill in desktop & mobile headers, pre-analysis quota checks, automatic usage recording upon report generation, and tier upgrade flows.
-- Comprehensive Unit Test Suites: 100% test pass rate across tier definitions, entitlement logic, and usage services.
+### Phase 11 — Productization / Subscription Readiness (Removed per owner directive)
+- **Removal Decision**: Removed all subscription tiers, monthly analysis quotas, model access barriers, and header crown badges. All authenticated users have unrestricted, unlimited access to all platform features and models without subscription modals or paywalls.
 
 ---
 
