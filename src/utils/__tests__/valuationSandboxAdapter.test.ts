@@ -4,15 +4,13 @@ import {
   getCanonicalValuationSandboxInputs,
   recalculateSandboxFairValue
 } from '../valuationSandboxAdapter';
-import type { ReportData } from '../../types';
 import { calculateStrictDCFValue } from '../valuation/dcfMathEngine';
 
 describe('valuationSandboxAdapter', () => {
-  const createValidDcfReport = (): Partial<ReportData> => ({
+  const createValidDcfReport = (): any => ({
     ticker: 'MSFT',
     analysis_type: 'fundamental',
     company_profile: {
-      company_name: 'Microsoft Corporation',
       sector: 'Technology',
       industry: 'Software - Infrastructure',
       stock_price: 420.00,
@@ -46,17 +44,20 @@ describe('valuationSandboxAdapter', () => {
           bear: {
             revenue_cagr_pct: 7.0,
             terminal_margin_pct: 28.0,
-            fair_value_per_share: 350.00
+            fair_value_per_share: 350.00,
+            key_assumption_note: 'Bear case'
           },
           base: {
             revenue_cagr_pct: 12.0,
             terminal_margin_pct: 32.0,
-            fair_value_per_share: 450.00
+            fair_value_per_share: 450.00,
+            key_assumption_note: 'Base case'
           },
           bull: {
             revenue_cagr_pct: 17.0,
             terminal_margin_pct: 36.0,
-            fair_value_per_share: 550.00
+            fair_value_per_share: 550.00,
+            key_assumption_note: 'Bull case'
           }
         }
       }
@@ -106,8 +107,8 @@ describe('valuationSandboxAdapter', () => {
 
   it('missing price produces no scenario numerical output (fails closed)', () => {
     const report = createValidDcfReport();
-    delete (report.intrinsic_value as any).current_price;
-    delete (report.company_profile as any).stock_price;
+    delete report.intrinsic_value.current_price;
+    delete report.company_profile.stock_price;
 
     const result = getCanonicalValuationSandboxInputs(report, 'MSFT');
     assert.equal(result.isEligible, false);
@@ -130,9 +131,9 @@ describe('valuationSandboxAdapter', () => {
 
   it('missing shares outstanding data produces no numerical output', () => {
     const report = createValidDcfReport();
-    delete (report.company_profile as any).shares_outstanding;
+    delete report.company_profile.shares_outstanding;
     // Also remove net income / eps diluted so it cannot derive shares
-    delete (report.financial_statements?.income_statement as any).net_income;
+    delete report.financial_statements.income_statement.net_income;
 
     const result = getCanonicalValuationSandboxInputs(report, 'MSFT');
     assert.equal(result.isEligible, false);
@@ -143,7 +144,7 @@ describe('valuationSandboxAdapter', () => {
 
   it('missing WACC produces unavailable state without assuming 9.0%', () => {
     const report = createValidDcfReport();
-    delete (report.intrinsic_value?.dcf_model?.assumptions as any).wacc_pct;
+    delete report.intrinsic_value.dcf_model.assumptions.wacc_pct;
 
     const result = getCanonicalValuationSandboxInputs(report, 'MSFT');
     assert.equal(result.isEligible, false);
@@ -154,7 +155,7 @@ describe('valuationSandboxAdapter', () => {
 
   it('missing terminal growth produces unavailable state without assuming 2.5%', () => {
     const report = createValidDcfReport();
-    delete (report.intrinsic_value?.dcf_model?.assumptions as any).terminal_growth_pct;
+    delete report.intrinsic_value.dcf_model.assumptions.terminal_growth_pct;
 
     const result = getCanonicalValuationSandboxInputs(report, 'MSFT');
     assert.equal(result.isEligible, false);
@@ -165,8 +166,8 @@ describe('valuationSandboxAdapter', () => {
 
   it('WACC <= terminal growth fails closed and produces unavailable state', () => {
     const report = createValidDcfReport();
-    report.intrinsic_value!.dcf_model!.assumptions!.wacc_pct = 2.5;
-    report.intrinsic_value!.dcf_model!.assumptions!.terminal_growth_pct = 2.5;
+    report.intrinsic_value.dcf_model.assumptions.wacc_pct = 2.5;
+    report.intrinsic_value.dcf_model.assumptions.terminal_growth_pct = 2.5;
 
     const result = getCanonicalValuationSandboxInputs(report, 'MSFT');
     assert.equal(result.isEligible, false);
@@ -176,10 +177,9 @@ describe('valuationSandboxAdapter', () => {
   });
 
   it('financial institution (SOFI / Bank) fails closed and does not open generic FCFF scenario calculations', () => {
-    const sofiReport: Partial<ReportData> = {
+    const sofiReport: any = {
       ticker: 'SOFI',
       company_profile: {
-        company_name: 'SoFi Technologies, Inc.',
         sector: 'Financial Services',
         industry: 'Credit Services',
         stock_price: 15.00,
@@ -194,11 +194,9 @@ describe('valuationSandboxAdapter', () => {
             projection_years: 5
           },
           scenarios: {
-            base: {
-              revenue_cagr_pct: 15.0,
-              terminal_margin_pct: 20.0,
-              fair_value_per_share: 18.00
-            }
+            bear: { revenue_cagr_pct: 10, terminal_margin_pct: 15, fair_value_per_share: 12, key_assumption_note: 'Bear' },
+            base: { revenue_cagr_pct: 15, terminal_margin_pct: 20, fair_value_per_share: 18, key_assumption_note: 'Base' },
+            bull: { revenue_cagr_pct: 20, terminal_margin_pct: 25, fair_value_per_share: 24, key_assumption_note: 'Bull' }
           }
         }
       }
@@ -214,10 +212,9 @@ describe('valuationSandboxAdapter', () => {
   });
 
   it('bank model (JPM) fails closed and does not open generic FCFF scenario calculations', () => {
-    const jpmReport: Partial<ReportData> = {
+    const jpmReport: any = {
       ticker: 'JPM',
       company_profile: {
-        company_name: 'JPMorgan Chase & Co.',
         sector: 'Financial',
         industry: 'Banks - Diversified',
         stock_price: 210.00,
@@ -234,7 +231,7 @@ describe('valuationSandboxAdapter', () => {
   });
 
   it('proves zero hidden fallback defaults (9.0 / 2.5 / 10 / $100 / FCF 10) in empty input', () => {
-    const emptyReport: Partial<ReportData> = {
+    const emptyReport: any = {
       ticker: 'TEST'
     };
 
