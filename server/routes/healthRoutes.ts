@@ -105,7 +105,8 @@ export function buildHealthReport(runtime: 'express-server' | 'vercel-function' 
 
 export function handleHealthCheck(req: Request, res: Response) {
   const isDetailedRequested = req.query.detailed === 'true' || (req.path && req.path.endsWith('/detailed'));
-  const report = buildHealthReport('express-server');
+  const runtime = (process.env.VERCEL || req.headers?.['x-vercel-id']) ? 'vercel-function' : 'express-server';
+  const report = buildHealthReport(runtime);
 
   const minimal: PublicHealthResponse = {
     status: report.status,
