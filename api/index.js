@@ -1,4 +1,9 @@
 import { createRequire } from 'node:module';
+// Statically import core server dependencies so Vercel NFT bundles them into the lambda
+import 'express';
+import 'firebase-admin/app';
+import 'firebase-admin/auth';
+import '@google/genai';
 
 const require = createRequire(import.meta.url);
 let appPromise;
@@ -6,6 +11,7 @@ let secPreviewHandler;
 let secCompareHandler;
 let secDiffHandler;
 let healthHandler;
+let liveQuotesHandler;
 
 function loadModule(distPath, srcPath, requiredExport) {
   try {
@@ -34,6 +40,13 @@ export default async function handler(req, res) {
     return healthHandler(req, res);
   }
 
+  if ((req.url || '').startsWith('/api/live-quotes')) {
+    if (!liveQuotesHandler) {
+      ({ handleLiveQuotes: liveQuotesHandler } = loadModule('../dist/sec-preview.cjs', '../server/routes/marketRoutes.ts', 'handleLiveQuotes'));
+    }
+    return liveQuotesHandler(req, res);
+  }
+
   if ((req.url || '').startsWith('/api/sec-preview')) {
     if (!secPreviewHandler) {
       ({ handleSecPreview: secPreviewHandler } = loadModule('../dist/sec-preview.cjs', '../server/secPreviewHandler.ts', 'handleSecPreview'));
@@ -55,11 +68,22 @@ export default async function handler(req, res) {
     return secDiffHandler(req, res);
   }
 
-  if (!appPromise) {
-    const { createApp } = loadModule('../dist/server.cjs', '../server.ts', 'createApp');
-    appPromise = createApp({ serveFrontend: false });
-  }
+  try {
+    if (!appPromise) {
+      const { createApp } = loadModule('../dist/server.cjs', '../server.ts', 'createApp');
+      appPromise = createApp({ serveFrontend: false });
+    }
 
-  const app = await appPromise;
-  return app(req, res);
+    const app = await appPromise;
+    return app(req, res);
+  } catch (err) {
+    console.error('[api/index] Error running server app:', err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Serverless execution failed',
+        message: err?.message,
+        code: err?.code,
+      });
+    }
+  }
 }
