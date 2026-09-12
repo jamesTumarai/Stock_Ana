@@ -15,11 +15,11 @@ import {
 } from 'lucide-react';
 import {
   decomposeValuationDelta,
-  type ValuationDecomposition,
+  type ValuationDecompositionResult,
 } from '../utils/valuationDecompositionEngine';
 import {
   evaluateMacroStressScenarios,
-  type MacroStressScenario,
+  type MacroStressScenariosResult,
 } from '../utils/macroStressEngine';
 import {
   diffSecFinancialStatements,
@@ -44,35 +44,15 @@ export function ValuationDecompositionModal({
 }: ValuationDecompositionModalProps) {
   const [activeTab, setActiveTab] = useState<'decomposition' | 'macro_stress' | 'sec_diff'>('decomposition');
 
-  // 1. Decomposition Calculation
-  const decomposition: ValuationDecomposition | null = useMemo(() => {
+  // 1. Decomposition Calculation via Sequential Valuation Bridge
+  const decomposition: ValuationDecompositionResult | null = useMemo(() => {
     if (!previousReport) return null;
     return decomposeValuationDelta(currentReport, previousReport, isThai);
   }, [currentReport, previousReport, isThai]);
 
-  // 2. Macro Stress Calculation
-  const macroStressScenarios: MacroStressScenario[] = useMemo(() => {
-    const fv = currentReport.intrinsic_value?.summary?.base_case_fair_value
-      ?? currentReport.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share
-      ?? 0;
-    const price = currentReport.intrinsic_value?.current_price
-      ?? (currentReport as any).company_profile?.stock_price
-      ?? 0;
-    const baseDcf: any = currentReport.intrinsic_value?.dcf_model?.scenarios?.base || {};
-    const wacc = Number(baseDcf.wacc_percentage) || 9.0;
-    const tg = Number(baseDcf.terminal_growth_rate_percentage) || 3.0;
-    const revGrowth = Number(baseDcf.projected_growth_rate) || 10.0;
-
-    return evaluateMacroStressScenarios(
-      {
-        fairValue: fv,
-        currentPrice: price,
-        wacc,
-        terminalGrowth: tg,
-        revenueGrowth: revGrowth,
-      },
-      isThai
-    );
+  // 2. Macro Stress Calculation via Canonical Strict DCF
+  const macroStressScenarios: MacroStressScenariosResult = useMemo(() => {
+    return evaluateMacroStressScenarios(currentReport, isThai);
   }, [currentReport, isThai]);
 
   // 3. SEC YoY Diff Calculation
@@ -167,7 +147,29 @@ export function ValuationDecompositionModal({
           {/* TAB 1: VALUATION WATERFALL DECOMPOSITION */}
           {activeTab === 'decomposition' && (
             <div className="space-y-4">
-              {decomposition ? (
+              {!previousReport ? (
+                <div className="p-8 rounded-xl bg-white/[0.02] border border-white/10 text-center space-y-2">
+                  <Layers className="w-8 h-8 text-stone-500 mx-auto" />
+                  <h4 className="text-sm font-semibold text-white">
+                    {isThai ? 'ต้องการรายงานในอดีตอย่างน้อย 1 ฉบับ' : 'Historical Report Required'}
+                  </h4>
+                  <p className="text-xs text-stone-400 max-w-md mx-auto">
+                    {isThai
+                      ? 'เมื่อคุณวิเคราะห์หุ้นตัวนี้เพิ่มเติมในอนาคต ระบบจะทำการแจกแจงปัจจัยมูลค่าเปรียบเทียบกับฉบับก่อนหน้าให้โดยอัตโนมัติ'
+                      : 'Decomposition attribution evaluates how valuation parameters evolved against your prior reports for this ticker.'}
+                  </p>
+                </div>
+              ) : decomposition && !decomposition.isAvailable ? (
+                <div className="p-8 rounded-xl bg-white/[0.02] border border-white/10 text-center space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+                  <h4 className="text-sm font-semibold text-white">
+                    {isThai ? 'ไม่สามารถแจกแจงปัจจัยมูลค่าได้' : 'Valuation Decomposition Unavailable'}
+                  </h4>
+                  <p className="text-xs text-stone-400 max-w-md mx-auto">
+                    {isThai ? decomposition.reasonTh : decomposition.reason}
+                  </p>
+                </div>
+              ) : decomposition && decomposition.isAvailable ? (
                 <>
                   {/* Thesis Health Status Card */}
                   <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -236,7 +238,7 @@ export function ValuationDecompositionModal({
                   {/* Marginal Drivers List */}
                   <div className="space-y-2">
                     <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider">
-                      {isThai ? 'การแจกแจงตามปัจจัยขับเคลื่อนทางการเงิน' : 'Marginal Value Drivers Attribution'}
+                      {isThai ? 'การแจกแจงตามปัจจัยขับเคลื่อนทางการเงิน (Sequential Bridge)' : 'Marginal Value Drivers Attribution (Sequential Bridge)'}
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {decomposition.drivers.map((driver) => {
@@ -279,12 +281,12 @@ export function ValuationDecompositionModal({
                 <div className="p-8 rounded-xl bg-white/[0.02] border border-white/10 text-center space-y-2">
                   <Layers className="w-8 h-8 text-stone-500 mx-auto" />
                   <h4 className="text-sm font-semibold text-white">
-                    {isThai ? 'ต้องการรายงานในอดีตอย่างน้อย 1 ฉบับ' : 'Historical Report Required'}
+                    {isThai ? 'ข้อมูลการประเมินมูลค่าไม่ครบถ้วน' : 'Valuation Data Incomplete'}
                   </h4>
                   <p className="text-xs text-stone-400 max-w-md mx-auto">
                     {isThai
-                      ? 'เมื่อคุณวิเคราะห์หุ้นตัวนี้เพิ่มเติมในอนาคต ระบบจะทำการแยกแยะปัจจัยมูลค่าเปรียบเทียบกับฉบับก่อนหน้าให้โดยอัตโนมัติ'
-                      : 'Decomposition attribution evaluates how valuation parameters evolved against your prior reports for this ticker.'}
+                      ? 'ไม่พบข้อมูลมูลค่าเหมาะสม (Fair Value) ในรายงานเพื่อเปรียบเทียบ'
+                      : 'Neither report contains verified fair value inputs for comparison.'}
                   </p>
                 </div>
               )}
@@ -294,80 +296,103 @@ export function ValuationDecompositionModal({
           {/* TAB 2: MACRO STRESS SANDBOX */}
           {activeTab === 'macro_stress' && (
             <div className="space-y-4">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5 text-xs text-amber-300">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  {isThai
-                    ? 'การทดสอบภาวะวิกฤต (Stress Test) ประเมินผลกระทบกรณีเกิดแรงกระแทกทางเศรษฐกิจมหภาค เช่น เงินเฟ้อพุ่ง หรือ ดอกเบี้ยยืนสูง เพื่อตรวจสอบความทนทานของ Margin of Safety'
-                    : 'Institutional macro stress-testing simulates external macroeconomic shocks (stagflation, rate hikes, demand collapse) to gauge Margin of Safety resilience.'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {macroStressScenarios.map((scenario) => {
-                  const isOpportunity = scenario.severity === 'opportunity';
-                  const isHighRisk = scenario.severity === 'high';
-                  return (
-                    <div
-                      key={scenario.id}
-                      className={`p-4 rounded-xl border flex flex-col justify-between ${
-                        isOpportunity
-                          ? 'bg-emerald-950/20 border-emerald-500/30'
-                          : isHighRisk
-                          ? 'bg-rose-950/20 border-rose-500/30'
-                          : 'bg-white/[0.02] border-white/10'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-white">{scenario.name}</span>
-                          <span
-                            className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${
-                              isOpportunity
-                                ? 'bg-emerald-500/20 text-emerald-300'
-                                : isHighRisk
-                                ? 'bg-rose-500/20 text-rose-300'
-                                : 'bg-white/10 text-stone-300'
-                            }`}
-                          >
-                            {scenario.severity}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-stone-400 mb-3">{scenario.description}</p>
+              {!macroStressScenarios.isAvailable || macroStressScenarios.length === 0 ? (
+                <div className="p-8 rounded-xl bg-white/[0.02] border border-white/10 text-center space-y-2">
+                  <Sliders className="w-8 h-8 text-stone-500 mx-auto" />
+                  <h4 className="text-sm font-semibold text-white">
+                    {isThai ? 'การทดสอบภาวะวิกฤตไม่สามารถใช้งานได้' : 'Macro Stress Sandbox Unavailable'}
+                  </h4>
+                  <p className="text-xs text-stone-400 max-w-md mx-auto">
+                    {isThai
+                      ? (macroStressScenarios.reasonTh || 'โมเดลประเมินมูลค่าของหลักทรัพย์นี้ไม่รองรับการจำลอง DCF Stress Testing หรือมีข้อมูลไม่ครบถ้วน')
+                      : (macroStressScenarios.reason || 'Macro stress simulation is unavailable for this valuation model or lacks verified canonical DCF inputs.')}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5 text-xs text-amber-300">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold">
+                        {isThai
+                          ? (macroStressScenarios.methodologyNoteTh || 'การจำลองสมมติฐานภาวะวิกฤตของระบบ')
+                          : (macroStressScenarios.methodologyNote || 'System-defined illustrative stress assumptions')}
                       </div>
-
-                      <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">{isThai ? 'Fair Value ภายใต้แรงกดดัน:' : 'Stressed Fair Value:'}</span>
-                          <span className="font-bold text-white font-mono">${scenario.stressedFairValue.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">{isThai ? 'ผลกระทบต่อมูลค่า:' : 'Fair Value Impact:'}</span>
-                          <span
-                            className={`font-bold font-mono ${
-                              scenario.fairValueChangePct >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                            }`}
-                          >
-                            {scenario.fairValueChangePct >= 0 ? '+' : ''}
-                            {scenario.fairValueChangePct.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-stone-400">{isThai ? 'Margin of Safety ภายใต้แรงกดดัน:' : 'Stressed MoS:'}</span>
-                          <span
-                            className={`font-bold font-mono ${
-                              scenario.stressedMarginOfSafety >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                            }`}
-                          >
-                            {scenario.stressedMarginOfSafety >= 0 ? '+' : ''}
-                            {scenario.stressedMarginOfSafety.toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
+                      <p className="text-[11px] text-amber-300/80 mt-0.5">
+                        {isThai
+                          ? 'การทดสอบภาวะวิกฤต (Stress Test) คำนวณผ่านแบบจำลอง DCF ที่ตรวจสอบแล้ว โดยปรับปัจจัยมหภาคเพื่อประเมินความทนทานของ Margin of Safety'
+                          : 'Institutional macro stress-testing recalculates intrinsic DCF value under severe macro shock assumptions to evaluate Margin of Safety resilience.'}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {macroStressScenarios.map((scenario) => {
+                      const isOpportunity = scenario.severity === 'opportunity';
+                      const isHighRisk = scenario.severity === 'high';
+                      return (
+                        <div
+                          key={scenario.id}
+                          className={`p-4 rounded-xl border flex flex-col justify-between ${
+                            isOpportunity
+                              ? 'bg-emerald-950/20 border-emerald-500/30'
+                              : isHighRisk
+                              ? 'bg-rose-950/20 border-rose-500/30'
+                              : 'bg-white/[0.02] border-white/10'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-bold text-white">{scenario.name}</span>
+                              <span
+                                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${
+                                  isOpportunity
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : isHighRisk
+                                    ? 'bg-rose-500/20 text-rose-300'
+                                    : 'bg-white/10 text-stone-300'
+                                }`}
+                              >
+                                {scenario.severity}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-stone-400 mb-3">{scenario.description}</p>
+                          </div>
+
+                          <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-stone-400">{isThai ? 'Fair Value ภายใต้แรงกดดัน:' : 'Stressed Fair Value:'}</span>
+                              <span className="font-bold text-white font-mono">${scenario.stressedFairValue.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-stone-400">{isThai ? 'ผลกระทบต่อมูลค่า:' : 'Fair Value Impact:'}</span>
+                              <span
+                                className={`font-bold font-mono ${
+                                  scenario.fairValueChangePct >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                }`}
+                              >
+                                {scenario.fairValueChangePct >= 0 ? '+' : ''}
+                                {scenario.fairValueChangePct.toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-stone-400">{isThai ? 'Margin of Safety ภายใต้แรงกดดัน:' : 'Stressed MoS:'}</span>
+                              <span
+                                className={`font-bold font-mono ${
+                                  scenario.stressedMarginOfSafety >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                }`}
+                              >
+                                {scenario.stressedMarginOfSafety >= 0 ? '+' : ''}
+                                {scenario.stressedMarginOfSafety.toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

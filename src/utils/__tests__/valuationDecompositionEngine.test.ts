@@ -8,6 +8,7 @@ import {
 
 describe('valuationDecompositionEngine', () => {
   const mockPastReport: any = {
+    ticker: 'MSFT',
     report_date: '2025-09-01',
     intrinsic_value: {
       current_price: 350,
@@ -44,6 +45,7 @@ describe('valuationDecompositionEngine', () => {
   };
 
   const mockCurrentReport: any = {
+    ticker: 'MSFT',
     report_date: '2026-03-01',
     intrinsic_value: {
       current_price: 410,
@@ -79,9 +81,10 @@ describe('valuationDecompositionEngine', () => {
     },
   };
 
-  it('decomposes fair value change into empirical drivers accurately', () => {
-    const decomposition = decomposeValuationDelta(mockCurrentReport, mockPastReport, false);
+  it('decomposes fair value change into empirical drivers accurately via sequential bridge', () => {
+    const decomposition: any = decomposeValuationDelta(mockCurrentReport, mockPastReport, false);
     assert.ok(decomposition, 'Decomposition must not be null');
+    assert.equal(decomposition.isAvailable, true);
 
     assert.equal(decomposition.previousFairValue, 400);
     assert.equal(decomposition.currentFairValue, 460);
@@ -91,18 +94,68 @@ describe('valuationDecompositionEngine', () => {
     // Drivers must exist
     assert.ok(decomposition.drivers.length > 0);
 
-    // Sum of driver dollar impacts must approximate total delta dollars within tolerance
-    const sumDrivers = decomposition.drivers.reduce((acc, d) => acc + d.dollarImpact, 0);
+    // Sum of driver dollar impacts must match total delta dollars to the exact cent
+    const sumDrivers = decomposition.drivers.reduce((acc: number, d: any) => acc + d.dollarImpact, 0);
     assert.ok(
-      Math.abs(sumDrivers - decomposition.totalDeltaDollars) < 1.0,
+      Math.abs(sumDrivers - decomposition.totalDeltaDollars) < 0.05,
       `Driver sum ${sumDrivers} should match total delta ${decomposition.totalDeltaDollars}`
     );
 
     // Verify key drivers are present
-    const driverKeys = decomposition.drivers.map(d => d.key);
+    const driverKeys = decomposition.drivers.map((d: any) => d.key);
+    assert.ok(driverKeys.includes('revenue_base_facts'));
     assert.ok(driverKeys.includes('cash_flow_growth'));
     assert.ok(driverKeys.includes('wacc_discount_rate'));
     assert.ok(driverKeys.includes('capital_structure'));
+  });
+
+  it('fails closed when tickers do not match', () => {
+    const reportA = { ...mockCurrentReport, ticker: 'MSFT' };
+    const reportB = { ...mockPastReport, ticker: 'AAPL' };
+    const res: any = decomposeValuationDelta(reportA, reportB, false);
+
+    assert.ok(res);
+    assert.equal(res.isAvailable, false);
+    assert.ok(res.reason.includes('Ticker mismatch'));
+  });
+
+  it('enforces sector guard and fails closed for non-FCFF companies', () => {
+    const sofiCur: any = {
+      ticker: 'SOFI',
+      company_profile: { overview: { symbol: 'SOFI', sector: 'Financial Services' } },
+      intrinsic_value: {
+        summary: { base_case_fair_value: 12 },
+        model_selection: { selected_model: 'fintech_pe' },
+      },
+    };
+    const sofiPrev: any = {
+      ticker: 'SOFI',
+      company_profile: { overview: { symbol: 'SOFI', sector: 'Financial Services' } },
+      intrinsic_value: {
+        summary: { base_case_fair_value: 10 },
+        model_selection: { selected_model: 'fintech_pe' },
+      },
+    };
+
+    const res: any = decomposeValuationDelta(sofiCur, sofiPrev, false);
+    assert.ok(res);
+    assert.equal(res.isAvailable, false);
+    assert.ok(res.reason.includes('non-FCFF'));
+  });
+
+  it('handles missing conviction score without fabricated ?? 70 defaults', () => {
+    const noConvictionCur = {
+      ...mockCurrentReport,
+      verdict: {}, // No conviction score
+    };
+    const noConvictionPrev = {
+      ...mockPastReport,
+      verdict: {}, // No conviction score
+    };
+
+    const health = classifyThesisHealth(noConvictionCur, noConvictionPrev, 60, false);
+    assert.equal(health.convictionShift, null);
+    assert.equal(health.status, 'upgraded');
   });
 
   it('classifies thesis health correctly as upgraded when fundamentals and conviction expand', () => {
