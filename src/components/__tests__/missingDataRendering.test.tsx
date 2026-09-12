@@ -7,10 +7,24 @@ import { MorningstarResearchSection } from '../MorningstarResearchSection';
 import { SmartMoneyCard } from '../SmartMoneyCard';
 import { BusinessAnalysisCard } from '../BusinessAnalysisCard';
 import { CompanyProfileCard } from '../CompanyProfileCard';
+import { CorporateActionsCard } from '../CorporateActionsCard';
 import ReportTemplate from '../../ReportTemplate';
 import type { ReportData } from '../../types';
 
 console.log('Running missing-data rendering checks...');
+
+const corpActionsMissingDivHtml = renderToStaticMarkup(
+  <CorporateActionsCard
+    data={{
+      dividends: {} as any,
+      stock_splits: [],
+    }}
+    ticker="TEST"
+    isThai={false}
+  />
+);
+assert.match(corpActionsMissingDivHtml, /Data unavailable/);
+assert.doesNotMatch(corpActionsMissingDivHtml, />0\.00%<|>\$0\.00<|Reinvest/);
 
 const forecastHtml = renderToStaticMarkup(<ForecastDashboard ticker="TEST" isThai={false} />);
 assert.match(forecastHtml, /Data unavailable/);

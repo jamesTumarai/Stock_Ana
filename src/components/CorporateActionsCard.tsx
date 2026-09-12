@@ -135,7 +135,9 @@ export const CorporateActionsCard: React.FC<CorporateActionsCardProps> = ({
                 {isThai ? 'อัตราผลตอบแทนปันผล (Yield)' : 'Dividend Yield (TTM)'}
               </span>
               <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900 mt-1">
-                {divSummary?.dividend_yield_pct !== undefined ? `${divSummary.dividend_yield_pct.toFixed(2)}%` : '0.00%'}
+                {divSummary?.dividend_yield_pct !== undefined && divSummary?.dividend_yield_pct !== null
+                  ? `${divSummary.dividend_yield_pct.toFixed(2)}%`
+                  : (divSummary?.has_dividend === false ? '0.00%' : (isThai ? 'ไม่มีข้อมูล' : 'Data unavailable'))}
               </span>
             </div>
 
@@ -144,7 +146,9 @@ export const CorporateActionsCard: React.FC<CorporateActionsCardProps> = ({
                 {isThai ? 'เงินปันผลต่อปี (Annual Payout)' : 'Annual Payout'}
               </span>
               <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900 mt-1">
-                {divSummary?.annual_payout_usd ? formatCurrency(divSummary.annual_payout_usd) : formatCurrency(0)}
+                {divSummary?.annual_payout_usd !== undefined && divSummary?.annual_payout_usd !== null
+                  ? formatCurrency(divSummary.annual_payout_usd)
+                  : (divSummary?.has_dividend === false ? formatCurrency(0) : (isThai ? 'ไม่มีข้อมูล' : 'Data unavailable'))}
               </span>
             </div>
 
@@ -153,7 +157,9 @@ export const CorporateActionsCard: React.FC<CorporateActionsCardProps> = ({
                 {isThai ? 'สัดส่วนจ่ายปันผล (Payout Ratio)' : 'Payout Ratio'}
               </span>
               <span className="text-xl sm:text-2xl font-bold font-mono text-stone-900 mt-1">
-                {divSummary?.payout_ratio_pct !== undefined ? `${divSummary.payout_ratio_pct.toFixed(1)}%` : '0.0%'}
+                {divSummary?.payout_ratio_pct !== undefined && divSummary?.payout_ratio_pct !== null
+                  ? `${divSummary.payout_ratio_pct.toFixed(1)}%`
+                  : (divSummary?.has_dividend === false ? '0.0%' : (isThai ? 'ไม่มีข้อมูล' : 'Data unavailable'))}
               </span>
             </div>
 
@@ -168,7 +174,9 @@ export const CorporateActionsCard: React.FC<CorporateActionsCardProps> = ({
                     <span>{divSummary.growth_streak_years} {isThai ? 'ปีติดต่อกัน' : 'Years'}</span>
                   </>
                 ) : (
-                  <span>{divSummary?.frequency || (isThai ? 'ไม่มีปันผล (Reinvest)' : 'No Dividend')}</span>
+                  <span>
+                    {divSummary?.frequency || (divSummary?.has_dividend === false ? (isThai ? 'ไม่มีการจ่ายเงินปันผล' : 'No Dividend') : (isThai ? 'ไม่มีข้อมูล' : 'Data unavailable'))}
+                  </span>
                 )}
               </span>
             </div>
