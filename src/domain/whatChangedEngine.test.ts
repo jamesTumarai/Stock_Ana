@@ -171,4 +171,95 @@ describe('whatChangedEngine', () => {
     const fcfItem = result.items.find(i => i.id === 'change_fcf');
     assert.equal(fcfItem, undefined);
   });
+
+  describe('Blocker 11 / Test K — Risk and Catalyst Uncertainty Propagation', () => {
+    it('ambiguous risk rewording ("Cloud demand slowdown" vs "Slower enterprise cloud spending") produces at most one review-needed change and never definitive NEW/RESOLVED/HIGH', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Cloud demand slowdown'] }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Slower enterprise cloud spending'] }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+
+      // 1. Must NOT produce "New material risk emerged"
+      const newMaterialRisk = result.items.find(i =>
+        i.explanation?.toLowerCase().includes('new material risk emerged') ||
+        i.metricLabel === 'New Risk Identified' ||
+        i.deltaDisplay === 'NEW RISK'
+      );
+      assert.equal(newMaterialRisk, undefined, 'Must NOT produce definitive New Risk Identified or NEW RISK');
+
+      // 2. Must NOT produce "Prior Risk Resolved"
+      const resolvedRisk = result.items.find(i =>
+        i.metricLabel === 'Prior Risk Resolved' ||
+        i.deltaDisplay === 'RESOLVED'
+      );
+      assert.equal(resolvedRisk, undefined, 'Must NOT produce definitive Prior Risk Resolved');
+
+      // 3. Must produce at most one uncertain / review-needed change
+      const riskItems = result.items.filter(i => i.category === 'RISKS_AND_CATALYSTS');
+      assert.equal(riskItems.length, 1, 'Should produce at most one uncertain/review-needed change');
+
+      const uncertainItem = riskItems[0];
+      assert.equal(uncertainItem.deltaDisplay, 'POSSIBLE RISK CHANGE');
+      assert.match(uncertainItem.metricLabel, /Risk Wording Changed/i);
+      assert.notEqual(uncertainItem.materiality, 'HIGH', 'Uncertain AI wording change must NOT generate a definitive HIGH event');
+    });
+
+    it('unmatched free-text risk produces unconfirmed transition without definitive HIGH materiality', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Antitrust investigation into app store policies'] }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Supply chain disruption in Southeast Asia'] }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+
+      // Unmatched free text items are uncertain (isCertain === false)
+      for (const item of result.items.filter(i => i.category === 'RISKS_AND_CATALYSTS')) {
+        assert.notEqual(item.materiality, 'HIGH', 'Free-text risk transition must not receive definitive HIGH materiality');
+        assert.notEqual(item.deltaDisplay, 'NEW RISK', 'Free-text risk must not state definitive NEW RISK');
+        assert.notEqual(item.deltaDisplay, 'RESOLVED', 'Free-text risk must not state definitive RESOLVED');
+      }
+    });
+  });
 });
