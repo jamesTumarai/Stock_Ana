@@ -12,14 +12,14 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Durable Expectation Persistence & Final Verification; PRs #104–#119)**.
-- Current working mode: **Lumina V1 Product Loop Complete; Personal Equity Research & Decision OS End-to-End Operational**.
+- Current stage: **LUMINA V1 — BLOCKED: Firebase CLI authentication unavailable for final Firestore rules deployment and active-source verification**.
+- Current working mode: **Final closure only. Pending expectation creation is fixed; production application and regression gates pass. Final production rules proof remains outstanding.**
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
 - Historical Accepted Integrity Baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Phase 4.5 Owner Accepted).
-- Current Production SHA: `2b707e97d6f74a92cf5415314b1214f066332037` (PR #118; Vercel Deployment ID `6420251552`).
-- Latest merged milestone: PR #118 (Reconcile True Final Completion Evidence).
-- Regression Suite: 82 test files (79 src + 3 server), 252 passing cases, 0 failed, 0 skipped.
+- Latest verified behavior-changing production SHA: `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`). Subsequent documentation-only main SHAs do not change this application baseline.
+- Latest merged application milestone: PR #120 (Persist new PENDING expectations before evaluation).
+- Regression gate: 82 test files (79 src + 3 server), 254 passing cases, 0 failed, 0 skipped. Case counts follow the repository runner convention: standalone assertion files without node:test summaries count as one case.
 
 ## Canonical Phase Acceptance Matrix
 
@@ -54,6 +54,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **PR G** | Uncertainty Propagation in Decision Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #117 |
 | **PR H** | True Final Technical Closure Documentation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #118 |
 | **PR I** | Durable Expectation Evaluation Outcome Persistence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #119 |
+| **Closure patch** | Pending Expectation Creation Persistence | ✅ | ✅ | ✅ | ✅ | — | `Application verified; final rules proof blocked` | PR #120 |
 
 ## Repository protection
 
@@ -131,7 +132,15 @@ Key platform protections:
 
 ## Phase 4 production acceptance evidence
 
-### Gate 1 — Firestore Rules ✅
+### Gate 1 — Firestore Rules (historical Phase 4 evidence; final rules proof outstanding)
+
+The evidence below is historical. Its 2026-09-11 timestamp predates the thesis/expectation rules changes and does not prove that the final reviewed rules are active. The final closure attempt on 2026-09-13 used Firebase CLI 15.30.0; `projects:list --json --non-interactive` failed with `Failed to authenticate, have you run firebase login?`. Deployment stopped before any Firebase mutation.
+
+- Reviewed source Git SHA: `2293430b8a642a8da6b0f4f05bbdf24270c557a6`; `firestore.rules` was last changed in `0a1c97249d6bc8e69e404dd9f07af421aef2a19b`.
+- Required target remains project `stock-analyze-a89d0`, database `(default)`, source `firestore.rules`.
+- Repository rules preflight passes; this does not authenticate the CLI or verify production rules.
+- Rules-only deployment result, current active rules timestamp/source match, and authenticated Firestore save/reload smoke: **NOT VERIFIED** in this closure task.
+- No data migration or unrelated Firebase deployment occurred. Resume only this proof after operator authentication using `docs/firebase-operations.md`.
 
 Production target remains exactly:
 
@@ -627,11 +636,19 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Limits materiality to `LOW` / `MEDIUM`, preventing unconfirmed AI wording changes from fabricating definitive `HIGH` risk alerts or triggering false decision stance revisions.
 - Merge SHA: `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0`.
 
-#### Final Technical Completion Test Gate Metrics
-- **Test files executed**: 81
-- **src/ test files executed**: 78
+#### PR #120 — Pending expectation creation persistence
+
+- `ThesisExpectationsCard.handleAddExpectation` now calls `createAndEvaluateExpectation`: persist new intent first, then evaluate current/historical context. PENDING creation survives reload even when a snapshot exists.
+- Regression uses the same service path as the UI and reloads through `loadExpectations()`: future synthetic MSFT Q4 intent remains PENDING against Q3, all intent fields remain unchanged, and repeated evaluation performs no write. Matching Q4 actuals later persist EXCEEDED and survive reload; terminal re-evaluation also performs no write.
+- Counted storage writes: one creation write, unchanged at one after repeated PENDING evaluation, two after the terminal transition, unchanged at two after terminal re-evaluation. The existing PR #119 MISSED save/reload regression remains intact; creation without a snapshot is also covered.
+- These are isolated persistence-service tests using deserialized local storage, not a claim of authenticated production Firestore write verification.
+- Protected PR Verify Lumina run: `34763937163`; merged-main run: `34763997605`. Both passed.
+
+#### Final closure test gate metrics (PR #120)
+- **Test files executed**: 82
+- **src/ test files executed**: 79
 - **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
-- **Test cases passed**: 250
+- **Test cases passed**: 254 (repository runner convention, including standalone assertion files counted as one)
 - **Test cases failed**: 0
 - **Test cases skipped**: 0
 - **TypeScript (`tsc --noEmit`)**: PASS (100% clean)
@@ -639,23 +656,25 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - **git diff --check**: PASS
 - **Vulnerabilities**: 0 critical, 0 high, 10 moderate (triaged in `docs/SECURITY_AUDIT_TRIAGE.md`)
 - **Firebase rules preflight**: PASS for project `stock-analyze-a89d0` / database `(default)`
+- **npm ci**: PASS; no package/lockfile changes.
+- **npm audit --omit=dev**: exit 1 for the existing 10 moderate advisories; 0 high/critical. No `npm audit fix --force` was run.
 
 ## Current production health
 
-Production baseline is verified and healthy on:
+Application deployment and public endpoint evidence checked on 2026-09-13 at 21:54 Asia/Bangkok (Firebase production rules proof is separately blocked):
 
 - **Historical Accepted Baseline SHA**: `d2315f069379dfe946dee0952231005cc6ba9746` (Owner Accepted baseline)
-- **Current Production Git SHA**: `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0` (PR #117; Vercel Deployment ID `6420225575`)
+- **Verified behavior-changing production Git SHA**: `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`)
 - **Production URL**: `https://stock-ana-ten.vercel.app` (Status: `READY`)
-- **Push-to-main `Verify Lumina`**: Passed all steps (81 test files, 250 passed, 0 failed, 0 skipped).
+- **Vercel proof**: authenticated deployment metadata reports the exact Git SHA, target `production`, state `READY`, and alias `stock-ana-ten.vercel.app`.
+- **Push-to-main `Verify Lumina`**: run `34763997605` passed (82 test files, 254 cases passed, 0 failed, 0 skipped).
 - **Authoritative production smokes**:
   - `GET /api/health` -> 200 minimal public payload
   - `GET /api/health?detailed=true` (unauthenticated) -> 200 minimal payload, no telemetry leak
   - `GET /api/health/detailed` (unauthenticated) -> 401 Unauthorized contract
-  - `GET /api/live-quotes?symbols=MSFT` -> 200 OK with live quote payload
-  - `GET /api/sec-diff?ticker=MSFT` -> 200 OK with verified canonical SEC facts
-  - `MSFT` operating equity flow verified with SEC authority in memory, thesis tracking, and watchlist intelligence.
-  - `SOFI` fintech/banking sector guard verified fail-closed (FCFF null, no generic DCF leakage).
+  - `GET /api/live-quotes?symbols=MSFT` -> 200 with a populated MSFT Market Snapshot and `asOf`; no guaranteed real-time claim.
+  - `GET /api/sec-diff?ticker=MSFT` -> 200, `ok: true`, `provenanceStatus: verified`, Q4 2026 versus Q4 2025 comparison and SEC filing metadata.
+- Authenticated report creation, expectation Firestore writes, and a new SOFI UI journey were not repeated in this closure proof. Regression coverage and historical acceptance evidence remain distinct from these public endpoint smokes.
 
 Known runtime observations:
 
