@@ -5,6 +5,8 @@ import {
   confirmUserThesis,
   evaluateExpectations,
   matchRiskCatalystTransitions,
+  resolveActiveThesisForReport,
+  InvestmentThesisRecord,
   TrackedExpectation
 } from './thesisExpectations';
 import { extractMemorySnapshot } from './investmentMemory';
@@ -226,5 +228,98 @@ describe('thesisExpectations', () => {
     const earnings = transitions.find(t => t.itemText === 'Earnings Announcement');
     assert.ok(earnings);
     assert.equal(earnings?.currentState, 'NEW');
+  });
+
+  describe('Blocker E — Thesis Tracking Revision History & Historical Linkage', () => {
+    const reportA = {
+      id: 'rep_A',
+      ticker: 'MSFT',
+      generated_at: '2026-01-15T00:00:00Z'
+    };
+
+    const reportB = {
+      id: 'rep_B',
+      ticker: 'MSFT',
+      generated_at: '2026-06-15T00:00:00Z'
+    };
+
+    const oldReport = {
+      id: 'rep_legacy',
+      ticker: 'MSFT',
+      generated_at: '2025-01-01T00:00:00Z'
+    };
+
+    it('resolves historical active thesis per report without losing revisions or fabricating past beliefs', () => {
+      // 1. Confirm thesis v1 tied to Report A
+      const thesisV1: InvestmentThesisRecord = {
+        thesisId: 'th_msft_v1',
+        ticker: 'MSFT',
+        version: 1,
+        summary: 'Version 1 thesis: Cloud leadership',
+        keyDrivers: ['Azure growth'],
+        keyAssumptions: ['8.5% WACC'],
+        keyRisks: ['Cloud slowdown'],
+        catalysts: ['Q3 earnings'],
+        invalidationConditions: ['Azure < 20%'],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_CONFIRMED',
+        sourceReportId: 'rep_A',
+        createdAt: '2026-01-15T12:00:00Z',
+        updatedAt: '2026-01-15T12:00:00Z',
+        userId: 'user_1'
+      };
+
+      // 2. Edit thesis -> v2 tied to Report B
+      const thesisV2: InvestmentThesisRecord = {
+        thesisId: 'th_msft_v2',
+        ticker: 'MSFT',
+        version: 2,
+        summary: 'Version 2 thesis: AI Copilot monetization',
+        keyDrivers: ['Azure growth', 'Copilot enterprise seats'],
+        keyAssumptions: ['8.0% WACC'],
+        keyRisks: ['Hardware capex'],
+        catalysts: ['Ignite launch'],
+        invalidationConditions: ['Capex overrun'],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_EDITED',
+        sourceReportId: 'rep_B',
+        createdAt: '2026-01-15T12:00:00Z',
+        updatedAt: '2026-06-15T12:00:00Z',
+        userId: 'user_1'
+      };
+
+      const revisions = [thesisV1, thesisV2];
+      const current = thesisV2;
+
+      // Current is v2
+      assert.equal(current.version, 2);
+
+      // Revision history contains both v1 and v2
+      assert.equal(revisions.length, 2);
+      assert.equal(revisions[0].version, 1);
+      assert.equal(revisions[1].version, 2);
+
+      // Report A resolves v1
+      const resolvedA = resolveActiveThesisForReport(reportA, revisions, current);
+      assert.ok(resolvedA);
+      assert.equal(resolvedA?.version, 1);
+      assert.equal(resolvedA?.summary, 'Version 1 thesis: Cloud leadership');
+      assert.equal(resolvedA?.sourceReportId, 'rep_A');
+
+      // Report B resolves v2
+      const resolvedB = resolveActiveThesisForReport(reportB, revisions, current);
+      assert.ok(resolvedB);
+      assert.equal(resolvedB?.version, 2);
+      assert.equal(resolvedB?.summary, 'Version 2 thesis: AI Copilot monetization');
+      assert.equal(resolvedB?.sourceReportId, 'rep_B');
+
+      // Legacy report from before any thesis was recorded: NOT RECORDED (null), never retroactively fakes current belief
+      const resolvedLegacy = resolveActiveThesisForReport(oldReport, revisions, current);
+      assert.equal(resolvedLegacy, null, 'Legacy report must not retroactively receive modern thesis');
+
+      // Unknown report without date or matching ID: returns null
+      const resolvedUnknown = resolveActiveThesisForReport({ ticker: 'MSFT', id: 'rep_unknown' }, revisions, current);
+      assert.equal(resolvedUnknown, null);
+    });
   });
 });

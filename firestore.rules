@@ -4,8 +4,36 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
-      match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Current investment thesis pointer
+      match /theses/{ticker} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null
+          && request.auth.uid == userId
+          && (!('userId' in request.resource.data) || request.resource.data.userId == userId);
+        allow delete: if request.auth != null && request.auth.uid == userId;
+
+        // Immutable historical thesis revisions (append-only)
+        match /revisions/{revisionId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+          allow create: if request.auth != null
+            && request.auth.uid == userId
+            && (!('userId' in request.resource.data) || request.resource.data.userId == userId);
+          allow update: if false;
+          allow delete: if false;
+        }
+      }
+
+      // Tracked expectations
+      match /expectations/{expectationId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null
+          && request.auth.uid == userId
+          && (!('userId' in request.resource.data) || request.resource.data.userId == userId);
+        allow update: if request.auth != null
+          && request.auth.uid == userId
+          && (!('userId' in request.resource.data) || request.resource.data.userId == userId)
+          && (!('userId' in resource.data) || resource.data.userId == userId);
+        allow delete: if request.auth != null && request.auth.uid == userId;
       }
     }
     match /reports/{reportId} {
