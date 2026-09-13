@@ -15,6 +15,8 @@ import {
 } from '../utils/portfolioEngine';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { fetchLiveQuotes } from '../services/marketDataService';
+import { extractMemorySnapshot } from '../domain/investmentMemory';
+import { computeWatchlistIntelligence, rankWatchlistByPriority } from '../domain/watchlistIntelligence';
 
 interface Props {
   isOpen: boolean;
@@ -94,6 +96,29 @@ export function PortfolioModal({
   const summary = useMemo(() => {
     return calculatePortfolioSummary(holdings, activeQuotes, latestReports);
   }, [holdings, activeQuotes, latestReports]);
+
+  const watchlistEntries = useMemo(() => {
+    const rawEntries = watchlist.map((tick) => {
+      const q = activeQuotes[tick];
+      const price = typeof q === 'number' ? q : q?.price;
+      const report = latestReports[tick];
+      const snapshot = report ? extractMemorySnapshot(report) : null;
+      const isOwned = holdings.some(h => h.ticker.toUpperCase() === tick.toUpperCase());
+
+      return computeWatchlistIntelligence(
+        tick,
+        snapshot,
+        null,
+        null,
+        [],
+        null,
+        isOwned,
+        price
+      );
+    });
+
+    return rankWatchlistByPriority(rawEntries);
+  }, [watchlist, activeQuotes, latestReports, holdings]);
 
   if (!isOpen) return null;
 
@@ -587,21 +612,53 @@ export function PortfolioModal({
                     </div>
                   </div>
                 ) : (
-                  watchlist.map((tick) => {
-                    const q = quotes[tick];
+                  watchlistEntries.map((entry) => {
+                    const tick = entry.ticker;
+                    const q = activeQuotes[tick];
                     const price = typeof q === 'number' ? q : q?.price;
+                    let priorityBadgeClass = 'bg-stone-100 text-stone-600 border-stone-200';
+                    let priorityLabel = isThai ? 'เฝ้าระวังปกติ' : 'Routine';
+
+                    if (entry.priority === 'URGENT_ATTENTION') {
+                      priorityBadgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                      priorityLabel = isThai ? 'ต้องตรวจสอบเร่งด่วน' : 'Urgent';
+                    } else if (entry.priority === 'REVIEW_RECOMMENDED') {
+                      priorityBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+                      priorityLabel = isThai ? 'ควรทบทวน' : 'Review';
+                    }
+
                     return (
-                      <div key={tick} className="p-3.5 sm:p-4 flex items-center justify-between hover:bg-stone-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                          <span className="font-mono font-bold text-sm sm:text-base text-stone-900">{tick}</span>
-                          {typeof price === 'number' && (
-                            <span className="font-mono font-bold text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
-                              ${price.toFixed(2)}
+                      <div key={tick} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
+                        <div className="flex flex-col gap-1.5 min-w-0">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <Star className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
+                            <span className="font-mono font-bold text-sm sm:text-base text-stone-900">{tick}</span>
+                            {typeof price === 'number' && (
+                              <span className="font-mono font-bold text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
+                                ${price.toFixed(2)}
+                              </span>
+                            )}
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${priorityBadgeClass}`}>
+                              {priorityLabel} • {entry.attentionScore}/100
                             </span>
+                          </div>
+
+                          <p className="text-xs text-stone-600 font-sans truncate">
+                            {isThai ? entry.summaryReasonTh : entry.summaryReason}
+                          </p>
+
+                          {entry.factors.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {entry.factors.map(f => (
+                                <span key={f.code} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200/80">
+                                  {isThai ? f.labelTh : f.label} (+{f.points})
+                                </span>
+                              ))}
+                            </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                           {onSelectTicker && (
                             <button
                               type="button"

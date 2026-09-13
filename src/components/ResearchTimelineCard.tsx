@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Clock, TrendingUp, TrendingDown, ArrowRight, History,
-  ChevronDown, ChevronUp, Scale, Sparkles, ShieldCheck, Layers
+  ChevronDown, ChevronUp, Scale, Sparkles, ShieldCheck, Layers,
+  AlertCircle, AlertTriangle, CheckCircle2, Compass, Check
 } from 'lucide-react';
 import { ReportData } from '../types';
 import {
@@ -10,6 +11,11 @@ import {
   extractReportDate,
   getPreviousReport
 } from '../utils/researchTimeline';
+import { extractMemorySnapshot } from '../domain/investmentMemory';
+import { computeWhatChanged } from '../domain/whatChangedEngine';
+import { buildDecisionContext } from '../domain/decisionContextEngine';
+import { InvestmentThesisRecord, TrackedExpectation } from '../domain/thesisExpectations';
+import { loadUserThesis, loadExpectations } from '../services/thesisExpectationsService';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface Props {
@@ -17,15 +23,35 @@ interface Props {
   currentReport: ReportData;
   historyReports?: any[];
   isThai: boolean;
+  currentUser?: any;
 }
 
 export function ResearchTimelineCard({
   ticker,
   currentReport,
   historyReports = [],
-  isThai
+  isThai,
+  currentUser
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [thesis, setThesis] = useState<InvestmentThesisRecord | null>(null);
+  const [expectations, setExpectations] = useState<TrackedExpectation[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadContext() {
+      const t = await loadUserThesis(ticker, currentUser);
+      const e = await loadExpectations(ticker, currentUser);
+      if (isMounted) {
+        setThesis(t);
+        setExpectations(e);
+      }
+    }
+    loadContext();
+    return () => {
+      isMounted = false;
+    };
+  }, [ticker, currentUser]);
 
   const timeline = useMemo(() => {
     return buildResearchTimeline(ticker, historyReports, currentReport);
@@ -39,6 +65,30 @@ export function ResearchTimelineCard({
     if (!previousReport) return null;
     return computeHistoricalDelta(currentReport, previousReport);
   }, [currentReport, previousReport]);
+
+  const currentSnapshot = useMemo(() => {
+    return extractMemorySnapshot(currentReport);
+  }, [currentReport]);
+
+  const previousSnapshot = useMemo(() => {
+    return previousReport ? extractMemorySnapshot(previousReport) : null;
+  }, [previousReport]);
+
+  const whatChanged = useMemo(() => {
+    if (!currentSnapshot || !previousSnapshot) return null;
+    return computeWhatChanged(currentSnapshot, previousSnapshot, expectations);
+  }, [currentSnapshot, previousSnapshot, expectations]);
+
+  const decisionContext = useMemo(() => {
+    if (!currentSnapshot || !previousSnapshot) return null;
+    return buildDecisionContext(
+      currentSnapshot,
+      previousSnapshot,
+      thesis,
+      whatChanged,
+      expectations
+    );
+  }, [currentSnapshot, previousSnapshot, thesis, whatChanged, expectations]);
 
   // If there is only 1 report and no previous history, show an initial baseline badge
   if (timeline.length <= 1 && !delta) {
@@ -78,7 +128,170 @@ export function ResearchTimelineCard({
         </button>
       </div>
 
-      {/* Primary What Changed Delta Box */}
+      {/* DECISION CONTEXT STANCE BANNER */}
+      {decisionContext && (
+        <div className={`p-4 rounded-2xl border flex flex-col gap-2.5 ${
+          decisionContext.stance === 'THESIS_CONDITION_TRIGGERED'
+            ? 'bg-rose-50/80 border-rose-200 text-rose-950'
+            : decisionContext.stance === 'RE_EVALUATION_WARRANTED'
+            ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+            : decisionContext.stance === 'MONITORING_CONTINUES_UNCHANGED'
+            ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+            : 'bg-stone-50 border-stone-200 text-stone-900'
+        }`}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              {decisionContext.stance === 'THESIS_CONDITION_TRIGGERED' ? (
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              ) : decisionContext.stance === 'RE_EVALUATION_WARRANTED' ? (
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              ) : decisionContext.stance === 'MONITORING_CONTINUES_UNCHANGED' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <Clock className="w-4 h-4 text-stone-500 shrink-0" />
+              )}
+              <span className="text-xs font-bold uppercase tracking-wider font-mono">
+                {isThai ? 'บริบทการตัดสินใจ (Decision Context)' : 'Decision Context'}
+              </span>
+            </div>
+
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+              decisionContext.stance === 'THESIS_CONDITION_TRIGGERED'
+                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                : decisionContext.stance === 'RE_EVALUATION_WARRANTED'
+                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                : decisionContext.stance === 'MONITORING_CONTINUES_UNCHANGED'
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                : 'bg-stone-200 text-stone-700 border-stone-300'
+            }`}>
+              {decisionContext.stance.replace(/_/g, ' ')}
+            </span>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold text-stone-900 font-['Prompt','Nunito',sans-serif]">
+              {isThai ? decisionContext.headlineTh : decisionContext.headline}
+            </h4>
+            <p className="text-xs text-stone-700 mt-1 leading-relaxed">
+              {isThai ? decisionContext.summaryNarrativeTh : decisionContext.summaryNarrative}
+            </p>
+          </div>
+
+          {/* Key Reasons / Triggers */}
+          {decisionContext.reasons.length > 0 && (
+            <div className="pt-2 border-t border-stone-200/60 flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 font-mono">
+                {isThai ? 'เหตุผลและปัจจัยสำคัญที่ระบุได้:' : 'Identified Contributing Reasons:'}
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {decisionContext.reasons.map((r) => (
+                  <div key={r.id} className="p-2 bg-white/90 rounded-xl border border-stone-200/80 text-xs flex flex-col">
+                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                      <span className="font-bold text-stone-900">{isThai ? r.titleTh : r.title}</span>
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                        r.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-700' :
+                        r.severity === 'WARNING' ? 'bg-amber-100 text-amber-700' :
+                        'bg-stone-100 text-stone-600'
+                      }`}>
+                        {r.severity}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-stone-600">{isThai ? r.detailTh : r.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Invalidation Triggers Alert */}
+          {decisionContext.invalidationTriggersFound.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-rose-100/70 border border-rose-200 text-xs text-rose-900 flex flex-col gap-1">
+              <span className="font-bold flex items-center gap-1 text-rose-800">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                {isThai ? 'เงื่อนไขหักล้างสมมติฐานที่ตรวจพบ:' : 'Invalidation Triggers Detected:'}
+              </span>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                {decisionContext.invalidationTriggersFound.map((trig, idx) => (
+                  <li key={idx}>{trig}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* WHAT CHANGED INTELLIGENCE */}
+      {whatChanged && (
+        <div className="bg-stone-50/70 p-4 rounded-2xl border border-stone-200/80 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#0b5a4b]" />
+              <span className="text-xs font-bold text-stone-900 uppercase font-mono tracking-wider">
+                {isThai ? 'การเปลี่ยนแปลงที่ตรวจพบ (What Changed Intelligence)' : 'What Changed Intelligence'}
+              </span>
+            </div>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              whatChanged.hasMaterialChanges
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}>
+              {whatChanged.hasMaterialChanges
+                ? (isThai ? `พบ ${whatChanged.materialChangesCount} การเปลี่ยนแปลงสำคัญ` : `${whatChanged.materialChangesCount} Material Changes`)
+                : (isThai ? 'ไม่มีการเปลี่ยนแปลงสำคัญ' : 'No Material Changes')}
+            </span>
+          </div>
+
+          <p className="text-xs text-stone-600 leading-relaxed font-sans">
+            {isThai ? whatChanged.summaryNarrativeTh : whatChanged.summaryNarrative}
+          </p>
+
+          {/* Material Changes List */}
+          {whatChanged.hasMaterialChanges && whatChanged.items.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              {whatChanged.items.map(ch => (
+                <div key={ch.id} className="p-2.5 bg-white rounded-xl border border-stone-200/80 text-xs flex flex-col">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-stone-900">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
+                    <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                      ch.materiality === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                      ch.materiality === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                      'bg-stone-100 text-stone-600'
+                    }`}>
+                      {ch.materiality}
+                    </span>
+                  </div>
+                  <div className="font-mono text-stone-700 text-[11px] mb-1">
+                    {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
+                    <span className="ml-1.5 font-bold text-stone-900">
+                      ({ch.deltaDisplay})
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-stone-500">{isThai ? ch.explanationTh : ch.explanation}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Valuation Change Attribution */}
+          {whatChanged.valuationAttribution && (
+            <div className="p-3 bg-white rounded-xl border border-stone-200 flex flex-col gap-1.5 mt-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-stone-900 font-mono">
+                  {isThai ? 'การแจกแจงสาเหตุมูลค่า DCF ที่เปลี่ยนไป (Valuation Attribution)' : 'Valuation Change Attribution'}
+                </span>
+                <span className="font-mono font-bold text-[#0b5a4b] text-[11px]">
+                  {whatChanged.valuationAttribution.primaryDriver}
+                </span>
+              </div>
+              <p className="text-xs text-stone-700 leading-relaxed font-sans">
+                {isThai ? whatChanged.valuationAttribution.impactDescriptionTh : whatChanged.valuationAttribution.impactDescription}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Primary What Changed Empirical Delta Box */}
       {delta && (
         <div className="bg-stone-50/90 rounded-2xl p-4 border border-stone-200/90 flex flex-col gap-3">
           <div className="flex items-center justify-between text-xs text-stone-500 font-mono">

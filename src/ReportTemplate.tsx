@@ -32,6 +32,7 @@ import { ScoreMethodologyModal } from './components/ScoreMethodologyModal';
 import { CompanyLogo } from './components/CompanyLogo';
 import { ProvenanceBadge } from './components/ProvenanceBadge';
 import { ResearchTimelineCard } from './components/ResearchTimelineCard';
+import { ThesisExpectationsCard } from './components/ThesisExpectationsCard';
 import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
@@ -53,6 +54,7 @@ interface Props {
   historyReports?: any[];
   model?: string;
   actualModel?: string;
+  currentUser?: any;
 }
 
 const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number | string, isThai: boolean, onOpenMethodology?: () => void }) => {
@@ -300,6 +302,7 @@ export default function ReportTemplate({
   historyReports = [],
   model = 'gemini-3.8-flash',
   actualModel,
+  currentUser,
 }: Props) {
   const isThai = language === 'Thai';
   const [liveOverrides, setLiveOverrides] = useState<Record<string, any>>({});
@@ -810,12 +813,21 @@ export default function ReportTemplate({
           </AnalysisCard>
         </div>
 
+        {/* INVESTMENT THESIS & TRACKED EXPECTATIONS */}
+        <ThesisExpectationsCard
+          ticker={ticker}
+          currentReport={data}
+          isThai={isThai}
+          currentUser={currentUser}
+        />
+
         {/* RESEARCH TIMELINE & EMPIRICAL DELTAS (WHAT CHANGED) */}
         <ResearchTimelineCard
           ticker={ticker}
           currentReport={data}
           historyReports={historyReports}
           isThai={isThai}
+          currentUser={currentUser}
         />
 
         {/* SECTION 2: FINANCIAL STATEMENT TABLES (INCOME, BALANCE, CASH FLOW) */}
