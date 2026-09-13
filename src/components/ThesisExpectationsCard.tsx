@@ -4,7 +4,7 @@ import {
   Sparkles, Check, ChevronDown, ChevronUp, ShieldCheck
 } from 'lucide-react';
 import { ReportData } from '../types';
-import { extractMemorySnapshot } from '../domain/investmentMemory';
+import { extractMemorySnapshot, ResearchMemorySnapshot } from '../domain/investmentMemory';
 import {
   InvestmentThesisRecord,
   TrackedExpectation,
@@ -17,7 +17,8 @@ import {
   loadUserThesis,
   saveUserThesis,
   loadExpectations,
-  saveExpectations
+  saveExpectations,
+  evaluateAndPersistExpectations
 } from '../services/thesisExpectationsService';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
@@ -28,6 +29,7 @@ interface Props {
   currentUser?: any;
   externalThesis?: InvestmentThesisRecord | null;
   externalExpectations?: TrackedExpectation[];
+  historicalSnapshots?: ResearchMemorySnapshot[];
   onThesisChange?: (thesis: InvestmentThesisRecord) => void;
   onExpectationsChange?: (expectations: TrackedExpectation[]) => void;
 }
@@ -39,6 +41,7 @@ export function ThesisExpectationsCard({
   currentUser,
   externalThesis,
   externalExpectations,
+  historicalSnapshots = [],
   onThesisChange,
   onExpectationsChange
 }: Props) {
@@ -93,10 +96,19 @@ export function ThesisExpectationsCard({
         }
       }
 
-      // Re-evaluate expectations against current snapshot
+      // Re-evaluate expectations against current snapshot & persist terminal outcomes
       if (snapshot && storedExps.length > 0) {
-        const evaluated = evaluateExpectations(storedExps, snapshot);
+        const { expectations: evaluated, hasPersistedChanges } = await evaluateAndPersistExpectations(
+          ticker,
+          storedExps,
+          snapshot,
+          historicalSnapshots,
+          currentUser
+        );
         setInternalExpectations(evaluated);
+        if (hasPersistedChanges) {
+          onExpectationsChange?.(evaluated);
+        }
       } else {
         setInternalExpectations(storedExps);
       }
@@ -106,7 +118,7 @@ export function ThesisExpectationsCard({
     return () => {
       isMounted = false;
     };
-  }, [ticker, currentUser, currentReport, snapshot, externalThesis, externalExpectations]);
+  }, [ticker, currentUser, currentReport, snapshot, externalThesis, externalExpectations, historicalSnapshots]);
 
   // Confirm thesis handler
   const handleConfirmThesis = async () => {
@@ -175,7 +187,16 @@ export function ThesisExpectationsCard({
 
     let updatedList = [...expectations, newExp];
     if (snapshot) {
-      updatedList = evaluateExpectations(updatedList, snapshot);
+      const { expectations: evaluated } = await evaluateAndPersistExpectations(
+        ticker,
+        updatedList,
+        snapshot,
+        historicalSnapshots,
+        currentUser
+      );
+      updatedList = evaluated;
+    } else {
+      await saveExpectations(ticker, updatedList, currentUser);
     }
 
     setInternalExpectations(updatedList);
@@ -183,7 +204,6 @@ export function ThesisExpectationsCard({
     setNewPeriod('');
     setIsAddingExp(false);
     onExpectationsChange?.(updatedList);
-    await saveExpectations(ticker, updatedList, currentUser);
   };
 
   if (!thesis) return null;

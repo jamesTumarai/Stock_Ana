@@ -115,8 +115,9 @@ export function buildDecisionContext(
   previousThesis?: InvestmentThesisRecord | null
 ): DecisionContextResult {
   const ticker = currentSnapshot.ticker;
+  const historicalSnapshots = previousSnapshot ? [previousSnapshot] : [];
   const evaluatedExpectations = currentSnapshot
-    ? evaluateExpectations(expectations, currentSnapshot)
+    ? evaluateExpectations(expectations, currentSnapshot, historicalSnapshots)
     : expectations;
 
   // If no prior research exists:

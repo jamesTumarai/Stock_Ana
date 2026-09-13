@@ -33,14 +33,14 @@ import { CompanyLogo } from './components/CompanyLogo';
 import { ProvenanceBadge } from './components/ProvenanceBadge';
 import { ResearchTimelineCard } from './components/ResearchTimelineCard';
 import { ThesisExpectationsCard } from './components/ThesisExpectationsCard';
-import { extractMemorySnapshot } from './domain/investmentMemory';
+import { extractMemorySnapshot, ResearchMemorySnapshot } from './domain/investmentMemory';
 import {
   InvestmentThesisRecord,
   TrackedExpectation,
   extractDraftThesisFromReport,
   evaluateExpectations
 } from './domain/thesisExpectations';
-import { loadUserThesis, loadExpectations } from './services/thesisExpectationsService';
+import { loadUserThesis, loadExpectations, evaluateAndPersistExpectations } from './services/thesisExpectationsService';
 import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
@@ -360,6 +360,13 @@ export default function ReportTemplate({
     return extractMemorySnapshot(data);
   }, [data]);
 
+  const historicalSnapshots = React.useMemo(() => {
+    if (!Array.isArray(historyReports)) return [];
+    return historyReports
+      .map(r => extractMemorySnapshot(r))
+      .filter((s): s is ResearchMemorySnapshot => s !== null);
+  }, [historyReports]);
+
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
@@ -374,18 +381,30 @@ export default function ReportTemplate({
         const draft = extractDraftThesisFromReport(data, currentUser?.uid);
         setActiveThesis(draft);
       }
-      setRawExpectations(storedExps);
+
+      if (currentSnapshot && storedExps.length > 0) {
+        const { expectations: evaluatedExps } = await evaluateAndPersistExpectations(
+          ticker,
+          storedExps,
+          currentSnapshot,
+          historicalSnapshots,
+          currentUser
+        );
+        setRawExpectations(evaluatedExps);
+      } else {
+        setRawExpectations(storedExps);
+      }
     }
     loadData();
     return () => {
       isMounted = false;
     };
-  }, [ticker, currentUser, data]);
+  }, [ticker, currentUser, data, currentSnapshot, historicalSnapshots]);
 
   const evaluatedExpectations = React.useMemo(() => {
     if (!currentSnapshot || rawExpectations.length === 0) return rawExpectations;
-    return evaluateExpectations(rawExpectations, currentSnapshot);
-  }, [rawExpectations, currentSnapshot]);
+    return evaluateExpectations(rawExpectations, currentSnapshot, historicalSnapshots);
+  }, [rawExpectations, currentSnapshot, historicalSnapshots]);
 
   useEffect(() => {
     let cancelled = false;
@@ -863,6 +882,7 @@ export default function ReportTemplate({
           currentUser={currentUser}
           externalThesis={activeThesis}
           externalExpectations={evaluatedExpectations}
+          historicalSnapshots={historicalSnapshots}
           onThesisChange={(updated) => setActiveThesis(updated)}
           onExpectationsChange={(updated) => setRawExpectations(updated)}
         />
