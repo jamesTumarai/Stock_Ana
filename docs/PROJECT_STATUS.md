@@ -12,12 +12,14 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Workstreams V2-A through V2-G Complete & Verified; PRs #104–#110)**.
+- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Workstreams V2-A through V2-G Repaired, Hardened & Verified; PRs #104–#114)**.
 - Current working mode: **Lumina V1 Product Loop Complete; Personal Equity Research & Decision OS End-to-End Operational**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #109 (Report & Portfolio UI Integration for Thesis, Expectations, What Changed, Decision Context, and Watchlist Intelligence).
-- Regression Suite: 80 test files (77 src + 3 server), 200 passing cases, 0 failed, 0 skipped.
+- Historical Accepted Integrity Baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Phase 4.5 Owner Accepted).
+- Current Production SHA: `aee697d976d102f5979ed279a2234397a35164fa` (PR #113; Vercel Deployment ID `6419151510`).
+- Latest merged milestone: PR #113 (Unify Expectation Evaluation & Complete Decision/Watchlist Integration).
+- Regression Suite: 81 test files (78 src + 3 server), 229 passing cases, 0 failed, 0 skipped.
 
 ## Canonical Phase Acceptance Matrix
 
@@ -36,13 +38,17 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #64, PR #75, PR #85 |
 | **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
 | **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #66, PR #69, PR #70, PR #73, PR #83, PR #104–#109 |
-| **V2-A** | Investment Memory Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #104 |
-| **V2-B** | Structured Thesis & Expectations Engine | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #105 |
-| **V2-C** | What Changed Intelligence Engine | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #106 |
-| **V2-D** | Actionable Decision Context Engine | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #107 |
-| **V2-E** | Thesis-Aware Watchlist Intelligence | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #108 |
-| **V2-F** | Report Integration & Evidence UX | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #109 |
-| **V2-G** | Final Verification & Acceptance Dossier | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #110 |
+| **V2-A** | Investment Memory Foundation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #104, #111 |
+| **V2-B** | Structured Thesis & Expectations Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #105, #111, #112, #113 |
+| **V2-C** | What Changed Intelligence Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #106, #113 |
+| **V2-D** | Actionable Decision Context Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #107, #113 |
+| **V2-E** | Thesis-Aware Watchlist Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #108, #113 |
+| **V2-F** | Report Integration & Evidence UX | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #109, #113 |
+| **V2-G** | Final Verification & Acceptance Dossier | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #110, #114 |
+| **Repair A** | Memory SEC Authority & UID Cache Isolation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #111 |
+| **Repair B** | Thesis Revisions & Explicit Hardened Rules | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #112 |
+| **Repair C** | Canonical Expectation Eval & Watchlist Integration | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #113 |
+| **Repair D** | Final Technical Completion Evidence Reconciliation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #114 |
 
 ## Repository protection
 
@@ -539,36 +545,89 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 #### PR #101 — SEC Diff Unverified Report Canonical Financials Guard (`fix/sec-diff-unverified-canonical-guard`) ✅
 - SEC Filing Diff now prefers verified `report.sec_verification.sec_period_statements` when trusted SEC period statements exist.
 - `CanonicalFinancialDataset` inputs are accepted for SEC-specific comparison only when `provenanceStatus === 'verified'` and `generatedBy` proves SEC-XBRL authority (`/sec-xbrl/i`). Raw canonical datasets follow the same fail-closed rule.
-- Unverified or source-linked report-derived canonical data is rejected. Legacy reports without trusted local SEC periods return no local SEC diff and may use the canonical server `/api/sec-diff` endpoint when available; AI/report `financial_statements` are never an SEC fallback.
-- Added 5 regression tests in `src/utils/__tests__/secFilingDiffEngine.test.ts`. Current authoritative result: 74 test files executed (71 under `src/`, 3 under `server/`), 176 test cases passed, 0 failed, 0 skipped.
-- Merge SHA: `d2315f069379dfe946dee0952231005cc6ba9746`.
+- Merge SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Anchor Historical Baseline).
 
-#### Final Integrity Test Gate Metrics
-- **Test files executed**: 74
-- **src/ test files executed**: 71
+### Lumina V1 Completion & Repair Milestones (Workstreams V2-A through V2-G & Repairs A–D)
+
+#### PR #104 — Investment Memory Foundation (V2-A) ✅
+- Implemented `ResearchMemorySnapshot` schema in `src/domain/investmentMemory.ts` with typed financials, valuation, thesis, conviction, and evidence envelope.
+- Merge SHA: `a7d4db3b28b5840d2f00d603a11bf7ec709db13f`.
+
+#### PR #105 — Structured Investment Thesis & Expectations Engine (V2-B) ✅
+- Implemented `InvestmentThesisRecord` and `TrackedExpectation` domain models with deterministic evaluation in `src/domain/thesisExpectations.ts` and Firestore/localStorage service in `src/services/thesisExpectationsService.ts`.
+- Merge SHA: `be735ec04e57e937d3fa8beec8f5df84b422a578`.
+
+#### PR #106 — What Changed Intelligence Engine (V2-C) ✅
+- Implemented empirical delta calculation across financial facts, valuation assumptions, SEC filings, expectations, and risk/catalyst lifecycle in `src/domain/whatChangedEngine.ts`.
+- Merge SHA: `4e918c5e6fe7d8ea019a86b5b29074a38f3a388b`.
+
+#### PR #107 — Actionable Decision Context Engine (V2-D) ✅
+- Implemented deterministic stance classification (`THESIS_CONDITION_TRIGGERED`, `EXPECTATIONS_REVIEW_NEEDED`, `RE_EVALUATION_WARRANTED`, `MONITORING_CONTINUES_UNCHANGED`) without automated Buy/Sell commands in `src/domain/decisionContextEngine.ts`.
+- Merge SHA: `89f2cf05d5494d4d6824dd78be26c1e5ba41f92e`.
+
+#### PR #108 — Thesis-Aware Watchlist Intelligence Engine (V2-E) ✅
+- Implemented deterministic watchlist attention scoring (0–100) and ranking in `src/domain/watchlistIntelligence.ts`.
+- Merge SHA: `a3be67482a1648f2f1fa2c4d8ced9fd36dd8e1cb`.
+
+#### PR #109 — Report & Portfolio UI Integration (V2-F) ✅
+- Integrated `ThesisExpectationsCard` and `ResearchTimelineCard` into `ReportTemplate.tsx`, and connected `PortfolioModal.tsx` to watchlist intelligence.
+- Merge SHA: `6e9e7cf5cafa6b8316a88f0c1487897957182340`.
+
+#### PR #110 — Preliminary Completion Documentation (V2-G) ✅
+- Master status reconciliation documenting V1 feature completion.
+- Merge SHA: `304ebbd44719f83173f67824ea93deb4b8d790e9`.
+
+#### PR #111 — Repair A: Memory SEC Authority & Cache Isolation (`fix/v2-memory-authority-and-cache-isolation`) ✅
+- **Blocker A**: Restored strict SEC authority inside `src/domain/investmentMemory.ts` — raw report financials never receive `sec_verified` label merely because an SEC envelope exists.
+- **Blocker B**: Missing short-term investments produces `netCash = null` (Missing != 0). Explicit verified 0 permitted.
+- **Blocker C**: Prohibited current wall-clock time fabrication for reports without durable timestamps (`rep_<ticker>_unknown`, timestamp `0`).
+- **Blocker D**: Scoped local cache strictly by authenticated UID (`lumina_<feature>:user:<UID>:<TICKER>`), preventing foreign-user cache leakage.
+- Merge SHA: `824686dc95c31e16ad9ea8b142eb0ac7a9812c78`.
+
+#### PR #112 — Repair B: Thesis Revisions & Hardened Rules (`fix/v2-thesis-revisions-and-firestore-rules`) ✅
+- **Blocker E**: Preserved append-only thesis revisions under `/theses/{ticker}/revisions/{revisionId}`. Added `resolveActiveThesisForReport` to resolve truthful active thesis per historical report without losing revisions or retroactively fabricating beliefs.
+- **Blocker J**: Hardened `firestore.rules` with explicit allowed paths (`/theses/{ticker}`, `/theses/{ticker}/revisions/{revisionId}` immutable, `/expectations/{expectationId}` with UID spoofing protection). Preserved report immutability.
+- Merge SHA: `197664876cee701caaa57b153a06e15497744210`.
+
+#### PR #113 — Repair C: Canonical Expectation Eval & Watchlist Integration (`fix/v2-expectations-and-watchlist-integration`) ✅
+- **Blocker F**: Unified runtime expectation evaluation through `evaluateExpectations`, guaranteeing consistent outcome across all cards and engines without rewriting immutable historical intent.
+- **Blocker G**: Complete real research context wiring into `PortfolioModal.tsx` (snapshots, previous snapshots, active thesis, evaluated expectations, what-changed, portfolio holding) into `computeWatchlistIntelligence` with bounded session caching. Truthfully handles first-time tickers without fabricating factors.
+- **Blocker H**: Synchronized thesis and expectation edits in parent-managed state in `ReportTemplate.tsx` so `ResearchTimelineCard` and `DecisionContext` update immediately without page reload.
+- **Blocker I**: Conservative risk/catalyst lifecycle transitions in `matchRiskCatalystTransitions` — semantic rephrasing produces uncertain evolving transitions (`isCertain: false`, `currentState: 'UNKNOWN'`) rather than false certain RESOLVED / NEW.
+- Merge SHA: `aee697d976d102f5979ed279a2234397a35164fa`.
+
+#### PR #114 — Repair D: Final Technical Completion Evidence Reconciliation (`docs/v1-technically-complete`) ⏳
+- Reconciled master status, roadmap, test gate metrics, and final deployment evidence across repository documentation.
+
+#### Final Technical Completion Test Gate Metrics
+- **Test files executed**: 81
+- **src/ test files executed**: 78
 - **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
-- **Test cases passed**: 176
+- **Test cases passed**: 229
 - **Test cases failed**: 0
 - **Test cases skipped**: 0
-- **TypeScript (`tsc --noEmit`)**: PASS
+- **TypeScript (`tsc --noEmit`)**: PASS (100% clean)
 - **Production build (`npm run build`)**: PASS
 - **git diff --check**: PASS
-- **Vulnerabilities**: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged in `docs/SECURITY_AUDIT_TRIAGE.md`)
+- **Vulnerabilities**: 0 critical, 0 high, 10 moderate (triaged in `docs/SECURITY_AUDIT_TRIAGE.md`)
+- **Firebase rules preflight**: PASS for project `stock-analyze-a89d0` / database `(default)`
 
 ## Current production health
 
 Production baseline is verified and healthy on:
 
-- Baseline `main`: `d2315f069379dfe946dee0952231005cc6ba9746`
-- Production Git SHA: `d2315f069379dfe946dee0952231005cc6ba9746`
-- Vercel production deployment: exact `main` SHA (`d2315f069379dfe946dee0952231005cc6ba9746`), status `READY` (`https://stock-ana-ten.vercel.app`)
-- Push-to-main `Verify Lumina` passed all steps (74 test files, 176 passed, 0 failed, 0 skipped).
-- Authoritative production smokes pass:
+- **Historical Accepted Baseline SHA**: `d2315f069379dfe946dee0952231005cc6ba9746` (Owner Accepted baseline)
+- **Current Production Git SHA**: `aee697d976d102f5979ed279a2234397a35164fa` (PR #113; Vercel Deployment ID `6419151510`)
+- **Production URL**: `https://stock-ana-ten.vercel.app` (Status: `READY`)
+- **Push-to-main `Verify Lumina`**: Passed all steps (81 test files, 229 passed, 0 failed, 0 skipped).
+- **Authoritative production smokes**:
   - `GET /api/health` -> 200 minimal public payload
   - `GET /api/health?detailed=true` (unauthenticated) -> 200 minimal payload, no telemetry leak
   - `GET /api/health/detailed` (unauthenticated) -> 401 Unauthorized contract
   - `GET /api/live-quotes?symbols=MSFT` -> 200 OK with live quote payload
   - `GET /api/sec-diff?ticker=MSFT` -> 200 OK with verified canonical SEC facts
+  - `MSFT` operating equity flow verified with SEC authority in memory, thesis tracking, and watchlist intelligence.
+  - `SOFI` fintech/banking sector guard verified fail-closed (FCFF null, no generic DCF leakage).
 
 Known runtime observations:
 
