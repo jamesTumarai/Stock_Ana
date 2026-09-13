@@ -317,7 +317,7 @@ describe('investmentMemory', () => {
 
       const snap = extractMemorySnapshot(report);
       assert.ok(snap);
-      assert.equal(snap?.financials.provenance, 'calculated');
+      assert.equal(snap?.financials.provenance, 'unverified');
       assert.notEqual(snap?.financials.provenance, 'sec_verified');
     });
 
@@ -342,7 +342,7 @@ describe('investmentMemory', () => {
 
       const snap = extractMemorySnapshot(report);
       assert.ok(snap);
-      assert.equal(snap?.financials.provenance, 'calculated');
+      assert.equal(snap?.financials.provenance, 'unverified');
       assert.notEqual(snap?.financials.provenance, 'sec_verified');
     });
 
@@ -384,7 +384,7 @@ describe('investmentMemory', () => {
 
       const snap = extractMemorySnapshot(report);
       assert.ok(snap);
-      assert.equal(snap?.financials.provenance, 'calculated');
+      assert.equal(snap?.financials.provenance, 'unverified');
       assert.notEqual(snap?.financials.provenance, 'sec_verified');
     });
 
@@ -502,6 +502,308 @@ describe('investmentMemory', () => {
       // getPreviousMemorySnapshot for reportWithoutTime should be null because its time is unknown
       const prev = getPreviousMemorySnapshot('AAPL', [reportWithoutTime, validReport], reportWithoutTime);
       assert.equal(prev, null);
+    });
+  });
+
+  describe('Blocker 1 — SEC Memory YoY Must Actually Be YoY (Comparable Period Resolver)', () => {
+    it('returns null revenueYoYPct when only Q4 2026 + Q3 2026 are present (QoQ != YoY)', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q3 2026', revenue: 50000 },
+            { period: 'Q4 2026', revenue: 55000 }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 55000);
+      // Q4 vs Q3 is QoQ, NOT YoY. Must be null!
+      assert.equal(snap?.financials.revenueYoYPct, null);
+    });
+
+    it('calculates correct YoY when Q4 2026 + Q4 2025 are present', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q4 2025', revenue: 50000 },
+            { period: 'Q4 2026', revenue: 60000 }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 60000);
+      // (60000 - 50000) / 50000 = +20.00%
+      assert.equal(snap?.financials.revenueYoYPct, 20.0);
+    });
+
+    it('calculates correct YoY when FY2026 + FY2025 are present', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'FY2025', revenue: 200000 },
+            { period: 'FY2026', revenue: 230000 }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 230000);
+      // (230000 - 200000) / 200000 = +15.00%
+      assert.equal(snap?.financials.revenueYoYPct, 15.0);
+    });
+
+    it('returns null revenueYoYPct when non-consecutive years are present (FY2026 + FY2024)', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'FY2024', revenue: 180000 },
+            { period: 'FY2026', revenue: 230000 }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 230000);
+      assert.equal(snap?.financials.revenueYoYPct, null);
+    });
+
+    it('returns null revenueYoYPct when mixed quarterly and annual periods are present without comparable match', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'FY2025', revenue: 200000 },
+            { period: 'Q4 2026', revenue: 60000 }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 60000);
+      // FY vs Quarter is not comparable!
+      assert.equal(snap?.financials.revenueYoYPct, null);
+    });
+
+    it('returns same correct YoY when input order is shuffled', () => {
+      const reportShuffled: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q4 2026', revenue: 60000 },
+            { period: 'Q3 2026', revenue: 54000 },
+            { period: 'Q4 2025', revenue: 50000 }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(reportShuffled);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 60000);
+      // Matches Q4 2026 with Q4 2025 (ignoring Q3 2026) -> +20.0%
+      assert.equal(snap?.financials.revenueYoYPct, 20.0);
+    });
+  });
+
+  describe('Blocker 2 — Preserve Share-Count Semantics', () => {
+    it('preserves currentSharesOutstandingM and dilutedWeightedAverageSharesM independently', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            {
+              period: 'Q4 2026',
+              revenue: 60000,
+              diluted_shares: 7520 // Diluted shares from income statement period
+            }
+          ],
+          dcf_financial_inputs: {
+            version: 1,
+            generated_by: 'sec-verified-financial-inputs-v1',
+            current_shares_outstanding_m: 7450 // Current shares outstanding from balance sheet / snapshot
+          }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.dilutedWeightedAverageSharesM, 7520);
+      assert.equal(snap?.financials.currentSharesOutstandingM, 7450);
+      // sharesOutstanding explicitly maps to current shares
+      assert.equal(snap?.financials.sharesOutstanding, 7450);
+      assert.notEqual(snap?.financials.currentSharesOutstandingM, snap?.financials.dilutedWeightedAverageSharesM);
+    });
+
+    it('never silently substitutes diluted shares for current shares when DCF shares are missing', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            {
+              period: 'Q4 2026',
+              revenue: 60000,
+              diluted_shares: 7520
+            }
+          ]
+          // No dcf_financial_inputs / current shares
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.dilutedWeightedAverageSharesM, 7520);
+      assert.equal(snap?.financials.currentSharesOutstandingM, null);
+      assert.equal(snap?.financials.sharesOutstanding, null);
+    });
+  });
+
+  describe('Blocker 3 — Report Financials Provenance Must Be Truthful', () => {
+    it('labels raw report financials as unverified, never calculated or sec_verified', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['Q4 2026'],
+          income_statement: {
+            revenue: [65000]
+          }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 65000);
+      assert.equal(snap?.financials.provenance, 'unverified');
+      assert.notEqual(snap?.financials.provenance, 'sec_verified');
+      assert.notEqual(snap?.financials.provenance, 'calculated');
+    });
+  });
+
+  describe('Blocker 4 — Do Not Mix FCF Period Bases', () => {
+    it('sets correct FCF period basis on snapshots', () => {
+      const secQuarterReport: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            {
+              period: 'Q4 2026',
+              revenue: 60000,
+              operating_cash_flow: 25000,
+              capital_expenditure: 5000
+            }
+          ]
+        }
+      };
+
+      const secLtmReport: any = {
+        ticker: 'MSFT',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q4 2026', revenue: 60000 }
+          ],
+          dcf_financial_inputs: {
+            version: 1,
+            generated_by: 'sec-verified-financial-inputs-v1',
+            trailing_four_free_cash_flow_m: 75000
+          }
+        }
+      };
+
+      const snapQuarter = extractMemorySnapshot(secQuarterReport);
+      const snapLtm = extractMemorySnapshot(secLtmReport);
+
+      assert.equal(snapQuarter?.financials.freeCashFlow, 20000);
+      assert.equal(snapQuarter?.financials.freeCashFlowPeriodBasis, 'QUARTER');
+
+      assert.equal(snapLtm?.financials.freeCashFlow, 75000);
+      assert.equal(snapLtm?.financials.freeCashFlowPeriodBasis, 'LTM');
+    });
+
+    it('rejects comparing quarterly FCF against LTM FCF in compareMemorySnapshots', () => {
+      const snapQuarter = extractMemorySnapshot({
+        ticker: 'MSFT',
+        id: 'rep_q',
+        as_of_date: '2026-06-30',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q2 2026', revenue: 50000, operating_cash_flow: 20000, capital_expenditure: 4000 }
+          ]
+        }
+      });
+
+      const snapLtm = extractMemorySnapshot({
+        ticker: 'MSFT',
+        id: 'rep_ltm',
+        as_of_date: '2026-09-30',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q3 2026', revenue: 55000 }
+          ],
+          dcf_financial_inputs: {
+            version: 1,
+            generated_by: 'sec-verified-financial-inputs-v1',
+            trailing_four_free_cash_flow_m: 75000
+          }
+        }
+      });
+
+      assert.ok(snapQuarter && snapLtm);
+      const delta = compareMemorySnapshots(snapLtm, snapQuarter);
+      // Quarterly (16000) vs LTM (75000) have different period bases -> delta unavailable!
+      assert.equal(delta.freeCashFlowDelta, null);
+    });
+
+    it('allows comparing FCF when period bases are identical', () => {
+      const snapQ1 = extractMemorySnapshot({
+        ticker: 'MSFT',
+        id: 'rep_q1',
+        as_of_date: '2026-03-31',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q1 2026', revenue: 50000, operating_cash_flow: 20000, capital_expenditure: 5000 }
+          ]
+        }
+      });
+
+      const snapQ2 = extractMemorySnapshot({
+        ticker: 'MSFT',
+        id: 'rep_q2',
+        as_of_date: '2026-06-30',
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            { period: 'Q2 2026', revenue: 55000, operating_cash_flow: 25000, capital_expenditure: 7000 }
+          ]
+        }
+      });
+
+      assert.ok(snapQ1 && snapQ2);
+      const delta = compareMemorySnapshots(snapQ2, snapQ1);
+      // Q1: 15000, Q2: 18000 -> (18000 - 15000) / 15000 = +20.00%
+      assert.ok(delta.freeCashFlowDelta);
+      assert.equal(delta.freeCashFlowDelta?.deltaPct, 20.0);
     });
   });
 });
