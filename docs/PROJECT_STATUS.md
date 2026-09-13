@@ -1,6 +1,6 @@
 # Lumina / Stock_Ana — Master Project Status
 
-Last updated: 2026-09-12 (Asia/Bangkok)
+Last updated: 2026-09-13 (Asia/Bangkok)
 
 This file is the durable engineering handoff for new ChatGPT/Codex sessions. Prefer live GitHub, CI, Vercel, Firebase, and issue evidence over old chat history whenever they disagree.
 
@@ -12,11 +12,12 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Final Integrity Cleanup Complete (PRs #96–#99 Merged; Phase 4.5 Pending Owner Acceptance ⏳)**.
-- Current working mode: **Final Integrity Cleanup (Verified SEC fact diff, Cash conversion semantics, Health contract parity, Actual model AI cost, Quick ratio STI verification, Terminal growth transparency, Canonical sandbox unification, History soft-delete UX & Master documentation reconciliation)**.
+- Current stage: **Post-Roadmap Integrity Baseline Owner Accepted ✅**.
+- Current working mode: **Integrity hardening cycle closed; awaiting separately authorized COIN KING Master Context Bootstrap**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #99 (Live Quotes Serverless Bundle Routing).
+- Latest accepted milestone: PR #101 (`fix(sec): prevent unverified report canonical financials from entering sec diff`).
+- Accepted application baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746`.
 - Phase 4 operational acceptance issue: **#47 — closed as completed**.
 
 ## Canonical Phase Acceptance Matrix
@@ -27,7 +28,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
-| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented / Hardening Complete (Pending Owner Acceptance ⏳)` | PR #67–#76, #78–#85, #87–#99 |
+| **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ✅ | `Owner Accepted — Integrity Baseline` | PR #67–#76, #78–#85, #87–#101 |
 | **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #56–#58, PR #70 |
 | **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #59, #60 |
 | **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #61, PR #71 |
@@ -36,6 +37,16 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #64, PR #75, PR #85 |
 | **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
 | **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #66, PR #69, PR #70, PR #73, PR #83 |
+
+## Owner acceptance record
+
+- **Date:** 2026-09-13 (Asia/Bangkok)
+- **Decision:** The owner accepts the Lumina Post-Roadmap Integrity Baseline.
+- **Accepted baseline:** `d2315f069379dfe946dee0952231005cc6ba9746` through PR #101.
+- **Scope:** Security, financial integrity, SEC provenance, deterministic valuation authority, Firebase safety, CI authority, and the verified production baseline.
+- **Meaning:** The post-roadmap integrity-hardening cycle is closed and this baseline is the trusted foundation for the next product-planning stage.
+- **Non-meaning:** This does not declare Lumina finished, the full product vision complete, or future capabilities approved or implemented.
+- **Next authorized strategic step after this documentation finalization:** COIN KING Master Context Bootstrap. It is not part of this PR.
 
 ## Repository protection
 
@@ -234,7 +245,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Upgraded `ReportTemplate.tsx` with 5-column executive summary metrics grid displaying Docs, Time, Runs, Tokens, and Estimated AI Cost with localized tooltips and USD/THB FX conversion.
 - Mounted structured `/api/health` diagnostics endpoint across Express and Vercel functions returning minimal public telemetry and protected detailed internal diagnostics.
 - Built `LatencyTracker` (`latencyTracker.ts`): Stage-level latency tracking for market snapshots, Gemini stream, and valuation assumption bridge, emitted in SSE `final_stats` events.
-- 74 regression test files across `src/` and `server/` passing with 100% success (171 test cases).
+- Historical Phase 10 validation recorded 74 regression test files across `src/` and `server/` with 171 passing test cases. See the Final Integrity Test Gate below for the current authoritative totals.
 
 ### Phase 11 — Productization / Subscription Readiness (Removed per owner directive)
 - **Status**: The entire subscription, tier gating, and quota system has been removed per owner directive (2026-09-12).
@@ -525,22 +536,29 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Wrapped `createApp` in try/catch to return structured error JSON rather than crashing the lambda invocation.
 - Merge SHA: `fa931a46657bd31eeff6eabeca1fa5d3f9d98305`.
 
+#### PR #101 — Final SEC Authority Guard (`fix/sec-diff-unverified-canonical-guard`) ✅
+- Changed the local SEC Filing Diff path to prefer verified `report.sec_verification.sec_period_statements`.
+- Allows a canonical financial dataset into the SEC-specific path only when it proves `provenanceStatus === 'verified'` and SEC-XBRL generation authority.
+- Unverified or source-linked report-derived canonical datasets fail closed and never become “Verified SEC Filing Comparison.”
+- Legacy reports without trusted stored SEC periods use the canonical server `/api/sec-diff` endpoint; unavailable server facts leave the comparison unavailable.
+- Accepted baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746`.
+
 #### Final Integrity Test Gate Metrics
 - **Test files executed**: 74
 - **src/ test files executed**: 71
 - **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
-- **Test cases passed**: 171
+- **Test cases passed**: 176
 - **Test cases failed**: 0
 - **Test cases skipped**: 0
 - **Vulnerabilities**: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged)
 
 ## Current production health
 
-Production baseline is verified and healthy on:
+The owner accepted the production integrity baseline on 2026-09-13. It is verified and healthy on:
 
-- Baseline `main`: `55f1733f02b6f6d88baf52dfc79cd37cb35b9753`
+- Accepted application baseline: `d2315f069379dfe946dee0952231005cc6ba9746`
 - Vercel production deployment: exact `main` SHA, status `READY` (`https://stock-ana-ten.vercel.app`)
-- Push-to-main `Verify Lumina` passed all steps (74 test files, 171 passed, 0 failed, 0 skipped).
+- Push-to-main `Verify Lumina` passed all steps (74 test files, 176 passed, 0 failed, 0 skipped).
 - Authoritative production smokes pass:
   - `GET /api/health` -> minimal public payload (200 OK)
   - `GET /api/health?detailed=true` (unauthenticated) -> minimal payload, no telemetry leak (200 OK)
@@ -591,6 +609,6 @@ Do not treat aesthetic or output-quality feedback as a reason to relax financial
 
 Start with this instruction:
 
-> Continue Lumina / Stock_Ana from `docs/PROJECT_STATUS.md`. Query live `main`, GitHub rules/CI, and Vercel before assuming mutable deployment state. Phase 4 is complete; do not redo Phases 1–4 unless a real regression is found. We are in post-Phase-4 stabilization: review production feedback, make focused fixes through protected PRs, preserve financial-integrity and Firebase safety rules, and do not begin Product Feature Expansion until the owner explicitly says the current result is satisfactory.
+> Continue Lumina / Stock_Ana from `docs/PROJECT_STATUS.md`. Query live `main`, GitHub rules/CI, and Vercel before assuming mutable deployment state. The Post-Roadmap Integrity Baseline through PR #101 was Owner Accepted on 2026-09-13. Preserve its financial-integrity, SEC-authority, Firebase-safety, security, and CI invariants. Do not begin Product Feature Expansion, Phase 13, Roadmap V2, or COIN KING Master Context work without a separate explicit owner instruction.
 
 Update this file when the project phase, architecture contract, production acceptance, or major operational state changes. Do not update it merely because a docs-only commit changed the `main` SHA.
