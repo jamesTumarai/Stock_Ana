@@ -1390,3 +1390,13 @@ export interface PeerNormalizedMetric {
   roePct?: number | null;
   debtToEquity?: number | null;
 }
+
+export type {
+  MemorySourceType,
+  ResearchMemoryValuation,
+  ResearchMemoryFinancials,
+  ResearchMemoryThesis,
+  ResearchMemoryEvidence,
+  ResearchMemorySnapshot,
+  MemoryComparisonDelta
+} from './domain/investmentMemory';
