@@ -6,6 +6,7 @@ import {
   extractReportConviction
 } from '../utils/researchTimeline';
 import { detectValuationModel } from '../utils/valuation/modelSelector';
+import { adaptFinancialStatementsToSecPeriodStatements } from '../utils/secFilingDiffEngine';
 
 export type MemorySourceType =
   | 'VERIFIED_FACT'
@@ -131,15 +132,17 @@ export function extractMemorySnapshot(
     || (reportInput as any).id
     || (reportInput as any).report_id
     || (data as any).id
-    || `rep_${Date.now()}`;
+    || (ticker ? `rep_${ticker.toLowerCase()}_unknown` : 'rep_unknown');
 
-  const createdTimestamp = unwrapped?.createdTimestamp
+  const rawTimestamp = unwrapped?.createdTimestamp
     || (data.generated_at ? Date.parse(String(data.generated_at)) : 0)
-    || Date.now();
+    || (data.as_of_date ? Date.parse(String(data.as_of_date)) : 0);
+
+  const createdTimestamp = Number.isFinite(rawTimestamp) && rawTimestamp > 0 ? rawTimestamp : 0;
 
   const asOfDate = unwrapped?.createdAt
     ? (unwrapped.createdAt.includes('T') ? unwrapped.createdAt.split('T')[0] : unwrapped.createdAt)
-    : (data.as_of_date || (data.generated_at ? String(data.generated_at).split('T')[0] : new Date(createdTimestamp).toISOString().split('T')[0]));
+    : (data.as_of_date || (data.generated_at ? String(data.generated_at).split('T')[0] : (createdTimestamp > 0 ? new Date(createdTimestamp).toISOString().split('T')[0] : 'Unknown')));
 
   // Market Price
   const marketPrice = extractReportPrice(data);
@@ -189,68 +192,132 @@ export function extractMemorySnapshot(
     provenance: 'DETERMINISTIC_DERIVATION'
   };
 
-  // Financial Statements
-  const stmts = data.financial_statements;
-  const periods = stmts?.periods || [];
-  const latestIdx = periods.length > 0 ? periods.length - 1 : -1;
-
-  const latestPeriod = latestIdx >= 0 ? periods[latestIdx] : null;
-  const revenue = latestIdx >= 0 && typeof stmts?.income_statement?.revenue?.[latestIdx] === 'number'
-    ? stmts.income_statement.revenue[latestIdx]
-    : null;
-
-  const revenueYoYPct = latestIdx >= 0 && typeof stmts?.income_statement?.yoy_revenue_growth_pct?.[latestIdx] === 'number'
-    ? stmts.income_statement.yoy_revenue_growth_pct[latestIdx]
-    : null;
-
-  const opInc = latestIdx >= 0 && typeof stmts?.income_statement?.operating_income?.[latestIdx] === 'number'
-    ? stmts.income_statement.operating_income[latestIdx]
-    : null;
-
-  const operatingMarginPct = (typeof revenue === 'number' && typeof opInc === 'number' && revenue > 0)
-    ? Number(((opInc / revenue) * 100).toFixed(2))
-    : (latestIdx >= 0 && typeof stmts?.income_statement?.operating_margin_pct?.[latestIdx] === 'number'
-        ? stmts.income_statement.operating_margin_pct[latestIdx]
-        : null);
-
-  const netIncome = latestIdx >= 0 && typeof stmts?.income_statement?.net_income?.[latestIdx] === 'number'
-    ? stmts.income_statement.net_income[latestIdx]
-    : null;
-
-  const freeCashFlow = latestIdx >= 0 && typeof stmts?.cash_flow?.free_cash_flow?.[latestIdx] === 'number'
-    ? stmts.cash_flow.free_cash_flow[latestIdx]
-    : null;
-
-  const bs = stmts?.balance_sheet;
-  const totalDebt = latestIdx >= 0 && typeof bs?.total_debt?.[latestIdx] === 'number'
-    ? bs.total_debt[latestIdx]
-    : null;
-
-  const cash = latestIdx >= 0 && typeof bs?.cash_and_equivalents?.[latestIdx] === 'number'
-    ? bs.cash_and_equivalents[latestIdx]
-    : null;
-
-  const sti = latestIdx >= 0 && typeof bs?.short_term_investments?.[latestIdx] === 'number'
-    ? bs.short_term_investments[latestIdx]
-    : 0;
-
-  const netCash = (typeof cash === 'number' && typeof totalDebt === 'number')
-    ? (cash + sti) - totalDebt
-    : null;
-
-  const sharesOutstanding = typeof data.company_profile?.shares_outstanding === 'number'
-    ? data.company_profile.shares_outstanding
-    : (typeof (data.intrinsic_value as any)?.dcf_model?.shares_outstanding_m === 'number'
-        ? (data.intrinsic_value as any).dcf_model.shares_outstanding_m
-        : null);
-
+  // SEC Authority Order (PR #101 invariant)
+  // 1. If trusted report.sec_verification.sec_period_statements or verified canonical dataset exists: prefer those facts.
+  // 2. Raw report / AI financial_statements may be retained only with truthful non-SEC provenance ('calculated' / 'unavailable').
+  //    They MUST NEVER receive 'sec_verified'.
+  // 3. Missing trusted SEC values remain missing (null). Do not substitute report values under an SEC label.
+  const secStatements = adaptFinancialStatementsToSecPeriodStatements(data);
   const secEnvelope = data.sec_verification;
-  const isSecVerified = Boolean(
-    secEnvelope?.dcf_financial_inputs?.generated_by === 'sec-verified-financial-inputs-v1' ||
-    (secEnvelope as any)?.financialDataSource === 'sec_verified' ||
-    (data.report_provenance as any)?.financialDataSource === 'sec_verified' ||
-    secEnvelope?.status === 'verified_eligible'
-  );
+  const verifiedDcfInputs = (secEnvelope?.dcf_financial_inputs?.generated_by === 'sec-verified-financial-inputs-v1')
+    ? secEnvelope.dcf_financial_inputs
+    : null;
+
+  let latestPeriod: string | null = null;
+  let revenue: number | null = null;
+  let revenueYoYPct: number | null = null;
+  let operatingMarginPct: number | null = null;
+  let netIncome: number | null = null;
+  let freeCashFlow: number | null = null;
+  let totalDebt: number | null = null;
+  let netCash: number | null = null;
+  let sharesOutstanding: number | null = null;
+  let financialsProvenance: ResearchMemoryFinancials['provenance'] = 'unavailable';
+
+  if (secStatements.length > 0) {
+    // Branch 1: SEC-Verified Statements
+    financialsProvenance = 'sec_verified';
+    const latestSec = secStatements[secStatements.length - 1];
+    latestPeriod = latestSec.period || null;
+
+    revenue = typeof latestSec.revenue === 'number' ? latestSec.revenue : null;
+
+    if (secStatements.length >= 2) {
+      const priorSec = secStatements[secStatements.length - 2];
+      if (typeof latestSec.revenue === 'number' && typeof priorSec.revenue === 'number' && priorSec.revenue > 0) {
+        revenueYoYPct = Number((((latestSec.revenue - priorSec.revenue) / priorSec.revenue) * 100).toFixed(2));
+      }
+    }
+
+    const opInc = typeof latestSec.operating_income === 'number' ? latestSec.operating_income : null;
+    if (typeof revenue === 'number' && typeof opInc === 'number' && revenue > 0) {
+      operatingMarginPct = Number(((opInc / revenue) * 100).toFixed(2));
+    }
+
+    netIncome = typeof latestSec.net_income === 'number' ? latestSec.net_income : null;
+
+    // FCF calculation strictly from verified statements or verified DCF envelope
+    const ocf = typeof latestSec.operating_cash_flow === 'number' ? latestSec.operating_cash_flow : null;
+    const capex = typeof latestSec.capital_expenditure === 'number' ? latestSec.capital_expenditure : null;
+    if (typeof ocf === 'number' && typeof capex === 'number') {
+      freeCashFlow = ocf - Math.abs(capex);
+    } else if (typeof verifiedDcfInputs?.trailing_four_free_cash_flow_m === 'number') {
+      freeCashFlow = verifiedDcfInputs.trailing_four_free_cash_flow_m;
+    }
+
+    totalDebt = typeof latestSec.total_debt === 'number'
+      ? latestSec.total_debt
+      : (typeof verifiedDcfInputs?.total_debt_m === 'number' ? verifiedDcfInputs.total_debt_m : null);
+
+    // Net cash strictly with SEC provenance
+    if (typeof verifiedDcfInputs?.net_cash_m === 'number') {
+      netCash = verifiedDcfInputs.net_cash_m;
+    }
+
+    sharesOutstanding = typeof latestSec.diluted_shares === 'number'
+      ? latestSec.diluted_shares
+      : (typeof verifiedDcfInputs?.current_shares_outstanding_m === 'number' ? verifiedDcfInputs.current_shares_outstanding_m : null);
+  } else {
+    // Branch 2: Report Financial Statements (AI / Non-SEC)
+    // NEVER label as sec_verified
+    const stmts = data.financial_statements;
+    const periods = stmts?.periods || [];
+    const latestIdx = periods.length > 0 ? periods.length - 1 : -1;
+
+    financialsProvenance = periods.length > 0 ? 'calculated' : 'unavailable';
+    latestPeriod = latestIdx >= 0 ? periods[latestIdx] : null;
+
+    revenue = latestIdx >= 0 && typeof stmts?.income_statement?.revenue?.[latestIdx] === 'number'
+      ? stmts.income_statement.revenue[latestIdx]
+      : null;
+
+    revenueYoYPct = latestIdx >= 0 && typeof stmts?.income_statement?.yoy_revenue_growth_pct?.[latestIdx] === 'number'
+      ? stmts.income_statement.yoy_revenue_growth_pct[latestIdx]
+      : null;
+
+    const opInc = latestIdx >= 0 && typeof stmts?.income_statement?.operating_income?.[latestIdx] === 'number'
+      ? stmts.income_statement.operating_income[latestIdx]
+      : null;
+
+    operatingMarginPct = (typeof revenue === 'number' && typeof opInc === 'number' && revenue > 0)
+      ? Number(((opInc / revenue) * 100).toFixed(2))
+      : (latestIdx >= 0 && typeof stmts?.income_statement?.operating_margin_pct?.[latestIdx] === 'number'
+          ? stmts.income_statement.operating_margin_pct[latestIdx]
+          : null);
+
+    netIncome = latestIdx >= 0 && typeof stmts?.income_statement?.net_income?.[latestIdx] === 'number'
+      ? stmts.income_statement.net_income[latestIdx]
+      : null;
+
+    freeCashFlow = latestIdx >= 0 && typeof stmts?.cash_flow?.free_cash_flow?.[latestIdx] === 'number'
+      ? stmts.cash_flow.free_cash_flow[latestIdx]
+      : null;
+
+    const bs = stmts?.balance_sheet;
+    totalDebt = latestIdx >= 0 && typeof bs?.total_debt?.[latestIdx] === 'number'
+      ? bs.total_debt[latestIdx]
+      : null;
+
+    const cash = latestIdx >= 0 && typeof bs?.cash_and_equivalents?.[latestIdx] === 'number'
+      ? bs.cash_and_equivalents[latestIdx]
+      : null;
+
+    // Blocker B: short_term_investments missing must NOT fall back to 0
+    const hasExplicitSti = latestIdx >= 0 && typeof bs?.short_term_investments?.[latestIdx] === 'number';
+    const sti = hasExplicitSti ? bs!.short_term_investments![latestIdx] : null;
+
+    if (typeof cash === 'number' && typeof totalDebt === 'number' && hasExplicitSti && typeof sti === 'number') {
+      netCash = (cash + sti) - totalDebt;
+    } else {
+      netCash = null;
+    }
+
+    sharesOutstanding = typeof data.company_profile?.shares_outstanding === 'number'
+      ? data.company_profile.shares_outstanding
+      : (typeof (data.intrinsic_value as any)?.dcf_model?.shares_outstanding_m === 'number'
+          ? (data.intrinsic_value as any).dcf_model.shares_outstanding_m
+          : null);
+  }
 
   const financials: ResearchMemoryFinancials = {
     latestPeriod,
@@ -262,7 +329,7 @@ export function extractMemorySnapshot(
     totalDebt,
     netCash,
     sharesOutstanding,
-    provenance: isSecVerified ? 'sec_verified' : (periods.length > 0 ? 'calculated' : 'unavailable')
+    provenance: financialsProvenance
   };
 
   // Thesis Extraction
@@ -299,15 +366,15 @@ export function extractMemorySnapshot(
   };
 
   // Evidence
-  const secStatement = secEnvelope?.sec_period_statements?.[secEnvelope.sec_period_statements.length - 1];
-  const secAccession = secStatement?.accession || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.accessionNumber || null;
-  const secFilingDate = secEnvelope?.latest_statements_source?.filing_date || secStatement?.filed_date || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.filingDate || null;
+  const latestSecStatement = secStatements.length > 0 ? secStatements[secStatements.length - 1] : secEnvelope?.sec_period_statements?.[secEnvelope.sec_period_statements.length - 1];
+  const secAccession = latestSecStatement?.accession || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.accessionNumber || null;
+  const secFilingDate = secEnvelope?.latest_statements_source?.filing_date || latestSecStatement?.filed_date || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.filingDate || null;
   const findings = data.findings || [];
 
   const evidence: ResearchMemoryEvidence = {
     secAccession,
     secFilingDate,
-    hasVerifiedSecStatements: Boolean(secEnvelope?.sec_period_statements && secEnvelope.sec_period_statements.length > 0),
+    hasVerifiedSecStatements: secStatements.length > 0,
     citationsCount: findings.length,
     provenance: 'VERIFIED_FACT'
   };
@@ -343,7 +410,8 @@ export function extractMemorySnapshot(
 }
 
 /**
- * Builds chronological memory timeline sorted newest first.
+ * Builds a chronologically sorted array of ResearchMemorySnapshots for a given ticker.
+ * Deduplicates by reportId and orders descending by createdTimestamp.
  */
 export function buildMemoryTimeline(
   ticker: string,
@@ -377,6 +445,7 @@ export function buildMemoryTimeline(
 
 /**
  * Finds the immediate prior memory snapshot strictly prior to activeReport.
+ * Never fabricates temporal order when historical timestamp is unknown (0).
  */
 export function getPreviousMemorySnapshot(
   ticker: string,
@@ -387,20 +456,23 @@ export function getPreviousMemorySnapshot(
   if (timeline.length < 2) return null;
 
   if (!activeReport) {
-    return timeline[1] || null;
+    const candidate = timeline[1];
+    return (candidate && candidate.createdTimestamp > 0) ? candidate : null;
   }
 
   const activeSnap = extractMemorySnapshot(activeReport);
-  const activeTime = activeSnap ? activeSnap.createdTimestamp : Date.now();
+  if (!activeSnap || activeSnap.createdTimestamp === 0) {
+    return null;
+  }
 
   for (const item of timeline) {
-    if (activeSnap && item.reportId === activeSnap.reportId) continue;
-    if (item.createdTimestamp < activeTime) {
+    if (item.reportId === activeSnap.reportId) continue;
+    if (item.createdTimestamp > 0 && item.createdTimestamp < activeSnap.createdTimestamp) {
       return item;
     }
   }
 
-  return timeline[1] || null;
+  return null;
 }
 
 /**

@@ -29,7 +29,7 @@ describe('whatChangedEngine', () => {
     },
     sec_verification: {
       financialDataSource: 'sec_verified',
-      sec_period_statements: [{ period: 'Q2 2026', accession: '0000950170-26-000100' }],
+      sec_period_statements: [{ period: 'Q2 2026', revenue: 50000, operating_income: 20000, accession: '0000950170-26-000100' }],
       submissions: { recentFilings: [{ accessionNumber: '0000950170-26-000100', filingDate: '2026-01-20' }] }
     }
   };
@@ -58,7 +58,7 @@ describe('whatChangedEngine', () => {
     },
     sec_verification: {
       financialDataSource: 'sec_verified',
-      sec_period_statements: [{ period: 'Q3 2026', accession: '0000950170-26-000200' }],
+      sec_period_statements: [{ period: 'Q3 2026', revenue: 58000, operating_income: 25520, accession: '0000950170-26-000200' }],
       submissions: { recentFilings: [{ accessionNumber: '0000950170-26-000200', filingDate: '2026-04-20' }] }
     }
   };

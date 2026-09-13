@@ -64,7 +64,38 @@ describe('investmentMemory', () => {
       },
       sec_verification: {
         financialDataSource: 'sec_verified',
-        sec_period_statements: [{ period: 'FY25' }],
+        sec_period_statements: [
+          { period: 'FY24', revenue: 245120 },
+          {
+            period: 'FY25',
+            revenue: 281000,
+            operating_income: 128000,
+            net_income: 102000,
+            operating_cash_flow: 100000,
+            capital_expenditure: 15000,
+            total_debt: 45000,
+            diluted_shares: 7450
+          }
+        ],
+        dcf_financial_inputs: {
+          version: 1,
+          generated_by: 'sec-verified-financial-inputs-v1',
+          eligible: true,
+          ticker: 'MSFT',
+          periods: ['FY25'],
+          source_period: 'FY25',
+          latest_balance_sheet_period_end: '2025-06-30',
+          share_as_of: '2025-06-30',
+          starting_revenue_m: 281000,
+          trailing_four_free_cash_flow_m: 85000,
+          historical_fcf_margin_pct: 30.2,
+          cash_and_equivalents_m: 42000,
+          short_term_investments_m: 50000,
+          total_debt_m: 45000,
+          net_cash_m: 47000,
+          current_shares_outstanding_m: 7450,
+          issues: []
+        },
         submissions: {
           recentFilings: [
             { accessionNumber: '0000950170-25-001234', filingDate: '2025-07-30' }
@@ -83,9 +114,9 @@ describe('investmentMemory', () => {
     assert.equal(snap?.valuation.assumptions.terminalGrowthPct, 2.5);
     assert.equal(snap?.conviction.score, 88);
     assert.equal(snap?.financials.revenue, 281000);
-    assert.equal(snap?.financials.revenueYoYPct, 14.6);
+    assert.equal(snap?.financials.revenueYoYPct, 14.64);
     assert.equal(snap?.financials.freeCashFlow, 85000);
-    assert.equal(snap?.financials.netCash, 47000); // (42000 + 50000) - 45000
+    assert.equal(snap?.financials.netCash, 47000);
     assert.equal(snap?.financials.provenance, 'sec_verified');
     assert.equal(snap?.evidence.secAccession, '0000950170-25-001234');
     assert.equal(snap?.evidence.hasVerifiedSecStatements, true);
@@ -235,5 +266,242 @@ describe('investmentMemory', () => {
     assert.equal(delta.newRisksCount, 1); // Supply chain
     assert.equal(delta.resolvedRisksCount, 1); // Margin pressure
     assert.equal(delta.newCatalystsCount, 1); // Dividend hike
+  });
+
+  describe('Blocker A — SEC Authority Invariant', () => {
+    it('prefers verified SEC facts over conflicting report statements (100000 vs 999999)', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['FY25'],
+          income_statement: {
+            revenue: [999999] // Deliberately wrong AI / report value
+          }
+        },
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [
+            {
+              period: 'FY25',
+              revenue: 100000 // Authoritative verified SEC value
+            }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.revenue, 100000);
+      assert.equal(snap?.financials.provenance, 'sec_verified');
+      assert.notEqual(snap?.financials.revenue, 999999);
+    });
+
+    it('does not promote unverified canonical dataset to sec_verified', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        canonical_financials: {
+          schemaVersion: 1,
+          ticker: 'MSFT',
+          provenanceStatus: 'unverified',
+          generatedBy: 'lumina-financial-provenance-v1',
+          periods: ['FY25'],
+          values: {
+            'income_statement.revenue': [{ period: 'FY25', value: 200000 }]
+          }
+        },
+        financial_statements: {
+          periods: ['FY25'],
+          income_statement: { revenue: [200000] }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.provenance, 'calculated');
+      assert.notEqual(snap?.financials.provenance, 'sec_verified');
+    });
+
+    it('does not promote source-linked canonical dataset to sec_verified', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        canonical_financials: {
+          schemaVersion: 1,
+          ticker: 'MSFT',
+          provenanceStatus: 'source_linked',
+          generatedBy: 'lumina-financial-provenance-v1',
+          periods: ['FY25'],
+          values: {
+            'income_statement.revenue': [{ period: 'FY25', value: 200000 }]
+          }
+        },
+        financial_statements: {
+          periods: ['FY25'],
+          income_statement: { revenue: [200000] }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.provenance, 'calculated');
+      assert.notEqual(snap?.financials.provenance, 'sec_verified');
+    });
+
+    it('accepts verified sec-xbrl canonical dataset as sec_verified', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        canonical_financials: {
+          schemaVersion: 1,
+          ticker: 'MSFT',
+          provenanceStatus: 'verified',
+          generatedBy: 'sec-xbrl-parser-v1',
+          periods: ['FY25'],
+          values: {
+            'income_statement.revenue': [{ period: 'FY25', value: 245000, source: { form: '10-K', accession: '0001', filed: '2025-08-01' } }]
+          }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.provenance, 'sec_verified');
+      assert.equal(snap?.financials.revenue, 245000);
+      assert.equal(snap?.evidence.secAccession, '0001');
+    });
+
+    it('never labels AI statements as sec_verified merely because sec_verification status is verified_eligible', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['FY25'],
+          income_statement: { revenue: [200000] }
+        },
+        sec_verification: {
+          status: 'verified_eligible',
+          financialDataSource: 'sec_verified'
+          // No sec_period_statements or verified canonical_financials!
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.provenance, 'calculated');
+      assert.notEqual(snap?.financials.provenance, 'sec_verified');
+    });
+
+    it('fails closed when report is SEC eligible but lacks trusted SEC fact for the field', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['FY25'],
+          income_statement: {
+            revenue: [999999] // AI value present
+          }
+        },
+        sec_verification: {
+          status: 'verified_eligible',
+          sec_period_statements: [
+            {
+              period: 'FY25'
+              // revenue is NOT in SEC statements!
+            }
+          ]
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.provenance, 'sec_verified');
+      // Missing trusted SEC values remain missing (null). Must NOT substitute report value!
+      assert.equal(snap?.financials.revenue, null);
+    });
+  });
+
+  describe('Blocker B — Missing Short-Term Investments Must Not Become Zero', () => {
+    it('sets netCash to null when short_term_investments is missing (Missing != Zero)', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['FY25'],
+          balance_sheet: {
+            cash_and_equivalents: [10000],
+            // short_term_investments is omitted/undefined!
+            total_debt: [4000]
+          }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.netCash, null);
+    });
+
+    it('calculates netCash correctly when short_term_investments is explicitly 0', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['FY25'],
+          balance_sheet: {
+            cash_and_equivalents: [10000],
+            short_term_investments: [0], // Explicit 0
+            total_debt: [4000]
+          }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.netCash, 6000); // 10000 + 0 - 4000
+    });
+
+    it('calculates netCash correctly when short_term_investments > 0', () => {
+      const report: any = {
+        ticker: 'MSFT',
+        financial_statements: {
+          periods: ['FY25'],
+          balance_sheet: {
+            cash_and_equivalents: [10000],
+            short_term_investments: [5000],
+            total_debt: [4000]
+          }
+        }
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.financials.netCash, 11000); // 10000 + 5000 - 4000
+    });
+  });
+
+  describe('Blocker C — Do Not Fabricate Historical Time / Identity', () => {
+    it('uses deterministic ID and unknown timestamp without using Date.now()', () => {
+      const report: any = {
+        ticker: 'MSFT'
+        // No id, no generated_at, no as_of_date
+      };
+
+      const snap = extractMemorySnapshot(report);
+      assert.ok(snap);
+      assert.equal(snap?.reportId, 'rep_msft_unknown');
+      assert.equal(snap?.createdTimestamp, 0);
+      assert.equal(snap?.asOfDate, 'Unknown Date');
+    });
+
+    it('does not treat unknown-time report as previous report purely because Date.now() was assigned', () => {
+      const reportWithoutTime: any = {
+        ticker: 'AAPL',
+        id: 'rep_no_time'
+        // No timestamps
+      };
+
+      const validReport: any = {
+        ticker: 'AAPL',
+        id: 'rep_valid',
+        generated_at: '2026-05-01T00:00:00Z'
+      };
+
+      // getPreviousMemorySnapshot for reportWithoutTime should be null because its time is unknown
+      const prev = getPreviousMemorySnapshot('AAPL', [reportWithoutTime, validReport], reportWithoutTime);
+      assert.equal(prev, null);
+    });
   });
 });
