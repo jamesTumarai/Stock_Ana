@@ -1400,3 +1400,16 @@ export type {
   ResearchMemorySnapshot,
   MemoryComparisonDelta
 } from './domain/investmentMemory';
+
+export type {
+  ThesisStatus,
+  ThesisConfirmationStatus,
+  InvestmentThesisRecord,
+  ExpectationMetric,
+  ExpectationCondition,
+  ExpectationStatus,
+  ExpectationOrigin,
+  TrackedExpectation,
+  LifecycleState,
+  TrackedItemTransition
+} from './domain/thesisExpectations';
