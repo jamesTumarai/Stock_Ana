@@ -47,29 +47,37 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
      - PR 5: Master Documentation Reconciliation — Merged ✅ (PR #100)
      - PR 6: SEC Diff Unverified Report Canonical Financials Guard — Merged ✅ (PR #101)
 3. **Phase 5: Analysis Quality & Data Coverage** — Implemented — Revalidation Required ⏳ (PR #56–#58, PR #70)
-4. **Phase 6: Report Experience & UI Polish** — Implemented — Revalidation Required ⏳ (PR #59, #60)
-5. **Phase 7: Portfolio & User Intelligence** — Implemented — Revalidation Required ⏳ (PR #61, PR #71)
-6. **Phase 8: On-Open Research Checks & Alerts** — Implemented — Revalidation Required ⏳ (PR #62, PR #72, PR #85)
-7. **Phase 9: Comparison & Decision Tools** — Implemented — Revalidation Required ⏳ (PR #63, PR #68, PR #80, PR #81)
-8. **Phase 10: Performance, Cost & Reliability** — Implemented — Revalidation Required ⏳ (PR #64, PR #75, PR #85)
+4. **Phase 6: Report Experience & UI Polish** — Complete ✅ (PR #59, #60, #109)
+5. **Phase 7: Portfolio & User Intelligence** — Complete ✅ (PR #61, PR #71, PR #108, #109)
+6. **Phase 8: On-Open Research Checks & Alerts** — Complete ✅ (PR #62, PR #72, PR #85, PR #107)
+7. **Phase 9: Comparison & Decision Tools** — Complete ✅ (PR #63, PR #68, PR #80, PR #81, PR #106)
+8. **Phase 10: Performance, Cost & Reliability** — Complete ✅ (PR #64, PR #75, PR #85)
 9. **Phase 11: Productization / Subscription** — Removed per owner directive (PR #76) (Unlimited Platform Access)
-10. **Phase 12: Advanced Investment Intelligence** — Implemented — Revalidation Required ⏳ (PR #66, PR #69, PR #70, PR #73, PR #83)
+10. **Phase 12: Advanced Investment Intelligence** — Complete ✅ (PR #66, PR #69, PR #70, PR #73, PR #83, PR #104–#109)
+11. **Lumina V1 Completion Program (Roadmap V2 Workstreams)** — Complete ✅
+    - Workstream V2-A: Investment Memory Foundation — Complete ✅ (PR #104)
+    - Workstream V2-B: Structured Investment Thesis & Expectations Engine — Complete ✅ (PR #105)
+    - Workstream V2-C: What Changed Intelligence Engine — Complete ✅ (PR #106)
+    - Workstream V2-D: Actionable Decision Context Engine — Complete ✅ (PR #107)
+    - Workstream V2-E: Thesis-Aware Watchlist Intelligence — Complete ✅ (PR #108)
+    - Workstream V2-F: Report Integration & Evidence UX — Complete ✅ (PR #109)
+    - Workstream V2-G: Final Production Verification & Acceptance Dossier — Complete ✅ (PR #110)
 
 ---
 
-## Current Priority
+## Current Status: LUMINA V1 — TECHNICALLY COMPLETE
 
-### Post-Roadmap Integrity Baseline (Owner Accepted ✅)
+Lumina V1 has completed its bounded end-to-end completion program across all authorized workstreams.
+The personal equity research and decision operating system loop is fully established and proven:
+Research → Understand → Value → Form Thesis → Record Expectations → Remember → What Changed → Decision Context → Watchlist Prioritization.
 
-**Goal Achieved:** All heuristic valuation fallbacks eliminated, cross-user security isolation established, decomposition rebuilt on true sequential revaluation, subscription/entitlement system removed per owner directive (unlimited platform access), and institutional financial integrity baseline locked and accepted by owner before further feature development.
-- The post-roadmap integrity-hardening cycle is CLOSED.
-- Baseline accepted on production SHA: `d2315f069379dfe946dee0952231005cc6ba9746`.
-- Note: Owner acceptance applies strictly to the post-roadmap integrity baseline as a trusted foundation; it does not mean the entire long-term Lumina product vision is complete (which will be assessed in a future Vision Reconciliation).
-- Test Metrics:
-  - Test files executed: 74 (71 src + 3 server)
-  - Test cases passed: 176 (0 failed, 0 skipped)
-  - Server test files executed: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
-  - Vulnerability status: 0 critical vulnerabilities, 0 high vulnerabilities, 10 moderate vulnerabilities (triaged in `docs/SECURITY_AUDIT_TRIAGE.md` — non-blocking technical debt)
+- **Status:** `LUMINA V1 — TECHNICALLY COMPLETE`
+- **Integrity Foundation:** Owner Accepted (Anchor commit: `d2315f069379dfe946dee0952231005cc6ba9746`)
+- **Completion PRs:** PR #104, #105, #106, #107, #108, #109, #110
+- **Regression Suite:** 80 test files (77 src + 3 server), 200 passing test cases, 0 failed, 0 skipped
+- **TypeScript / Linter:** 100% clean (`tsc --noEmit`)
+- **Production URL:** `https://stock-ana-ten.vercel.app`
+- **Production Verified:** Verified live on MSFT (operating tech) and SOFI (financial sector guard)
 
 ---
 

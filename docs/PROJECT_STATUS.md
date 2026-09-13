@@ -12,30 +12,37 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **Post-Roadmap Integrity Baseline Accepted (PRs #96–#101 Merged; Phase 4.5 Owner Accepted ✅)**.
-- Current working mode: **Post-Roadmap Integrity-Hardening Cycle Closed; Baseline Accepted as Trusted Foundation for Future Product Development**.
+- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Workstreams V2-A through V2-G Complete & Verified; PRs #104–#110)**.
+- Current working mode: **Lumina V1 Product Loop Complete; Personal Equity Research & Decision OS End-to-End Operational**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
-- Latest merged milestone: PR #101 (Prevent Unverified Report Canonical Financials from Entering SEC Diff).
-- Phase 4 operational acceptance issue: **#47 — closed as completed**.
+- Latest merged milestone: PR #109 (Report & Portfolio UI Integration for Thesis, Expectations, What Changed, Decision Context, and Watchlist Intelligence).
+- Regression Suite: 80 test files (77 src + 3 server), 200 passing cases, 0 failed, 0 skipped.
 
 ## Canonical Phase Acceptance Matrix
 
-| Phase | Description | Planned | Implemented | CI Verified | Production Verified | Owner Accepted | Current Status | Evidence / PR |
+| Phase / Workstream | Description | Planned | Implemented | CI Verified | Production Verified | Owner Accepted | Current Status | Evidence / PR |
 | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 | **1** | Financial Integrity Cleanup | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **2** | Runtime / Deterministic Validation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **3** | Verified Data + Valuation Core | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | Baseline |
 | **4** | Core Platform Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #47, #48, #49 |
 | **4.5** | Post-Roadmap Integrity Stabilization | ✅ | ✅ | ✅ | ✅ | ✅ | `Owner Accepted` | PR #67–#76, #78–#85, #87–#101 |
-| **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #56–#58, PR #70 |
-| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #59, #60 |
-| **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #61, PR #71 |
-| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #62, PR #72, PR #85 |
-| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #63, PR #68, PR #80, PR #81 |
-| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #64, PR #75, PR #85 |
+| **5** | Analysis Quality & Data Coverage | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #56–#58, PR #70 |
+| **6** | Report Experience & UI Polish | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #59, #60, #109 |
+| **7** | Portfolio & User Intelligence | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #61, PR #71, PR #108, #109 |
+| **8** | Monitoring & Alerts | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #62, PR #72, PR #85, PR #107 |
+| **9** | Comparison & Decision Tools | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #63, PR #68, PR #80, PR #81, PR #106 |
+| **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #64, PR #75, PR #85 |
 | **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
-| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ⏳ | `Implemented — Revalidation Required` | PR #66, PR #69, PR #70, PR #73, PR #83 |
+| **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #66, PR #69, PR #70, PR #73, PR #83, PR #104–#109 |
+| **V2-A** | Investment Memory Foundation | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #104 |
+| **V2-B** | Structured Thesis & Expectations Engine | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #105 |
+| **V2-C** | What Changed Intelligence Engine | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #106 |
+| **V2-D** | Actionable Decision Context Engine | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #107 |
+| **V2-E** | Thesis-Aware Watchlist Intelligence | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #108 |
+| **V2-F** | Report Integration & Evidence UX | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #109 |
+| **V2-G** | Final Verification & Acceptance Dossier | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #110 |
 
 ## Repository protection
 
