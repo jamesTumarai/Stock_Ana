@@ -824,6 +824,7 @@ export default function App() {
             }}
             quotes={liveQuotes}
             latestReports={reportsByTicker}
+            historyReports={historyReports}
           />
         )}
       </AnimatePresence>

@@ -33,6 +33,14 @@ import { CompanyLogo } from './components/CompanyLogo';
 import { ProvenanceBadge } from './components/ProvenanceBadge';
 import { ResearchTimelineCard } from './components/ResearchTimelineCard';
 import { ThesisExpectationsCard } from './components/ThesisExpectationsCard';
+import { extractMemorySnapshot } from './domain/investmentMemory';
+import {
+  InvestmentThesisRecord,
+  TrackedExpectation,
+  extractDraftThesisFromReport,
+  evaluateExpectations
+} from './domain/thesisExpectations';
+import { loadUserThesis, loadExpectations } from './services/thesisExpectationsService';
 import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
@@ -344,6 +352,40 @@ export default function ReportTemplate({
   const previousReport = React.useMemo(() => {
     return getPreviousReport(ticker, historyReports, data);
   }, [historyReports, ticker, data]);
+
+  const [activeThesis, setActiveThesis] = useState<InvestmentThesisRecord | null>(null);
+  const [rawExpectations, setRawExpectations] = useState<TrackedExpectation[]>([]);
+
+  const currentSnapshot = React.useMemo(() => {
+    return extractMemorySnapshot(data);
+  }, [data]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      const storedThesis = await loadUserThesis(ticker, currentUser);
+      const storedExps = await loadExpectations(ticker, currentUser);
+
+      if (!isMounted) return;
+
+      if (storedThesis) {
+        setActiveThesis(storedThesis);
+      } else {
+        const draft = extractDraftThesisFromReport(data, currentUser?.uid);
+        setActiveThesis(draft);
+      }
+      setRawExpectations(storedExps);
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [ticker, currentUser, data]);
+
+  const evaluatedExpectations = React.useMemo(() => {
+    if (!currentSnapshot || rawExpectations.length === 0) return rawExpectations;
+    return evaluateExpectations(rawExpectations, currentSnapshot);
+  }, [rawExpectations, currentSnapshot]);
 
   useEffect(() => {
     let cancelled = false;
@@ -819,6 +861,10 @@ export default function ReportTemplate({
           currentReport={data}
           isThai={isThai}
           currentUser={currentUser}
+          externalThesis={activeThesis}
+          externalExpectations={evaluatedExpectations}
+          onThesisChange={(updated) => setActiveThesis(updated)}
+          onExpectationsChange={(updated) => setRawExpectations(updated)}
         />
 
         {/* RESEARCH TIMELINE & EMPIRICAL DELTAS (WHAT CHANGED) */}
@@ -828,6 +874,8 @@ export default function ReportTemplate({
           historyReports={historyReports}
           isThai={isThai}
           currentUser={currentUser}
+          externalThesis={activeThesis}
+          externalExpectations={evaluatedExpectations}
         />
 
         {/* SECTION 2: FINANCIAL STATEMENT TABLES (INCOME, BALANCE, CASH FLOW) */}

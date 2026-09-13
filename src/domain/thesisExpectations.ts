@@ -292,6 +292,10 @@ export function evaluateExpectations(
 
 /**
  * Deterministically compares risks and catalysts between previous and current research.
+ * Strictly conservative:
+ * - Only exact normalized identity allows certain continuation (isCertain: true).
+ * - Partial / ambiguous / semantic rewordings produce uncertain transitions (isCertain: false) with UNKNOWN/evolving status.
+ * - Unmatched items from unstructured text are never certain (isCertain: false).
  */
 export function matchRiskCatalystTransitions(
   previousRisks: string[],
@@ -303,80 +307,134 @@ export function matchRiskCatalystTransitions(
 
   const clean = (s: string) => s.trim().toLowerCase();
 
-  // Helper for matching
+  const stopWords = new Set([
+    'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+    'by', 'from', 'up', 'about', 'into', 'over', 'after', 'is', 'are', 'was',
+    'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+    'but', 'if', 'then', 'else', 'when', 'where', 'why', 'how', 'all', 'any',
+    'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
+    'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'can', 'will',
+    'just', 'should', 'now', 'risk', 'risks', 'catalyst', 'catalysts'
+  ]);
+
+  const stemWord = (w: string) => {
+    if (w.endsWith('ing') && w.length > 5) return w.slice(0, -3);
+    if (w.endsWith('ed') && w.length > 4) return w.slice(0, -2);
+    if (w.endsWith('er') && w.length > 4) return w.slice(0, -2);
+    if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) return w.slice(0, -1);
+    return w;
+  };
+
+  const getSignificantStems = (text: string): Set<string> => {
+    const rawWords = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !stopWords.has(w));
+    return new Set(rawWords.map(stemWord));
+  };
+
+  const areSemanticallyAmbiguous = (text1: string, text2: string): boolean => {
+    const c1 = clean(text1);
+    const c2 = clean(text2);
+    if (c1.includes(c2) || c2.includes(c1)) return true;
+
+    const stems1 = getSignificantStems(text1);
+    const stems2 = getSignificantStems(text2);
+    if (stems1.size === 0 || stems2.size === 0) return false;
+
+    let shared = 0;
+    for (const s1 of stems1) {
+      for (const s2 of stems2) {
+        if (s1 === s2 || (s1.length >= 4 && s2.length >= 4 && (s1.startsWith(s2) || s2.startsWith(s1)))) {
+          shared++;
+          break;
+        }
+      }
+    }
+    return shared > 0;
+  };
+
   const matchCategory = (
     prevItems: string[],
     currItems: string[],
     category: 'risk' | 'catalyst'
   ) => {
-    const prevMap = new Map<string, string>();
-    for (const item of prevItems) {
-      prevMap.set(clean(item), item);
-    }
+    const matchedPrevIndices = new Set<number>();
+    const matchedCurrIndices = new Set<number>();
 
-    const currMap = new Map<string, string>();
-    for (const item of currItems) {
-      currMap.set(clean(item), item);
-    }
+    // Pass 1: Exact matches (certain)
+    for (let cIdx = 0; cIdx < currItems.length; cIdx++) {
+      const currText = currItems[cIdx];
+      const cleanCurr = clean(currText);
 
-    // Identify continuing and new items
-    for (const [cleanText, rawText] of currMap.entries()) {
-      if (prevMap.has(cleanText)) {
-        transitions.push({
-          itemText: rawText,
-          category,
-          previousState: 'ACTIVE',
-          currentState: 'ACTIVE',
-          isCertain: true
-        });
-      } else {
-        // Look for partial similarity
-        let isPotentialMatch = false;
-        for (const [prevClean, prevRaw] of prevMap.entries()) {
-          if (cleanText.includes(prevClean) || prevClean.includes(cleanText)) {
-            transitions.push({
-              itemText: `${rawText} (evolving from: ${prevRaw})`,
-              category,
-              previousState: 'ACTIVE',
-              currentState: 'INCREASING',
-              isCertain: false
-            });
-            isPotentialMatch = true;
-            break;
-          }
-        }
-        if (!isPotentialMatch) {
+      for (let pIdx = 0; pIdx < prevItems.length; pIdx++) {
+        if (matchedPrevIndices.has(pIdx)) continue;
+        const prevText = prevItems[pIdx];
+        if (clean(prevText) === cleanCurr) {
+          matchedPrevIndices.add(pIdx);
+          matchedCurrIndices.add(cIdx);
           transitions.push({
-            itemText: rawText,
-            category,
-            previousState: 'UNKNOWN',
-            currentState: 'NEW',
-            isCertain: true
-          });
-        }
-      }
-    }
-
-    // Identify resolved / departed items
-    for (const [prevClean, prevRaw] of prevMap.entries()) {
-      if (!currMap.has(prevClean)) {
-        let isPotentialMatch = false;
-        for (const [currClean] of currMap.entries()) {
-          if (prevClean.includes(currClean) || currClean.includes(prevClean)) {
-            isPotentialMatch = true;
-            break;
-          }
-        }
-        if (!isPotentialMatch) {
-          transitions.push({
-            itemText: prevRaw,
+            itemText: currText,
             category,
             previousState: 'ACTIVE',
-            currentState: 'RESOLVED',
+            currentState: 'ACTIVE',
             isCertain: true
           });
+          break;
         }
       }
+    }
+
+    // Pass 2: Ambiguous / Semantic / Token overlap matches (uncertain)
+    for (let cIdx = 0; cIdx < currItems.length; cIdx++) {
+      if (matchedCurrIndices.has(cIdx)) continue;
+      const currText = currItems[cIdx];
+
+      for (let pIdx = 0; pIdx < prevItems.length; pIdx++) {
+        if (matchedPrevIndices.has(pIdx)) continue;
+        const prevText = prevItems[pIdx];
+
+        if (areSemanticallyAmbiguous(currText, prevText)) {
+          matchedPrevIndices.add(pIdx);
+          matchedCurrIndices.add(cIdx);
+          transitions.push({
+            itemText: `${currText} (evolving from: ${prevText})`,
+            category,
+            previousState: 'ACTIVE',
+            currentState: 'UNKNOWN',
+            isCertain: false,
+            evidence: 'Ambiguous rephrasing or semantic evolution across reports; review needed'
+          });
+          break;
+        }
+      }
+    }
+
+    // Pass 3: Unmatched current items (NEW, but uncertain for free-text)
+    for (let cIdx = 0; cIdx < currItems.length; cIdx++) {
+      if (matchedCurrIndices.has(cIdx)) continue;
+      transitions.push({
+        itemText: currItems[cIdx],
+        category,
+        previousState: 'UNKNOWN',
+        currentState: 'NEW',
+        isCertain: false,
+        evidence: 'Newly introduced in report prose; identity unconfirmed'
+      });
+    }
+
+    // Pass 4: Unmatched previous items (RESOLVED, but uncertain for free-text)
+    for (let pIdx = 0; pIdx < prevItems.length; pIdx++) {
+      if (matchedPrevIndices.has(pIdx)) continue;
+      transitions.push({
+        itemText: prevItems[pIdx],
+        category,
+        previousState: 'ACTIVE',
+        currentState: 'RESOLVED',
+        isCertain: false,
+        evidence: 'Not mentioned in latest report; resolution unconfirmed'
+      });
     }
   };
 

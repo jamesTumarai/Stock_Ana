@@ -1,5 +1,5 @@
 import { ResearchMemorySnapshot } from './investmentMemory';
-import { InvestmentThesisRecord, TrackedExpectation } from './thesisExpectations';
+import { InvestmentThesisRecord, TrackedExpectation, evaluateExpectations } from './thesisExpectations';
 import { WhatChangedResult } from './whatChangedEngine';
 
 export type ReEvaluationStance =
@@ -67,9 +67,16 @@ export function buildDecisionContext(
   expectations: TrackedExpectation[] = []
 ): DecisionContextResult {
   const ticker = currentSnapshot.ticker;
+  const evaluatedExpectations = currentSnapshot
+    ? evaluateExpectations(expectations, currentSnapshot)
+    : expectations;
 
   // If no prior research exists:
   if (!previousSnapshot) {
+    const missedExps = evaluatedExpectations.filter(e => e.status === 'MISSED');
+    const metExps = evaluatedExpectations.filter(e => e.status === 'MET' || e.status === 'EXCEEDED');
+    const pendingExps = evaluatedExpectations.filter(e => e.status === 'PENDING');
+
     return {
       ticker,
       stance: 'NO_PRIOR_RESEARCH_FOUND',
@@ -95,10 +102,10 @@ export function buildDecisionContext(
         priorResearchDate: null
       },
       expectationsSummary: {
-        totalTracked: expectations.length,
-        metCount: 0,
-        missedCount: 0,
-        pendingCount: expectations.length,
+        totalTracked: evaluatedExpectations.length,
+        metCount: metExps.length,
+        missedCount: missedExps.length,
+        pendingCount: pendingExps.length,
         missedDetails: []
       },
       valuationContext: {
@@ -143,9 +150,9 @@ export function buildDecisionContext(
   }
 
   // 2. Expectations Evaluation Check
-  const missedExps = expectations.filter(e => e.status === 'MISSED');
-  const metExps = expectations.filter(e => e.status === 'MET' || e.status === 'EXCEEDED');
-  const pendingExps = expectations.filter(e => e.status === 'PENDING');
+  const missedExps = evaluatedExpectations.filter(e => e.status === 'MISSED');
+  const metExps = evaluatedExpectations.filter(e => e.status === 'MET' || e.status === 'EXCEEDED');
+  const pendingExps = evaluatedExpectations.filter(e => e.status === 'PENDING');
   const missedDetails: string[] = [];
 
   for (const exp of missedExps) {
@@ -239,7 +246,7 @@ export function buildDecisionContext(
       priorResearchDate: previousSnapshot.asOfDate
     },
     expectationsSummary: {
-      totalTracked: expectations.length,
+      totalTracked: evaluatedExpectations.length,
       metCount: metExps.length,
       missedCount: missedExps.length,
       pendingCount: pendingExps.length,
