@@ -18,6 +18,18 @@ export function getLocalKey(feature: 'thesis' | 'expectations', ticker: string, 
   return `lumina_${feature}:anonymous:${cleanTicker}`;
 }
 
+export function getRevisionsLocalKey(ticker: string, userId?: string | null): string {
+  const cleanTicker = ticker.toUpperCase().trim();
+  if (userId) {
+    return `lumina_thesis_revisions:user:${userId}:${cleanTicker}`;
+  }
+  return `lumina_thesis_revisions:anonymous:${cleanTicker}`;
+}
+
+export function getRevisionDocId(ticker: string, version: number): string {
+  return `v${version}`;
+}
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -55,6 +67,20 @@ export async function saveUserThesis(
     try {
       const key = getLocalKey('thesis', cleanTicker, userId);
       storage.setItem(key, JSON.stringify(cleanThesis));
+
+      // Append to local revisions history
+      const revKey = getRevisionsLocalKey(cleanTicker, userId);
+      const existingRevRaw = storage.getItem(revKey);
+      let revList: InvestmentThesisRecord[] = existingRevRaw ? JSON.parse(existingRevRaw) : [];
+      if (!Array.isArray(revList)) revList = [];
+      const existingIdx = revList.findIndex(r => r.version === cleanThesis.version);
+      if (existingIdx >= 0) {
+        revList[existingIdx] = cleanThesis;
+      } else {
+        revList.push(cleanThesis);
+      }
+      revList.sort((a, b) => a.version - b.version);
+      storage.setItem(revKey, JSON.stringify(revList));
     } catch (e) {
       console.warn('Failed to save thesis to localStorage', e);
     }
@@ -64,12 +90,82 @@ export async function saveUserThesis(
   if (user?.uid && firebaseDataAccessAllowed) {
     try {
       const sanitized = sanitizeUndefinedForPersistence(cleanThesis);
+      // Save current pointer
       const thesisDocRef = doc(db, 'users', user.uid, 'theses', cleanTicker);
       await setDoc(thesisDocRef, sanitized, { merge: true });
+
+      // Save immutable revision record under users/{uid}/theses/{ticker}/revisions/{revisionId}
+      const revId = getRevisionDocId(cleanTicker, cleanThesis.version);
+      const revDocRef = doc(db, 'users', user.uid, 'theses', cleanTicker, 'revisions', revId);
+      await setDoc(revDocRef, sanitized);
     } catch (error) {
       console.error('Error persisting thesis to Firestore:', error);
     }
   }
+}
+
+export async function loadThesisRevisions(
+  ticker: string,
+  user?: User | null
+): Promise<InvestmentThesisRecord[]> {
+  const cleanTicker = ticker.toUpperCase().trim();
+  const userId = user?.uid || null;
+
+  // 1. If authenticated and allowed, load from Firestore
+  if (userId && firebaseDataAccessAllowed) {
+    try {
+      const revsCol = collection(db, 'users', userId, 'theses', cleanTicker, 'revisions');
+      const snap = await getDocs(revsCol);
+      if (!snap.empty) {
+        const list: InvestmentThesisRecord[] = [];
+        snap.forEach(d => {
+          const data = d.data() as InvestmentThesisRecord;
+          if (!data.userId || data.userId === userId) {
+            list.push({ ...data, userId });
+          }
+        });
+        list.sort((a, b) => a.version - b.version);
+
+        // Update local cache
+        const storage = getStorage();
+        if (storage) {
+          try {
+            storage.setItem(getRevisionsLocalKey(cleanTicker, userId), JSON.stringify(list));
+          } catch (e) {}
+        }
+        return list;
+      }
+    } catch (error) {
+      console.warn('Error loading thesis revisions from Firestore, falling back to local storage:', error);
+    }
+  }
+
+  // 2. Fallback to localStorage
+  const storage = getStorage();
+  if (storage) {
+    try {
+      if (userId) {
+        const raw = storage.getItem(getRevisionsLocalKey(cleanTicker, userId));
+        if (raw) {
+          const list = JSON.parse(raw) as InvestmentThesisRecord[];
+          if (Array.isArray(list)) {
+            return list.filter(item => !item.userId || item.userId === userId);
+          }
+        }
+        return [];
+      } else {
+        const raw = storage.getItem(getRevisionsLocalKey(cleanTicker, null));
+        if (raw) {
+          const list = JSON.parse(raw) as InvestmentThesisRecord[];
+          if (Array.isArray(list)) return list;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read thesis revisions from localStorage', e);
+    }
+  }
+
+  return [];
 }
 
 export async function loadUserThesis(

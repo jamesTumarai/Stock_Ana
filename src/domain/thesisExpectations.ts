@@ -1,5 +1,6 @@
 import { ReportData } from '../types';
 import { ResearchMemorySnapshot, extractMemorySnapshot } from './investmentMemory';
+import { unwrapHistoryRecord } from '../utils/researchTimeline';
 
 export type ThesisStatus =
   | 'ACTIVE'
@@ -383,4 +384,61 @@ export function matchRiskCatalystTransitions(
   matchCategory(previousCatalysts, currentCatalysts, 'catalyst');
 
   return transitions;
+}
+
+/**
+ * Resolves which user-confirmed thesis version was active for a specific research report state.
+ * Strictly adheres to historical truth:
+ * 1. Direct sourceReportId linkage takes top priority.
+ * 2. If not directly linked, matches by valid temporal association (latest confirmed thesis on or before report timestamp).
+ * 3. Never retroactively claims a modern thesis existed at an old report date. Legacy/unrecorded reports return null.
+ */
+export function resolveActiveThesisForReport(
+  reportInput: any,
+  revisions: InvestmentThesisRecord[] = [],
+  currentThesis?: InvestmentThesisRecord | null
+): InvestmentThesisRecord | null {
+  if (!reportInput) return null;
+
+  const unwrapped = unwrapHistoryRecord(reportInput);
+  const data = unwrapped?.data || (reportInput.data ? reportInput.data : reportInput);
+  const reportId = unwrapped?.reportId || (reportInput as any).id || (data as any).id;
+
+  // 1. Direct linkage via sourceReportId
+  if (reportId) {
+    if (Array.isArray(revisions) && revisions.length > 0) {
+      const directMatch = revisions.find(r => r.sourceReportId === reportId);
+      if (directMatch) return directMatch;
+    }
+
+    if (currentThesis && currentThesis.sourceReportId === reportId) {
+      return currentThesis;
+    }
+  }
+
+  // 2. Temporal association if timestamp is valid
+  const rawTimestamp = unwrapped?.createdTimestamp
+    || (data?.generated_at ? Date.parse(String(data.generated_at)) : 0)
+    || (data?.as_of_date ? Date.parse(String(data.as_of_date)) : 0);
+  const repTime = Number.isFinite(rawTimestamp) && rawTimestamp > 0 ? rawTimestamp : 0;
+
+  if (repTime > 0 && Array.isArray(revisions) && revisions.length > 0) {
+    // Only consider user-confirmed or user-edited revisions
+    const eligible = revisions
+      .filter(r => {
+        if (r.confirmationStatus !== 'USER_CONFIRMED' && r.confirmationStatus !== 'USER_EDITED') {
+          return false;
+        }
+        const revTime = Date.parse(r.updatedAt || r.createdAt);
+        return Number.isFinite(revTime) && revTime <= repTime;
+      })
+      .sort((a, b) => b.version - a.version);
+
+    if (eligible.length > 0) {
+      return eligible[0];
+    }
+  }
+
+  // 3. If no confirmed revision existed at that report time, return null (NOT RECORDED)
+  return null;
 }

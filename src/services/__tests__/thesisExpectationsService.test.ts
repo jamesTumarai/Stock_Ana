@@ -4,7 +4,8 @@ import {
   saveUserThesis,
   loadUserThesis,
   saveExpectations,
-  loadExpectations
+  loadExpectations,
+  loadThesisRevisions
 } from '../thesisExpectationsService';
 import { InvestmentThesisRecord, TrackedExpectation } from '../../domain/thesisExpectations';
 
@@ -193,6 +194,65 @@ describe('thesisExpectationsService', () => {
       // User B loads GOOGL when User B has no saved thesis
       const userBLoaded = await loadUserThesis('GOOGL', userB);
       assert.equal(userBLoaded, null, 'Authenticated User B must not fall back to anonymous cache');
+    });
+  });
+
+  describe('Blocker E — Append-Only Thesis Revisions Persistence', () => {
+    const userA = { uid: 'user_a_123' } as any;
+
+    it('persists and retrieves immutable thesis revisions in order without overwriting', async () => {
+      const thesisV1: InvestmentThesisRecord = {
+        thesisId: 'th_msft_v1',
+        ticker: 'MSFT',
+        version: 1,
+        summary: 'MSFT Thesis V1',
+        keyDrivers: ['Driver 1'],
+        keyAssumptions: [],
+        keyRisks: [],
+        catalysts: [],
+        invalidationConditions: [],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_CONFIRMED',
+        sourceReportId: 'rep_1',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const thesisV2: InvestmentThesisRecord = {
+        thesisId: 'th_msft_v2',
+        ticker: 'MSFT',
+        version: 2,
+        summary: 'MSFT Thesis V2',
+        keyDrivers: ['Driver 1', 'Driver 2'],
+        keyAssumptions: [],
+        keyRisks: [],
+        catalysts: [],
+        invalidationConditions: [],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_EDITED',
+        sourceReportId: 'rep_2',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-04-01T00:00:00Z'
+      };
+
+      // Save V1
+      await saveUserThesis(thesisV1, userA);
+      // Save V2
+      await saveUserThesis(thesisV2, userA);
+
+      // Current thesis pointer is V2
+      const current = await loadUserThesis('MSFT', userA);
+      assert.ok(current);
+      assert.equal(current?.version, 2);
+      assert.equal(current?.summary, 'MSFT Thesis V2');
+
+      // Revisions contains both V1 and V2
+      const revisions = await loadThesisRevisions('MSFT', userA);
+      assert.equal(revisions.length, 2);
+      assert.equal(revisions[0].version, 1);
+      assert.equal(revisions[0].summary, 'MSFT Thesis V1');
+      assert.equal(revisions[1].version, 2);
+      assert.equal(revisions[1].summary, 'MSFT Thesis V2');
     });
   });
 });
