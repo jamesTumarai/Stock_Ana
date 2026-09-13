@@ -72,7 +72,7 @@ describe('thesisExpectations', () => {
 
   it('confirmUserThesis promotes draft to USER_CONFIRMED or USER_EDITED', () => {
     const draft = extractDraftThesisFromReport(sampleReport, 'usr_123')!;
-    
+
     // User confirms without modification
     const confirmed = confirmUserThesis(draft, undefined, 'usr_123');
     assert.equal(confirmed.version, 2);
