@@ -70,6 +70,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
     - PR F: Historical Thesis & Durable Expectations Integration — Complete ✅ (PR #116)
     - PR G: Uncertainty Propagation in Decision Intelligence — Complete ✅ (PR #117)
     - PR H: True Final Technical Closure Documentation — Complete ✅ (PR #118)
+    - PR I: Durable Expectation Evaluation Outcome Persistence — Complete ✅ (PR #119)
 
 ---
 

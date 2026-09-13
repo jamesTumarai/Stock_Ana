@@ -12,14 +12,14 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Remaining Cross-Time Semantics Repaired & Verified; PRs #104–#118)**.
+- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Durable Expectation Persistence & Final Verification; PRs #104–#119)**.
 - Current working mode: **Lumina V1 Product Loop Complete; Personal Equity Research & Decision OS End-to-End Operational**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
 - Historical Accepted Integrity Baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Phase 4.5 Owner Accepted).
-- Current Production SHA: `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0` (PR #117; Vercel Deployment ID `6420225575`).
-- Latest merged milestone: PR #117 (Preserve Uncertainty Through Decision Intelligence).
-- Regression Suite: 81 test files (78 src + 3 server), 250 passing cases, 0 failed, 0 skipped.
+- Current Production SHA: `2b707e97d6f74a92cf5415314b1214f066332037` (PR #118; Vercel Deployment ID `6420251552`).
+- Latest merged milestone: PR #118 (Reconcile True Final Completion Evidence).
+- Regression Suite: 82 test files (79 src + 3 server), 252 passing cases, 0 failed, 0 skipped.
 
 ## Canonical Phase Acceptance Matrix
 
@@ -53,6 +53,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **PR F** | Historical Thesis & Durable Expectations Integration | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #116 |
 | **PR G** | Uncertainty Propagation in Decision Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #117 |
 | **PR H** | True Final Technical Closure Documentation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #118 |
+| **PR I** | Durable Expectation Evaluation Outcome Persistence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #119 |
 
 ## Repository protection
 

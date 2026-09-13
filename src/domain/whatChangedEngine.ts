@@ -225,7 +225,8 @@ export function computeWhatChanged(
   }
 
   // 7. Tracked Expectations Evaluation
-  const evaluatedExpectations = evaluateExpectations(trackedExpectations, current);
+  const historicalSnapshots = previous ? [previous] : [];
+  const evaluatedExpectations = evaluateExpectations(trackedExpectations, current, historicalSnapshots);
   for (const exp of evaluatedExpectations) {
     if (exp.status === 'MISSED') {
       items.push({

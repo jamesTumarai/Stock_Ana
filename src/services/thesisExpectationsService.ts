@@ -3,8 +3,10 @@ import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase
 import { db, firebaseDataAccessAllowed } from '../lib/firebase';
 import {
   InvestmentThesisRecord,
-  TrackedExpectation
+  TrackedExpectation,
+  evaluateExpectations
 } from '../domain/thesisExpectations';
+import { ResearchMemorySnapshot } from '../domain/investmentMemory';
 import { sanitizeUndefinedForPersistence } from '../utils/firestorePersistence';
 
 const LEGACY_THESIS_PREFIX = 'lumina_user_thesis_';
@@ -351,4 +353,90 @@ export async function loadExpectations(
   }
 
   return [];
+}
+
+export interface EvaluateAndPersistResult {
+  expectations: TrackedExpectation[];
+  hasPersistedChanges: boolean;
+  persistedCount: number;
+}
+
+/**
+ * Evaluates tracked expectations against research memory (current snapshot + historical snapshots)
+ * and durably persists terminal evaluation outcomes (MET, MISSED, EXCEEDED) to storage.
+ *
+ * Strict Invariants:
+ * 1. Only transitions from PENDING / UNAVAILABLE to terminal states (MET, MISSED, EXCEEDED) are persisted.
+ * 2. Immutable original intent fields (expectationId, ticker, targetValue, targetPeriod, condition, origin, createdAt, sourceReportId, userId) are preserved untouched.
+ * 3. Avoids repeated writes when stored and newly evaluated values are unchanged.
+ * 4. Resolves against historical period context so all consumers see consistent results.
+ */
+export async function evaluateAndPersistExpectations(
+  ticker: string,
+  expectations: TrackedExpectation[],
+  currentSnapshot: ResearchMemorySnapshot,
+  historicalSnapshots: ResearchMemorySnapshot[] = [],
+  user?: User | null
+): Promise<EvaluateAndPersistResult> {
+  const cleanTicker = ticker.toUpperCase().trim();
+  if (!expectations || expectations.length === 0) {
+    return { expectations: [], hasPersistedChanges: false, persistedCount: 0 };
+  }
+
+  // 1. Evaluate against current and historical snapshot data
+  const evaluatedList = evaluateExpectations(expectations, currentSnapshot, historicalSnapshots);
+
+  // 2. Identify legitimate terminal transitions
+  let hasChanges = false;
+  let persistedCount = 0;
+  const merged: TrackedExpectation[] = [];
+
+  for (let i = 0; i < expectations.length; i++) {
+    const original = expectations[i];
+    const evaluated = evaluatedList[i];
+
+    const isOriginalNonTerminal = original.status === 'PENDING' || original.status === 'UNAVAILABLE';
+    const isEvaluatedTerminal = evaluated.status === 'MET' || evaluated.status === 'MISSED' || evaluated.status === 'EXCEEDED';
+
+    if (isOriginalNonTerminal && isEvaluatedTerminal) {
+      hasChanges = true;
+      persistedCount++;
+      // Strictly preserve immutable original intent:
+      merged.push({
+        // Immutable intent fields
+        expectationId: original.expectationId,
+        ticker: cleanTicker,
+        metricOrEvent: original.metricOrEvent,
+        metricLabel: original.metricLabel,
+        targetValue: original.targetValue,
+        condition: original.condition,
+        targetPeriod: original.targetPeriod,
+        origin: original.origin,
+        createdAt: original.createdAt,
+        sourceReportId: original.sourceReportId,
+        userId: user?.uid || original.userId || undefined,
+        // Evaluation metadata fields
+        status: evaluated.status,
+        actualValue: evaluated.actualValue,
+        actualPeriodFound: evaluated.actualPeriodFound ?? null,
+        evaluationDate: evaluated.evaluationDate,
+        evaluationNotes: evaluated.evaluationNotes,
+        updatedAt: evaluated.updatedAt || new Date().toISOString()
+      });
+    } else {
+      // Retain existing state (terminal status or still pending/unavailable)
+      merged.push(original);
+    }
+  }
+
+  // 3. Persist only if terminal transitions occurred ("Avoid repeated writes when stored and evaluated values are unchanged.")
+  if (hasChanges) {
+    await saveExpectations(cleanTicker, merged, user);
+  }
+
+  return {
+    expectations: merged,
+    hasPersistedChanges: hasChanges,
+    persistedCount
+  };
 }
