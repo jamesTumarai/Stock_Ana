@@ -25,19 +25,30 @@ interface Props {
   currentReport: ReportData;
   isThai: boolean;
   currentUser?: any;
+  externalThesis?: InvestmentThesisRecord | null;
+  externalExpectations?: TrackedExpectation[];
+  onThesisChange?: (thesis: InvestmentThesisRecord) => void;
+  onExpectationsChange?: (expectations: TrackedExpectation[]) => void;
 }
 
 export function ThesisExpectationsCard({
   ticker,
   currentReport,
   isThai,
-  currentUser
+  currentUser,
+  externalThesis,
+  externalExpectations,
+  onThesisChange,
+  onExpectationsChange
 }: Props) {
-  const [thesis, setThesis] = useState<InvestmentThesisRecord | null>(null);
-  const [expectations, setExpectations] = useState<TrackedExpectation[]>([]);
+  const [internalThesis, setInternalThesis] = useState<InvestmentThesisRecord | null>(null);
+  const [internalExpectations, setInternalExpectations] = useState<TrackedExpectation[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [isAddingExp, setIsAddingExp] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
+
+  const thesis = externalThesis !== undefined ? externalThesis : internalThesis;
+  const expectations = externalExpectations !== undefined ? externalExpectations : internalExpectations;
 
   // Edit fields
   const [editSummary, setEditSummary] = useState('');
@@ -53,8 +64,16 @@ export function ThesisExpectationsCard({
     return extractMemorySnapshot(currentReport);
   }, [currentReport]);
 
-  // Load existing thesis & expectations on ticker change
   useEffect(() => {
+    if (!isEditing && thesis) {
+      setEditSummary(thesis.summary);
+      setEditInvalidation(thesis.invalidationConditions.join('\n'));
+    }
+  }, [thesis, isEditing]);
+
+  // Load existing thesis & expectations on ticker change if not controlled
+  useEffect(() => {
+    if (externalThesis !== undefined && externalExpectations !== undefined) return;
     let isMounted = true;
 
     async function loadData() {
@@ -64,25 +83,21 @@ export function ThesisExpectationsCard({
       if (!isMounted) return;
 
       if (storedThesis) {
-        setThesis(storedThesis);
-        setEditSummary(storedThesis.summary);
-        setEditInvalidation(storedThesis.invalidationConditions.join('\n'));
+        setInternalThesis(storedThesis);
       } else {
         // Create initial draft from current report
         const draft = extractDraftThesisFromReport(currentReport, currentUser?.uid);
         if (draft) {
-          setThesis(draft);
-          setEditSummary(draft.summary);
-          setEditInvalidation(draft.invalidationConditions.join('\n'));
+          setInternalThesis(draft);
         }
       }
 
       // Re-evaluate expectations against current snapshot
       if (snapshot && storedExps.length > 0) {
         const evaluated = evaluateExpectations(storedExps, snapshot);
-        setExpectations(evaluated);
+        setInternalExpectations(evaluated);
       } else {
-        setExpectations(storedExps);
+        setInternalExpectations(storedExps);
       }
     }
 
@@ -90,13 +105,14 @@ export function ThesisExpectationsCard({
     return () => {
       isMounted = false;
     };
-  }, [ticker, currentUser, currentReport, snapshot]);
+  }, [ticker, currentUser, currentReport, snapshot, externalThesis, externalExpectations]);
 
   // Confirm thesis handler
   const handleConfirmThesis = async () => {
     if (!thesis) return;
     const updated = confirmUserThesis(thesis, undefined, currentUser?.uid);
-    setThesis(updated);
+    setInternalThesis(updated);
+    onThesisChange?.(updated);
     await saveUserThesis(updated, currentUser);
   };
 
@@ -116,8 +132,9 @@ export function ThesisExpectationsCard({
       },
       currentUser?.uid
     );
-    setThesis(updated);
+    setInternalThesis(updated);
     setIsEditing(false);
+    onThesisChange?.(updated);
     await saveUserThesis(updated, currentUser);
   };
 
@@ -159,10 +176,11 @@ export function ThesisExpectationsCard({
       updatedList = evaluateExpectations(updatedList, snapshot);
     }
 
-    setExpectations(updatedList);
+    setInternalExpectations(updatedList);
     setNewTarget('');
     setNewPeriod('');
     setIsAddingExp(false);
+    onExpectationsChange?.(updatedList);
     await saveExpectations(ticker, updatedList, currentUser);
   };
 

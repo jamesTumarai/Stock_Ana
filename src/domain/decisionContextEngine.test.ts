@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractMemorySnapshot } from './investmentMemory';
-import { InvestmentThesisRecord, TrackedExpectation } from './thesisExpectations';
+import { InvestmentThesisRecord, TrackedExpectation, evaluateExpectations } from './thesisExpectations';
 import { computeWhatChanged } from './whatChangedEngine';
 import { buildDecisionContext } from './decisionContextEngine';
+import { computeWatchlistIntelligence } from './watchlistIntelligence';
 
 describe('decisionContextEngine', () => {
   const prevReport: any = {
@@ -150,5 +151,100 @@ describe('decisionContextEngine', () => {
     assert.doesNotMatch(stringified, /"action":\s*"BUY"/i);
     assert.doesNotMatch(stringified, /"action":\s*"SELL"/i);
     assert.doesNotMatch(stringified, /"trade_instruction"/i);
+  });
+
+  describe('Blocker F — Canonical Expectation Evaluation Integration', () => {
+    it('evaluates PENDING expectation to MISSED and synchronizes WhatChanged, DecisionContext, and Watchlist', () => {
+      // 1. Stored expectation: Revenue >= 100, Target Period: FY26, Status: PENDING
+      const storedExpectation: TrackedExpectation = {
+        expectationId: 'exp_fy26_rev',
+        ticker: 'MSFT',
+        metricOrEvent: 'revenue',
+        metricLabel: 'FY26 Revenue ($M)',
+        targetValue: 100,
+        condition: 'gte',
+        targetPeriod: 'FY26',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_1',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-15T00:00:00Z',
+        updatedAt: '2026-01-15T00:00:00Z'
+      };
+
+      // 2. Current verified memory snapshot: FY26 Revenue = 90
+      const currentSnapshotReport: any = {
+        ticker: 'MSFT',
+        id: 'rep_fy26_actual',
+        generated_at: '2026-10-15T00:00:00Z',
+        intrinsic_value: {
+          current_price: 450.0,
+          summary: { base_case_fair_value: 480.0 },
+          assumptions: { discount_rate: 8.5, terminal_growth_rate: 2.5 }
+        },
+        financial_statements: {
+          periods: ['FY26'],
+          income_statement: {
+            revenue: [90], // FY26 Revenue = 90
+            operating_margin_pct: [40.0]
+          }
+        }
+      };
+
+      const currentSnapshot = extractMemorySnapshot(currentSnapshotReport)!;
+      const prevSnapshot = extractMemorySnapshot(prevReport)!;
+
+      // 3. Canonical evaluation pipeline
+      const evaluated = evaluateExpectations([storedExpectation], currentSnapshot);
+
+      // Prove evaluated expectation = MISSED
+      assert.equal(evaluated.length, 1);
+      assert.equal(evaluated[0].status, 'MISSED');
+      assert.equal(evaluated[0].actualValue, 90);
+      assert.equal(evaluated[0].actualPeriodFound, 'FY26');
+      // Prove original historical intent was NOT rewritten
+      assert.equal(evaluated[0].targetValue, 100);
+      assert.equal(evaluated[0].targetPeriod, 'FY26');
+      assert.equal(evaluated[0].origin, 'USER_EXPECTATION');
+      assert.equal(evaluated[0].createdAt, '2026-01-15T00:00:00Z');
+
+      // 4. Prove WhatChanged contains expectation miss
+      const whatChanged = computeWhatChanged(currentSnapshot, prevSnapshot, evaluated);
+      const missedItem = whatChanged.items.find(i => i.category === 'EXPECTATIONS' && i.deltaDisplay === 'MISSED');
+      assert.ok(missedItem, 'WhatChanged must contain the expectation miss item');
+      assert.equal(missedItem?.currentValue, 'Actual 90');
+
+      // 5. Prove DecisionContext contains EXPECTATION review reason and appropriate stance
+      const decisionContext = buildDecisionContext(
+        currentSnapshot,
+        prevSnapshot,
+        sampleThesis,
+        whatChanged,
+        evaluated
+      );
+      assert.equal(decisionContext.stance, 'EXPECTATIONS_REVIEW_NEEDED');
+      assert.equal(decisionContext.requiresAttention, true);
+      assert.equal(decisionContext.expectationsSummary.missedCount, 1);
+      const decReason = decisionContext.reasons.find(r => r.category === 'EXPECTATION' && r.id === 'exp_miss_exp_fy26_rev');
+      assert.ok(decReason, 'DecisionContext must contain EXPECTATION review reason');
+      assert.match(decReason?.detail || '', /Reported actual 90 vs target expectation of 100/);
+
+      // 6. Prove Watchlist receives missed-expectation factor
+      const watchlistIntel = computeWatchlistIntelligence(
+        'MSFT',
+        currentSnapshot,
+        prevSnapshot,
+        sampleThesis,
+        evaluated,
+        whatChanged,
+        true,
+        450.0
+      );
+      const expMissFactor = watchlistIntel.factors.find(f => f.code === 'EXP_MISSED');
+      assert.ok(expMissFactor, 'Watchlist must receive EXP_MISSED factor');
+      assert.equal(expMissFactor?.points, 30);
+      assert.ok(watchlistIntel.attentionScore >= 30, 'Score should reflect missed expectation');
+    });
   });
 });

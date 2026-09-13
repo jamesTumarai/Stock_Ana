@@ -322,4 +322,53 @@ describe('thesisExpectations', () => {
       assert.equal(resolvedUnknown, null);
     });
   });
+
+  describe('Blocker I — Conservative Risk and Catalyst Lifecycle Transitions', () => {
+    it('treats ambiguous semantic rewording as uncertain evolution rather than certain RESOLVED and NEW', () => {
+      const prevRisks = ['Cloud demand slowdown'];
+      const currRisks = ['Slower enterprise cloud spending'];
+
+      const transitions = matchRiskCatalystTransitions(prevRisks, currRisks, [], []);
+
+      assert.equal(transitions.length, 1, 'Should match as 1 ambiguous/evolving item instead of 2 separate items');
+      const item = transitions[0];
+      assert.equal(item.category, 'risk');
+      assert.equal(item.isCertain, false, 'Semantic rewording must not be marked certain');
+      assert.equal(item.currentState, 'UNKNOWN', 'Ambiguous rephrasing must express uncertainty/review-needed');
+      assert.equal(item.previousState, 'ACTIVE');
+      assert.ok(item.evidence?.includes('Ambiguous rephrasing'), 'Evidence should note review needed');
+
+      // Crucial negative invariant: must NOT produce old = RESOLVED certain or new = NEW certain
+      const resolvedCertain = transitions.find(t => t.currentState === 'RESOLVED' && t.isCertain === true);
+      const newCertain = transitions.find(t => t.currentState === 'NEW' && t.isCertain === true);
+      assert.equal(resolvedCertain, undefined, 'Must NOT produce old = RESOLVED certain');
+      assert.equal(newCertain, undefined, 'Must NOT produce new = NEW certain');
+    });
+
+    it('marks unmatched unstructured free-text items as uncertain (isCertain: false)', () => {
+      const prevRisks = ['Antitrust investigation into app store policies'];
+      const currRisks = ['Supply chain disruption in Southeast Asia'];
+
+      const transitions = matchRiskCatalystTransitions(prevRisks, currRisks, [], []);
+
+      const newRisk = transitions.find(t => t.currentState === 'NEW');
+      assert.ok(newRisk);
+      assert.equal(newRisk?.isCertain, false, 'Unmatched current free-text risk must be isCertain: false');
+
+      const resolvedRisk = transitions.find(t => t.currentState === 'RESOLVED');
+      assert.ok(resolvedRisk);
+      assert.equal(resolvedRisk?.isCertain, false, 'Unmatched previous free-text risk must be isCertain: false');
+    });
+
+    it('reserves isCertain: true exclusively for exact normalized identity', () => {
+      const prevRisks = ['Foreign Exchange Currency Headwind'];
+      const currRisks = ['foreign exchange currency headwind'];
+
+      const transitions = matchRiskCatalystTransitions(prevRisks, currRisks, [], []);
+
+      assert.equal(transitions.length, 1);
+      assert.equal(transitions[0].currentState, 'ACTIVE');
+      assert.equal(transitions[0].isCertain, true, 'Exact normalized identity permits isCertain: true');
+    });
+  });
 });

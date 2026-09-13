@@ -14,7 +14,7 @@ import {
 import { extractMemorySnapshot } from '../domain/investmentMemory';
 import { computeWhatChanged } from '../domain/whatChangedEngine';
 import { buildDecisionContext } from '../domain/decisionContextEngine';
-import { InvestmentThesisRecord, TrackedExpectation } from '../domain/thesisExpectations';
+import { InvestmentThesisRecord, TrackedExpectation, evaluateExpectations } from '../domain/thesisExpectations';
 import { loadUserThesis, loadExpectations } from '../services/thesisExpectationsService';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
@@ -24,6 +24,8 @@ interface Props {
   historyReports?: any[];
   isThai: boolean;
   currentUser?: any;
+  externalThesis?: InvestmentThesisRecord | null;
+  externalExpectations?: TrackedExpectation[];
 }
 
 export function ResearchTimelineCard({
@@ -31,27 +33,33 @@ export function ResearchTimelineCard({
   currentReport,
   historyReports = [],
   isThai,
-  currentUser
+  currentUser,
+  externalThesis,
+  externalExpectations
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [thesis, setThesis] = useState<InvestmentThesisRecord | null>(null);
-  const [expectations, setExpectations] = useState<TrackedExpectation[]>([]);
+  const [internalThesis, setInternalThesis] = useState<InvestmentThesisRecord | null>(null);
+  const [internalExpectations, setInternalExpectations] = useState<TrackedExpectation[]>([]);
 
   useEffect(() => {
+    if (externalThesis !== undefined && externalExpectations !== undefined) return;
     let isMounted = true;
     async function loadContext() {
       const t = await loadUserThesis(ticker, currentUser);
       const e = await loadExpectations(ticker, currentUser);
       if (isMounted) {
-        setThesis(t);
-        setExpectations(e);
+        if (externalThesis === undefined) setInternalThesis(t);
+        if (externalExpectations === undefined) setInternalExpectations(e);
       }
     }
     loadContext();
     return () => {
       isMounted = false;
     };
-  }, [ticker, currentUser]);
+  }, [ticker, currentUser, externalThesis, externalExpectations]);
+
+  const thesis = externalThesis !== undefined ? externalThesis : internalThesis;
+  const rawExpectations = externalExpectations !== undefined ? externalExpectations : internalExpectations;
 
   const timeline = useMemo(() => {
     return buildResearchTimeline(ticker, historyReports, currentReport);
@@ -73,6 +81,11 @@ export function ResearchTimelineCard({
   const previousSnapshot = useMemo(() => {
     return previousReport ? extractMemorySnapshot(previousReport) : null;
   }, [previousReport]);
+
+  const expectations = useMemo(() => {
+    if (!currentSnapshot || rawExpectations.length === 0) return rawExpectations;
+    return evaluateExpectations(rawExpectations, currentSnapshot);
+  }, [rawExpectations, currentSnapshot]);
 
   const whatChanged = useMemo(() => {
     if (!currentSnapshot || !previousSnapshot) return null;

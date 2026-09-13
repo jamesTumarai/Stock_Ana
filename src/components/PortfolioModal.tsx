@@ -17,6 +17,10 @@ import { ProvenanceBadge } from './ProvenanceBadge';
 import { fetchLiveQuotes } from '../services/marketDataService';
 import { extractMemorySnapshot } from '../domain/investmentMemory';
 import { computeWatchlistIntelligence, rankWatchlistByPriority } from '../domain/watchlistIntelligence';
+import { getPreviousReport } from '../utils/researchTimeline';
+import { computeWhatChanged } from '../domain/whatChangedEngine';
+import { InvestmentThesisRecord, TrackedExpectation, evaluateExpectations } from '../domain/thesisExpectations';
+import { loadUserThesis, loadExpectations } from '../services/thesisExpectationsService';
 
 interface Props {
   isOpen: boolean;
@@ -26,6 +30,7 @@ interface Props {
   onSelectTicker?: (ticker: string) => void;
   quotes?: Record<string, any>;
   latestReports?: Record<string, any>;
+  historyReports?: any[];
 }
 
 export function PortfolioModal({
@@ -35,7 +40,8 @@ export function PortfolioModal({
   user,
   onSelectTicker,
   quotes = {},
-  latestReports = {}
+  latestReports = {},
+  historyReports = []
 }: Props) {
   const [activeTab, setActiveTab] = useState<'portfolio' | 'watchlist'>('portfolio');
   const [holdings, setHoldings] = useState<PortfolioHolding[]>([]);
@@ -53,6 +59,49 @@ export function PortfolioModal({
 
   // Add watchlist ticker state
   const [newWatchTicker, setNewWatchTicker] = useState('');
+
+  // Research context cache for watchlist tickers
+  const [researchStateMap, setResearchStateMap] = useState<
+    Record<string, { thesis: InvestmentThesisRecord | null; expectations: TrackedExpectation[] }>
+  >({});
+
+  useEffect(() => {
+    if (!isOpen || watchlist.length === 0) return;
+    let isMounted = true;
+
+    const missingTickers = watchlist
+      .map(t => t.toUpperCase().trim())
+      .filter(t => Boolean(t) && !researchStateMap[t]);
+
+    if (missingTickers.length === 0) return;
+
+    Promise.all(
+      missingTickers.map(async (sym) => {
+        try {
+          const [th, ex] = await Promise.all([
+            loadUserThesis(sym, user),
+            loadExpectations(sym, user)
+          ]);
+          return { sym, thesis: th, expectations: ex };
+        } catch {
+          return { sym, thesis: null, expectations: [] };
+        }
+      })
+    ).then(results => {
+      if (!isMounted) return;
+      setResearchStateMap(prev => {
+        const next = { ...prev };
+        for (const res of results) {
+          next[res.sym] = { thesis: res.thesis, expectations: res.expectations };
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, watchlist, user?.uid]);
 
   useEffect(() => {
     if (isOpen) {
@@ -99,26 +148,40 @@ export function PortfolioModal({
 
   const watchlistEntries = useMemo(() => {
     const rawEntries = watchlist.map((tick) => {
-      const q = activeQuotes[tick];
+      const cleanTick = tick.toUpperCase().trim();
+      const q = activeQuotes[cleanTick];
       const price = typeof q === 'number' ? q : q?.price;
-      const report = latestReports[tick];
-      const snapshot = report ? extractMemorySnapshot(report) : null;
-      const isOwned = holdings.some(h => h.ticker.toUpperCase() === tick.toUpperCase());
+      const report = latestReports[cleanTick];
+      const currentSnapshot = report ? extractMemorySnapshot(report) : null;
+      const previousReport = getPreviousReport(cleanTick, historyReports, report);
+      const previousSnapshot = previousReport ? extractMemorySnapshot(previousReport) : null;
+      const isOwned = holdings.some(h => h.ticker.toUpperCase() === cleanTick);
+
+      const cached = researchStateMap[cleanTick];
+      const activeThesis = cached?.thesis || null;
+      const rawExps = cached?.expectations || [];
+      const evaluatedExpectations = currentSnapshot && rawExps.length > 0
+        ? evaluateExpectations(rawExps, currentSnapshot)
+        : rawExps;
+
+      const whatChanged = (currentSnapshot && previousSnapshot)
+        ? computeWhatChanged(currentSnapshot, previousSnapshot, evaluatedExpectations)
+        : null;
 
       return computeWatchlistIntelligence(
-        tick,
-        snapshot,
-        null,
-        null,
-        [],
-        null,
+        cleanTick,
+        currentSnapshot,
+        previousSnapshot,
+        activeThesis,
+        evaluatedExpectations,
+        whatChanged,
         isOwned,
         price
       );
     });
 
     return rankWatchlistByPriority(rawEntries);
-  }, [watchlist, activeQuotes, latestReports, holdings]);
+  }, [watchlist, activeQuotes, latestReports, historyReports, holdings, researchStateMap]);
 
   if (!isOpen) return null;
 
