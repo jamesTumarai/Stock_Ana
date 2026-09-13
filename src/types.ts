@@ -1413,3 +1413,11 @@ export type {
   LifecycleState,
   TrackedItemTransition
 } from './domain/thesisExpectations';
+
+export type {
+  ChangeCategory,
+  ChangeMateriality,
+  ChangeItem,
+  ValuationAttribution,
+  WhatChangedResult
+} from './domain/whatChangedEngine';
