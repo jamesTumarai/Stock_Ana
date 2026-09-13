@@ -247,4 +247,230 @@ describe('decisionContextEngine', () => {
       assert.ok(watchlistIntel.attentionScore >= 30, 'Score should reflect missed expectation');
     });
   });
+
+  describe('Blocker 5 & 6 / Test F, G, H — Prior Belief Resolution', () => {
+    it('uses historical thesis v1 as prior belief for Report B, never substituting current v2', () => {
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const thesisV1: InvestmentThesisRecord = {
+        thesisId: 'th_msft_v1',
+        ticker: 'MSFT',
+        version: 1,
+        summary: 'Cloud thesis: Azure dominance drives operating leverage',
+        keyDrivers: ['Azure'],
+        keyAssumptions: ['8.5% WACC'],
+        keyRisks: ['Slowdown'],
+        catalysts: ['Earnings'],
+        invalidationConditions: [],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_CONFIRMED',
+        sourceReportId: 'rep_1',
+        createdAt: '2026-01-15T00:00:00Z',
+        updatedAt: '2026-01-15T00:00:00Z',
+        userId: 'u1'
+      };
+
+      const thesisV2: InvestmentThesisRecord = {
+        thesisId: 'th_msft_v1',
+        ticker: 'MSFT',
+        version: 2,
+        summary: 'AI monetization thesis: Copilot adds high-margin software ARR',
+        keyDrivers: ['Copilot', 'Azure'],
+        keyAssumptions: ['8.0% WACC'],
+        keyRisks: ['Capex'],
+        catalysts: ['Ignite'],
+        invalidationConditions: [],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_EDITED',
+        sourceReportId: 'rep_2',
+        createdAt: '2026-01-15T00:00:00Z',
+        updatedAt: '2026-04-15T00:00:00Z',
+        userId: 'u1'
+      };
+
+      // Current thesis is v2, previous thesis for rep_1 is v1
+      const context = buildDecisionContext(
+        currSnap,
+        prevSnap,
+        thesisV2, // current thesis
+        null,
+        [],
+        thesisV1  // previous thesis
+      );
+
+      // Prior belief must be v1 ("Cloud thesis"), NOT current v2 ("AI monetization thesis")
+      assert.ok(context.priorBeliefSummary.thesisSummary);
+      assert.equal(
+        context.priorBeliefSummary.thesisSummary,
+        'Cloud thesis: Azure dominance drives operating leverage',
+        'Prior belief must truthfully reflect historical thesis v1'
+      );
+      assert.notEqual(
+        context.priorBeliefSummary.thesisSummary,
+        thesisV2.summary,
+        'Must NOT substitute current thesis v2 for yesterday belief'
+      );
+    });
+
+    it('legacy report before any confirmed thesis does NOT use current thesis as prior belief', () => {
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const modernThesis: InvestmentThesisRecord = {
+        thesisId: 'th_msft_modern',
+        ticker: 'MSFT',
+        version: 1,
+        summary: 'Modern active thesis: AI leadership',
+        keyDrivers: ['AI'],
+        keyAssumptions: [],
+        keyRisks: [],
+        catalysts: [],
+        invalidationConditions: [],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_CONFIRMED',
+        sourceReportId: 'rep_2',
+        createdAt: '2026-04-15T00:00:00Z',
+        updatedAt: '2026-04-15T00:00:00Z'
+      };
+
+      // When no confirmed thesis existed for prior report (previousThesis = null):
+      const context = buildDecisionContext(
+        currSnap,
+        prevSnap,
+        modernThesis,
+        null,
+        [],
+        null // No confirmed prior thesis
+      );
+
+      // Must NOT be modernThesis.summary
+      assert.notEqual(
+        context.priorBeliefSummary.thesisSummary,
+        modernThesis.summary,
+        'Must NOT substitute current thesis as prior belief for legacy report'
+      );
+
+      // If prior report had draft text, it is labeled as [Historical Report Draft], otherwise null
+      if (context.priorBeliefSummary.thesisSummary) {
+        assert.match(context.priorBeliefSummary.thesisSummary, /\[Historical Report Draft\]/);
+      }
+    });
+  });
+
+  describe('Blocker 12 / Test L — Manual Invalidation Conditions', () => {
+    it('preserves manual review conditions without falsely auto-triggering them', () => {
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      // An intact report without margin contraction
+      const intactReport = {
+        ...prevReport,
+        id: 'rep_intact',
+        generated_at: '2026-03-01T00:00:00Z'
+      };
+      const currSnap = extractMemorySnapshot(intactReport)!;
+
+      const qualitativeThesis: InvestmentThesisRecord = {
+        ...sampleThesis,
+        invalidationConditions: [
+          'Materialization of primary risk: Competition in enterprise search'
+        ]
+      };
+
+      const context = buildDecisionContext(currSnap, prevSnap, qualitativeThesis, null, []);
+
+      // Qualitative condition must be captured in manualReviewConditions
+      assert.equal(context.manualReviewConditions.length, 1);
+      assert.equal(context.manualReviewConditions[0], 'Materialization of primary risk: Competition in enterprise search');
+
+      // Crucial: Must NOT be placed in invalidationTriggersFound (never falsely auto-evaluated)
+      assert.equal(context.invalidationTriggersFound.length, 0);
+
+      // Stance must NOT become THESIS_CONDITION_TRIGGERED
+      assert.notEqual(context.stance, 'THESIS_CONDITION_TRIGGERED');
+      assert.equal(context.stance, 'MONITORING_CONTINUES_UNCHANGED');
+    });
+  });
+
+  describe('Blocker 10 / Test J — One Expectation State Across All Consumers', () => {
+    it('ensures ThesisExpectations, WhatChanged, DecisionContext, and Watchlist agree when Q4 report follows Q3 miss', () => {
+      const q3Expectation: TrackedExpectation = {
+        expectationId: 'exp_q3_msft',
+        ticker: 'MSFT',
+        metricOrEvent: 'revenue',
+        metricLabel: 'Q3 Revenue Target',
+        targetValue: 60000,
+        condition: 'gte',
+        targetPeriod: 'Q3 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_q3',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-15T00:00:00Z',
+        updatedAt: '2026-01-15T00:00:00Z'
+      };
+
+      const q3ReportData: any = {
+        ticker: 'MSFT',
+        id: 'rep_q3',
+        generated_at: '2026-07-15T00:00:00Z',
+        financial_statements: {
+          periods: ['Q3 2026'],
+          income_statement: { revenue: [55000], operating_margin_pct: [40.0] }
+        }
+      };
+      const q3Snap = extractMemorySnapshot(q3ReportData)!;
+
+      // 1. Initial evaluation against Q3 -> MISSED
+      const evaluatedQ3 = evaluateExpectations([q3Expectation], q3Snap);
+      assert.equal(evaluatedQ3[0].status, 'MISSED');
+
+      // 2. Newest report arrives for Q4 2026 (Revenue 65000)
+      const q4ReportData: any = {
+        ticker: 'MSFT',
+        id: 'rep_q4',
+        generated_at: '2026-10-15T00:00:00Z',
+        financial_statements: {
+          periods: ['Q3 2026', 'Q4 2026'],
+          income_statement: { revenue: [55000, 65000], operating_margin_pct: [40.0, 42.0] }
+        }
+      };
+      const q4Snap = extractMemorySnapshot(q4ReportData)!;
+
+      // 3. Consumer 1: ThesisExpectations / evaluateExpectations
+      const durableEvaluated = evaluateExpectations(evaluatedQ3, q4Snap, [q3Snap]);
+      assert.equal(durableEvaluated[0].status, 'MISSED', 'Thesis expectations card sees MISSED');
+
+      // 4. Consumer 2: WhatChanged
+      const whatChanged = computeWhatChanged(q4Snap, q3Snap, durableEvaluated);
+      const wcMissItem = whatChanged.items.find(i => i.category === 'EXPECTATIONS' && i.deltaDisplay === 'MISSED');
+      assert.ok(wcMissItem, 'WhatChanged must see MISSED');
+
+      // 5. Consumer 3: DecisionContext
+      const decisionContext = buildDecisionContext(
+        q4Snap,
+        q3Snap,
+        sampleThesis,
+        whatChanged,
+        durableEvaluated
+      );
+      assert.equal(decisionContext.stance, 'EXPECTATIONS_REVIEW_NEEDED', 'DecisionContext sees EXPECTATIONS_REVIEW_NEEDED');
+      assert.equal(decisionContext.expectationsSummary.missedCount, 1);
+
+      // 6. Consumer 4: WatchlistIntelligence
+      const watchlist = computeWatchlistIntelligence(
+        'MSFT',
+        q4Snap,
+        q3Snap,
+        sampleThesis,
+        durableEvaluated,
+        whatChanged,
+        true,
+        450.0
+      );
+      const factor = watchlist.factors.find(f => f.code === 'EXP_MISSED');
+      assert.ok(factor, 'Watchlist retains expectation-miss factor across Q4 transition');
+      assert.equal(factor?.points, 30);
+    });
+  });
 });

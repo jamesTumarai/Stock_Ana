@@ -34,6 +34,14 @@ export interface ResearchMemoryValuation {
   provenance: MemorySourceType;
 }
 
+export interface HistoricalPeriodFinancials {
+  period: string;
+  revenue: number | null;
+  operatingMarginPct: number | null;
+  netIncome: number | null;
+  freeCashFlow: number | null;
+}
+
 export interface ResearchMemoryFinancials {
   latestPeriod: string | null;
   revenue: number | null;
@@ -48,6 +56,7 @@ export interface ResearchMemoryFinancials {
   currentSharesOutstandingM: number | null;
   dilutedWeightedAverageSharesM: number | null;
   freeCashFlowPeriodBasis?: 'QUARTER' | 'ANNUAL' | 'LTM' | 'UNKNOWN';
+  periodHistory?: HistoricalPeriodFinancials[];
   provenance: 'sec_verified' | 'calculated' | 'unverified' | 'unavailable';
 }
 
@@ -223,6 +232,7 @@ export function extractMemorySnapshot(
   let sharesOutstanding: number | null = null;
   let currentSharesOutstandingM: number | null = null;
   let dilutedWeightedAverageSharesM: number | null = null;
+  let periodHistory: HistoricalPeriodFinancials[] | undefined = undefined;
   let financialsProvenance: ResearchMemoryFinancials['provenance'] = 'unavailable';
 
   if (secStatements.length > 0) {
@@ -291,6 +301,28 @@ export function extractMemorySnapshot(
       : null;
     // sharesOutstanding explicitly maps to current shares
     sharesOutstanding = currentSharesOutstandingM;
+
+    // Preserved historical SEC statement periods for durable cross-period expectation resolution
+    periodHistory = sortedSec.map(s => {
+      const sRev = typeof s.revenue === 'number' ? s.revenue : null;
+      const sOpInc = typeof s.operating_income === 'number' ? s.operating_income : null;
+      const sMargin = (typeof sRev === 'number' && typeof sOpInc === 'number' && sRev > 0)
+        ? Number(((sOpInc / sRev) * 100).toFixed(2))
+        : null;
+      const sNetInc = typeof s.net_income === 'number' ? s.net_income : null;
+      const sOcf = typeof s.operating_cash_flow === 'number' ? s.operating_cash_flow : null;
+      const sCapex = typeof s.capital_expenditure === 'number' ? s.capital_expenditure : null;
+      const sFcf = (typeof sOcf === 'number' && typeof sCapex === 'number')
+        ? sOcf - Math.abs(sCapex)
+        : null;
+      return {
+        period: s.period,
+        revenue: sRev,
+        operatingMarginPct: sMargin,
+        netIncome: sNetInc,
+        freeCashFlow: sFcf
+      };
+    });
   } else {
     // Branch 2: Report Financial Statements (AI / Non-SEC)
     // NEVER label as sec_verified
@@ -364,6 +396,23 @@ export function extractMemorySnapshot(
           : null);
     dilutedWeightedAverageSharesM = null;
     sharesOutstanding = currentSharesOutstandingM;
+
+    periodHistory = periods.map((p, idx) => {
+      const pRev = typeof stmts?.income_statement?.revenue?.[idx] === 'number' ? stmts.income_statement.revenue[idx] : null;
+      const pOpInc = typeof stmts?.income_statement?.operating_income?.[idx] === 'number' ? stmts.income_statement.operating_income[idx] : null;
+      const pMargin = (typeof pRev === 'number' && typeof pOpInc === 'number' && pRev > 0)
+        ? Number(((pOpInc / pRev) * 100).toFixed(2))
+        : (typeof stmts?.income_statement?.operating_margin_pct?.[idx] === 'number' ? stmts.income_statement.operating_margin_pct[idx] : null);
+      const pNetInc = typeof stmts?.income_statement?.net_income?.[idx] === 'number' ? stmts.income_statement.net_income[idx] : null;
+      const pFcf = typeof stmts?.cash_flow?.free_cash_flow?.[idx] === 'number' ? stmts.cash_flow.free_cash_flow[idx] : null;
+      return {
+        period: p,
+        revenue: pRev,
+        operatingMarginPct: pMargin,
+        netIncome: pNetInc,
+        freeCashFlow: pFcf
+      };
+    });
   }
 
   const financials: ResearchMemoryFinancials = {
@@ -379,6 +428,7 @@ export function extractMemorySnapshot(
     currentSharesOutstandingM,
     dilutedWeightedAverageSharesM,
     freeCashFlowPeriodBasis,
+    periodHistory,
     provenance: financialsProvenance
   };
 

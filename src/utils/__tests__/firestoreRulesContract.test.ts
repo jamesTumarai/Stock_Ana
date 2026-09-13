@@ -39,10 +39,15 @@ describe('Firestore Rules Security Contract (Blocker J)', () => {
     assert.match(rules, /allow\s+delete:\s*if\s+false;/, 'thesis revisions must be immutable (no deletions)');
   });
 
-  it('explicitly defines allowed /expectations/{expectationId} path with owner-only access', () => {
+  it('explicitly defines allowed /expectations/{expectationId} path with owner-only access and guards immutable target fields on update', () => {
     assert.match(rules, /match\s+\/expectations\/\{expectationId\}/);
     // owner check on update
     assert.match(rules, /resource\.data\.userId\s*==\s*userId/);
+    // immutable target fields guard
+    assert.match(
+      rules,
+      /hasAny\(\['userId',\s*'ticker',\s*'expectationId',\s*'targetValue',\s*'targetPeriod',\s*'condition',\s*'origin',\s*'createdAt',\s*'sourceReportId'\]\)/
+    );
   });
 
   it('preserves reports collection immutability and audited soft-delete contract', () => {

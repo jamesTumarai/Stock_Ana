@@ -6,6 +6,7 @@ import {
   evaluateExpectations,
   matchRiskCatalystTransitions,
   resolveActiveThesisForReport,
+  classifyInvalidationCondition,
   InvestmentThesisRecord,
   TrackedExpectation
 } from './thesisExpectations';
@@ -369,6 +370,152 @@ describe('thesisExpectations', () => {
       assert.equal(transitions.length, 1);
       assert.equal(transitions[0].currentState, 'ACTIVE');
       assert.equal(transitions[0].isCertain, true, 'Exact normalized identity permits isCertain: true');
+    });
+  });
+
+  describe('Blocker 7 / Test G — Thesis Edit & Current Report Context Linkage', () => {
+    it('links new confirmed/edited revision to the current report context and increments version', () => {
+      const initialThesis: InvestmentThesisRecord = {
+        thesisId: 'th_test_1',
+        ticker: 'MSFT',
+        version: 1,
+        summary: 'Thesis v1 tied to Report A',
+        keyDrivers: ['Cloud'],
+        keyAssumptions: ['8.5% WACC'],
+        keyRisks: ['Slowdown'],
+        catalysts: ['Earnings'],
+        invalidationConditions: ['Operating margin < 35%'],
+        status: 'ACTIVE',
+        confirmationStatus: 'USER_CONFIRMED',
+        sourceReportId: 'rep_A',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        userId: 'user_123'
+      };
+
+      // User edits thesis while viewing Report B
+      const edited = confirmUserThesis(
+        initialThesis,
+        {
+          summary: 'Thesis v2 updated while viewing Report B',
+          invalidationConditions: ['Operating margin < 30%']
+        },
+        'user_123',
+        'rep_B'
+      );
+
+      assert.equal(edited.thesisId, 'th_test_1', 'Must preserve original thesisId');
+      assert.equal(edited.version, 2, 'Must increment version');
+      assert.equal(edited.confirmationStatus, 'USER_EDITED');
+      assert.equal(edited.sourceReportId, 'rep_B', 'Must be tied to the current report context');
+      assert.equal(edited.createdAt, '2026-01-01T00:00:00Z', 'Must preserve original createdAt');
+      assert.equal(edited.userId, 'user_123');
+      assert.ok(edited.updatedAt > edited.createdAt, 'updatedAt must be updated');
+      assert.equal(edited.summary, 'Thesis v2 updated while viewing Report B');
+      assert.deepEqual(edited.invalidationConditions, ['Operating margin < 30%']);
+    });
+  });
+
+  describe('Blocker 8 & 9 / Test I — Durable Expectations & Historical Target Period Resolution', () => {
+    it('Q3 MISSED expectation remains MISSED when Q4 is the latest report, using historical target data', () => {
+      const expectation: TrackedExpectation = {
+        expectationId: 'exp_q3_rev',
+        ticker: 'MSFT',
+        metricOrEvent: 'revenue',
+        metricLabel: 'Q3 2026 Revenue ($M)',
+        targetValue: 60000,
+        condition: 'gte',
+        targetPeriod: 'Q3 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_1',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-15T00:00:00Z',
+        updatedAt: '2026-01-15T00:00:00Z'
+      };
+
+      // 1. In Q3 2026 report, actual revenue was 55,000 (target 60,000 gte) -> MISSED
+      const q3Report: any = {
+        ticker: 'MSFT',
+        id: 'rep_q3',
+        generated_at: '2026-07-15T00:00:00Z',
+        financial_statements: {
+          periods: ['Q3 2026'],
+          income_statement: { revenue: [55000], operating_margin_pct: [40.0] }
+        }
+      };
+      const q3Snap = extractMemorySnapshot(q3Report)!;
+      const evaluatedQ3 = evaluateExpectations([expectation], q3Snap);
+
+      assert.equal(evaluatedQ3.length, 1);
+      assert.equal(evaluatedQ3[0].status, 'MISSED');
+      assert.equal(evaluatedQ3[0].actualValue, 55000);
+      assert.equal(evaluatedQ3[0].actualPeriodFound, 'Q3 2026');
+      assert.equal(evaluatedQ3[0].targetValue, 60000, 'Immutable targetValue must be preserved');
+      assert.equal(evaluatedQ3[0].targetPeriod, 'Q3 2026', 'Immutable targetPeriod must be preserved');
+
+      // 2. Later, Q4 2026 report arrives with Revenue = 65,000 (which would have exceeded 60,000 if evaluated against Q4!)
+      const q4Report: any = {
+        ticker: 'MSFT',
+        id: 'rep_q4',
+        generated_at: '2026-10-15T00:00:00Z',
+        financial_statements: {
+          periods: ['Q3 2026', 'Q4 2026'],
+          income_statement: {
+            revenue: [55000, 65000],
+            operating_margin_pct: [40.0, 42.0]
+          }
+        }
+      };
+      const q4Snap = extractMemorySnapshot(q4Report)!;
+
+      // Invariant 1: If expectation was already terminal MISSED, it durably stays MISSED
+      const reEvaluatedDurable = evaluateExpectations(evaluatedQ3, q4Snap);
+      assert.equal(reEvaluatedDurable[0].status, 'MISSED', 'Terminal outcome must be durable');
+      assert.equal(reEvaluatedDurable[0].actualValue, 55000);
+
+      // Invariant 3: Even if fresh PENDING expectation for Q3 is evaluated when Q4 is current snapshot,
+      // it matches against Q3 in periodHistory, NOT Q4's 65,000!
+      const freshEvaluatedAgainstQ4 = evaluateExpectations([expectation], q4Snap);
+      assert.equal(freshEvaluatedAgainstQ4[0].status, 'MISSED', 'Canonical target-period resolver must resolve Q3 actual, not Q4');
+      assert.equal(freshEvaluatedAgainstQ4[0].actualValue, 55000, 'Must use 55000 from Q3, not 65000 from Q4');
+      assert.equal(freshEvaluatedAgainstQ4[0].actualPeriodFound, 'Q3 2026');
+
+      // Invariant: If target period was never available/reached, remains PENDING
+      const futureExpectation: TrackedExpectation = {
+        ...expectation,
+        expectationId: 'exp_future',
+        targetPeriod: 'Q1 2027'
+      };
+      const futureEval = evaluateExpectations([futureExpectation], q4Snap);
+      assert.equal(futureEval[0].status, 'PENDING');
+    });
+  });
+
+  describe('Blocker 12 / Test L — Invalidation Conditions Classification', () => {
+    it('correctly classifies deterministic numeric triggers vs manual review conditions', () => {
+      // Deterministic triggers
+      const condMargin = classifyInvalidationCondition('Operating margin drops below 35.0%');
+      assert.equal(condMargin.type, 'DETERMINISTIC_TRIGGER');
+      assert.equal(condMargin.metric, 'operating_margin_pct');
+      assert.equal(condMargin.threshold, 35.0);
+
+      const condFcf = classifyInvalidationCondition('Free cash flow drops below 25000');
+      assert.equal(condFcf.type, 'DETERMINISTIC_TRIGGER');
+      assert.equal(condFcf.metric, 'free_cash_flow');
+      assert.equal(condFcf.threshold, 25000);
+
+      // Manual review triggers (qualitative / free-text)
+      const condComp = classifyInvalidationCondition('Materialization of primary risk: Competition');
+      assert.equal(condComp.type, 'MANUAL_REVIEW_TRIGGER');
+      assert.equal(condComp.metric, null);
+      assert.equal(condComp.threshold, null);
+
+      const condReg = classifyInvalidationCondition('Regulatory antitrust ban in European Union');
+      assert.equal(condReg.type, 'MANUAL_REVIEW_TRIGGER');
+      assert.equal(condReg.metric, null);
+      assert.equal(condReg.threshold, null);
     });
   });
 });

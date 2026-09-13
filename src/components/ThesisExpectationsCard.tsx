@@ -10,7 +10,8 @@ import {
   TrackedExpectation,
   extractDraftThesisFromReport,
   confirmUserThesis,
-  evaluateExpectations
+  evaluateExpectations,
+  classifyInvalidationCondition
 } from '../domain/thesisExpectations';
 import {
   loadUserThesis,
@@ -110,7 +111,7 @@ export function ThesisExpectationsCard({
   // Confirm thesis handler
   const handleConfirmThesis = async () => {
     if (!thesis) return;
-    const updated = confirmUserThesis(thesis, undefined, currentUser?.uid);
+    const updated = confirmUserThesis(thesis, undefined, currentUser?.uid, snapshot?.reportId);
     setInternalThesis(updated);
     onThesisChange?.(updated);
     await saveUserThesis(updated, currentUser);
@@ -130,7 +131,8 @@ export function ThesisExpectationsCard({
         summary: editSummary,
         invalidationConditions: invalConditions
       },
-      currentUser?.uid
+      currentUser?.uid,
+      snapshot?.reportId
     );
     setInternalThesis(updated);
     setIsEditing(false);
@@ -320,10 +322,24 @@ export function ThesisExpectationsCard({
                     <span className="text-[10px] font-bold uppercase text-rose-600 tracking-wider block mb-1">
                       {isThai ? 'เงื่อนไขที่อาจหักล้างสมมติฐาน (Invalidation Triggers)' : 'Invalidation Triggers'}
                     </span>
-                    <ul className="list-disc list-inside text-xs text-stone-700 space-y-0.5">
-                      {thesis.invalidationConditions.map((cond, idx) => (
-                        <li key={idx} className="text-stone-800">{cond}</li>
-                      ))}
+                    <ul className="list-disc list-inside text-xs text-stone-700 space-y-1">
+                      {thesis.invalidationConditions.map((cond, idx) => {
+                        const classified = classifyInvalidationCondition(cond);
+                        return (
+                          <li key={idx} className="text-stone-800 flex items-center justify-between gap-2 py-0.5">
+                            <span>{cond}</span>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 font-semibold uppercase ${
+                              classified.type === 'DETERMINISTIC_TRIGGER'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}>
+                              {classified.type === 'DETERMINISTIC_TRIGGER'
+                                ? (isThai ? 'ติดตามอัตโนมัติ' : 'Auto-Monitored')
+                                : (isThai ? 'ต้องตรวจสอบเอง' : 'Manual Review Needed')}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}

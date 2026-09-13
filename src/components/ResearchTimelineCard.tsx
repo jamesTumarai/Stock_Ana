@@ -14,8 +14,17 @@ import {
 import { extractMemorySnapshot } from '../domain/investmentMemory';
 import { computeWhatChanged } from '../domain/whatChangedEngine';
 import { buildDecisionContext } from '../domain/decisionContextEngine';
-import { InvestmentThesisRecord, TrackedExpectation, evaluateExpectations } from '../domain/thesisExpectations';
-import { loadUserThesis, loadExpectations } from '../services/thesisExpectationsService';
+import {
+  InvestmentThesisRecord,
+  TrackedExpectation,
+  evaluateExpectations,
+  resolveActiveThesisForReport
+} from '../domain/thesisExpectations';
+import {
+  loadUserThesis,
+  loadExpectations,
+  loadThesisRevisions
+} from '../services/thesisExpectationsService';
 import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface Props {
@@ -40,16 +49,18 @@ export function ResearchTimelineCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [internalThesis, setInternalThesis] = useState<InvestmentThesisRecord | null>(null);
   const [internalExpectations, setInternalExpectations] = useState<TrackedExpectation[]>([]);
+  const [thesisRevisions, setThesisRevisions] = useState<InvestmentThesisRecord[]>([]);
 
   useEffect(() => {
-    if (externalThesis !== undefined && externalExpectations !== undefined) return;
     let isMounted = true;
     async function loadContext() {
       const t = await loadUserThesis(ticker, currentUser);
       const e = await loadExpectations(ticker, currentUser);
+      const revs = await loadThesisRevisions(ticker, currentUser);
       if (isMounted) {
         if (externalThesis === undefined) setInternalThesis(t);
         if (externalExpectations === undefined) setInternalExpectations(e);
+        setThesisRevisions(revs);
       }
     }
     loadContext();
@@ -57,9 +68,6 @@ export function ResearchTimelineCard({
       isMounted = false;
     };
   }, [ticker, currentUser, externalThesis, externalExpectations]);
-
-  const thesis = externalThesis !== undefined ? externalThesis : internalThesis;
-  const rawExpectations = externalExpectations !== undefined ? externalExpectations : internalExpectations;
 
   const timeline = useMemo(() => {
     return buildResearchTimeline(ticker, historyReports, currentReport);
@@ -82,10 +90,27 @@ export function ResearchTimelineCard({
     return previousReport ? extractMemorySnapshot(previousReport) : null;
   }, [previousReport]);
 
+  const historicalSnapshots = useMemo(() => {
+    return (historyReports || [])
+      .map(r => extractMemorySnapshot(r))
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+  }, [historyReports]);
+
   const expectations = useMemo(() => {
-    if (!currentSnapshot || rawExpectations.length === 0) return rawExpectations;
-    return evaluateExpectations(rawExpectations, currentSnapshot);
-  }, [rawExpectations, currentSnapshot]);
+    const raw = externalExpectations !== undefined ? externalExpectations : internalExpectations;
+    if (!currentSnapshot || raw.length === 0) return raw;
+    return evaluateExpectations(raw, currentSnapshot, historicalSnapshots);
+  }, [externalExpectations, internalExpectations, currentSnapshot, historicalSnapshots]);
+
+  const currentThesis = useMemo(() => {
+    if (externalThesis !== undefined) return externalThesis;
+    return resolveActiveThesisForReport(currentReport, thesisRevisions, internalThesis);
+  }, [currentReport, thesisRevisions, internalThesis, externalThesis]);
+
+  const previousThesis = useMemo(() => {
+    if (!previousReport) return null;
+    return resolveActiveThesisForReport(previousReport, thesisRevisions, null);
+  }, [previousReport, thesisRevisions]);
 
   const whatChanged = useMemo(() => {
     if (!currentSnapshot || !previousSnapshot) return null;
@@ -97,11 +122,12 @@ export function ResearchTimelineCard({
     return buildDecisionContext(
       currentSnapshot,
       previousSnapshot,
-      thesis,
+      currentThesis,
       whatChanged,
-      expectations
+      expectations,
+      previousThesis
     );
-  }, [currentSnapshot, previousSnapshot, thesis, whatChanged, expectations]);
+  }, [currentSnapshot, previousSnapshot, currentThesis, whatChanged, expectations, previousThesis]);
 
   // If there is only 1 report and no previous history, show an initial baseline badge
   if (timeline.length <= 1 && !delta) {

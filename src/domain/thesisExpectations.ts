@@ -162,11 +162,13 @@ export function extractDraftThesisFromReport(
 
 /**
  * Confirms or edits a user thesis, transitioning state to USER_CONFIRMED or USER_EDITED.
+ * Strictly links new revisions created from a report view to that current research state (currentReportId).
  */
 export function confirmUserThesis(
   baseThesis: InvestmentThesisRecord,
   edits?: Partial<InvestmentThesisRecord>,
-  userId?: string
+  userId?: string,
+  currentReportId?: string | null
 ): InvestmentThesisRecord {
   const now = new Date().toISOString();
   const hasEdits = Boolean(
@@ -184,68 +186,184 @@ export function confirmUserThesis(
     ...(edits || {}),
     version: baseThesis.version + 1,
     confirmationStatus: hasEdits ? 'USER_EDITED' : 'USER_CONFIRMED',
+    sourceReportId: currentReportId ?? edits?.sourceReportId ?? baseThesis.sourceReportId,
     updatedAt: now,
     userId: userId || baseThesis.userId
   };
 }
 
+export type InvalidationTriggerType = 'DETERMINISTIC_TRIGGER' | 'MANUAL_REVIEW_TRIGGER';
+
+export interface ClassifiedInvalidationCondition {
+  conditionText: string;
+  type: InvalidationTriggerType;
+  metric?: string | null;
+  threshold?: number | null;
+  isTriggered?: boolean;
+  requiresManualReview: boolean;
+  notes?: string;
+}
+
 /**
- * Deterministically evaluates tracked expectations against a research memory snapshot.
- * Never fabricates values; returns PENDING when data has not arrived yet.
+ * Classifies an invalidation condition into either a deterministically monitorable numeric condition
+ * or a qualitative condition requiring explicit manual user review.
+ * Never fabricates automated evaluation for free-text conditions.
+ */
+export function classifyInvalidationCondition(conditionText: string): ClassifiedInvalidationCondition {
+  const clean = conditionText.trim();
+  // Operating margin numeric threshold
+  const marginMatch = clean.match(/(?:operating\s+margin|margin).*?(?:<|drops\s+below|below|falls\s+below)\s*(\d+(?:\.\d+)?)\s*%/i)
+    || clean.match(/(\d+(?:\.\d+)?)\s*%\s*(?:operating\s+margin|margin)/i);
+  if (marginMatch) {
+    const threshold = parseFloat(marginMatch[1]);
+    return {
+      conditionText: clean,
+      type: 'DETERMINISTIC_TRIGGER',
+      metric: 'operating_margin_pct',
+      threshold,
+      requiresManualReview: false,
+      notes: `Deterministic monitor: Operating margin threshold ${threshold}%`
+    };
+  }
+
+  // Free cash flow numeric threshold
+  const fcfMatch = clean.match(/(?:free\s+cash\s+flow|fcf).*?(?:<|drops\s+below|below|falls\s+below)\s*\$?(\d+(?:\.\d+)?)\s*(?:m|b|k)?/i);
+  if (fcfMatch) {
+    const threshold = parseFloat(fcfMatch[1]);
+    return {
+      conditionText: clean,
+      type: 'DETERMINISTIC_TRIGGER',
+      metric: 'free_cash_flow',
+      threshold,
+      requiresManualReview: false,
+      notes: `Deterministic monitor: FCF threshold ${threshold}`
+    };
+  }
+
+  // Qualitative / free-text conditions require user review
+  return {
+    conditionText: clean,
+    type: 'MANUAL_REVIEW_TRIGGER',
+    metric: null,
+    threshold: null,
+    requiresManualReview: true,
+    notes: 'Qualitative condition requires user review; cannot be deterministically evaluated.'
+  };
+}
+
+/**
+ * Normalizes period strings for canonical comparison (e.g. 'Q3 2026', '2026-Q3', 'Q3-2026', 'FY26').
+ */
+function normalizePeriodForMatch(periodStr: string): string {
+  const raw = String(periodStr || '').toUpperCase().trim();
+  const qMatch = raw.match(/^Q([1-4])\s*(?:FY\s*)?(\d{2,4})$/i) || raw.match(/^(?:FY\s*)?(\d{2,4})[-/\s]+Q([1-4])$/i);
+  if (qMatch) {
+    const q = qMatch[1].length === 1 ? qMatch[1] : qMatch[2];
+    let yr = parseInt(qMatch[1].length === 1 ? qMatch[2] : qMatch[1], 10);
+    if (yr < 100) yr += 2000;
+    return `Q${q}_${yr}`;
+  }
+  const aMatch = raw.match(/^(?:FY\s*)?(\d{2,4})$/i);
+  if (aMatch) {
+    let yr = parseInt(aMatch[1], 10);
+    if (yr < 100) yr += 2000;
+    return `FY_${yr}`;
+  }
+  return raw.replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * Deterministically evaluates tracked expectations against a research memory snapshot and optional history.
+ * Invariants:
+ * 1. Durable Terminal Outcomes: Once an expectation reaches MET, MISSED, or EXCEEDED, preserve that outcome.
+ * 2. Immutable Original Target Intent: targetValue, targetPeriod, condition, origin, createdAt, sourceReportId are preserved untouched.
+ * 3. Historical Target Period Resolution: If target period is not the latestPeriod (e.g. target is Q3 2026, newest report is Q4 2026),
+ *    resolve against authoritative historical periods from periodHistory or historicalSnapshots. Never evaluate Q3 target using Q4 values!
+ * 4. Missing data remains PENDING or UNAVAILABLE truthfully.
  */
 export function evaluateExpectations(
   expectations: TrackedExpectation[],
-  memorySnapshot: ResearchMemorySnapshot
+  memorySnapshot: ResearchMemorySnapshot,
+  historicalSnapshots: ResearchMemorySnapshot[] = []
 ): TrackedExpectation[] {
   const now = new Date().toISOString();
   const financials = memorySnapshot.financials;
   const currentPeriod = financials.latestPeriod?.toUpperCase().trim() || '';
+  const normCurrentPeriod = normalizePeriodForMatch(currentPeriod);
 
   return expectations.map(exp => {
-    // If already finalized (MET, MISSED, EXCEEDED), preserve historical outcome unless forced
+    // Invariant 1: Durable terminal evaluation. Once MET, MISSED, or EXCEEDED, preserve durably!
     if (exp.status === 'MET' || exp.status === 'MISSED' || exp.status === 'EXCEEDED') {
       return exp;
     }
 
     const expPeriod = exp.targetPeriod.toUpperCase().trim();
-    // Check if the current report period matches or covers the target period
-    const isPeriodRelevant = currentPeriod && (
-      currentPeriod === expPeriod ||
-      currentPeriod.includes(expPeriod) ||
-      expPeriod.includes(currentPeriod)
-    );
+    const normExpPeriod = normalizePeriodForMatch(expPeriod);
 
-    if (!isPeriodRelevant) {
-      // Period has not arrived or is not disclosed yet
+    // Invariant 3: Canonical Target-Period Resolver
+    let matchedPeriod: string | null = null;
+    let actualValue: number | null = null;
+
+    // Check 1: Does current snapshot latestPeriod match target?
+    if (currentPeriod && (normCurrentPeriod === normExpPeriod || currentPeriod === expPeriod)) {
+      matchedPeriod = currentPeriod;
+      const metric = exp.metricOrEvent.toLowerCase();
+      if (metric === 'revenue') actualValue = financials.revenue;
+      else if (metric === 'revenue_growth_yoy_pct') actualValue = financials.revenueYoYPct;
+      else if (metric === 'operating_margin_pct') actualValue = financials.operatingMarginPct;
+      else if (metric === 'free_cash_flow') actualValue = financials.freeCashFlow;
+      else if (metric === 'net_income') actualValue = financials.netIncome;
+    }
+
+    // Check 2: Check current snapshot periodHistory
+    if (actualValue === null && Array.isArray(financials.periodHistory)) {
+      const histItem = financials.periodHistory.find(h => {
+        const normH = normalizePeriodForMatch(h.period);
+        return normH === normExpPeriod || h.period.toUpperCase().trim() === expPeriod;
+      });
+      if (histItem) {
+        matchedPeriod = histItem.period;
+        const metric = exp.metricOrEvent.toLowerCase();
+        if (metric === 'revenue') actualValue = histItem.revenue;
+        else if (metric === 'operating_margin_pct') actualValue = histItem.operatingMarginPct;
+        else if (metric === 'free_cash_flow') actualValue = histItem.freeCashFlow;
+        else if (metric === 'net_income') actualValue = histItem.netIncome;
+      }
+    }
+
+    // Check 3: Check prior historicalSnapshots
+    if (actualValue === null && Array.isArray(historicalSnapshots)) {
+      for (const hSnap of historicalSnapshots) {
+        const hPeriod = hSnap.financials.latestPeriod?.toUpperCase().trim() || '';
+        const normH = normalizePeriodForMatch(hPeriod);
+        if (normH === normExpPeriod || hPeriod === expPeriod) {
+          matchedPeriod = hPeriod;
+          const metric = exp.metricOrEvent.toLowerCase();
+          if (metric === 'revenue') actualValue = hSnap.financials.revenue;
+          else if (metric === 'revenue_growth_yoy_pct') actualValue = hSnap.financials.revenueYoYPct;
+          else if (metric === 'operating_margin_pct') actualValue = hSnap.financials.operatingMarginPct;
+          else if (metric === 'free_cash_flow') actualValue = hSnap.financials.freeCashFlow;
+          else if (metric === 'net_income') actualValue = hSnap.financials.netIncome;
+          if (actualValue !== null) break;
+        }
+      }
+    }
+
+    // If target period data has not arrived or was never published
+    if (!matchedPeriod || actualValue === null || typeof actualValue !== 'number') {
+      if (matchedPeriod && actualValue === null) {
+        return {
+          ...exp,
+          status: 'UNAVAILABLE',
+          actualPeriodFound: matchedPeriod,
+          evaluationDate: now,
+          evaluationNotes: `Target period reached (${matchedPeriod}) but metric ${exp.metricOrEvent} was unavailable.`
+        };
+      }
+
       return {
         ...exp,
         status: 'PENDING'
-      };
-    }
-
-    // Extract actual numeric metric
-    let actualValue: number | null = null;
-    const metric = exp.metricOrEvent.toLowerCase();
-
-    if (metric === 'revenue') {
-      actualValue = financials.revenue;
-    } else if (metric === 'revenue_growth_yoy_pct') {
-      actualValue = financials.revenueYoYPct;
-    } else if (metric === 'operating_margin_pct') {
-      actualValue = financials.operatingMarginPct;
-    } else if (metric === 'free_cash_flow') {
-      actualValue = financials.freeCashFlow;
-    } else if (metric === 'net_income') {
-      actualValue = financials.netIncome;
-    }
-
-    if (actualValue === null || typeof actualValue !== 'number') {
-      return {
-        ...exp,
-        status: 'UNAVAILABLE',
-        actualPeriodFound: currentPeriod,
-        evaluationDate: now,
-        evaluationNotes: `Target period reached (${currentPeriod}) but metric ${exp.metricOrEvent} was unavailable.`
       };
     }
 
@@ -254,7 +372,7 @@ export function evaluateExpectations(
       return {
         ...exp,
         status: 'UNAVAILABLE',
-        actualPeriodFound: currentPeriod,
+        actualPeriodFound: matchedPeriod,
         evaluationDate: now,
         evaluationNotes: 'Non-numeric target value cannot be evaluated against financial metric.'
       };
@@ -278,14 +396,15 @@ export function evaluateExpectations(
       status = actualValue === targetNum ? 'MET' : 'MISSED';
     }
 
+    // Invariant 2: Original target fields (targetValue, targetPeriod, condition, origin, createdAt, sourceReportId) are preserved!
     return {
       ...exp,
       status,
       actualValue,
-      actualPeriodFound: currentPeriod,
+      actualPeriodFound: matchedPeriod,
       evaluationDate: now,
       updatedAt: now,
-      evaluationNotes: `Evaluated against ${currentPeriod} data: actual ${actualValue} vs target ${targetNum} (${exp.condition})`
+      evaluationNotes: `Evaluated against ${matchedPeriod} data: actual ${actualValue} vs target ${targetNum} (${exp.condition})`
     };
   });
 }
