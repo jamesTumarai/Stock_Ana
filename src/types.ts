@@ -1427,3 +1427,9 @@ export type {
   DecisionReason,
   DecisionContextResult
 } from './domain/decisionContextEngine';
+
+export type {
+  AttentionPriority,
+  WatchlistAttentionFactor,
+  WatchlistIntelligenceEntry
+} from './domain/watchlistIntelligence';
