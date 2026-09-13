@@ -32,7 +32,9 @@ service cloud.firestore {
         allow update: if request.auth != null
           && request.auth.uid == userId
           && (!('userId' in request.resource.data) || request.resource.data.userId == userId)
-          && (!('userId' in resource.data) || resource.data.userId == userId);
+          && (!('userId' in resource.data) || resource.data.userId == userId)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['userId', 'ticker', 'expectationId', 'targetValue', 'targetPeriod', 'condition', 'origin', 'createdAt', 'sourceReportId']);
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
     }

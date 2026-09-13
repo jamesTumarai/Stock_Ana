@@ -1,5 +1,10 @@
 import { ResearchMemorySnapshot } from './investmentMemory';
-import { InvestmentThesisRecord, TrackedExpectation, evaluateExpectations } from './thesisExpectations';
+import {
+  InvestmentThesisRecord,
+  TrackedExpectation,
+  evaluateExpectations,
+  classifyInvalidationCondition
+} from './thesisExpectations';
 import { WhatChangedResult } from './whatChangedEngine';
 
 export type ReEvaluationStance =
@@ -50,8 +55,50 @@ export interface DecisionContextResult {
     primaryAttributionTh: string | null;
   };
   invalidationTriggersFound: string[];
+  manualReviewConditions: string[];
   summaryNarrative: string;
   summaryNarrativeTh: string;
+}
+
+/**
+ * Resolves the truthful prior belief summary for historical research comparisons.
+ * Precedence:
+ * 1. User-confirmed thesis revision linked to previous report
+ * 2. User-confirmed historical revision valid at previous research time
+ * 3. Previous report thesis prose clearly labeled as historical AI/report draft
+ * 4. null / Not Recorded
+ * NEVER substitutes today's current thesis for yesterday's prior belief.
+ */
+export function resolvePriorBeliefThesis(
+  previousSnapshot: ResearchMemorySnapshot | null,
+  previousThesis?: InvestmentThesisRecord | null
+): string | null {
+  if (!previousSnapshot) return null;
+
+  // 1. User-confirmed revision explicitly linked to previous report
+  if (
+    previousThesis &&
+    (previousThesis.confirmationStatus === 'USER_CONFIRMED' || previousThesis.confirmationStatus === 'USER_EDITED') &&
+    previousThesis.sourceReportId === previousSnapshot.reportId
+  ) {
+    return previousThesis.summary;
+  }
+
+  // 2. User-confirmed historical revision valid at previous research time
+  if (
+    previousThesis &&
+    (previousThesis.confirmationStatus === 'USER_CONFIRMED' || previousThesis.confirmationStatus === 'USER_EDITED')
+  ) {
+    return previousThesis.summary;
+  }
+
+  // 3. Previous report thesis prose clearly labeled as historical AI/report interpretation
+  if (previousSnapshot.thesis.summary) {
+    return `[Historical Report Draft] ${previousSnapshot.thesis.summary}`;
+  }
+
+  // 4. Not recorded
+  return null;
 }
 
 /**
@@ -62,9 +109,10 @@ export interface DecisionContextResult {
 export function buildDecisionContext(
   currentSnapshot: ResearchMemorySnapshot,
   previousSnapshot: ResearchMemorySnapshot | null,
-  activeThesis: InvestmentThesisRecord | null,
+  currentThesis: InvestmentThesisRecord | null,
   whatChanged: WhatChangedResult | null,
-  expectations: TrackedExpectation[] = []
+  expectations: TrackedExpectation[] = [],
+  previousThesis?: InvestmentThesisRecord | null
 ): DecisionContextResult {
   const ticker = currentSnapshot.ticker;
   const evaluatedExpectations = currentSnapshot
@@ -116,6 +164,7 @@ export function buildDecisionContext(
         primaryAttributionTh: null
       },
       invalidationTriggersFound: [],
+      manualReviewConditions: [],
       summaryNarrative: `Initial research established for ${ticker}. Form a thesis and track expectations for future comparative re-evaluation.`,
       summaryNarrativeTh: `สร้างการวิเคราะห์เริ่มต้นสำหรับ ${ticker} เรียบร้อยแล้ว กำหนดสมมติฐานและบันทึกความคาดหวังเพื่อใช้ประเมินซ้ำในอนาคต`
     };
@@ -123,29 +172,45 @@ export function buildDecisionContext(
 
   const reasons: DecisionReason[] = [];
   const invalidationTriggersFound: string[] = [];
+  const manualReviewConditions: string[] = [];
 
-  // 1. Invalidation Conditions Check
-  if (activeThesis?.invalidationConditions && activeThesis.invalidationConditions.length > 0) {
-    for (const cond of activeThesis.invalidationConditions) {
-      // Check if operating margin or FCF trigger
-      if (cond.toLowerCase().includes('margin') && currentSnapshot.financials.operatingMarginPct !== null) {
-        const matchNum = cond.match(/(\d+(\.\d+)?)%/);
-        if (matchNum) {
-          const threshold = parseFloat(matchNum[1]);
-          if (currentSnapshot.financials.operatingMarginPct < threshold) {
-            invalidationTriggersFound.push(cond);
-            reasons.push({
-              id: 'trig_margin_invalidation',
-              category: 'THESIS',
-              severity: 'CRITICAL',
-              title: 'Thesis Invalidation Condition Triggered',
-              titleTh: 'เงื่อนไขการหักล้างสมมติฐานถูกกระตุ้น',
-              detail: `Operating margin (${currentSnapshot.financials.operatingMarginPct.toFixed(1)}%) fell below tracked invalidation threshold (${threshold}%).`,
-              detailTh: `อัตรากำไรจากการดำเนินงาน (${currentSnapshot.financials.operatingMarginPct.toFixed(1)}%) ลดลงต่ำกว่าเกณฑ์การหักล้างที่กำหนด (${threshold}%)`
-            });
-          }
+  // 1. Invalidation Conditions Check (Deterministic vs Manual Review)
+  const conditionsToCheck = currentThesis?.invalidationConditions || [];
+  for (const cond of conditionsToCheck) {
+    const classified = classifyInvalidationCondition(cond);
+    if (classified.type === 'DETERMINISTIC_TRIGGER') {
+      if (classified.metric === 'operating_margin_pct' && typeof classified.threshold === 'number') {
+        const curMargin = currentSnapshot.financials.operatingMarginPct;
+        if (typeof curMargin === 'number' && curMargin < classified.threshold) {
+          invalidationTriggersFound.push(cond);
+          reasons.push({
+            id: 'trig_margin_invalidation',
+            category: 'THESIS',
+            severity: 'CRITICAL',
+            title: 'Thesis Invalidation Condition Triggered',
+            titleTh: 'เงื่อนไขการหักล้างสมมติฐานถูกกระตุ้น',
+            detail: `Operating margin (${curMargin.toFixed(1)}%) fell below tracked invalidation threshold (${classified.threshold}%).`,
+            detailTh: `อัตรากำไรจากการดำเนินงาน (${curMargin.toFixed(1)}%) ลดลงต่ำกว่าเกณฑ์การหักล้างที่กำหนด (${classified.threshold}%)`
+          });
+        }
+      } else if (classified.metric === 'free_cash_flow' && typeof classified.threshold === 'number') {
+        const curFcf = currentSnapshot.financials.freeCashFlow;
+        if (typeof curFcf === 'number' && curFcf < classified.threshold) {
+          invalidationTriggersFound.push(cond);
+          reasons.push({
+            id: 'trig_fcf_invalidation',
+            category: 'THESIS',
+            severity: 'CRITICAL',
+            title: 'Thesis Invalidation Condition Triggered',
+            titleTh: 'เงื่อนไขการหักล้างสมมติฐานถูกกระตุ้น',
+            detail: `Free Cash Flow ($${curFcf.toLocaleString()}M) fell below tracked invalidation threshold ($${classified.threshold.toLocaleString()}M).`,
+            detailTh: `กระแสเงินสดอิสระ ($${curFcf.toLocaleString()}M) ลดลงต่ำกว่าเกณฑ์การหักล้างที่กำหนด ($${classified.threshold.toLocaleString()}M)`
+          });
         }
       }
+    } else {
+      // MANUAL_REVIEW_TRIGGER: Qualitative condition requires user review; never falsely auto-evaluated
+      manualReviewConditions.push(cond);
     }
   }
 
@@ -239,7 +304,7 @@ export function buildDecisionContext(
     requiresAttention,
     reasons,
     priorBeliefSummary: {
-      thesisSummary: activeThesis?.summary || previousSnapshot.thesis.summary,
+      thesisSummary: resolvePriorBeliefThesis(previousSnapshot, previousThesis),
       priorFairValue: previousSnapshot.valuation.baseFairValue,
       priorMarketPrice: previousSnapshot.marketPrice,
       priorConvictionScore: previousSnapshot.conviction.score,
@@ -260,6 +325,7 @@ export function buildDecisionContext(
       primaryAttributionTh: whatChanged?.valuationAttribution?.impactDescriptionTh || null
     },
     invalidationTriggersFound,
+    manualReviewConditions,
     summaryNarrative,
     summaryNarrativeTh
   };
