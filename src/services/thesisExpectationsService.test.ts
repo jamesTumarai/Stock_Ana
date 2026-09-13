@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   saveExpectations,
   loadExpectations,
+  createAndEvaluateExpectation,
   evaluateAndPersistExpectations
 } from './thesisExpectationsService';
 import { TrackedExpectation } from '../domain/thesisExpectations';
@@ -10,10 +11,12 @@ import { ResearchMemorySnapshot } from '../domain/investmentMemory';
 
 class MockStorage {
   private store = new Map<string, string>();
+  writes = 0;
   getItem(key: string): string | null {
     return this.store.get(key) ?? null;
   }
   setItem(key: string, value: string): void {
+    this.writes++;
     this.store.set(key, String(value));
   }
   removeItem(key: string): void {
@@ -152,6 +155,70 @@ describe('thesisExpectationsService - Durable Persistence & Evaluation', () => {
     },
     isLegacy: false
   };
+
+  it('creation survives full reload while PENDING, then persists terminal results without repeat writes or intent changes', async () => {
+    const user = { uid: 'pending_creation_owner' } as any;
+    const initial: TrackedExpectation = {
+      expectationId: 'exp_msft_future_q4', ticker: 'MSFT',
+      metricOrEvent: 'revenue', metricLabel: 'Revenue ($M)',
+      targetValue: 60000, condition: 'gte', targetPeriod: 'Q4 2026',
+      status: 'PENDING', origin: 'USER_EXPECTATION',
+      sourceReportId: q3Snapshot.reportId, actualValue: null,
+      evaluationDate: null, createdAt: '2026-09-15T00:00:00.000Z',
+      updatedAt: '2026-09-15T00:00:00.000Z', userId: user.uid
+    };
+    const intent = (exp: TrackedExpectation) => ({
+      expectationId: exp.expectationId, ticker: exp.ticker,
+      metricOrEvent: exp.metricOrEvent, metricLabel: exp.metricLabel,
+      targetValue: exp.targetValue, condition: exp.condition,
+      targetPeriod: exp.targetPeriod, origin: exp.origin,
+      sourceReportId: exp.sourceReportId, createdAt: exp.createdAt, userId: exp.userId
+    });
+    // Exercise the same creation orchestration as handleAddExpectation, with a current report.
+    await createAndEvaluateExpectation('MSFT', [], initial, q3Snapshot, [], user);
+    assert.equal(mockStorage.writes, 1, 'Persist creation exactly once even without a terminal transition');
+
+    // Discard returned/UI state and read only persisted JSON, as after a page reload.
+    const pendingReload = await loadExpectations('MSFT', user);
+    assert.equal(pendingReload.length, 1);
+    assert.deepEqual(pendingReload[0], initial);
+    assert.notEqual(pendingReload[0], initial, 'Reload must return a deserialized record');
+    const unchanged = await evaluateAndPersistExpectations('MSFT', pendingReload, q3Snapshot, [], user);
+    assert.equal(unchanged.hasPersistedChanges, false);
+    assert.equal(unchanged.persistedCount, 0);
+    assert.equal(mockStorage.writes, 1, 'Same report must not write pending records again');
+    assert.deepEqual(await loadExpectations('MSFT', user), pendingReload);
+
+    // A later report supplies verified actuals for the original target period.
+    const terminal = await evaluateAndPersistExpectations('MSFT', pendingReload, q4Snapshot, [q3Snapshot], user);
+    assert.equal(terminal.hasPersistedChanges, true);
+    assert.equal(terminal.persistedCount, 1);
+    assert.equal(mockStorage.writes, 2);
+    const terminalReload = await loadExpectations('MSFT', user);
+    assert.equal(terminalReload[0].status, 'EXCEEDED');
+    assert.equal(terminalReload[0].actualValue, 70000);
+    assert.equal(terminalReload[0].actualPeriodFound, 'Q4 2026');
+    assert.ok(terminalReload[0].evaluationDate);
+    assert.deepEqual(intent(terminalReload[0]), intent(initial));
+    const repeated = await evaluateAndPersistExpectations('MSFT', terminalReload, q4Snapshot, [q3Snapshot], user);
+    assert.equal(repeated.persistedCount, 0);
+    assert.equal(mockStorage.writes, 2, 'Terminal reload/re-evaluation must not write again');
+    assert.deepEqual(await loadExpectations('MSFT', user), terminalReload);
+  });
+
+  it('persists a new expectation when no snapshot is available', async () => {
+    const initial: TrackedExpectation = {
+      expectationId: 'exp_no_snapshot', ticker: 'MSFT',
+      metricOrEvent: 'revenue', metricLabel: 'Revenue ($M)',
+      targetValue: 60000, condition: 'gte', targetPeriod: 'Q4 2026',
+      status: 'PENDING', origin: 'USER_EXPECTATION', sourceReportId: null,
+      actualValue: null, evaluationDate: null,
+      createdAt: '2026-09-15T00:00:00.000Z', updatedAt: '2026-09-15T00:00:00.000Z'
+    };
+    await createAndEvaluateExpectation('MSFT', [], initial, null);
+    assert.deepEqual(await loadExpectations('MSFT'), [initial]);
+    assert.equal(mockStorage.writes, 1);
+  });
 
   it('mandatory persistence regression: durable evaluation outcome persists across reloads and later reports', async () => {
     const user = { uid: 'user_analyst_01' } as any;

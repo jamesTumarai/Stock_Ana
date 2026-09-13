@@ -17,7 +17,7 @@ import {
   loadUserThesis,
   saveUserThesis,
   loadExpectations,
-  saveExpectations,
+  createAndEvaluateExpectation,
   evaluateAndPersistExpectations
 } from '../services/thesisExpectationsService';
 import { ProvenanceBadge } from './ProvenanceBadge';
@@ -185,19 +185,9 @@ export function ThesisExpectationsCard({
       userId: currentUser?.uid
     };
 
-    let updatedList = [...expectations, newExp];
-    if (snapshot) {
-      const { expectations: evaluated } = await evaluateAndPersistExpectations(
-        ticker,
-        updatedList,
-        snapshot,
-        historicalSnapshots,
-        currentUser
-      );
-      updatedList = evaluated;
-    } else {
-      await saveExpectations(ticker, updatedList, currentUser);
-    }
+    const updatedList = await createAndEvaluateExpectation(
+      ticker, expectations, newExp, snapshot, historicalSnapshots, currentUser
+    );
 
     setInternalExpectations(updatedList);
     setNewTarget('');

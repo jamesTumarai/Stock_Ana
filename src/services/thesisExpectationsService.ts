@@ -361,6 +361,24 @@ export interface EvaluateAndPersistResult {
   persistedCount: number;
 }
 
+/** Persist new intent before evaluation, including future expectations that stay PENDING. */
+export async function createAndEvaluateExpectation(
+  ticker: string,
+  expectations: TrackedExpectation[],
+  newExpectation: TrackedExpectation,
+  currentSnapshot: ResearchMemorySnapshot | null,
+  historicalSnapshots: ResearchMemorySnapshot[] = [],
+  user?: User | null
+): Promise<TrackedExpectation[]> {
+  const updated = [...expectations, newExpectation];
+  await saveExpectations(ticker, updated, user);
+  if (!currentSnapshot) return updated;
+  const result = await evaluateAndPersistExpectations(
+    ticker, updated, currentSnapshot, historicalSnapshots, user
+  );
+  return result.expectations;
+}
+
 /**
  * Evaluates tracked expectations against research memory (current snapshot + historical snapshots)
  * and durably persists terminal evaluation outcomes (MET, MISSED, EXCEEDED) to storage.
