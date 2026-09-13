@@ -171,7 +171,7 @@ export function adaptFinancialStatementsToSecPeriodStatements(
   return [];
 }
 
-interface ParsedPeriodDescriptor {
+export interface ParsedPeriodDescriptor {
   statement: SecPeriodStatement;
   isAnnual: boolean;
   isQuarterly: boolean;
@@ -183,7 +183,7 @@ interface ParsedPeriodDescriptor {
 /**
  * Parses and normalizes a period descriptor from statement string or fiscal_year.
  */
-function parsePeriodDescriptor(statement: SecPeriodStatement): ParsedPeriodDescriptor | null {
+export function parsePeriodDescriptor(statement: SecPeriodStatement): ParsedPeriodDescriptor | null {
   const raw = String(statement.period || '').trim();
 
   // 1. Check Quarterly: e.g. "Q3 2025", "Q1 FY24", "Q4 2023"
@@ -257,6 +257,57 @@ function parsePeriodDescriptor(statement: SecPeriodStatement): ParsedPeriodDescr
       quarter: null,
       sortKey: statement.fiscal_year * 10,
     };
+  }
+
+  return null;
+}
+
+/**
+ * Resolves the prior-year comparable SEC statement for a target statement.
+ * - For quarterly: strictly same quarter, prior fiscal year (target.fiscalYear - 1, target.quarter === prior.quarter).
+ * - For annual: strictly prior fiscal year (target.fiscalYear - 1).
+ * Never returns QoQ (e.g. Q4 vs Q3) or non-consecutive years.
+ * Shuffled statement order produces the exact same deterministic result.
+ */
+export function findComparablePriorSecStatement(
+  statements: SecPeriodStatement[],
+  targetStatement?: SecPeriodStatement
+): SecPeriodStatement | null {
+  if (!Array.isArray(statements) || statements.length === 0) return null;
+
+  const parsedDescriptors: ParsedPeriodDescriptor[] = [];
+  for (const s of statements) {
+    const desc = parsePeriodDescriptor(s);
+    if (desc) parsedDescriptors.push(desc);
+  }
+
+  if (parsedDescriptors.length === 0) return null;
+
+  let targetDesc: ParsedPeriodDescriptor | null = null;
+  if (targetStatement) {
+    targetDesc = parsePeriodDescriptor(targetStatement);
+  }
+
+  if (!targetDesc) {
+    // If no target provided, sort descending by sortKey and pick the latest
+    parsedDescriptors.sort((a, b) => b.sortKey - a.sortKey);
+    targetDesc = parsedDescriptors[0];
+  }
+
+  if (targetDesc.isAnnual) {
+    // Look strictly for fiscalYear - 1 annual statement
+    const matched = parsedDescriptors.find(
+      (d) => d.isAnnual && d.fiscalYear === targetDesc!.fiscalYear - 1
+    );
+    return matched ? matched.statement : null;
+  }
+
+  if (targetDesc.isQuarterly) {
+    // Look strictly for same quarter in fiscalYear - 1
+    const matched = parsedDescriptors.find(
+      (d) => d.isQuarterly && d.quarter === targetDesc!.quarter && d.fiscalYear === targetDesc!.fiscalYear - 1
+    );
+    return matched ? matched.statement : null;
   }
 
   return null;

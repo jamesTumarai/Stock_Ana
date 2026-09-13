@@ -6,7 +6,11 @@ import {
   extractReportConviction
 } from '../utils/researchTimeline';
 import { detectValuationModel } from '../utils/valuation/modelSelector';
-import { adaptFinancialStatementsToSecPeriodStatements } from '../utils/secFilingDiffEngine';
+import {
+  adaptFinancialStatementsToSecPeriodStatements,
+  findComparablePriorSecStatement,
+  parsePeriodDescriptor
+} from '../utils/secFilingDiffEngine';
 
 export type MemorySourceType =
   | 'VERIFIED_FACT'
@@ -39,7 +43,11 @@ export interface ResearchMemoryFinancials {
   freeCashFlow: number | null;
   totalDebt: number | null;
   netCash: number | null;
+  /** @deprecated Explicitly represents current shares outstanding in millions. Use currentSharesOutstandingM or dilutedWeightedAverageSharesM */
   sharesOutstanding: number | null;
+  currentSharesOutstandingM: number | null;
+  dilutedWeightedAverageSharesM: number | null;
+  freeCashFlowPeriodBasis?: 'QUARTER' | 'ANNUAL' | 'LTM' | 'UNKNOWN';
   provenance: 'sec_verified' | 'calculated' | 'unverified' | 'unavailable';
 }
 
@@ -209,24 +217,37 @@ export function extractMemorySnapshot(
   let operatingMarginPct: number | null = null;
   let netIncome: number | null = null;
   let freeCashFlow: number | null = null;
+  let freeCashFlowPeriodBasis: 'QUARTER' | 'ANNUAL' | 'LTM' | 'UNKNOWN' = 'UNKNOWN';
   let totalDebt: number | null = null;
   let netCash: number | null = null;
   let sharesOutstanding: number | null = null;
+  let currentSharesOutstandingM: number | null = null;
+  let dilutedWeightedAverageSharesM: number | null = null;
   let financialsProvenance: ResearchMemoryFinancials['provenance'] = 'unavailable';
 
   if (secStatements.length > 0) {
     // Branch 1: SEC-Verified Statements
     financialsProvenance = 'sec_verified';
-    const latestSec = secStatements[secStatements.length - 1];
+    // Sort statements chronologically so latestSec is always the newest regardless of input array ordering
+    const sortedSec = [...secStatements].sort((a, b) => {
+      const descA = parsePeriodDescriptor(a);
+      const descB = parsePeriodDescriptor(b);
+      const keyA = descA?.sortKey ?? 0;
+      const keyB = descB?.sortKey ?? 0;
+      return keyA - keyB;
+    });
+    const latestSec = sortedSec[sortedSec.length - 1];
     latestPeriod = latestSec.period || null;
 
     revenue = typeof latestSec.revenue === 'number' ? latestSec.revenue : null;
 
-    if (secStatements.length >= 2) {
-      const priorSec = secStatements[secStatements.length - 2];
-      if (typeof latestSec.revenue === 'number' && typeof priorSec.revenue === 'number' && priorSec.revenue > 0) {
-        revenueYoYPct = Number((((latestSec.revenue - priorSec.revenue) / priorSec.revenue) * 100).toFixed(2));
-      }
+    // Hardened Comparable-Period Resolver: Strictly Annual vs Annual (FY26 vs FY25) or Quarter vs Quarter (Q4 26 vs Q4 25)
+    // Never compares QoQ (e.g. Q4 vs Q3) or non-consecutive years
+    const comparablePrior = findComparablePriorSecStatement(secStatements, latestSec);
+    if (comparablePrior && typeof latestSec.revenue === 'number' && typeof comparablePrior.revenue === 'number' && comparablePrior.revenue > 0) {
+      revenueYoYPct = Number((((latestSec.revenue - comparablePrior.revenue) / comparablePrior.revenue) * 100).toFixed(2));
+    } else {
+      revenueYoYPct = null;
     }
 
     const opInc = typeof latestSec.operating_income === 'number' ? latestSec.operating_income : null;
@@ -241,8 +262,13 @@ export function extractMemorySnapshot(
     const capex = typeof latestSec.capital_expenditure === 'number' ? latestSec.capital_expenditure : null;
     if (typeof ocf === 'number' && typeof capex === 'number') {
       freeCashFlow = ocf - Math.abs(capex);
+      const desc = parsePeriodDescriptor(latestSec);
+      if (desc?.isAnnual) freeCashFlowPeriodBasis = 'ANNUAL';
+      else if (desc?.isQuarterly) freeCashFlowPeriodBasis = 'QUARTER';
+      else freeCashFlowPeriodBasis = 'UNKNOWN';
     } else if (typeof verifiedDcfInputs?.trailing_four_free_cash_flow_m === 'number') {
       freeCashFlow = verifiedDcfInputs.trailing_four_free_cash_flow_m;
+      freeCashFlowPeriodBasis = 'LTM';
     }
 
     totalDebt = typeof latestSec.total_debt === 'number'
@@ -254,17 +280,26 @@ export function extractMemorySnapshot(
       netCash = verifiedDcfInputs.net_cash_m;
     }
 
-    sharesOutstanding = typeof latestSec.diluted_shares === 'number'
+    // Share-count semantics preservation:
+    // Diluted weighted-average shares strictly from SEC income statement period
+    dilutedWeightedAverageSharesM = typeof latestSec.diluted_shares === 'number'
       ? latestSec.diluted_shares
-      : (typeof verifiedDcfInputs?.current_shares_outstanding_m === 'number' ? verifiedDcfInputs.current_shares_outstanding_m : null);
+      : null;
+    // Current shares outstanding strictly from verified DCF snapshot
+    currentSharesOutstandingM = typeof verifiedDcfInputs?.current_shares_outstanding_m === 'number'
+      ? verifiedDcfInputs.current_shares_outstanding_m
+      : null;
+    // sharesOutstanding explicitly maps to current shares
+    sharesOutstanding = currentSharesOutstandingM;
   } else {
     // Branch 2: Report Financial Statements (AI / Non-SEC)
     // NEVER label as sec_verified
+    // Raw report copied statements are unverified, NEVER 'calculated'
     const stmts = data.financial_statements;
     const periods = stmts?.periods || [];
     const latestIdx = periods.length > 0 ? periods.length - 1 : -1;
 
-    financialsProvenance = periods.length > 0 ? 'calculated' : 'unavailable';
+    financialsProvenance = periods.length > 0 ? 'unverified' : 'unavailable';
     latestPeriod = latestIdx >= 0 ? periods[latestIdx] : null;
 
     revenue = latestIdx >= 0 && typeof stmts?.income_statement?.revenue?.[latestIdx] === 'number'
@@ -293,6 +328,16 @@ export function extractMemorySnapshot(
       ? stmts.cash_flow.free_cash_flow[latestIdx]
       : null;
 
+    if (freeCashFlow !== null && latestPeriod) {
+      if (/^Q[1-4]/i.test(latestPeriod) || /[-/\s]+Q[1-4]$/i.test(latestPeriod)) {
+        freeCashFlowPeriodBasis = 'QUARTER';
+      } else if (/^(?:FY\s*)?\d{2,4}$/i.test(latestPeriod)) {
+        freeCashFlowPeriodBasis = 'ANNUAL';
+      } else {
+        freeCashFlowPeriodBasis = 'UNKNOWN';
+      }
+    }
+
     const bs = stmts?.balance_sheet;
     totalDebt = latestIdx >= 0 && typeof bs?.total_debt?.[latestIdx] === 'number'
       ? bs.total_debt[latestIdx]
@@ -312,11 +357,13 @@ export function extractMemorySnapshot(
       netCash = null;
     }
 
-    sharesOutstanding = typeof data.company_profile?.shares_outstanding === 'number'
+    currentSharesOutstandingM = typeof data.company_profile?.shares_outstanding === 'number'
       ? data.company_profile.shares_outstanding
       : (typeof (data.intrinsic_value as any)?.dcf_model?.shares_outstanding_m === 'number'
           ? (data.intrinsic_value as any).dcf_model.shares_outstanding_m
           : null);
+    dilutedWeightedAverageSharesM = null;
+    sharesOutstanding = currentSharesOutstandingM;
   }
 
   const financials: ResearchMemoryFinancials = {
@@ -329,6 +376,9 @@ export function extractMemorySnapshot(
     totalDebt,
     netCash,
     sharesOutstanding,
+    currentSharesOutstandingM,
+    dilutedWeightedAverageSharesM,
+    freeCashFlowPeriodBasis,
     provenance: financialsProvenance
   };
 
@@ -542,10 +592,14 @@ export function compareMemorySnapshots(
       }
     : null;
 
-  // FCF Delta
+  // FCF Delta - strictly comparable period bases only (e.g. QUARTER vs QUARTER, ANNUAL vs ANNUAL, LTM vs LTM)
   const curFcf = current.financials.freeCashFlow;
   const prevFcf = previous.financials.freeCashFlow;
-  const freeCashFlowDelta = (typeof curFcf === 'number' && typeof prevFcf === 'number' && prevFcf !== 0)
+  const curBasis = current.financials.freeCashFlowPeriodBasis || 'UNKNOWN';
+  const prevBasis = previous.financials.freeCashFlowPeriodBasis || 'UNKNOWN';
+  const isComparableFcf = curBasis !== 'UNKNOWN' && curBasis === prevBasis;
+
+  const freeCashFlowDelta = (isComparableFcf && typeof curFcf === 'number' && typeof prevFcf === 'number' && prevFcf !== 0)
     ? {
         previous: prevFcf,
         current: curFcf,
