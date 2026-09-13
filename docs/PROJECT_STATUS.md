@@ -12,14 +12,14 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Workstreams V2-A through V2-G Repaired, Hardened & Verified; PRs #104–#114)**.
+- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE (Remaining Cross-Time Semantics Repaired & Verified; PRs #104–#118)**.
 - Current working mode: **Lumina V1 Product Loop Complete; Personal Equity Research & Decision OS End-to-End Operational**.
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
 - Historical Accepted Integrity Baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Phase 4.5 Owner Accepted).
-- Current Production SHA: `aee697d976d102f5979ed279a2234397a35164fa` (PR #113; Vercel Deployment ID `6419151510`).
-- Latest merged milestone: PR #113 (Unify Expectation Evaluation & Complete Decision/Watchlist Integration).
-- Regression Suite: 81 test files (78 src + 3 server), 229 passing cases, 0 failed, 0 skipped.
+- Current Production SHA: `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0` (PR #117; Vercel Deployment ID `6420225575`).
+- Latest merged milestone: PR #117 (Preserve Uncertainty Through Decision Intelligence).
+- Regression Suite: 81 test files (78 src + 3 server), 250 passing cases, 0 failed, 0 skipped.
 
 ## Canonical Phase Acceptance Matrix
 
@@ -38,17 +38,21 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **10** | Performance, Cost & Reliability | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #64, PR #75, PR #85 |
 | **11** | Productization / Subscription | ✅ | ❌ | ✅ | ✅ | ✅ | `Removed per owner directive` | Unlimited Platform Access |
 | **12** | Advanced Investment Intelligence | ✅ | ✅ | ✅ | ✅ | ✅ | `Complete` | PR #66, PR #69, PR #70, PR #73, PR #83, PR #104–#109 |
-| **V2-A** | Investment Memory Foundation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #104, #111 |
-| **V2-B** | Structured Thesis & Expectations Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #105, #111, #112, #113 |
-| **V2-C** | What Changed Intelligence Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #106, #113 |
-| **V2-D** | Actionable Decision Context Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #107, #113 |
-| **V2-E** | Thesis-Aware Watchlist Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #108, #113 |
-| **V2-F** | Report Integration & Evidence UX | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #109, #113 |
-| **V2-G** | Final Verification & Acceptance Dossier | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #110, #114 |
+| **V2-A** | Investment Memory Foundation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #104, #111, #115 |
+| **V2-B** | Structured Thesis & Expectations Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #105, #111, #112, #113, #116 |
+| **V2-C** | What Changed Intelligence Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #106, #113, #117 |
+| **V2-D** | Actionable Decision Context Engine | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #107, #113, #116 |
+| **V2-E** | Thesis-Aware Watchlist Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #108, #113, #116 |
+| **V2-F** | Report Integration & Evidence UX | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #109, #113, #116 |
+| **V2-G** | Final Verification & Acceptance Dossier | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #110, #114, #118 |
 | **Repair A** | Memory SEC Authority & UID Cache Isolation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #111 |
 | **Repair B** | Thesis Revisions & Explicit Hardened Rules | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #112 |
 | **Repair C** | Canonical Expectation Eval & Watchlist Integration | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #113 |
 | **Repair D** | Final Technical Completion Evidence Reconciliation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #114 |
+| **PR E** | Comparable-Period & Share/Provenance Semantics | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #115 |
+| **PR F** | Historical Thesis & Durable Expectations Integration | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #116 |
+| **PR G** | Uncertainty Propagation in Decision Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #117 |
+| **PR H** | True Final Technical Closure Documentation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #118 |
 
 ## Repository protection
 
@@ -596,14 +600,37 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - **Blocker I**: Conservative risk/catalyst lifecycle transitions in `matchRiskCatalystTransitions` — semantic rephrasing produces uncertain evolving transitions (`isCertain: false`, `currentState: 'UNKNOWN'`) rather than false certain RESOLVED / NEW.
 - Merge SHA: `aee697d976d102f5979ed279a2234397a35164fa`.
 
-#### PR #114 — Repair D: Final Technical Completion Evidence Reconciliation (`docs/v1-technically-complete`) ⏳
+#### PR #114 — Repair D: Final Technical Completion Evidence Reconciliation (`docs/v1-technically-complete`) ✅
 - Reconciled master status, roadmap, test gate metrics, and final deployment evidence across repository documentation.
+- Merge SHA: `e9dec46f4d8c03f635002be1924bf6c73741cf7a`.
+
+#### PR #115 — PR E: Comparable-Period & Share/Provenance Semantics (`fix/memory-comparable-period-and-provenance`) ✅
+- **Blocker 1**: Hardened SEC Memory YoY comparable-period resolver in `secFilingDiffEngine.ts` and `investmentMemory.ts` (strictly Annual vs Annual e.g. FY26 vs FY25, Quarter vs Quarter e.g. Q4 26 vs Q4 25; rejects QoQ and non-consecutive years; missing/ineligible comparison sets `revenueYoYPct = null`).
+- **Blocker 2**: Preserved independent share counts in `ResearchMemoryFinancials` (`currentSharesOutstandingM` vs `dilutedWeightedAverageSharesM`), never substituting one for the other.
+- **Blocker 3**: Truthful report financials provenance (`'unverified'`, never `'calculated'` or `'sec_verified'` merely because values were copied into Memory).
+- **Blocker 4**: Added `freeCashFlowPeriodBasis` (`'QUARTER' | 'ANNUAL' | 'LTM' | 'UNKNOWN'`); mixed period bases reject delta comparison (`null`).
+- Merge SHA: `6883bcf50a689e11650c8b00b7056900cfd375dd`.
+
+#### PR #116 — PR F: Historical Thesis & Durable Expectations Integration (`fix/thesis-history-and-durable-expectations`) ✅
+- **Blocker 5 & 6**: Historical thesis resolution per report via `resolveActiveThesisForReport`. Decision Context `priorBeliefSummary.thesisSummary` strictly uses genuine `previousThesis` (v1), never substituting current active thesis (v2) for yesterday's belief.
+- **Blocker 7**: Thesis edit context linkage — `confirmUserThesis` binds new user revision to current report context (`sourceReportId`), increments `version`, updates `updatedAt`, and preserves `thesisId`, `createdAt`, `userId`.
+- **Blocker 8 & 9**: Durable expectation terminal outcomes — `MET`, `MISSED`, `EXCEEDED` durably preserved across subsequent reports. Canonical target-period resolver matches `targetPeriod` against historical statements in `periodHistory` or `historicalSnapshots`, never falsely evaluating Q3 target against Q4 actuals.
+- **Blocker 10**: Synchronized canonical expectation state across `ThesisExpectationsCard`, `WhatChanged`, `DecisionContext`, and `WatchlistIntelligence`.
+- **Blocker 12**: Classified invalidation conditions into `DETERMINISTIC_TRIGGER` vs `MANUAL_REVIEW_TRIGGER`; qualitative free-text conditions require manual review and are never falsely auto-evaluated.
+- **Blocker 13 & 14**: Hardened `firestore.rules` on `/expectations/{expectationId}` to reject updates attempting to modify immutable target fields (`userId`, `ticker`, `expectationId`, `targetValue`, `targetPeriod`, `condition`, `origin`, `createdAt`, `sourceReportId`). Added rule contract tests.
+- Merge SHA: `0a1c97249d6bc8e69e404dd9f07af421aef2a19b`.
+
+#### PR #117 — PR G: Uncertainty Propagation in Decision Intelligence (`fix/what-changed-uncertainty-propagation`) ✅
+- **Blocker 11**: Propagated `isCertain: false` into WhatChanged items for ambiguous or unconfirmed risk/catalyst lifecycle transitions.
+- When `isCertain: false`, never state NEW, RESOLVED, or MATERIALIZED as fact. Uses truthful semantics: `POSSIBLE RISK CHANGE`, `Risk Wording Changed — Review Needed`, `POSSIBLE CATALYST CHANGE`, `UNCONFIRMED LIFECYCLE CHANGE`.
+- Limits materiality to `LOW` / `MEDIUM`, preventing unconfirmed AI wording changes from fabricating definitive `HIGH` risk alerts or triggering false decision stance revisions.
+- Merge SHA: `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0`.
 
 #### Final Technical Completion Test Gate Metrics
 - **Test files executed**: 81
 - **src/ test files executed**: 78
 - **Server test files executed**: 3 (`server/routes/__tests__/fileSecurity.test.ts`, `server/routes/__tests__/healthRoutes.test.ts`, `server/routes/__tests__/vercelApiAdapter.test.ts`)
-- **Test cases passed**: 229
+- **Test cases passed**: 250
 - **Test cases failed**: 0
 - **Test cases skipped**: 0
 - **TypeScript (`tsc --noEmit`)**: PASS (100% clean)
@@ -617,9 +644,9 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 Production baseline is verified and healthy on:
 
 - **Historical Accepted Baseline SHA**: `d2315f069379dfe946dee0952231005cc6ba9746` (Owner Accepted baseline)
-- **Current Production Git SHA**: `aee697d976d102f5979ed279a2234397a35164fa` (PR #113; Vercel Deployment ID `6419151510`)
+- **Current Production Git SHA**: `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0` (PR #117; Vercel Deployment ID `6420225575`)
 - **Production URL**: `https://stock-ana-ten.vercel.app` (Status: `READY`)
-- **Push-to-main `Verify Lumina`**: Passed all steps (81 test files, 229 passed, 0 failed, 0 skipped).
+- **Push-to-main `Verify Lumina`**: Passed all steps (81 test files, 250 passed, 0 failed, 0 skipped).
 - **Authoritative production smokes**:
   - `GET /api/health` -> 200 minimal public payload
   - `GET /api/health?detailed=true` (unauthenticated) -> 200 minimal payload, no telemetry leak
