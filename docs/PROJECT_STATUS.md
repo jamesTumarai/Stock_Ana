@@ -530,9 +530,10 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Merge SHA: `55f1733f02b6f6d88baf52dfc79cd37cb35b9753`.
 
 #### PR #101 — SEC Diff Unverified Report Canonical Financials Guard (`fix/sec-diff-unverified-canonical-guard`) ✅
-- In `src/utils/secFilingDiffEngine.ts`, prevented unverified report canonical financials from entering the SEC filing diff.
-- Enforced strict SEC provenance check (`financialDataSource === 'sec_verified'`) before accepting canonical financials for filing comparison; unverified reports fail closed (`null`) with clear provenance to prevent non-SEC data from masquerading as verified SEC facts.
-- Added 5 regression tests in `src/utils/__tests__/secFilingDiffEngine.test.ts`. All 74 regression test suites passing (176 test cases, 100% pass rate).
+- SEC Filing Diff now prefers verified `report.sec_verification.sec_period_statements` when trusted SEC period statements exist.
+- `CanonicalFinancialDataset` inputs are accepted for SEC-specific comparison only when `provenanceStatus === 'verified'` and `generatedBy` proves SEC-XBRL authority (`/sec-xbrl/i`). Raw canonical datasets follow the same fail-closed rule.
+- Unverified or source-linked report-derived canonical data is rejected. Legacy reports without trusted local SEC periods return no local SEC diff and may use the canonical server `/api/sec-diff` endpoint when available; AI/report `financial_statements` are never an SEC fallback.
+- Added 5 regression tests in `src/utils/__tests__/secFilingDiffEngine.test.ts`. Current authoritative result: 74 test files executed (71 under `src/`, 3 under `server/`), 176 test cases passed, 0 failed, 0 skipped.
 - Merge SHA: `d2315f069379dfe946dee0952231005cc6ba9746`.
 
 #### Final Integrity Test Gate Metrics
