@@ -267,48 +267,162 @@ export function computeWhatChanged(
   );
 
   for (const trans of itemTransitions) {
-    if (trans.category === 'risk' && trans.currentState === 'NEW') {
-      items.push({
-        id: `change_risk_${items.length}`,
-        category: 'RISKS_AND_CATALYSTS',
-        metricLabel: 'New Risk Identified',
-        metricLabelTh: 'พบปัจจัยความเสี่ยงใหม่',
-        previousValue: 'Not tracked',
-        currentValue: trans.itemText,
-        deltaDisplay: 'NEW RISK',
-        materiality: 'HIGH',
-        explanation: `A new material risk emerged: "${trans.itemText}".`,
-        explanationTh: `ปรากฏปัจจัยความเสี่ยงใหม่: "${trans.itemText}"`,
-        provenance: 'AI_AND_STATEMENT_EVIDENCE'
-      });
-    } else if (trans.category === 'risk' && trans.currentState === 'RESOLVED') {
-      items.push({
-        id: `change_risk_res_${items.length}`,
-        category: 'RISKS_AND_CATALYSTS',
-        metricLabel: 'Prior Risk Resolved',
-        metricLabelTh: 'ความเสี่ยงเดิมคลี่คลาย',
-        previousValue: trans.itemText,
-        currentValue: 'Resolved / Deprioritized',
-        deltaDisplay: 'RESOLVED',
-        materiality: 'MEDIUM',
-        explanation: `Prior risk no longer cited as primary threat: "${trans.itemText}".`,
-        explanationTh: `ความเสี่ยงเดิมไม่ได้ถูกระบุเป็นความเสี่ยงหลักอีกต่อไป: "${trans.itemText}"`,
-        provenance: 'AI_AND_STATEMENT_EVIDENCE'
-      });
-    } else if (trans.category === 'catalyst' && trans.currentState === 'NEW') {
-      items.push({
-        id: `change_cat_${items.length}`,
-        category: 'RISKS_AND_CATALYSTS',
-        metricLabel: 'New Catalyst Tracked',
-        metricLabelTh: 'พบปัจจัยเร่งใหม่ (Catalyst)',
-        previousValue: 'Not tracked',
-        currentValue: trans.itemText,
-        deltaDisplay: 'NEW CATALYST',
-        materiality: 'MEDIUM',
-        explanation: `New upcoming catalyst detected: "${trans.itemText}".`,
-        explanationTh: `พบปัจจัยบวกเร่งตัวใหม่: "${trans.itemText}"`,
-        provenance: 'AI_AND_MARKET_EVIDENCE'
-      });
+    if (trans.category === 'risk') {
+      if (trans.currentState === 'NEW') {
+        if (trans.isCertain) {
+          items.push({
+            id: `change_risk_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'New Risk Identified',
+            metricLabelTh: 'พบปัจจัยความเสี่ยงใหม่',
+            previousValue: 'Not tracked',
+            currentValue: trans.itemText,
+            deltaDisplay: 'NEW RISK',
+            materiality: 'HIGH',
+            explanation: `A new material risk emerged: "${trans.itemText}".`,
+            explanationTh: `ปรากฏปัจจัยความเสี่ยงใหม่: "${trans.itemText}"`,
+            provenance: 'AI_AND_STATEMENT_EVIDENCE'
+          });
+        } else {
+          // Blocker 11: isCertain === false must NOT state NEW/RESOLVED/MATERIALIZED as fact, nor generate HIGH risk event
+          items.push({
+            id: `change_risk_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'Possible Risk Change — Review Needed',
+            metricLabelTh: 'อาจมีการเปลี่ยนแปลงความเสี่ยง — ควรตรวจสอบ',
+            previousValue: 'Not tracked',
+            currentValue: trans.itemText,
+            deltaDisplay: 'POSSIBLE RISK CHANGE',
+            materiality: 'MEDIUM',
+            explanation: `Unconfirmed risk statement identified in report prose: "${trans.itemText}". Review needed to verify if a new material threat emerged.`,
+            explanationTh: `พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์: "${trans.itemText}" ยังไม่ยืนยันการเปลี่ยนแปลง ควรตรวจสอบเพิ่มเติม`,
+            provenance: 'AI_AND_STATEMENT_EVIDENCE'
+          });
+        }
+      } else if (trans.currentState === 'RESOLVED') {
+        if (trans.isCertain) {
+          items.push({
+            id: `change_risk_res_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'Prior Risk Resolved',
+            metricLabelTh: 'ความเสี่ยงเดิมคลี่คลาย',
+            previousValue: trans.itemText,
+            currentValue: 'Resolved / Deprioritized',
+            deltaDisplay: 'RESOLVED',
+            materiality: 'MEDIUM',
+            explanation: `Prior risk no longer cited as primary threat: "${trans.itemText}".`,
+            explanationTh: `ความเสี่ยงเดิมไม่ได้ถูกระบุเป็นความเสี่ยงหลักอีกต่อไป: "${trans.itemText}"`,
+            provenance: 'AI_AND_STATEMENT_EVIDENCE'
+          });
+        } else {
+          // Blocker 11: isCertain === false must NOT state RESOLVED as fact
+          items.push({
+            id: `change_risk_res_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'Risk Wording Changed — Review Needed',
+            metricLabelTh: 'ถ้อยคำความเสี่ยงเปลี่ยนแปลง — ควรตรวจสอบ',
+            previousValue: trans.itemText,
+            currentValue: 'Omitted from prose',
+            deltaDisplay: 'UNCONFIRMED LIFECYCLE CHANGE',
+            materiality: 'LOW',
+            explanation: `Prior risk "${trans.itemText}" was not explicitly restated in recent report prose. Resolution is unconfirmed; review needed.`,
+            explanationTh: `ความเสี่ยงเดิม "${trans.itemText}" ไม่ได้ถูกระบุซ้ำในบทวิเคราะห์ล่าสุด ยังไม่ยืนยันว่าคลี่คลายแล้ว ควรตรวจสอบเพิ่มเติม`,
+            provenance: 'AI_AND_STATEMENT_EVIDENCE'
+          });
+        }
+      } else if (trans.currentState === 'UNKNOWN' && !trans.isCertain) {
+        // Ambiguous rephrasing or semantic evolution across reports (e.g. "Cloud demand slowdown" vs "Slower enterprise cloud spending")
+        // Produces at most one uncertain/review-needed change!
+        items.push({
+          id: `change_risk_evolve_${items.length}`,
+          category: 'RISKS_AND_CATALYSTS',
+          metricLabel: 'Risk Wording Changed — Review Needed',
+          metricLabelTh: 'ถ้อยคำความเสี่ยงเปลี่ยนแปลง — ควรตรวจสอบ',
+          previousValue: 'Prior wording',
+          currentValue: trans.itemText,
+          deltaDisplay: 'POSSIBLE RISK CHANGE',
+          materiality: 'LOW',
+          explanation: `Risk wording evolved: "${trans.itemText}". Review needed to evaluate whether this represents a true material change or stylistic rephrasing.`,
+          explanationTh: `ถ้อยคำของความเสี่ยงปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบว่าเป็นความเสี่ยงใหม่จริงหรือเพียงการปรับสำนวน`,
+          provenance: 'AI_AND_STATEMENT_EVIDENCE'
+        });
+      }
+    } else if (trans.category === 'catalyst') {
+      if (trans.currentState === 'NEW') {
+        if (trans.isCertain) {
+          items.push({
+            id: `change_cat_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'New Catalyst Tracked',
+            metricLabelTh: 'พบปัจจัยเร่งใหม่ (Catalyst)',
+            previousValue: 'Not tracked',
+            currentValue: trans.itemText,
+            deltaDisplay: 'NEW CATALYST',
+            materiality: 'MEDIUM',
+            explanation: `New upcoming catalyst detected: "${trans.itemText}".`,
+            explanationTh: `พบปัจจัยบวกเร่งตัวใหม่: "${trans.itemText}"`,
+            provenance: 'AI_AND_MARKET_EVIDENCE'
+          });
+        } else {
+          items.push({
+            id: `change_cat_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'Possible Catalyst Change',
+            metricLabelTh: 'อาจมีปัจจัยเร่งใหม่ (ยังไม่ยืนยัน)',
+            previousValue: 'Not tracked',
+            currentValue: trans.itemText,
+            deltaDisplay: 'POSSIBLE CATALYST CHANGE',
+            materiality: 'LOW',
+            explanation: `New catalyst mentioned in report prose: "${trans.itemText}". Unconfirmed lifecycle change.`,
+            explanationTh: `พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์: "${trans.itemText}" ยังไม่ยืนยัน`,
+            provenance: 'AI_AND_MARKET_EVIDENCE'
+          });
+        }
+      } else if (trans.currentState === 'RESOLVED') {
+        if (trans.isCertain) {
+          items.push({
+            id: `change_cat_res_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'Prior Catalyst Concluded',
+            metricLabelTh: 'ปัจจัยเร่งเดิมสิ้นสุดลง',
+            previousValue: trans.itemText,
+            currentValue: 'Concluded / Past',
+            deltaDisplay: 'CATALYST CONCLUDED',
+            materiality: 'LOW',
+            explanation: `Prior tracked catalyst has passed or concluded: "${trans.itemText}".`,
+            explanationTh: `ปัจจัยเร่งเดิมผ่านพ้นหรือเสร็จสิ้นแล้ว: "${trans.itemText}"`,
+            provenance: 'AI_AND_MARKET_EVIDENCE'
+          });
+        } else {
+          items.push({
+            id: `change_cat_res_${items.length}`,
+            category: 'RISKS_AND_CATALYSTS',
+            metricLabel: 'Catalyst Wording Changed — Review Needed',
+            metricLabelTh: 'ถ้อยคำปัจจัยเร่งเปลี่ยนแปลง — ควรตรวจสอบ',
+            previousValue: trans.itemText,
+            currentValue: 'Omitted from prose',
+            deltaDisplay: 'UNCONFIRMED LIFECYCLE CHANGE',
+            materiality: 'LOW',
+            explanation: `Prior catalyst "${trans.itemText}" was not explicitly listed in recent report prose; status unconfirmed.`,
+            explanationTh: `ปัจจัยเร่งเดิม "${trans.itemText}" ไม่ได้ถูกระบุในบทวิเคราะห์ล่าสุด สถานะยังไม่ยืนยัน`,
+            provenance: 'AI_AND_MARKET_EVIDENCE'
+          });
+        }
+      } else if (trans.currentState === 'UNKNOWN' && !trans.isCertain) {
+        items.push({
+          id: `change_cat_evolve_${items.length}`,
+          category: 'RISKS_AND_CATALYSTS',
+          metricLabel: 'Catalyst Wording Changed — Review Needed',
+          metricLabelTh: 'ถ้อยคำปัจจัยเร่งเปลี่ยนแปลง — ควรตรวจสอบ',
+          previousValue: 'Prior wording',
+          currentValue: trans.itemText,
+          deltaDisplay: 'POSSIBLE CATALYST CHANGE',
+          materiality: 'LOW',
+          explanation: `Catalyst description shifted: "${trans.itemText}". Review needed.`,
+          explanationTh: `คำอธิบายปัจจัยเร่งปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบเพิ่มเติม`,
+          provenance: 'AI_AND_MARKET_EVIDENCE'
+        });
+      }
     }
   }
 
