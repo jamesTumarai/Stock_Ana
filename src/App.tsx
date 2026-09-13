@@ -764,6 +764,7 @@ export default function App() {
                  hideHeader={idx > 0}
                  model={selectedModel}
                  actualModel={idx === allReports.length - 1 ? actualModel : (report as any)?.metadata?.actualModel}
+                 currentUser={user}
                />
              </ErrorBoundary>
           ))}
