@@ -54,32 +54,36 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 8. **Phase 10: Performance, Cost & Reliability** — Complete ✅ (PR #64, PR #75, PR #85)
 9. **Phase 11: Productization / Subscription** — Removed per owner directive (PR #76) (Unlimited Platform Access)
 10. **Phase 12: Advanced Investment Intelligence** — Complete ✅ (PR #66, PR #69, PR #70, PR #73, PR #83, PR #104–#109)
-11. **Lumina V1 Completion Program (Roadmap V2 Workstreams & Repairs)** — Technically Complete ✅ (Owner Acceptance: N/A / not required per owner instruction)
-    - Workstream V2-A: Investment Memory Foundation — Complete ✅ (PR #104, #111)
-    - Workstream V2-B: Structured Investment Thesis & Expectations Engine — Complete ✅ (PR #105, #111, #112, #113)
-    - Workstream V2-C: What Changed Intelligence Engine — Complete ✅ (PR #106, #113)
-    - Workstream V2-D: Actionable Decision Context Engine — Complete ✅ (PR #107, #113)
-    - Workstream V2-E: Thesis-Aware Watchlist Intelligence — Complete ✅ (PR #108, #113)
-    - Workstream V2-F: Report Integration & Evidence UX — Complete ✅ (PR #109, #113)
-    - Workstream V2-G: Final Verification & Acceptance Dossier — Complete ✅ (PR #110, #114)
+11. **Lumina V1 Completion Program (Roadmap V2 Workstreams & Final Closure)** — Technically Complete ✅
+    - Workstream V2-A: Investment Memory Foundation — Complete ✅ (PR #104, #111, #115)
+    - Workstream V2-B: Structured Investment Thesis & Expectations Engine — Complete ✅ (PR #105, #111, #112, #113, #116)
+    - Workstream V2-C: What Changed Intelligence Engine — Complete ✅ (PR #106, #113, #117)
+    - Workstream V2-D: Actionable Decision Context Engine — Complete ✅ (PR #107, #113, #116)
+    - Workstream V2-E: Thesis-Aware Watchlist Intelligence — Complete ✅ (PR #108, #113, #116)
+    - Workstream V2-F: Report Integration & Evidence UX — Complete ✅ (PR #109, #113, #116)
+    - Workstream V2-G: Final Verification & Acceptance Dossier — Complete ✅ (PR #110, #114, #118)
     - Repair A: Memory SEC Authority & UID Cache Isolation — Complete ✅ (PR #111)
     - Repair B: Thesis Revisions & Explicit Hardened Rules — Complete ✅ (PR #112)
     - Repair C: Canonical Expectation Eval & Watchlist Integration — Complete ✅ (PR #113)
     - Repair D: Final Technical Completion Evidence Reconciliation — Complete ✅ (PR #114)
+    - PR E: Comparable-Period & Share/Provenance Semantics — Complete ✅ (PR #115)
+    - PR F: Historical Thesis & Durable Expectations Integration — Complete ✅ (PR #116)
+    - PR G: Uncertainty Propagation in Decision Intelligence — Complete ✅ (PR #117)
+    - PR H: True Final Technical Closure Documentation — Complete ✅ (PR #118)
 
 ---
 
 ## Current Status: LUMINA V1 — TECHNICALLY COMPLETE
 
-Lumina V1 has completed its bounded end-to-end completion program and final integrity repair run across all authorized workstreams.
+Lumina V1 has completed its bounded end-to-end completion program and final semantic/integration correction pass across all authorized workstreams.
 The personal equity research and decision operating system loop is fully established, hardened, and proven:
 Research → Understand → Value → Form Thesis → Record Expectations → Remember → What Changed → Decision Context → Watchlist Prioritization.
 
 - **Status:** `LUMINA V1 — TECHNICALLY COMPLETE`
 - **Integrity Foundation:** Owner Accepted Baseline (Anchor commit: `d2315f069379dfe946dee0952231005cc6ba9746`)
-- **Current Production SHA:** `aee697d976d102f5979ed279a2234397a35164fa` (PR #113; Vercel Deployment ID `6419151510`)
-- **Completion & Repair PRs:** PR #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114
-- **Regression Suite:** 81 test files (78 src + 3 server), 229 passing test cases, 0 failed, 0 skipped
+- **Current Production SHA:** `7dfb0ded14ced56e6c89cdf7c8a6802019cbe9b0` (PR #117; Vercel Deployment ID `6420225575`)
+- **Completion & Repair PRs:** PR #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117, #118
+- **Regression Suite:** 81 test files (78 src + 3 server), 250 passing test cases, 0 failed, 0 skipped
 - **TypeScript / Linter:** 100% clean (`tsc --noEmit`)
 - **Production URL:** `https://stock-ana-ten.vercel.app`
 - **Production Verified:** Verified live on MSFT (operating tech) and SOFI (financial sector guard)
