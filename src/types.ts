@@ -1421,3 +1421,9 @@ export type {
   ValuationAttribution,
   WhatChangedResult
 } from './domain/whatChangedEngine';
+
+export type {
+  ReEvaluationStance,
+  DecisionReason,
+  DecisionContextResult
+} from './domain/decisionContextEngine';
