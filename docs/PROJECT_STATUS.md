@@ -1,6 +1,6 @@
 # Lumina / Stock_Ana — Master Project Status
 
-Last updated: 2026-09-13 (Asia/Bangkok)
+Last updated: 2026-09-14 (Asia/Bangkok)
 
 This file is the durable engineering handoff for new ChatGPT/Codex sessions. Prefer live GitHub, CI, Vercel, Firebase, and issue evidence over old chat history whenever they disagree.
 
@@ -12,13 +12,14 @@ Always query live `main` before starting work. SHAs below identify stable applic
 
 ## Current state
 
-- Current stage: **LUMINA V1 — BLOCKED: Firebase CLI authentication unavailable for final Firestore rules deployment and active-source verification**.
-- Current working mode: **Final closure only. Pending expectation creation is fixed; production application and regression gates pass. Final production rules proof remains outstanding.**
+- Current stage: **LUMINA V1 — TECHNICALLY COMPLETE**.
+- Current working mode: **V1 closure complete. Pending expectation creation, production application gates, regression gates, and final production Firestore rules proof pass.**
 - Primary end-to-end financial reference issuer: **MSFT** (operating tech), **SOFI** (fintech / banking / financial sector guard).
 - Production URL: `https://stock-ana-ten.vercel.app`.
 - Historical Accepted Integrity Baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Phase 4.5 Owner Accepted).
 - Latest verified behavior-changing production SHA: `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`). Subsequent documentation-only main SHAs do not change this application baseline.
 - Latest merged application milestone: PR #120 (Persist new PENDING expectations before evaluation).
+- Final closure evidence: PR #122 records the production Firestore rules deployment and active-source verification.
 - Regression gate: 82 test files (79 src + 3 server), 254 passing cases, 0 failed, 0 skipped. Case counts follow the repository runner convention: standalone assertion files without node:test summaries count as one case.
 
 ## Canonical Phase Acceptance Matrix
@@ -54,7 +55,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 | **PR G** | Uncertainty Propagation in Decision Intelligence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #117 |
 | **PR H** | True Final Technical Closure Documentation | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #118 |
 | **PR I** | Durable Expectation Evaluation Outcome Persistence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #119 |
-| **Closure patch** | Pending Expectation Creation Persistence | ✅ | ✅ | ✅ | ✅ | — | `Application verified; final rules proof blocked` | PR #120 |
+| **Closure patch** | Pending Expectation Creation Persistence | ✅ | ✅ | ✅ | ✅ | — | `Technically Complete` | PR #120 |
 
 ## Repository protection
 
@@ -132,15 +133,18 @@ Key platform protections:
 
 ## Phase 4 production acceptance evidence
 
-### Gate 1 — Firestore Rules (historical Phase 4 evidence; final rules proof outstanding)
+### Gate 1 — Firestore Rules ✅
 
-The evidence below is historical. Its 2026-09-11 timestamp predates the thesis/expectation rules changes and does not prove that the final reviewed rules are active. The final closure attempt on 2026-09-13 used Firebase CLI 15.30.0; `projects:list --json --non-interactive` failed with `Failed to authenticate, have you run firebase login?`. Deployment stopped before any Firebase mutation.
+Final production rules proof was completed on 2026-09-14 using Firebase CLI 15.30.0 and the Firebase Rules API.
 
-- Reviewed source Git SHA: `2293430b8a642a8da6b0f4f05bbdf24270c557a6`; `firestore.rules` was last changed in `0a1c97249d6bc8e69e404dd9f07af421aef2a19b`.
-- Required target remains project `stock-analyze-a89d0`, database `(default)`, source `firestore.rules`.
-- Repository rules preflight passes; this does not authenticate the CLI or verify production rules.
-- Rules-only deployment result, current active rules timestamp/source match, and authenticated Firestore save/reload smoke: **NOT VERIFIED** in this closure task.
-- No data migration or unrelated Firebase deployment occurred. Resume only this proof after operator authentication using `docs/firebase-operations.md`.
+- Deployed source Git SHA: `f45dbac06a199baf167e2b6de4f8c3d38a82428c`; `firestore.rules` was last changed in `0a1c97249d6bc8e69e404dd9f07af421aef2a19b`.
+- Target verified before and after deployment: project `stock-analyze-a89d0`, database `(default)`, source `firestore.rules`.
+- Repository rules preflight passed immediately before deployment.
+- `firebase deploy --only firestore:rules --project stock-analyze-a89d0` compiled and released the rules successfully. No data migration or unrelated Firebase service was deployed.
+- Active release: `projects/stock-analyze-a89d0/releases/cloud.firestore`, updated `2026-09-14T13:23:22.751261Z` (20:23:22 Asia/Bangkok).
+- Active ruleset: `projects/stock-analyze-a89d0/rulesets/c67847f0-ea61-44cb-bb77-fb97ffa192b0`, created `2026-09-14T13:23:21.322191Z`.
+- Firebase Rules API source and reviewed local `firestore.rules` have the same normalized SHA-256: `d59727b005bdcff6f60290f70678eb7ee4001767f414683064ffff657b344553`.
+- Authenticated application history/save and cross-user isolation smokes were not repeated during this rules-only operation; existing rule regression coverage remains the evidence for those behaviors.
 
 Production target remains exactly:
 
@@ -150,12 +154,12 @@ Production target remains exactly:
 
 Operational acceptance recorded:
 
-- Previous rollback point recorded before deployment.
+- Previous rollback point: ruleset `fdb9672a-8ffb-455e-a23a-49be85620a42`, active release timestamp `2026-09-11T02:38:05.665867Z`.
 - Firebase operator identity and `(default)` database verified.
 - Repository Firebase preflight passed immediately before deployment.
 - Rules-only deployment succeeded.
-- Active Console rules timestamp after deployment: **2026-09-11 09:38 Asia/Bangkok**.
-- Deployed source matches reviewed Git rules.
+- Active Firebase Rules API release timestamp after deployment: **2026-09-14 20:23:22 Asia/Bangkok**.
+- Deployed source matches reviewed Git rules, verified by normalized source hash.
 - `/users/{userId}` access is owner-only.
 - Report create/read is owner-only.
 - Report updates are restricted to `deletedAt`, `deletedByUserId`, and `deletedByVersion` for the owner.
@@ -661,7 +665,7 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 
 ## Current production health
 
-Application deployment and public endpoint evidence checked on 2026-09-13 at 21:54 Asia/Bangkok (Firebase production rules proof is separately blocked):
+Application deployment and public endpoint evidence checked on 2026-09-13 at 21:54 Asia/Bangkok. Firebase production rules deployment and active-source evidence were verified on 2026-09-14 at 20:23 Asia/Bangkok:
 
 - **Historical Accepted Baseline SHA**: `d2315f069379dfe946dee0952231005cc6ba9746` (Owner Accepted baseline)
 - **Verified behavior-changing production Git SHA**: `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`)
