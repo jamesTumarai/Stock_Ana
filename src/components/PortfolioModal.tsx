@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion } from 'motion/react';
 import {
   X, Plus, Trash2, TrendingUp, TrendingDown, Briefcase,
   Star, AlertTriangle, ShieldCheck, DollarSign, PieChart,
@@ -245,15 +246,23 @@ export function PortfolioModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="portfolio-modal-title"
     >
-      <div
-        className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.97, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
+        transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.78 }}
+        className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -275,59 +284,69 @@ export function PortfolioModal({
             </div>
           </div>
 
-          <button
+          <motion.button
             type="button"
             onClick={onClose}
+            whileTap={{ scale: 0.9 }}
             className="text-stone-400 hover:text-stone-700 p-2 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
-          </button>
+          </motion.button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center justify-between px-6 pt-3 border-b border-stone-100 bg-white">
-          <div className="flex items-center gap-2">
-            <button
+        <div className="flex flex-col gap-3 px-4 sm:px-6 pt-3 pb-3 border-b border-stone-100 bg-white sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-1 rounded-2xl bg-stone-100 p-1 overflow-x-auto no-scrollbar">
+            <motion.button
               type="button"
               onClick={() => setActiveTab('portfolio')}
-              className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              whileTap={{ scale: 0.97 }}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                 activeTab === 'portfolio'
-                  ? 'border-[#0b5a4b] text-[#0b5a4b]'
-                  : 'border-transparent text-stone-500 hover:text-stone-800'
+                  ? 'bg-white text-[#0b5a4b] shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
               }`}
             >
               <Briefcase className="w-4 h-4" />
               <span>{isThai ? 'พอร์ตการลงทุน' : 'Portfolio Holdings'} ({holdings.length})</span>
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               type="button"
               onClick={() => setActiveTab('watchlist')}
-              className={`px-4 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              whileTap={{ scale: 0.97 }}
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                 activeTab === 'watchlist'
-                  ? 'border-[#0b5a4b] text-[#0b5a4b]'
-                  : 'border-transparent text-stone-500 hover:text-stone-800'
+                  ? 'bg-white text-[#0b5a4b] shadow-sm'
+                  : 'text-stone-500 hover:text-stone-800'
               }`}
             >
               <Star className="w-4 h-4" />
               <span>{isThai ? 'รายการติดตาม (Watchlist)' : 'Watchlist'} ({watchlist.length})</span>
-            </button>
+            </motion.button>
           </div>
 
           {activeTab === 'portfolio' && (
-            <button
+            <motion.button
               type="button"
               onClick={() => setIsAddingHolding(!isAddingHolding)}
+              whileTap={{ scale: 0.97 }}
               className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{isThai ? 'เพิ่มหุ้นในพอร์ต' : 'Add Holding'}</span>
-            </button>
+            </motion.button>
           )}
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-6">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-6"
+        >
 
           {/* TAB 1: PORTFOLIO */}
           {activeTab === 'portfolio' && (
@@ -752,7 +771,7 @@ export function PortfolioModal({
             </div>
           )}
 
-        </div>
+        </motion.div>
 
         {/* Footer */}
         <div className="p-4 border-t border-stone-100 bg-stone-50/50 flex items-center justify-between text-xs text-stone-500">
@@ -768,7 +787,7 @@ export function PortfolioModal({
             {isThai ? 'ปิด' : 'Close'}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

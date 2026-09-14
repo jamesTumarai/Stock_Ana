@@ -877,7 +877,7 @@ export default function App() {
       {/* Header (shown during analysis or when viewing timeline) */}
       {!isLanding && (
         <header 
-          className="relative w-full max-w-[1360px] mx-auto grid grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-6 py-3 shrink-0 z-50 transition-all print:hidden gap-2"
+          className="relative w-full max-w-[1360px] mx-auto grid grid-cols-[auto_1fr] xl:grid-cols-[1fr_auto_1fr] items-center px-3 sm:px-6 py-3 shrink-0 z-50 transition-all print:hidden gap-2"
           style={{
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
@@ -900,10 +900,10 @@ export default function App() {
             </span>
           </div>
 
-          {/* Column 2: Center Floating White Nav Pill (EXACT 50% Mathematical True Center) */}
-          <div className="flex items-center justify-center">
+          {/* Column 2: Center Floating White Nav Pill */}
+          <div className="hidden xl:flex items-center justify-center">
             <nav 
-              className="hidden md:flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-[0.85] lg:scale-95 xl:scale-100 transition-all origin-center shrink-0"
+              className="flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 transition-all origin-center shrink-0"
               style={{
                 height: '38px',
                 padding: '3px 8px',

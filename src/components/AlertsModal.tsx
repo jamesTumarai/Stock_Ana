@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import {
   X, Bell, AlertTriangle, ShieldAlert, Info, CheckCircle2,
   Settings, ExternalLink, ArrowRight, Filter, Check, Trash2
@@ -84,15 +85,23 @@ export function AlertsModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="alerts-modal-title"
     >
-      <div
-        className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.97, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
+        transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.78 }}
+        className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -122,22 +131,24 @@ export function AlertsModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <motion.button
               type="button"
               onClick={() => setShowSettings(!showSettings)}
+              whileTap={{ scale: 0.9 }}
               className={`p-2 rounded-full transition-colors cursor-pointer ${showSettings ? 'bg-stone-200 text-stone-900' : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'}`}
               title={isThai ? 'ตั้งค่าเกณฑ์การแจ้งเตือน' : 'Alert Settings'}
             >
               <Settings className="w-5 h-5" />
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               type="button"
               onClick={onClose}
+              whileTap={{ scale: 0.9 }}
               className="text-stone-400 hover:text-stone-700 p-2 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
               aria-label="Close modal"
             >
               <X className="w-5 h-5" />
-            </button>
+            </motion.button>
           </div>
         </div>
 
@@ -214,8 +225,8 @@ export function AlertsModal({
         )}
 
         {/* Action Bar / Filter Tabs */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 border-b border-stone-100 bg-white">
-          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar">
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-6 py-2.5 border-b border-stone-100 bg-white">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar rounded-2xl bg-stone-100 p-1">
             {[
               { id: 'all', labelEn: 'All', labelTh: 'ทั้งหมด', count: alerts.length },
               { id: 'unread', labelEn: 'Unread', labelTh: 'ยังไม่อ่าน', count: unreadCount },
@@ -223,13 +234,14 @@ export function AlertsModal({
               { id: 'filings', labelEn: 'Filings', labelTh: 'งบ SEC' },
               { id: 'portfolio', labelEn: 'Portfolio', labelTh: 'พอร์ต' }
             ].map((tab) => (
-              <button
+              <motion.button
                 key={tab.id}
                 type="button"
                 onClick={() => setFilterType(tab.id)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                whileTap={{ scale: 0.96 }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors cursor-pointer shrink-0 ${
                   filterType === tab.id
-                    ? 'bg-stone-900 text-white font-bold'
+                    ? 'bg-white text-stone-900 font-bold shadow-sm'
                     : 'text-stone-500 hover:text-stone-900 hover:bg-stone-100'
                 }`}
               >
@@ -241,24 +253,31 @@ export function AlertsModal({
                     {tab.count}
                   </span>
                 )}
-              </button>
+              </motion.button>
             ))}
           </div>
 
           {unreadCount > 0 && (
-            <button
+            <motion.button
               type="button"
               onClick={onMarkAllAsRead}
+              whileTap={{ scale: 0.96 }}
               className="text-xs font-semibold text-[#0b5a4b] hover:text-[#084237] transition-colors flex items-center gap-1 cursor-pointer shrink-0 ml-2"
             >
               <Check className="w-3.5 h-3.5" />
               <span>{isThai ? 'อ่านทั้งหมดแล้ว' : 'Mark all read'}</span>
-            </button>
+            </motion.button>
           )}
         </div>
 
         {/* Alerts List */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-3">
+        <motion.div
+          key={filterType}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-3"
+        >
           {filteredAlerts.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center text-center">
               <div className="w-14 h-14 rounded-full bg-emerald-50 text-[#0b5a4b] flex items-center justify-center mb-3">
@@ -274,12 +293,16 @@ export function AlertsModal({
               </p>
             </div>
           ) : (
-            filteredAlerts.map((alert) => {
+            filteredAlerts.map((alert, index) => {
               const style = getSeverityStyle(alert.severity);
 
               return (
-                <div
+                <motion.div
                   key={alert.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.04, 0.16), duration: 0.2 }}
+                  whileHover={{ y: -1 }}
                   className={`p-4 rounded-2xl border transition-all flex flex-col gap-2.5 ${style.border} ${
                     alert.isRead ? 'opacity-70 bg-stone-50/50' : 'shadow-2xs'
                   }`}
@@ -369,12 +392,12 @@ export function AlertsModal({
                       </button>
                     </div>
                   )}
-                </div>
+                </motion.div>
               );
             })
           )}
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </motion.div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Loader2, Sparkles, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell } from 'lucide-react';
+import { Search, Loader2, Sparkles, BrainCircuit, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell } from 'lucide-react';
 import { UserAvatar } from './components/UserAvatar';
 
 interface LandingViewProps {
@@ -177,9 +177,9 @@ export function LandingView({
         }}
       >
         
-        {/* 1) Top Header (Absolute Centering so Nav Pill Never Wraps) */}
+        {/* 1) Top Header (full navigation moves into the compact menu below xl) */}
         <header 
-          className="relative w-full max-w-[1360px] grid grid-cols-[1fr_auto_1fr] items-center shrink-0 z-50 transition-all px-2 md:px-4 gap-2"
+          className="relative w-full max-w-[1360px] grid grid-cols-[auto_1fr] xl:grid-cols-[1fr_auto_1fr] items-center shrink-0 z-50 transition-all px-2 md:px-4 gap-2"
           style={{
             animation: 'slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
           }}
@@ -207,10 +207,10 @@ export function LandingView({
             </span>
           </div>
 
-          {/* Center Floating White Nav Pill (EXACT 50% Mathematical True Center) */}
-          <div className="flex items-center justify-center">
+          {/* Center Floating White Nav Pill */}
+          <div className="hidden xl:flex items-center justify-center">
             <nav 
-              className="hidden md:flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 scale-[0.85] lg:scale-95 xl:scale-100 transition-all origin-center shrink-0"
+              className="flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 transition-all origin-center shrink-0"
               style={{
                 height: '38px',
                 padding: '3px 8px',
@@ -268,7 +268,7 @@ export function LandingView({
           </div>
 
           {/* Right Controls: User Account / Sign In */}
-          <div className="hidden md:flex items-center justify-end z-10 min-w-0">
+          <div className="hidden xl:flex items-center justify-end z-10 min-w-0">
             {user ? (
               <div className="flex items-center gap-2 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)] shrink-0">
                 <button
@@ -358,7 +358,7 @@ export function LandingView({
           </div>
 
           {/* Mobile Right Controls: User Avatar + Toggle Menu */}
-          <div className="md:hidden flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
+          <div className="xl:hidden flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
             <button
               onClick={onOpenAlerts}
               className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
@@ -421,108 +421,151 @@ export function LandingView({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.28 }}
+                transition={{ duration: 0.24 }}
                 onClick={() => setMobileMenuOpen(false)}
-                className="fixed inset-0 bg-black/65 backdrop-blur-md z-40 md:hidden"
+                className="fixed inset-0 bg-black/55 backdrop-blur-sm z-40 xl:hidden"
               />
               <motion.div
-                initial={{ opacity: 0, y: -12, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -12, scale: 0.97 }}
-                transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-                className="fixed top-20 left-4 right-4 bg-white text-[#2e2e2e] rounded-[28px] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)] z-50 flex flex-col gap-2.5 md:hidden"
+                initial={{ opacity: 0, y: -18, scale: 0.94, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -12, scale: 0.97, filter: 'blur(4px)' }}
+                transition={{ type: 'spring', stiffness: 420, damping: 30, mass: 0.72 }}
+                className="fixed top-20 left-4 right-4 md:left-auto md:right-6 md:w-[460px] bg-white/95 backdrop-blur-xl text-[#2e2e2e] rounded-[28px] md:rounded-[24px] p-5 md:p-4 shadow-[0_24px_70px_rgba(0,0,0,0.42)] border border-white/80 ring-1 ring-black/5 z-50 flex flex-col gap-2.5 md:gap-2 overflow-hidden xl:hidden"
               >
-                <div className="text-xs text-stone-700 font-bold uppercase tracking-wider px-2 pb-1 border-b border-stone-200">
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.08, duration: 0.2 }}
+                  className="text-[11px] text-stone-500 font-bold uppercase tracking-[0.12em] px-2 pb-1.5"
+                >
                   {isThai ? 'โหมดการวิเคราะห์' : 'Analysis Mode'}
-                </div>
-                {navModes.map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => {
-                      setAnalysisType(mode.id);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`w-full py-2.5 px-4 text-left font-medium rounded-xl transition-colors flex items-center justify-between ${
-                      analysisType === mode.id ? 'bg-stone-900 text-white' : 'text-stone-700 hover:bg-stone-100'
-                    }`}
-                  >
-                    <span>{isThai ? mode.labelTh : mode.labelEn}</span>
-                    {analysisType === mode.id && <span>✓</span>}
-                  </button>
-                ))}
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.12, duration: 0.22 }}
+                  className="grid grid-cols-1 md:grid-cols-3 gap-1.5 rounded-2xl bg-stone-100/90 p-1"
+                >
+                  {navModes.map((mode) => (
+                    <motion.button
+                      key={mode.id}
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.96 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 28 }}
+                      onClick={() => {
+                        setAnalysisType(mode.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full py-2.5 md:py-2 px-4 md:px-2 text-left md:text-center text-sm md:text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-between md:justify-center gap-1.5 ${
+                        analysisType === mode.id ? 'bg-stone-900 text-white shadow-[0_4px_12px_rgba(0,0,0,0.2)]' : 'text-stone-500 hover:bg-white hover:text-stone-800'
+                      }`}
+                    >
+                      <span className="whitespace-nowrap">
+                        {isThai && mode.id === 'fundamental' ? (
+                          <><span className="md:hidden">{mode.labelTh}</span><span className="hidden md:inline">พื้นฐาน</span></>
+                        ) : (isThai ? mode.labelTh : mode.labelEn)}
+                      </span>
+                      {analysisType === mode.id && <span className="shrink-0">✓</span>}
+                    </motion.button>
+                  ))}
+                </motion.div>
 
-                <div className="pt-2 border-t border-stone-200 flex items-center justify-between px-2">
-                  <span className="text-xs font-medium text-stone-700">{isThai ? 'คิดเชิงลึก (Deep Think)' : 'Deep Think'}</span>
-                  <button
-                    onClick={() => setUseSelfConsistency(!useSelfConsistency)}
-                    className={`px-3 py-1 font-bold text-xs rounded-full flex items-center gap-1 ${
-                      useSelfConsistency ? 'bg-black text-white' : 'bg-stone-100 text-stone-700'
-                    }`}
-                  >
-                    <Sparkles className={`w-3 h-3 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-500'}`} />
-                    <span>{useSelfConsistency ? (isThai ? 'เปิดใช้งาน' : 'ON') : (isThai ? 'ปิด' : 'OFF')}</span>
-                  </button>
-                </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.16, duration: 0.22 }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-1.5 pt-2"
+                >
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-stone-50 border border-stone-100">
+                    <span className="text-xs font-semibold text-stone-600">{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
+                    <motion.button
+                      whileTap={{ scale: 0.93 }}
+                      onClick={() => setUseSelfConsistency(!useSelfConsistency)}
+                      className={`min-w-[112px] justify-center px-3 py-1.5 font-bold text-xs rounded-full flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                        useSelfConsistency ? 'bg-[#171717] text-white shadow-[0_3px_10px_rgba(0,0,0,0.2)]' : 'bg-white border border-stone-200 text-stone-600'
+                      }`}
+                      title="Deep Think"
+                    >
+                      <BrainCircuit className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-violet-300' : 'text-violet-500'}`} strokeWidth={2.2} />
+                      <span className="whitespace-nowrap leading-none">{useSelfConsistency ? (isThai ? 'เปิดใช้งาน' : 'ON') : (isThai ? 'ปิด' : 'OFF')}</span>
+                    </motion.button>
+                  </div>
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-stone-50 border border-stone-100">
+                    <span className="text-xs font-semibold text-stone-600">{isThai ? 'ภาษา' : 'Language'}</span>
+                    <motion.button
+                      whileTap={{ scale: 0.93 }}
+                      onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
+                      className="px-3 py-1.5 bg-white border border-stone-200 font-bold text-xs rounded-full shadow-sm whitespace-nowrap"
+                    >
+                      {isThai ? 'ไทย (TH)' : 'English (EN)'}
+                    </motion.button>
+                  </div>
+                </motion.div>
 
-                <div className="pt-2 border-t border-stone-200 flex items-center justify-between px-2">
-                  <span className="text-xs font-medium text-stone-700">{isThai ? 'ภาษา (Language)' : 'Language'}</span>
-                  <button
-                    onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
-                    className="px-3 py-1 bg-stone-100 font-bold text-xs rounded-full"
-                  >
-                    {isThai ? 'ไทย (TH)' : 'English (EN)'}
-                  </button>
-                </div>
-
-                <div className="pt-2 border-t border-stone-200 flex flex-col gap-2">
-                  <button
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2, duration: 0.22 }}
+                  className="pt-2 border-t border-stone-200 grid grid-cols-1 md:grid-cols-2 gap-2"
+                >
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => {
                       setMobileMenuOpen(false);
                       onOpenAlerts?.();
                     }}
-                    className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-medium rounded-full text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-2 relative"
+                    className="w-full py-2.5 md:py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-full text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-2 relative"
+                    title={isThai ? 'การตรวจสอบวิจัยและการแจ้งเตือน' : 'On-Open Research Checks & Alerts'}
                   >
                     <Bell className="w-3.5 h-3.5" />
-                    <span>{isThai ? 'การตรวจสอบวิจัย & การแจ้งเตือน' : 'On-Open Research Checks & Alerts'}</span>
+                    <span>{isThai ? 'การแจ้งเตือน' : 'Alerts'}</span>
                     {unreadAlertsCount > 0 && (
                       <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
                         {unreadAlertsCount}
                       </span>
                     )}
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => {
                       setMobileMenuOpen(false);
                       onOpenPortfolio?.();
                     }}
-                    className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-medium rounded-full text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full py-2.5 md:py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-full text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    title={isThai ? 'พอร์ตการลงทุนและ Watchlist' : 'Portfolio & Watchlist'}
                   >
                     <Briefcase className="w-3.5 h-3.5" />
-                    <span>{isThai ? 'พอร์ตการลงทุน & Watchlist' : 'Portfolio & Watchlist'}</span>
-                  </button>
-                  <button
+                    <span>{isThai ? 'พอร์ต & Watchlist' : 'Portfolio'}</span>
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => {
                       setMobileMenuOpen(false);
                       if (user) onOpenHistory();
                       else onLogin();
                     }}
-                    className="w-full py-2.5 bg-[#28282a] text-white hover:bg-black font-medium rounded-full text-xs text-center transition-colors cursor-pointer"
+                    className="w-full py-2.5 md:py-2 bg-[#28282a] text-white hover:bg-black font-semibold rounded-full text-xs text-center transition-colors cursor-pointer"
                   >
-                    {user ? (isThai ? 'ดูประวัติการวิเคราะห์' : 'View History') : 'Sign In'}
-                  </button>
+                    {user ? (isThai ? 'ประวัติการวิเคราะห์' : 'View History') : 'Sign In'}
+                  </motion.button>
                   {user && (
-                    <button
+                    <motion.button
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.97 }}
                       onClick={() => {
                         setMobileMenuOpen(false);
                         onLogout();
                       }}
-                      className="w-full py-3 bg-red-50 text-red-600 hover:bg-red-100 font-medium rounded-full text-sm text-center transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-3 md:py-2 bg-red-50 text-red-600 hover:bg-red-100 font-semibold rounded-full text-sm md:text-xs text-center transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <LogOut className="w-4 h-4" />
                       {isThai ? 'ออกจากระบบ' : 'Log Out'}
-                    </button>
+                    </motion.button>
                   )}
-                </div>
+                </motion.div>
               </motion.div>
             </>
           )}
