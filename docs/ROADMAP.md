@@ -54,7 +54,7 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
 8. **Phase 10: Performance, Cost & Reliability** — Complete ✅ (PR #64, PR #75, PR #85)
 9. **Phase 11: Productization / Subscription** — Removed per owner directive (PR #76) (Unlimited Platform Access)
 10. **Phase 12: Advanced Investment Intelligence** — Complete ✅ (PR #66, PR #69, PR #70, PR #73, PR #83, PR #104–#109)
-11. **Lumina V1 Completion Program (Roadmap V2 Workstreams & Final Closure)** — Final production rules proof blocked
+11. **Lumina V1 Completion Program (Roadmap V2 Workstreams & Final Closure)** — Complete ✅
     - Workstream V2-A: Investment Memory Foundation — Complete ✅ (PR #104, #111, #115)
     - Workstream V2-B: Structured Investment Thesis & Expectations Engine — Complete ✅ (PR #105, #111, #112, #113, #116)
     - Workstream V2-C: What Changed Intelligence Engine — Complete ✅ (PR #106, #113, #117)
@@ -71,15 +71,15 @@ Directional roadmap only: **Do not start later phases until the owner explicitly
     - PR G: Uncertainty Propagation in Decision Intelligence — Complete ✅ (PR #117)
     - PR H: True Final Technical Closure Documentation — Complete ✅ (PR #118)
     - PR I: Durable Expectation Evaluation Outcome Persistence — Complete ✅ (PR #119)
-    - Final closure patch: Persist PENDING expectation creation before evaluation — Application verified ✅ (PR #120); Firebase rules proof blocked by CLI authentication.
+    - Final closure patch: Persist PENDING expectation creation before evaluation — Complete ✅ (PR #120); production Firestore rules deployment and active-source verification complete.
 
 ---
 
-## Current Status: LUMINA V1 — BLOCKED: Firebase CLI authentication unavailable for final rules proof
+## Current Status: LUMINA V1 — TECHNICALLY COMPLETE
 
-The final closure patch persists new PENDING expectations before evaluation. The save/reload regression and deployed application gates pass. Technical closure remains blocked until the final reviewed Firestore rules can be deployed and their active source verified under the existing Firebase runbook. This is an operational closure gate, not a new roadmap or feature authorization.
+The final closure patch persists new PENDING expectations before evaluation. The save/reload regression, deployed application gates, and final production Firestore rules proof pass. This closes Lumina V1 technically without creating a new roadmap or feature authorization.
 
-- **Status:** `LUMINA V1 — BLOCKED: Firebase CLI authentication unavailable for final rules proof`
+- **Status:** `LUMINA V1 — TECHNICALLY COMPLETE`
 - **Integrity Foundation:** Owner Accepted Baseline (Anchor commit: `d2315f069379dfe946dee0952231005cc6ba9746`)
 - **Verified behavior-changing production SHA:** `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`, READY with production alias). Later docs-only SHAs do not replace this behavior baseline.
 - **Completion & Repair PRs:** PRs #104–#120; latest application milestone is PR #120.
@@ -88,7 +88,7 @@ The final closure patch persists new PENDING expectations before evaluation. The
 - **TypeScript / Linter:** 100% clean (`tsc --noEmit`)
 - **Production URL:** `https://stock-ana-ten.vercel.app`
 - **Production smoke (2026-09-13 21:54 Asia/Bangkok):** health 200; detailed query 200 minimal payload; detailed endpoint 401; MSFT quotes 200; MSFT SEC diff 200 with verified provenance. No new authenticated Firestore save or SOFI UI smoke is claimed.
-- **Firebase rules proof:** CLI 15.30.0 `projects:list --json --non-interactive` failed with `Failed to authenticate, have you run firebase login?`. No deployment occurred. Active rules timestamp/source match remains unverified for `stock-analyze-a89d0` / `(default)` / `firestore.rules`; the older 2026-09-11 rules record is historical only. Source reviewed at `2293430b8a642a8da6b0f4f05bbdf24270c557a6`. See `docs/PROJECT_STATUS.md` and `docs/firebase-operations.md`.
+- **Firebase rules proof:** Firebase CLI 15.30.0 verified `stock-analyze-a89d0` / `(default)`, the repository preflight passed, and a rules-only deployment from Git SHA `f45dbac06a199baf167e2b6de4f8c3d38a82428c` completed on 2026-09-14. Active release `cloud.firestore` updated at `2026-09-14T13:23:22.751261Z`; active ruleset `c67847f0-ea61-44cb-bb77-fb97ffa192b0` matches reviewed `firestore.rules` by normalized SHA-256 `d59727b005bdcff6f60290f70678eb7ee4001767f414683064ffff657b344553`. No data migration or unrelated Firebase service was deployed. See `docs/PROJECT_STATUS.md` and `docs/firebase-operations.md`.
 - **Non-blocking debt:** 10 moderate production dependency advisories (`npm audit --omit=dev` exit 1, no high/critical), large bundle warning, and existing dependency deprecation warnings. No force fix or unrelated refactor.
 
 ---
