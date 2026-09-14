@@ -867,11 +867,12 @@ export default function App() {
       {/* Global Background Video (New CloudFront Video) */}
       <div className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-none">
         <CrossfadeVideo
-          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260809_012548_ef22562c-c0ae-4816-ad9d-f8922af4e6a7.mp4"
+          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260827_202422_3ffb4889-c520-432d-8458-038009eb40df.mp4"
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
           style={{ objectPosition: 'center 62%' }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/45 pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,4,12,0.52),rgba(0,4,12,0.22)_54%,transparent_78%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/38 pointer-events-none" />
       </div>
       
       {/* Header (shown during analysis or when viewing timeline) */}

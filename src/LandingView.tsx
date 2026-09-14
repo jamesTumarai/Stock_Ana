@@ -581,7 +581,8 @@ export function LandingView({
         </AnimatePresence>
 
         {/* 2) Hero Center Section */}
-        <main className="w-full max-w-[860px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-10 md:pt-16 pb-2 md:pb-4 mt-2 md:mt-4">
+        <main className="relative w-full max-w-[860px] flex-1 flex flex-col items-center justify-center text-center my-auto z-10 px-2 pt-10 md:pt-16 pb-2 md:pb-4 mt-2 md:mt-4">
+          <div aria-hidden="true" className="absolute inset-x-[-10%] inset-y-[8%] rounded-[48px] bg-black/10 blur-xl pointer-events-none" />
           
           {/* Trust Row / AI & Market Intelligence Badge */}
           <div 
@@ -642,7 +643,7 @@ export function LandingView({
 
           {/* Headline (Dot-Matrix Display Typography - Scaled for Elegant Proportion) */}
           <h1 
-            className="headline font-normal text-white text-center leading-[0.85] md:leading-[0.85] whitespace-nowrap select-none px-2 flex flex-col items-center justify-center gap-1 md:gap-2"
+            className="headline relative font-normal text-white text-center leading-[0.85] md:leading-[0.85] whitespace-nowrap select-none px-2 flex flex-col items-center justify-center gap-1 md:gap-2 drop-shadow-[0_3px_16px_rgba(0,0,0,0.95)]"
             style={{
               fontFamily: 'var(--font-display)',
               fontSize: 'clamp(32px, 5.5vw, 56px)',
@@ -669,7 +670,7 @@ export function LandingView({
 
           {/* Subhead */}
           <p 
-            className="subhead anim text-[#c2c2c2] font-normal leading-relaxed max-w-[min(580px,94%)] mt-3 md:mt-5 opacity-80 px-2"
+            className="subhead anim relative text-white/90 font-medium leading-relaxed max-w-[min(580px,94%)] mt-3 md:mt-5 px-2 drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)]"
             style={{
               ['--d' as any]: '0.28s',
               fontSize: 'clamp(12px, 1.2vw, 13px)',
@@ -685,7 +686,7 @@ export function LandingView({
           {/* Integrated Search Bar in Hero */}
           <div className="mt-5 sm:mt-6 md:mt-8 w-full max-w-[500px] flex flex-col items-center px-1">
             
-            <div className="w-full liquid-glass border border-white/25 rounded-full p-1 sm:p-1.5 flex items-center shadow-xl backdrop-blur-xl focus-within:border-white/50 focus-within:ring-1 focus-within:ring-white/40 transition-all">
+            <div className="w-full liquid-glass bg-black/40 border border-white/35 rounded-full p-1 sm:p-1.5 flex items-center shadow-[0_12px_32px_rgba(0,0,0,0.42)] backdrop-blur-xl focus-within:border-white/65 focus-within:ring-1 focus-within:ring-white/45 transition-all">
               <div className="flex items-center gap-1.5 pl-2.5 sm:pl-3 flex-1 min-w-0 pr-2">
                 <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/70 shrink-0" />
                 <input 
@@ -694,7 +695,7 @@ export function LandingView({
                   onChange={(e) => setTicker(e.target.value)}
                   placeholder={isThai ? "ชื่อหุ้น (เช่น NVDA, SOFI)" : "TICKER (e.g. NVDA, SOFI)"}
                   disabled={running}
-                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-[13px] sm:text-sm text-white placeholder-white/40 min-w-0 truncate"
+                  className="bg-transparent border-none outline-none w-full font-mono uppercase text-[13px] sm:text-sm text-white placeholder-white/60 min-w-0 truncate"
                   onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                 />
               </div>
@@ -739,7 +740,7 @@ export function LandingView({
 
             {/* Quick Ticker Chips */}
             <div className="flex flex-wrap items-center justify-center gap-1 mt-3 px-1">
-              <span className="text-[10px] sm:text-[11px] text-white/50 mr-1">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
+              <span className="text-[10px] sm:text-[11px] text-white/70 mr-1 drop-shadow-md">{isThai ? 'ตัวอย่าง:' : 'Popular:'}</span>
               {quickTickers.map((sym) => (
                 <button
                   key={sym}
@@ -747,7 +748,7 @@ export function LandingView({
                   className={`px-2.5 py-1 rounded-full text-[10.5px] sm:text-[11px] font-mono transition-all cursor-pointer border ${
                     ticker.toUpperCase() === sym 
                       ? 'bg-white text-black border-white font-bold' 
-                      : 'bg-white/5 text-white/80 border-white/10 hover:bg-white/15 hover:text-white'
+                      : 'bg-black/30 text-white/90 border-white/20 hover:bg-white/15 hover:text-white backdrop-blur-sm'
                   }`}
                 >
                   {sym}
