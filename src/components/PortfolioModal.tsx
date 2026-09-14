@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   X, Plus, Trash2, TrendingUp, TrendingDown, Briefcase,
   Star, AlertTriangle, ShieldCheck, DollarSign, PieChart,
-  Layers, ArrowRight, RefreshCw, Check
+  Layers, ArrowRight, RefreshCw, Check, ChevronDown
 } from 'lucide-react';
 import { PortfolioHolding } from '../types';
 import {
@@ -15,6 +15,7 @@ import {
   SUGGESTED_WATCHLIST_TICKERS
 } from '../utils/portfolioEngine';
 import { ProvenanceBadge } from './ProvenanceBadge';
+import { CompanyLogo } from './CompanyLogo';
 import { fetchLiveQuotes } from '../services/marketDataService';
 import { extractMemorySnapshot } from '../domain/investmentMemory';
 import { computeWatchlistIntelligence, rankWatchlistByPriority } from '../domain/watchlistIntelligence';
@@ -33,6 +34,21 @@ interface Props {
   latestReports?: Record<string, any>;
   historyReports?: any[];
 }
+
+const SECTOR_OPTIONS = [
+  'Technology',
+  'Financial Services',
+  'Healthcare',
+  'Consumer Cyclical',
+  'Consumer Defensive',
+  'Communication Services',
+  'Industrials',
+  'Energy',
+  'Basic Materials',
+  'Real Estate',
+  'Utilities',
+  'Other'
+];
 
 export function PortfolioModal({
   isOpen,
@@ -57,6 +73,8 @@ export function PortfolioModal({
   const [newAvgCost, setNewAvgCost] = useState('');
   const [newSector, setNewSector] = useState('Technology');
   const [newNotes, setNewNotes] = useState('');
+  const [isSectorMenuOpen, setIsSectorMenuOpen] = useState(false);
+  const contentBodyRef = useRef<HTMLDivElement>(null);
 
   // Add watchlist ticker state
   const [newWatchTicker, setNewWatchTicker] = useState('');
@@ -138,6 +156,14 @@ export function PortfolioModal({
       }
     }
   }, [isOpen, user?.uid]);
+
+  useLayoutEffect(() => {
+    if (!isAddingHolding) return;
+
+    // The form is inserted above the existing scroll position. Reset before paint
+    // so its ticker fields are never hidden on the first open frame.
+    if (contentBodyRef.current) contentBodyRef.current.scrollTop = 0;
+  }, [isAddingHolding]);
 
   const activeQuotes = useMemo(() => {
     return { ...internalQuotes, ...quotes };
@@ -262,7 +288,7 @@ export function PortfolioModal({
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
         transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.78 }}
-        className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
+        className="bg-white rounded-3xl max-w-4xl w-full h-[92vh] sm:h-[640px] max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -329,11 +355,17 @@ export function PortfolioModal({
           {activeTab === 'portfolio' && (
             <motion.button
               type="button"
-              onClick={() => setIsAddingHolding(!isAddingHolding)}
+              onClick={() => {
+                setIsAddingHolding(!isAddingHolding);
+                setIsSectorMenuOpen(false);
+              }}
+              whileHover={{ y: -1, boxShadow: '0 7px 16px rgba(0,0,0,0.2)' }}
               whileTap={{ scale: 0.97 }}
               className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <motion.span animate={{ rotate: isAddingHolding ? 45 : 0 }} transition={{ type: 'spring', stiffness: 460, damping: 24 }} className="flex">
+                <Plus className="w-3.5 h-3.5" />
+              </motion.span>
               <span>{isThai ? 'เพิ่มหุ้นในพอร์ต' : 'Add Holding'}</span>
             </motion.button>
           )}
@@ -341,6 +373,7 @@ export function PortfolioModal({
 
         {/* Content Body */}
         <motion.div
+          ref={contentBodyRef}
           key={activeTab}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -352,17 +385,30 @@ export function PortfolioModal({
           {activeTab === 'portfolio' && (
             <>
               {/* Add Holding Inline Form */}
+              <AnimatePresence initial={false} mode="popLayout">
               {isAddingHolding && (
-                <form onSubmit={handleAddHolding} className="p-4 sm:p-5 bg-stone-50 rounded-2xl border border-stone-200 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
+                <motion.form
+                  initial={{ opacity: 0, y: -10, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.985 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 28, mass: 0.72 }}
+                  onSubmit={handleAddHolding}
+                  className="p-4 sm:p-5 bg-gradient-to-br from-white via-stone-50 to-white rounded-[20px] border border-stone-200 shadow-[0_10px_30px_rgba(0,0,0,0.05)] flex flex-col gap-4"
+                >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">
-                      {isThai ? 'บันทึกการถือครองหุ้น' : 'New Portfolio Holding'}
-                    </span>
-                    <button type="button" onClick={() => setIsAddingHolding(false)} className="text-stone-400 hover:text-stone-600 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">
+                        {isThai ? 'บันทึกการถือครองหุ้น' : 'New Portfolio Holding'}
+                      </span>
+                    </div>
+                    <button type="button" onClick={() => { setIsAddingHolding(false); setIsSectorMenuOpen(false); }} className="text-stone-400 hover:text-stone-600 text-xs">
                       {isThai ? 'ยกเลิก' : 'Cancel'}
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
                     <div>
                       <label className="block text-[10px] font-mono uppercase font-bold text-stone-500 mb-1">{isThai ? 'ชื่อย่อหุ้น' : 'Ticker'}</label>
                       <input
@@ -371,7 +417,7 @@ export function PortfolioModal({
                         value={newTicker}
                         onChange={(e) => setNewTicker(e.target.value.toUpperCase())}
                         required
-                        className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-stone-200 rounded-xl uppercase"
+                        className="w-full px-3 py-2 text-xs font-mono font-bold text-stone-900 placeholder:text-stone-300 bg-white border border-stone-200 rounded-xl uppercase focus:outline-hidden focus:border-stone-500"
                       />
                     </div>
                     <div>
@@ -383,7 +429,7 @@ export function PortfolioModal({
                         value={newQty}
                         onChange={(e) => setNewQty(e.target.value)}
                         required
-                        className="w-full px-3 py-2 text-xs font-mono bg-white border border-stone-200 rounded-xl"
+                        className="w-full px-3 py-2 text-xs font-mono text-stone-900 placeholder:text-stone-300 bg-white border border-stone-200 rounded-xl focus:outline-hidden focus:border-stone-500"
                       />
                     </div>
                     <div>
@@ -395,39 +441,77 @@ export function PortfolioModal({
                         value={newAvgCost}
                         onChange={(e) => setNewAvgCost(e.target.value)}
                         required
-                        className="w-full px-3 py-2 text-xs font-mono bg-white border border-stone-200 rounded-xl"
+                        className="w-full px-3 py-2 text-xs font-mono text-stone-900 placeholder:text-stone-300 bg-white border border-stone-200 rounded-xl focus:outline-hidden focus:border-stone-500"
                       />
                     </div>
-                    <div>
+                    <div className="relative">
                       <label className="block text-[10px] font-mono uppercase font-bold text-stone-500 mb-1">{isThai ? 'หมวดธุรกิจ' : 'Sector'}</label>
-                      <select
-                        value={newSector}
-                        onChange={(e) => setNewSector(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-stone-200 rounded-xl"
+                      <motion.button
+                        type="button"
+                        onClick={() => setIsSectorMenuOpen(!isSectorMenuOpen)}
+                        whileTap={{ scale: 0.98 }}
+                        className={`w-full px-3 py-2 text-xs font-medium text-stone-900 bg-white border rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                          isSectorMenuOpen ? 'border-stone-700 ring-2 ring-stone-200' : 'border-stone-200 hover:border-stone-400'
+                        }`}
+                        aria-expanded={isSectorMenuOpen}
                       >
-                        <option value="Technology">Technology</option>
-                        <option value="Financial Services">Financial Services</option>
-                        <option value="Healthcare">Healthcare</option>
-                        <option value="Consumer Cyclical">Consumer Cyclical</option>
-                        <option value="Communication">Communication</option>
-                        <option value="Industrials">Industrials</option>
-                        <option value="Other">Other</option>
-                      </select>
+                        <span>{newSector}</span>
+                        <motion.span animate={{ rotate: isSectorMenuOpen ? 180 : 0 }} transition={{ duration: 0.18 }} className="flex text-stone-500">
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </motion.span>
+                      </motion.button>
+                      <AnimatePresence>
+                        {isSectorMenuOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                            transition={{ type: 'spring', stiffness: 440, damping: 30 }}
+                            className="absolute z-30 mt-1.5 w-full overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-[0_12px_28px_rgba(0,0,0,0.16)]"
+                          >
+                            {SECTOR_OPTIONS.map((sector) => {
+                              const isSelected = sector === newSector;
+                              return (
+                                <motion.button
+                                  key={sector}
+                                  type="button"
+                                  onClick={() => { setNewSector(sector); setIsSectorMenuOpen(false); }}
+                                  whileHover={{ x: 2 }}
+                                  whileTap={{ scale: 0.98 }}
+                                  className={`w-full px-2.5 py-1.5 rounded-lg text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                                    isSelected ? 'bg-stone-100 text-stone-900 font-bold' : 'text-stone-600 hover:bg-stone-50'
+                                  }`}
+                                >
+                                  <span>{sector}</span>
+                                  {isSelected && <Check className="w-3.5 h-3.5" />}
+                                </motion.button>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-2">
-                    <button
+                    <motion.button
                       type="submit"
-                      className="px-4 py-2 bg-[#0b5a4b] text-white text-xs font-bold rounded-xl hover:bg-[#09473b] transition-all shadow-xs cursor-pointer"
+                      whileHover={{ y: -1, boxShadow: '0 7px 16px rgba(0,0,0,0.2)' }}
+                      whileTap={{ scale: 0.97 }}
+                      className="px-4 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all shadow-xs cursor-pointer"
                     >
                       {isThai ? 'บันทึกเข้าพอร์ต' : 'Save Holding'}
-                    </button>
+                    </motion.button>
                   </div>
-                </form>
+                </motion.form>
               )}
+              </AnimatePresence>
 
               {/* Portfolio Metric Snapshot Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <motion.div
+                layout
+                transition={{ layout: { type: 'spring', stiffness: 380, damping: 32, mass: 0.8 } }}
+                className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+              >
                 {/* Total Market Value */}
                 <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-col">
                   <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
@@ -523,7 +607,7 @@ export function PortfolioModal({
                     {isThai ? 'ถ่วงน้ำหนักตามมูลค่าแท้จริง DCF' : 'Weighted across analyzed holdings'}
                   </span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Holdings Table */}
               <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs">
@@ -551,6 +635,7 @@ export function PortfolioModal({
                           <tr key={h.id || h.ticker} className="hover:bg-stone-50/70 transition-colors">
                             <td className="py-2.5 px-4 font-bold font-mono text-stone-900">
                               <div className="flex items-center gap-1.5">
+                                <CompanyLogo ticker={h.ticker} className="w-6 h-6" />
                                 <span>{h.ticker}</span>
                                 {h.sector && (
                                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 font-sans font-normal">
@@ -652,7 +737,7 @@ export function PortfolioModal({
                   placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น e.g. NVDA, AMZN" : "Enter ticker e.g. NVDA, AMZN"}
                   value={newWatchTicker}
                   onChange={(e) => setNewWatchTicker(e.target.value.toUpperCase())}
-                  className="px-3.5 py-2 text-xs font-mono font-bold bg-stone-50 border border-stone-200 rounded-xl uppercase max-w-xs focus:bg-white focus:outline-hidden focus:border-[#0b5a4b]"
+                  className="px-3.5 py-2 text-xs font-mono font-bold text-stone-900 placeholder:text-stone-300 bg-stone-50 border border-stone-200 rounded-xl uppercase max-w-xs focus:bg-white focus:outline-hidden focus:border-[#0b5a4b]"
                 />
                 <button
                   type="submit"
@@ -687,6 +772,7 @@ export function PortfolioModal({
                             className="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-mono font-bold flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <Plus className="w-3 h-3 text-[#0b5a4b]" />
+                            <CompanyLogo ticker={sug} className="w-5 h-5" />
                             <span>{sug}</span>
                           </button>
                         ))}
@@ -713,7 +799,7 @@ export function PortfolioModal({
                       <div key={tick} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
                         <div className="flex flex-col gap-1.5 min-w-0">
                           <div className="flex items-center gap-2.5 flex-wrap">
-                            <Star className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
+                            <CompanyLogo ticker={tick} className="w-7 h-7" />
                             <span className="font-mono font-bold text-sm sm:text-base text-stone-900">{tick}</span>
                             {typeof price === 'number' && (
                               <span className="font-mono font-bold text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">

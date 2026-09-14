@@ -7,7 +7,7 @@ import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/aut
 import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { CrossfadeVideo } from './components/CrossfadeVideo';
-import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, Sparkles, Printer, Copy, Check, ArrowUpRight, Briefcase, Bell } from 'lucide-react';
+import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, BrainCircuit, Printer, Copy, Check, ArrowUpRight, Briefcase, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReportTemplate from "./ReportTemplate";
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -902,67 +902,77 @@ export default function App() {
 
           {/* Column 2: Center Floating White Nav Pill */}
           <div className="hidden xl:flex items-center justify-center">
-            <nav 
-              className="flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 transition-all origin-center shrink-0"
-              style={{
-                height: '38px',
-                padding: '3px 8px',
-                gap: '2px',
-              }}
-            >
-              {[
+            <nav className="flex items-center gap-1.5 rounded-full border border-white/80 bg-white/95 p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl whitespace-nowrap z-0 transition-all origin-center shrink-0">
+              <div className="flex items-center gap-0.5 rounded-full bg-stone-100 p-1">
+                {[
                 { id: 'combined', labelEn: 'All-in-One', labelTh: 'วิเคราะห์รวม' },
                 { id: 'fundamental', labelEn: 'Fundamental', labelTh: 'ปัจจัยพื้นฐาน' },
                 { id: 'technical', labelEn: 'Technical', labelTh: 'เทคนิคอล' },
               ].map((mode) => {
                 const isActive = analysisType === mode.id;
                 return (
-                  <button
+                  <motion.button
                     key={mode.id}
                     onClick={() => !running && setAnalysisType(mode.id as any)}
                     disabled={running}
-                    className={`relative px-3 py-1 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 text-xs sm:text-[13px] ${
+                    whileHover={running ? undefined : { y: -1 }}
+                    whileTap={running ? undefined : { scale: 0.96 }}
+                    transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                    className={`relative px-3 py-1.5 font-semibold rounded-full transition-colors duration-200 cursor-pointer whitespace-nowrap shrink-0 text-xs sm:text-[13px] ${
                       isActive 
-                        ? 'text-[#2e2e2e] opacity-100 font-semibold' 
-                        : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
+                        ? 'text-stone-900'
+                        : 'text-stone-400 hover:text-stone-700'
                     }`}
                   >
-                    {selectedLanguage === 'Thai' ? mode.labelTh : mode.labelEn}
                     {isActive && (
-                      <span 
-                        className="absolute left-1/2 -translate-x-1/2 bottom-[3px] w-[2.5px] h-[2.5px] bg-black rounded-full shadow-[-4px_0_0_#000,4px_0_0_#000]" 
+                      <motion.span
+                        layoutId="analysis-mode-indicator"
+                        className="absolute inset-0 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                       />
                     )}
-                  </button>
+                    <span className="relative z-10">{selectedLanguage === 'Thai' ? mode.labelTh : mode.labelEn}</span>
+                  </motion.button>
                 );
-              })}
+                })}
+              </div>
 
               {/* Deep Think toggle */}
-              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
-              <button
+              <motion.button
                 onClick={() => !running && setUseSelfConsistency(!useSelfConsistency)}
                 disabled={running}
-                className={`px-2.5 py-0.5 font-medium transition-all duration-200 flex items-center gap-1 rounded-full cursor-pointer whitespace-nowrap shrink-0 text-xs ${
+                whileHover={running ? undefined : { y: -1 }}
+                whileTap={running ? undefined : { scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                className={`min-h-[34px] px-3 font-semibold transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 text-xs ${
                   useSelfConsistency 
-                    ? 'bg-black text-white shadow-sm font-semibold' 
-                    : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+                    ? 'bg-[#171717] text-white shadow-[0_3px_10px_rgba(0,0,0,0.22)]'
+                    : 'bg-stone-100 text-stone-500 hover:text-stone-800'
                 }`}
                 title="Deep Think Mode"
               >
-                <Sparkles className={`w-3 h-3 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+                <motion.span
+                  animate={useSelfConsistency ? { rotate: [0, -8, 8, 0], scale: [1, 1.12, 1] } : { rotate: 0, scale: 1 }}
+                  transition={{ duration: 0.34, ease: 'easeOut' }}
+                  className="flex"
+                >
+                  <BrainCircuit className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-violet-300' : 'text-violet-500'}`} strokeWidth={2.2} />
+                </motion.span>
                 <span>{selectedLanguage === 'Thai' ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-              </button>
+              </motion.button>
 
               {/* Language Switch */}
-              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
-              <button
+              <motion.button
                 onClick={() => !running && setSelectedLanguage(selectedLanguage === 'Thai' ? 'English' : 'Thai')}
                 disabled={running}
-                className="px-2 py-0.5 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-[11px] tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+                whileHover={running ? undefined : { y: -1 }}
+                whileTap={running ? undefined : { scale: 0.92 }}
+                transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                className="min-w-[34px] min-h-[34px] px-2 font-bold text-stone-600 hover:text-stone-900 transition-colors text-[11px] tracking-wider uppercase rounded-full cursor-pointer bg-stone-100 hover:bg-stone-200 shrink-0 whitespace-nowrap"
                 title="Switch Language"
               >
                 {selectedLanguage === 'Thai' ? 'EN' : 'ไทย'}
-              </button>
+              </motion.button>
             </nav>
           </div>
 
