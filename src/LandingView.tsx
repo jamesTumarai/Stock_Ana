@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Loader2, Sparkles, BrainCircuit, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell } from 'lucide-react';
+import { Search, Loader2, BrainCircuit, History as HistoryIcon, ArrowUpRight, LogOut, AlertCircle, X, Briefcase, Bell } from 'lucide-react';
 import { UserAvatar } from './components/UserAvatar';
 
 interface LandingViewProps {
@@ -209,66 +209,75 @@ export function LandingView({
 
           {/* Center Floating White Nav Pill */}
           <div className="hidden xl:flex items-center justify-center">
-            <nav 
-              className="flex items-center bg-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.16)] whitespace-nowrap z-0 transition-all origin-center shrink-0"
-              style={{
-                height: '38px',
-                padding: '3px 8px',
-                gap: '2px',
-              }}
-            >
-              {navModes.map((mode) => {
+            <nav className="flex items-center gap-1.5 rounded-full border border-white/80 bg-white/95 p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl whitespace-nowrap z-0 transition-all origin-center shrink-0">
+              <div className="flex items-center gap-0.5 rounded-full bg-stone-100 p-1">
+                {navModes.map((mode) => {
                 const isActive = analysisType === mode.id;
                 return (
-                  <button
+                  <motion.button
                     key={mode.id}
                     onClick={() => setAnalysisType(mode.id)}
-                    className={`relative px-3 py-1 font-medium transition-all duration-200 cursor-pointer whitespace-nowrap shrink-0 text-xs sm:text-[13px] ${
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.96 }}
+                    transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                    className={`relative px-3 py-1.5 font-semibold rounded-full transition-colors duration-200 cursor-pointer whitespace-nowrap shrink-0 text-xs sm:text-[13px] ${
                       isActive 
-                        ? 'text-[#2e2e2e] opacity-100 font-semibold' 
-                        : 'text-[#2e2e2e] opacity-50 hover:opacity-75'
+                        ? 'text-stone-900'
+                        : 'text-stone-400 hover:text-stone-700'
                     }`}
                   >
-                    {isThai ? mode.labelTh : mode.labelEn}
-                    {/* Active 3-dot indicator */}
                     {isActive && (
-                      <span 
-                        className="absolute left-1/2 -translate-x-1/2 bottom-[3px] w-[2.5px] h-[2.5px] bg-black rounded-full shadow-[-4px_0_0_#000,4px_0_0_#000]" 
+                      <motion.span
+                        layoutId="landing-analysis-mode-indicator"
+                        className="absolute inset-0 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                       />
                     )}
-                  </button>
+                    <span className="relative z-10">{isThai ? mode.labelTh : mode.labelEn}</span>
+                  </motion.button>
                 );
-              })}
+                })}
+              </div>
 
               {/* Deep Think toggle inside the white nav pill */}
-              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
-              <button
+              <motion.button
                 onClick={() => setUseSelfConsistency(!useSelfConsistency)}
-                className={`px-2.5 py-0.5 font-medium transition-all duration-200 flex items-center gap-1 rounded-full cursor-pointer whitespace-nowrap shrink-0 text-xs ${
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                className={`min-h-[34px] px-3 font-semibold transition-all duration-200 flex items-center gap-1.5 rounded-full cursor-pointer whitespace-nowrap shrink-0 text-xs ${
                   useSelfConsistency 
-                    ? 'bg-black text-white shadow-sm font-semibold' 
-                    : 'text-[#2e2e2e] opacity-60 hover:opacity-100 hover:bg-stone-100'
+                    ? 'bg-[#171717] text-white shadow-[0_3px_10px_rgba(0,0,0,0.22)]'
+                    : 'bg-stone-100 text-stone-500 hover:text-stone-800'
                 }`}
                 title="Deep Think Mode"
               >
-                <Sparkles className={`w-3 h-3 shrink-0 ${useSelfConsistency ? 'text-yellow-300' : 'text-stone-600'}`} />
+                <motion.span
+                  animate={useSelfConsistency ? { rotate: [0, -8, 8, 0], scale: [1, 1.12, 1] } : { rotate: 0, scale: 1 }}
+                  transition={{ duration: 0.34, ease: 'easeOut' }}
+                  className="flex"
+                >
+                  <BrainCircuit className={`w-3.5 h-3.5 shrink-0 ${useSelfConsistency ? 'text-violet-300' : 'text-violet-500'}`} strokeWidth={2.2} />
+                </motion.span>
                 <span>{isThai ? 'คิดเชิงลึก' : 'Deep Think'}</span>
-              </button>
+              </motion.button>
 
               {/* Language Switch */}
-              <div className="h-3.5 w-px bg-stone-300 mx-1 shrink-0" />
-              <button
+              <motion.button
                 onClick={() => setLanguage(isThai ? 'English' : 'Thai')}
-                className="px-2 py-0.5 font-bold text-[#2e2e2e] opacity-75 hover:opacity-100 transition-opacity text-[11px] tracking-wider uppercase rounded-full cursor-pointer hover:bg-stone-100 shrink-0 whitespace-nowrap"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.92 }}
+                transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                className="min-w-[34px] min-h-[34px] px-2 font-bold text-stone-600 hover:text-stone-900 transition-colors text-[11px] tracking-wider uppercase rounded-full cursor-pointer bg-stone-100 hover:bg-stone-200 shrink-0 whitespace-nowrap"
                 title="Switch Language"
               >
                 {isThai ? 'EN' : 'ไทย'}
-              </button>
+              </motion.button>
             </nav>
           </div>
 
-          {/* Right Controls: User Account / Sign In */}
-          <div className="hidden xl:flex items-center justify-end z-10 min-w-0">
+          {/* Desktop account pill is replaced by the compact icon controls below. */}
+          <div className="hidden">
             {user ? (
               <div className="flex items-center gap-2 bg-[#28282a] rounded-full pl-3 pr-1 py-1 border border-white/10 shadow-[0_4px_14px_rgba(0,0,0,0.16)] shrink-0">
                 <button
@@ -357,8 +366,8 @@ export function LandingView({
             )}
           </div>
 
-          {/* Mobile Right Controls: User Avatar + Toggle Menu */}
-          <div className="xl:hidden flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
+          {/* Compact controls on every viewport; analysis modes remain in the white navigation pill on wide screens. */}
+          <div className="flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
             <button
               onClick={onOpenAlerts}
               className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
@@ -423,14 +432,14 @@ export function LandingView({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.24 }}
                 onClick={() => setMobileMenuOpen(false)}
-                className="fixed inset-0 bg-black/55 backdrop-blur-sm z-40 xl:hidden"
+                className="fixed inset-0 bg-black/55 backdrop-blur-sm z-40"
               />
               <motion.div
                 initial={{ opacity: 0, y: -18, scale: 0.94, filter: 'blur(8px)' }}
                 animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
                 exit={{ opacity: 0, y: -12, scale: 0.97, filter: 'blur(4px)' }}
                 transition={{ type: 'spring', stiffness: 420, damping: 30, mass: 0.72 }}
-                className="fixed top-20 left-4 right-4 md:left-auto md:right-6 md:w-[460px] bg-white/95 backdrop-blur-xl text-[#2e2e2e] rounded-[28px] md:rounded-[24px] p-5 md:p-4 shadow-[0_24px_70px_rgba(0,0,0,0.42)] border border-white/80 ring-1 ring-black/5 z-50 flex flex-col gap-2.5 md:gap-2 overflow-hidden xl:hidden"
+                className="fixed top-20 left-4 right-4 md:left-auto md:right-6 md:w-[460px] bg-white/95 backdrop-blur-xl text-[#2e2e2e] rounded-[28px] md:rounded-[24px] p-5 md:p-4 shadow-[0_24px_70px_rgba(0,0,0,0.42)] border border-white/80 ring-1 ring-black/5 z-50 flex flex-col gap-2.5 md:gap-2 overflow-hidden"
               >
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}

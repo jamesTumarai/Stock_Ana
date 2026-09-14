@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { MonitoringAlert, MonitoringPreferences } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
+import { CompanyLogo } from './CompanyLogo';
 
 interface Props {
   isOpen: boolean;
@@ -101,7 +102,7 @@ export function AlertsModal({
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
         transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.78 }}
-        className="bg-white rounded-3xl max-w-3xl w-full max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
+        className="bg-white rounded-3xl max-w-3xl w-full h-[92vh] sm:h-[640px] max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -310,6 +311,7 @@ export function AlertsModal({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       {style.icon}
+                      <CompanyLogo ticker={alert.ticker} className="w-6 h-6" />
                       <span className="font-mono font-bold text-sm text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md">
                         {alert.ticker}
                       </span>
