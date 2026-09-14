@@ -83,6 +83,7 @@ The final closure patch persists new PENDING expectations before evaluation. The
 - **Integrity Foundation:** Owner Accepted Baseline (Anchor commit: `d2315f069379dfe946dee0952231005cc6ba9746`)
 - **Verified behavior-changing production SHA:** `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`, READY with production alias). Later docs-only SHAs do not replace this behavior baseline.
 - **Completion & Repair PRs:** PRs #104–#120; latest application milestone is PR #120.
+- **Final closure evidence:** PR #122 records the production Firestore rules deployment and active-source verification.
 - **Regression gate:** 82 test files (79 src + 3 server), 254 cases passed, 0 failed, 0 skipped, under the repository runner's counting convention.
 - **Verify Lumina:** PR run `34763937163` and merged-main run `34763997605` passed.
 - **TypeScript / Linter:** 100% clean (`tsc --noEmit`)

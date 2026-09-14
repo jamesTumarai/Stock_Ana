@@ -19,6 +19,7 @@ Always query live `main` before starting work. SHAs below identify stable applic
 - Historical Accepted Integrity Baseline SHA: `d2315f069379dfe946dee0952231005cc6ba9746` (Phase 4.5 Owner Accepted).
 - Latest verified behavior-changing production SHA: `2293430b8a642a8da6b0f4f05bbdf24270c557a6` (PR #120; Vercel deployment `dpl_s2QQzm7SjYKyXXTazvCbfMHS8oqi`). Subsequent documentation-only main SHAs do not change this application baseline.
 - Latest merged application milestone: PR #120 (Persist new PENDING expectations before evaluation).
+- Final closure evidence: PR #122 records the production Firestore rules deployment and active-source verification.
 - Regression gate: 82 test files (79 src + 3 server), 254 passing cases, 0 failed, 0 skipped. Case counts follow the repository runner convention: standalone assertion files without node:test summaries count as one case.
 
 ## Canonical Phase Acceptance Matrix
