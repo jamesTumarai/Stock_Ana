@@ -1076,9 +1076,12 @@ export function PortfolioModal({
         </div>
 
         {activeTab === 'portfolio' && (
-          <div className="flex flex-col gap-2 border-b border-stone-100 bg-stone-50/60 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex flex-col gap-2 border-b border-stone-100 bg-gradient-to-r from-emerald-50/50 via-white to-stone-50/70 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <WalletCards className="h-4 w-4 shrink-0 text-[#0b5a4b]" />
+              <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-white text-[#0b5a4b] shadow-2xs sm:flex">
+                <WalletCards className="h-4 w-4" />
+              </div>
+              <WalletCards className="h-4 w-4 shrink-0 text-[#0b5a4b] sm:hidden" />
               <PortfolioPicker
                 value={selectedPortfolioId}
                 onChange={(next) => {
@@ -1105,8 +1108,8 @@ export function PortfolioModal({
                 </button>
               )}
               {selectedPortfolioId === 'all' && multiPortfolioConfig.portfolios.length > 0 && (
-                <span className="hidden text-[10px] text-stone-500 lg:inline">
-                  {isThai ? 'เป้าหมายที่ยังไม่ได้จัดสรร' : 'Unallocated Target'}{' '}
+                <span className="hidden items-center gap-1.5 rounded-full border border-stone-200 bg-white/90 px-2.5 py-1 text-[10px] text-stone-500 shadow-2xs lg:inline-flex">
+                  <span>{isThai ? 'เป้าหมายที่ยังไม่ได้จัดสรร' : 'Unallocated Target'}</span>
                   <strong className="font-mono text-stone-800">{multiPortfolioSummary.unallocated_target_pct.toFixed(1)}%</strong>
                 </span>
               )}
@@ -1130,7 +1133,7 @@ export function PortfolioModal({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          className="flex-1 overflow-y-auto p-3.5 sm:p-6 flex flex-col gap-4 sm:gap-6 [&>*]:shrink-0"
+          className="no-scrollbar flex-1 overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,rgba(250,250,249,0.72)_0%,rgba(255,255,255,0)_180px)] p-3.5 sm:p-5 flex flex-col gap-4 sm:gap-5 [&>*]:shrink-0"
         >
 
           {/* TAB 1: PORTFOLIO */}
@@ -1284,7 +1287,9 @@ export function PortfolioModal({
                     </button>
                   </div>
                 ) : (
-                  <div className={`grid gap-2.5 ${selectedPortfolioId === 'all' ? 'sm:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1'}`}>
+                  <div className={`grid gap-2.5 ${selectedPortfolioId === 'all'
+                    ? (multiPortfolioSummary.portfolios.length <= 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3')
+                    : 'grid-cols-1'}`}>
                     {(selectedPortfolioId === 'all'
                       ? multiPortfolioSummary.portfolios
                       : selectedPortfolioSummary ? [selectedPortfolioSummary] : []
