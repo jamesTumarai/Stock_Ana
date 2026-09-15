@@ -28,7 +28,8 @@ import {
   saveReadAlertIds,
   evaluateAllAlerts
 } from './utils/monitoringEngine';
-import { loadLocalWatchlist, loadLocalPortfolio, calculatePortfolioSummary } from './utils/portfolioEngine';
+import { loadLocalWatchlist, loadLocalPortfolio, loadLocalMultiPortfolioConfig, calculatePortfolioSummary, PORTFOLIO_UPDATED_EVENT } from './utils/portfolioEngine';
+import { computeMultiPortfolioAllocation } from './utils/multiPortfolioEngine';
 import { unwrapHistoryRecord } from './utils/researchTimeline';
 
 import { 
@@ -167,8 +168,15 @@ export default function App() {
   const [historyReports, setHistoryReports] = useState<any[]>([]);
   const [monitoringPreferences, setMonitoringPreferences] = useState(() => loadMonitoringPreferences(user?.uid));
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(() => loadReadAlertIds(user?.uid));
+  const [portfolioRevision, setPortfolioRevision] = useState(0);
 
   const [liveQuotes, setLiveQuotes] = useState<Record<string, { price?: number }>>({});
+
+  useEffect(() => {
+    const refreshPortfolioState = () => setPortfolioRevision(revision => revision + 1);
+    window.addEventListener(PORTFOLIO_UPDATED_EVENT, refreshPortfolioState);
+    return () => window.removeEventListener(PORTFOLIO_UPDATED_EVENT, refreshPortfolioState);
+  }, []);
 
   // Memoized ticker to latest report mapping for portfolio valuation intelligence
   const reportsByTicker = React.useMemo(() => {
@@ -223,7 +231,12 @@ export default function App() {
   const portfolioSummary = React.useMemo(() => {
     const portfolio = loadLocalPortfolio(user?.uid);
     return calculatePortfolioSummary(portfolio, liveQuotes, reportsByTicker);
-  }, [user?.uid, liveQuotes, reportsByTicker, isPortfolioOpen]);
+  }, [user?.uid, liveQuotes, reportsByTicker, isPortfolioOpen, portfolioRevision]);
+
+  const multiPortfolioSummary = React.useMemo(() => {
+    const config = loadLocalMultiPortfolioConfig(user?.uid);
+    return computeMultiPortfolioAllocation(config.portfolios, portfolioSummary.computed_holdings, config.ticker_limits);
+  }, [user?.uid, portfolioSummary, isPortfolioOpen, portfolioRevision]);
 
   const alerts = React.useMemo(() => {
     const watchlist = loadLocalWatchlist(user?.uid);
@@ -242,9 +255,10 @@ export default function App() {
       historyReports,
       portfolioSummary,
       monitoringPreferences,
-      readAlertIds
+      readAlertIds,
+      multiPortfolioSummary
     );
-  }, [user?.uid, reportsByTicker, liveQuotes, historyReports, portfolioSummary, ticker, monitoringPreferences, readAlertIds, isPortfolioOpen]);
+  }, [user?.uid, reportsByTicker, liveQuotes, historyReports, portfolioSummary, multiPortfolioSummary, ticker, monitoringPreferences, readAlertIds, isPortfolioOpen]);
 
   const unreadAlertsCount = React.useMemo(() => alerts.filter(a => !a.isRead).length, [alerts]);
 
@@ -825,6 +839,7 @@ export default function App() {
             quotes={liveQuotes}
             latestReports={reportsByTicker}
             historyReports={historyReports}
+            alerts={alerts}
           />
         )}
       </AnimatePresence>

@@ -1241,9 +1241,105 @@ export interface PortfolioHolding {
   quantity: number;
   average_cost: number;
   sector?: string;
+  /** User-created portfolio that owns this position. Null/undefined is the system Unassigned state. */
+  portfolio_id?: string | null;
+  /** Desired weight inside the owning portfolio. */
+  target_weight_pct?: number | null;
+  /** User-configured maximum weight inside the owning portfolio. */
+  max_weight_pct?: number | null;
   notes?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface UserPortfolio {
+  id: string;
+  name: string;
+  target_pct_of_total?: number | null;
+  max_pct_of_total?: number | null;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OverallTickerLimit {
+  ticker: string;
+  max_pct_of_total: number;
+  updated_at: string;
+}
+
+export interface MultiPortfolioConfig {
+  version: 2;
+  portfolios: UserPortfolio[];
+  ticker_limits: OverallTickerLimit[];
+}
+
+export type AllocationLimitStatus =
+  | 'WITHIN_LIMIT'
+  | 'ABOVE_MAX'
+  | 'INCOMPLETE_PRICING'
+  | 'NO_LIMIT_SET';
+
+export interface ComputedUserPortfolio {
+  portfolio: UserPortfolio | null;
+  portfolio_id: string | null;
+  name: string;
+  known_priced_value: number;
+  market_value: number | null;
+  actual_pct_of_total: number | null;
+  target_pct_of_total: number | null;
+  max_pct_of_total: number | null;
+  drift_pct_points: number | null;
+  holdings_count: number;
+  priced_holdings_count: number;
+  unpriced_holdings_count: number;
+  pricing_coverage_pct: number;
+  status: AllocationLimitStatus;
+  excess_pct_points: number | null;
+}
+
+export interface ComputedPortfolioPosition {
+  holding: PortfolioComputedHolding;
+  portfolio_id: string | null;
+  portfolio_name: string;
+  pct_within_portfolio: number | null;
+  pct_of_total: number | null;
+  target_pct_within_portfolio: number | null;
+  max_pct_within_portfolio: number | null;
+  derived_target_pct_of_total: number | null;
+  status: AllocationLimitStatus;
+  excess_pct_points: number | null;
+}
+
+export interface AggregateTickerPortfolioExposure {
+  portfolio_id: string | null;
+  portfolio_name: string;
+  market_value: number | null;
+  pct_of_total: number | null;
+  derived_target_pct_of_total: number | null;
+}
+
+export interface AggregateTickerExposure {
+  ticker: string;
+  total_market_value: number | null;
+  total_pct_of_total: number | null;
+  aggregate_derived_target_pct_of_total: number | null;
+  portfolios: AggregateTickerPortfolioExposure[];
+  overall_max_pct: number | null;
+  status: AllocationLimitStatus;
+  excess_pct_points: number | null;
+}
+
+export interface MultiPortfolioAllocationSummary {
+  is_fully_priced: boolean;
+  total_invested_market_value: number | null;
+  known_priced_value: number;
+  unpriced_holdings_count: number;
+  configured_target_pct: number;
+  unallocated_target_pct: number;
+  portfolios: ComputedUserPortfolio[];
+  positions: ComputedPortfolioPosition[];
+  aggregate_tickers: AggregateTickerExposure[];
 }
 
 export interface PortfolioComputedHolding extends PortfolioHolding {
@@ -1303,7 +1399,10 @@ export type AlertType =
   | 'FILING_NEW_10K_10Q'
   | 'FILING_MATERIAL_8K'
   | 'INSIDER_CLUSTER_BUY'
-  | 'PORTFOLIO_CONCENTRATION';
+  | 'PORTFOLIO_CONCENTRATION'
+  | 'PORTFOLIO_ALLOCATION_LIMIT'
+  | 'POSITION_PORTFOLIO_LIMIT'
+  | 'OVERALL_TICKER_EXPOSURE_LIMIT';
 
 export interface MonitoringAlert {
   id: string; // Unique deduplication key: `${ticker}-${type}-${dateKey}`

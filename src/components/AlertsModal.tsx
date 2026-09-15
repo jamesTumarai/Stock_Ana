@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   X, Bell, AlertTriangle, ShieldAlert, Info, CheckCircle2,
-  Settings, ExternalLink, ArrowRight, Filter, Check, Trash2
+  Settings, ExternalLink, ArrowRight, Filter, Check, Trash2, WalletCards
 } from 'lucide-react';
 import { MonitoringAlert, MonitoringPreferences } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
@@ -47,7 +47,12 @@ export function AlertsModal({
     if (filterType === 'unread') return !a.isRead;
     if (filterType === 'valuation') return a.type.startsWith('VALUATION');
     if (filterType === 'filings') return a.type.startsWith('FILING');
-    if (filterType === 'portfolio') return a.type === 'PORTFOLIO_CONCENTRATION';
+    if (filterType === 'portfolio') return [
+      'PORTFOLIO_CONCENTRATION',
+      'PORTFOLIO_ALLOCATION_LIMIT',
+      'POSITION_PORTFOLIO_LIMIT',
+      'OVERALL_TICKER_EXPOSURE_LIMIT'
+    ].includes(a.type);
     return true;
   });
 
@@ -311,7 +316,9 @@ export function AlertsModal({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       {style.icon}
-                      <CompanyLogo ticker={alert.ticker} className="w-6 h-6" />
+                      {alert.ticker === 'PORTFOLIO'
+                        ? <span className="flex h-6 w-6 items-center justify-center rounded-full bg-stone-100 text-stone-600"><WalletCards className="h-3.5 w-3.5" /></span>
+                        : <CompanyLogo ticker={alert.ticker} className="w-6 h-6" />}
                       <span className="font-mono font-bold text-sm text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md">
                         {alert.ticker}
                       </span>
@@ -379,7 +386,7 @@ export function AlertsModal({
                   )}
 
                   {/* Action Link */}
-                  {onSelectTicker && (
+                  {onSelectTicker && alert.ticker !== 'PORTFOLIO' && (
                     <div className="flex justify-end pt-1">
                       <button
                         type="button"
