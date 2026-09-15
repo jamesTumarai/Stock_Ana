@@ -39,6 +39,21 @@
     font-family: 'Nunito', 'Prompt', 'Mitr', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
 
+  /* The portfolio workspace uses the report's warmer typeface without
+     overriding mono values such as prices, weights, and ticker symbols. */
+  .portfolio-cute-font {
+    font-family: 'Nunito', 'Prompt', 'Mitr', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  .portfolio-cute-font h1,
+  .portfolio-cute-font h2,
+  .portfolio-cute-font h3,
+  .portfolio-cute-font h4,
+  .portfolio-cute-font h5,
+  .portfolio-cute-font h6 {
+    font-family: 'Prompt', 'Mitr', 'Nunito', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
   /* Universal scrollbar hiding */
   .no-scrollbar::-webkit-scrollbar,
   .scrollbar-hide::-webkit-scrollbar,

@@ -114,6 +114,114 @@ type AllocationItem = {
   ticker?: string;
 };
 
+type PortfolioPickerOption = {
+  value: string;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+};
+
+function PortfolioPicker({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  className = '',
+  compact = false
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: PortfolioPickerOption[];
+  ariaLabel: string;
+  className?: string;
+  compact?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedOption = options.find(option => option.value === value) || options[0];
+
+  return (
+    <div className={`relative min-w-0 ${className}`}>
+      <motion.button
+        type="button"
+        whileTap={{ scale: 0.985 }}
+        onClick={() => setIsOpen(open => !open)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setIsOpen(false);
+        }}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className={`group flex w-full items-center justify-between gap-2 rounded-xl border px-3 text-left font-bold text-stone-800 outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#0b5a4b]/30 ${
+          compact ? 'py-1.5 text-[10px]' : 'py-2 text-xs'
+        } ${
+          isOpen
+            ? 'border-[#0b5a4b]/50 bg-white shadow-[0_0_0_3px_rgba(11,90,75,0.08)]'
+            : 'border-stone-200 bg-white shadow-[0_2px_7px_rgba(28,25,23,0.05)] hover:border-[#0b5a4b]/35 hover:shadow-[0_5px_14px_rgba(28,25,23,0.08)]'
+        }`}
+      >
+        <span className="min-w-0 truncate">{selectedOption?.label}</span>
+        <motion.span
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ type: 'spring', stiffness: 430, damping: 30 }}
+          className="flex shrink-0 text-[#0b5a4b]"
+        >
+          <ChevronDown className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+        </motion.span>
+      </motion.button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.985 }}
+            transition={{ type: 'spring', stiffness: 440, damping: 31, mass: 0.7 }}
+            role="listbox"
+            aria-label={ariaLabel}
+            className="absolute left-0 z-30 mt-2 w-full min-w-[13rem] overflow-hidden rounded-2xl border border-stone-200/90 bg-white/98 p-1.5 shadow-[0_16px_36px_rgba(28,25,23,0.16)] backdrop-blur-xl"
+          >
+            <div className="max-h-56 space-y-0.5 overflow-y-auto pr-0.5">
+              {options.map((option, index) => {
+                const isSelected = option.value === value;
+                return (
+                  <motion.button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    disabled={option.disabled}
+                    key={option.value}
+                    initial={{ opacity: 0, x: -4 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: Math.min(index * 0.025, 0.12), duration: 0.16 }}
+                    whileTap={{ scale: 0.985 }}
+                    onClick={() => {
+                      if (option.disabled) return;
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${
+                      option.disabled
+                        ? 'cursor-not-allowed text-stone-300'
+                        : isSelected
+                        ? 'bg-[#0b5a4b] text-white shadow-sm'
+                        : 'text-stone-700 hover:bg-emerald-50 hover:text-[#0b5a4b]'
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSelected ? 'bg-emerald-200' : option.disabled ? 'bg-stone-200' : 'bg-[#0b5a4b]/45'}`} />
+                    <span className="min-w-0 flex-1 truncate text-xs font-bold">{option.label}</span>
+                    {option.hint && <span className={`shrink-0 text-[9px] ${isSelected ? 'text-emerald-100' : 'text-stone-400'}`}>{option.hint}</span>}
+                    {isSelected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function PortfolioModal({
   isOpen,
   onClose,
@@ -883,7 +991,7 @@ export function PortfolioModal({
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
         transition={{ type: 'spring', stiffness: 360, damping: 32, mass: 0.8 }}
-        className="relative bg-white rounded-2xl sm:rounded-3xl max-w-6xl w-full h-[calc(100dvh-1rem)] sm:h-[700px] max-h-[calc(100dvh-1rem)] sm:max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-[#0b5a4b]/35 [&_button]:focus-visible:ring-offset-1 [&_input]:focus-visible:outline-none [&_input]:focus-visible:ring-2 [&_input]:focus-visible:ring-[#0b5a4b]/30 [&_select]:focus-visible:outline-none [&_select]:focus-visible:ring-2 [&_select]:focus-visible:ring-[#0b5a4b]/30 [&_textarea]:focus-visible:outline-none [&_textarea]:focus-visible:ring-2 [&_textarea]:focus-visible:ring-[#0b5a4b]/30"
+        className="portfolio-cute-font relative bg-white rounded-2xl sm:rounded-3xl max-w-6xl w-full h-[calc(100dvh-1rem)] sm:h-[700px] max-h-[calc(100dvh-1rem)] sm:max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-[#0b5a4b]/35 [&_button]:focus-visible:ring-offset-1 [&_input]:focus-visible:outline-none [&_input]:focus-visible:ring-2 [&_input]:focus-visible:ring-[#0b5a4b]/30 [&_textarea]:focus-visible:outline-none [&_textarea]:focus-visible:ring-2 [&_textarea]:focus-visible:ring-[#0b5a4b]/30"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -971,23 +1079,20 @@ export function PortfolioModal({
           <div className="flex flex-col gap-2 border-b border-stone-100 bg-stone-50/60 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <WalletCards className="h-4 w-4 shrink-0 text-[#0b5a4b]" />
-              <label className="sr-only" htmlFor="portfolio-selector">{isThai ? 'เลือกพอร์ต' : 'Select portfolio'}</label>
-              <select
-                id="portfolio-selector"
+              <PortfolioPicker
                 value={selectedPortfolioId}
-                onChange={(event) => {
-                  const next = event.target.value;
+                onChange={(next) => {
                   setSelectedPortfolioId(next);
                   setAllocationView(next === 'all' ? 'portfolios' : 'stocks');
                 }}
-                className="min-w-0 max-w-xs flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-800 shadow-xs transition-colors focus:border-[#0b5a4b]"
-              >
-                <option value="all">{isThai ? 'ทุกพอร์ต' : 'All Portfolios'}</option>
-                <option value="unassigned">{isThai ? 'ยังไม่ได้จัดเข้าพอร์ต' : 'Unassigned'}</option>
-                {multiPortfolioConfig.portfolios.map(portfolio => (
-                  <option key={portfolio.id} value={portfolio.id}>{portfolio.name}</option>
-                ))}
-              </select>
+                ariaLabel={isThai ? 'เลือกพอร์ต' : 'Select portfolio'}
+                className="min-w-0 max-w-xs flex-1"
+                options={[
+                  { value: 'all', label: isThai ? 'ทุกพอร์ต' : 'All Portfolios', hint: isThai ? 'ภาพรวม' : 'Overview' },
+                  { value: 'unassigned', label: isThai ? 'ยังไม่ได้จัดเข้าพอร์ต' : 'Unassigned' },
+                  ...multiPortfolioConfig.portfolios.map(portfolio => ({ value: portfolio.id, label: portfolio.name }))
+                ]}
+              />
               {selectedPortfolioSummary?.portfolio && (
                 <button
                   type="button"
@@ -1006,14 +1111,16 @@ export function PortfolioModal({
                 </span>
               )}
             </div>
-            <button
+            <motion.button
               type="button"
               onClick={openCreatePortfolioDrawer}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-800 shadow-xs transition-colors hover:border-stone-300 hover:bg-stone-50"
+              whileHover={{ y: -1, boxShadow: '0 8px 18px rgba(11,90,75,0.12)' }}
+              whileTap={{ scale: 0.98 }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-stone-800 shadow-[0_2px_8px_rgba(28,25,23,0.06)] transition-colors hover:border-emerald-200 hover:bg-emerald-50/50"
             >
-              <FolderPlus className="h-4 w-4 text-[#0b5a4b]" />
+              <motion.span whileHover={{ rotate: -8, scale: 1.08 }} className="flex"><FolderPlus className="h-4 w-4 text-[#0b5a4b]" /></motion.span>
               {isThai ? 'สร้างพอร์ต' : 'Create Portfolio'}
-            </button>
+            </motion.button>
           </div>
         )}
 
@@ -1524,17 +1631,20 @@ export function PortfolioModal({
                     </div>
                     <label className="flex shrink-0 items-center gap-2 text-[9px] font-bold text-stone-500">
                       {isThai ? 'เรียงตาม' : 'Sort by'}
-                      <select
+                      <PortfolioPicker
                         value={portfolioSort}
-                        onChange={(event) => setPortfolioSort(event.target.value as typeof portfolioSort)}
-                        className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-stone-700 outline-none focus:border-stone-400"
-                      >
-                        <option value="attention">Attention Priority</option>
-                        <option value="weight">{isThai ? 'สัดส่วนมากสุด' : 'Weight'}</option>
-                        <option value="pnl">P/L</option>
-                        <option value="mos">Margin of Safety</option>
-                        <option value="research">{isThai ? 'งานวิจัยเก่าสุด' : 'Research Age'}</option>
-                      </select>
+                        onChange={(next) => setPortfolioSort(next as typeof portfolioSort)}
+                        ariaLabel={isThai ? 'เรียงรายการพอร์ต' : 'Sort portfolio entries'}
+                        className="w-36"
+                        compact
+                        options={[
+                          { value: 'attention', label: isThai ? 'ลำดับที่ควรดู' : 'Attention priority' },
+                          { value: 'weight', label: isThai ? 'สัดส่วนมากสุด' : 'Weight' },
+                          { value: 'pnl', label: 'P/L' },
+                          { value: 'mos', label: 'Margin of Safety' },
+                          { value: 'research', label: isThai ? 'งานวิจัยเก่าสุด' : 'Research age' }
+                        ]}
+                      />
                     </label>
                   </div>
                 )}
@@ -2099,10 +2209,9 @@ export function PortfolioModal({
                   </div>
                   <label className="block">
                     <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-stone-500 font-mono">{isThai ? 'พอร์ต' : 'Portfolio'}</span>
-                    <select
+                    <PortfolioPicker
                       value={newPortfolioId}
-                      onChange={(event) => {
-                        const nextPortfolioId = event.target.value;
+                      onChange={(nextPortfolioId) => {
                         if (editingHoldingId && nextPortfolioId !== newPortfolioId) {
                           setNewTargetWeight('');
                           setNewMaxWeight('');
@@ -2110,13 +2219,13 @@ export function PortfolioModal({
                         setNewPortfolioId(nextPortfolioId);
                         setFormError('');
                       }}
-                      required
-                      className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-3 text-sm font-semibold text-stone-900 transition-colors focus:border-stone-500 focus:bg-white"
-                    >
-                      <option value="" disabled>{isThai ? 'เลือกพอร์ต…' : 'Choose a portfolio…'}</option>
-                      <option value="unassigned">{isThai ? 'ยังไม่ได้จัดเข้าพอร์ต' : 'Unassigned'}</option>
-                      {multiPortfolioConfig.portfolios.map(portfolio => <option key={portfolio.id} value={portfolio.id}>{portfolio.name}</option>)}
-                    </select>
+                      ariaLabel={isThai ? 'พอร์ตสำหรับหุ้นนี้' : 'Portfolio for this holding'}
+                      options={[
+                        { value: '', label: isThai ? 'เลือกพอร์ต…' : 'Choose a portfolio…', disabled: true },
+                        { value: 'unassigned', label: isThai ? 'ยังไม่ได้จัดเข้าพอร์ต' : 'Unassigned' },
+                        ...multiPortfolioConfig.portfolios.map(portfolio => ({ value: portfolio.id, label: portfolio.name }))
+                      ]}
+                    />
                     {editingHoldingId && <span className="mt-1 block text-[9px] leading-relaxed text-stone-500">{isThai ? 'เมื่อย้ายพอร์ต Target/Max เดิมจะถูกล้างเพื่อป้องกันการใช้สัดส่วนผิดบริบท' : 'Changing portfolio clears the old Target/Max to prevent applying weights in the wrong context.'}</span>}
                   </label>
                   <div className="grid grid-cols-2 gap-3">
