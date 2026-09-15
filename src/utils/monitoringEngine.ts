@@ -34,6 +34,7 @@ export const DEFAULT_MONITORING_PREFERENCES: MonitoringPreferences = {
 export const ALERTS_PREFS_KEY = 'lumina_monitoring_prefs';
 export const ALERTS_READ_KEY = 'lumina_read_alert_ids';
 export const LAST_SEEN_FILING_KEY = 'lumina_last_seen_filing';
+export const MONITORING_UPDATED_EVENT = 'lumina:monitoring-updated';
 
 const formatLimitKey = (value: number): string => String(Number(value.toFixed(4))).replace('.', '_');
 
@@ -133,6 +134,12 @@ function getSafeLocalStorage(): Storage | null {
   return null;
 }
 
+function emitMonitoringUpdate(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(MONITORING_UPDATED_EVENT));
+  }
+}
+
 export function loadMonitoringPreferences(userId?: string): MonitoringPreferences {
   const storage = getSafeLocalStorage();
   if (!storage) return { ...DEFAULT_MONITORING_PREFERENCES };
@@ -147,12 +154,13 @@ export function loadMonitoringPreferences(userId?: string): MonitoringPreference
   }
 }
 
-export function saveMonitoringPreferences(prefs: MonitoringPreferences, userId?: string): void {
+export function saveMonitoringPreferences(prefs: MonitoringPreferences, userId?: string, notify = true): void {
   const storage = getSafeLocalStorage();
   if (!storage) return;
   try {
     const key = userId ? `${ALERTS_PREFS_KEY}_${userId}` : ALERTS_PREFS_KEY;
     storage.setItem(key, JSON.stringify(prefs));
+    if (notify) emitMonitoringUpdate();
   } catch (e) {
     console.warn('Failed to save monitoring preferences:', e);
   }
@@ -172,12 +180,13 @@ export function loadReadAlertIds(userId?: string): Set<string> {
   }
 }
 
-export function saveReadAlertIds(readIds: Set<string>, userId?: string): void {
+export function saveReadAlertIds(readIds: Set<string>, userId?: string, notify = true): void {
   const storage = getSafeLocalStorage();
   if (!storage) return;
   try {
     const key = userId ? `${ALERTS_READ_KEY}_${userId}` : ALERTS_READ_KEY;
     storage.setItem(key, JSON.stringify(Array.from(readIds)));
+    if (notify) emitMonitoringUpdate();
   } catch (e) {
     console.warn('Failed to save read alerts:', e);
   }
@@ -197,18 +206,42 @@ export function getLastSeenAccession(ticker: string, userId?: string): string | 
   }
 }
 
-export function setLastSeenAccession(ticker: string, accession: string, userId?: string): void {
+export function loadLastSeenAccessions(userId?: string): Record<string, string> {
+  const storage = getSafeLocalStorage();
+  if (!storage) return {};
+  try {
+    const key = userId ? `${LAST_SEEN_FILING_KEY}_${userId}` : LAST_SEEN_FILING_KEY;
+    const raw = storage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.entries(parsed).reduce<Record<string, string>>((result, [ticker, accession]) => {
+      const cleanTicker = ticker.toUpperCase().trim();
+      if (cleanTicker && typeof accession === 'string' && accession.trim()) result[cleanTicker] = accession.trim();
+      return result;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+export function saveLastSeenAccessions(accessions: Record<string, string>, userId?: string, notify = true): void {
   const storage = getSafeLocalStorage();
   if (!storage) return;
   try {
     const key = userId ? `${LAST_SEEN_FILING_KEY}_${userId}` : LAST_SEEN_FILING_KEY;
-    const raw = storage.getItem(key);
-    const map = raw ? JSON.parse(raw) : {};
-    map[ticker.toUpperCase().trim()] = accession;
-    storage.setItem(key, JSON.stringify(map));
+    storage.setItem(key, JSON.stringify(accessions));
+    if (notify) emitMonitoringUpdate();
   } catch (e) {
-    console.warn('Failed to save last seen accession:', e);
+    console.warn('Failed to save last seen accessions:', e);
   }
+}
+
+export function setLastSeenAccession(ticker: string, accession: string, userId?: string): void {
+  if (!ticker || !accession) return;
+  const current = loadLastSeenAccessions(userId);
+  current[ticker.toUpperCase().trim()] = accession;
+  saveLastSeenAccessions(current, userId);
 }
 
 /**
@@ -444,7 +477,8 @@ export function evaluateAllAlerts(
   portfolioSummary?: PortfolioSummary,
   preferences: MonitoringPreferences = DEFAULT_MONITORING_PREFERENCES,
   readIds: Set<string> = new Set(),
-  multiPortfolioSummary?: MultiPortfolioAllocationSummary
+  multiPortfolioSummary?: MultiPortfolioAllocationSummary,
+  userId?: string
 ): MonitoringAlert[] {
   const alertMap = new Map<string, MonitoringAlert>();
 
@@ -468,7 +502,8 @@ export function evaluateAllAlerts(
       price,
       prevReport,
       portfolioSummary,
-      preferences
+      preferences,
+      userId
     );
 
     for (const alert of tickerAlerts) {

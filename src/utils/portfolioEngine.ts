@@ -229,6 +229,7 @@ export function saveLocalWatchlist(watchlist: string[], userId?: string): void {
     const key = userId ? `${WATCHLIST_STORAGE_KEY}_${userId}` : WATCHLIST_STORAGE_KEY;
     const clean = Array.from(new Set(watchlist.map(s => String(s).toUpperCase().trim()).filter(Boolean)));
     storage.setItem(key, JSON.stringify(clean));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(PORTFOLIO_UPDATED_EVENT));
   } catch (e) {
     console.warn('Failed to save watchlist to localStorage:', e);
   }
