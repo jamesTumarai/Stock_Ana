@@ -2,11 +2,17 @@ import {
   PortfolioHolding,
   PortfolioComputedHolding,
   PortfolioSummary,
-  PortfolioSectorExposure
+  PortfolioSectorExposure,
+  MultiPortfolioConfig,
+  OverallTickerLimit,
+  UserPortfolio
 } from '../types';
 
 export const WATCHLIST_STORAGE_KEY = 'lumina_watchlist';
 export const PORTFOLIO_STORAGE_KEY = 'lumina_portfolio_holdings';
+export const USER_PORTFOLIOS_STORAGE_KEY = 'lumina_user_portfolios';
+export const MULTI_PORTFOLIO_SCHEMA_VERSION = 2 as const;
+export const PORTFOLIO_UPDATED_EVENT = 'lumina:portfolio-updated';
 
 export function calculateHoldingMetrics(
   holding: PortfolioHolding,
@@ -134,8 +140,8 @@ export function calculatePortfolioSummary(
   let weightedMosNumerator = 0;
   let weightedMosDenominator = 0;
 
-  // Baseline for allocation is priced market value if available; otherwise cost basis
-  const allocationBase = pricedMarketValue > 0 ? pricedMarketValue : totalCostBasis;
+  // Exact allocation requires complete pricing. Missing price must never be replaced by cost basis.
+  const allocationBase = isFullyPriced ? pricedMarketValue : 0;
 
   for (const item of computedList) {
     const itemVal = typeof item.market_value === 'number' ? item.market_value : 0;
@@ -162,7 +168,7 @@ export function calculatePortfolioSummary(
     .map(([sec, val]) => ({
       sector: sec,
       market_value: Number(val.toFixed(2)),
-      allocation_pct: pricedMarketValue > 0 ? Number(((val / pricedMarketValue) * 100).toFixed(1)) : 0
+      allocation_pct: isFullyPriced && pricedMarketValue > 0 ? Number(((val / pricedMarketValue) * 100).toFixed(1)) : 0
     }))
     .sort((a, b) => b.market_value - a.market_value);
 
@@ -178,7 +184,7 @@ export function calculatePortfolioSummary(
     total_unrealized_pnl_pct: totalUnrealizedPnlPct,
     holdings_count: holdings.length,
     top_holding_concentration_pct: topConcentration,
-    concentration_risk_alert: topConcentration >= 30, // Institutional concentration threshold
+    concentration_risk_alert: isFullyPriced && topConcentration >= 30, // Suppressed when denominator pricing is incomplete
     sector_breakdown: sectorBreakdown,
     weighted_margin_of_safety_pct: weightedMos,
     computed_holdings: computedList,
@@ -236,7 +242,13 @@ export function loadLocalPortfolio(userId?: string): PortfolioHolding[] {
     const raw = storage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.map((holding: PortfolioHolding, index: number) => ({
+          ...holding,
+          id: holding.id || `legacy-${index}-${String(holding.ticker || 'holding').toUpperCase().trim()}`,
+          portfolio_id: holding.portfolio_id ?? null
+        }))
+      : [];
   } catch {
     return [];
   }
@@ -248,7 +260,95 @@ export function saveLocalPortfolio(holdings: PortfolioHolding[], userId?: string
     if (!storage) return;
     const key = userId ? `${PORTFOLIO_STORAGE_KEY}_${userId}` : PORTFOLIO_STORAGE_KEY;
     storage.setItem(key, JSON.stringify(holdings));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(PORTFOLIO_UPDATED_EVENT));
   } catch (e) {
     console.warn('Failed to save portfolio to localStorage:', e);
+  }
+}
+
+function sanitizeOptionalPct(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : null;
+}
+
+function sanitizePortfolio(value: unknown): UserPortfolio | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<UserPortfolio>;
+  const id = typeof raw.id === 'string' ? raw.id.trim() : '';
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!id || !name) return null;
+  const createdAt = typeof raw.created_at === 'string' && raw.created_at ? raw.created_at : new Date(0).toISOString();
+  const updatedAt = typeof raw.updated_at === 'string' && raw.updated_at ? raw.updated_at : createdAt;
+  return {
+    id,
+    name,
+    target_pct_of_total: sanitizeOptionalPct(raw.target_pct_of_total),
+    max_pct_of_total: sanitizeOptionalPct(raw.max_pct_of_total),
+    notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : undefined,
+    created_at: createdAt,
+    updated_at: updatedAt
+  };
+}
+
+function sanitizeTickerLimit(value: unknown): OverallTickerLimit | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<OverallTickerLimit>;
+  const ticker = typeof raw.ticker === 'string' ? raw.ticker.toUpperCase().trim() : '';
+  const max = sanitizeOptionalPct(raw.max_pct_of_total);
+  if (!ticker || max === null) return null;
+  return {
+    ticker,
+    max_pct_of_total: max,
+    updated_at: typeof raw.updated_at === 'string' && raw.updated_at ? raw.updated_at : new Date(0).toISOString()
+  };
+}
+
+export function getUserPortfoliosStorageKey(userId?: string): string {
+  return userId ? `${USER_PORTFOLIOS_STORAGE_KEY}_${userId}` : USER_PORTFOLIOS_STORAGE_KEY;
+}
+
+export function loadLocalMultiPortfolioConfig(userId?: string): MultiPortfolioConfig {
+  const empty: MultiPortfolioConfig = {
+    version: MULTI_PORTFOLIO_SCHEMA_VERSION,
+    portfolios: [],
+    ticker_limits: []
+  };
+  try {
+    const storage = getSafeLocalStorage();
+    if (!storage) return empty;
+    const raw = storage.getItem(getUserPortfoliosStorageKey(userId));
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return empty;
+    const portfolios = Array.isArray(parsed.portfolios)
+      ? parsed.portfolios.map(sanitizePortfolio).filter((item: UserPortfolio | null): item is UserPortfolio => item !== null)
+      : [];
+    const tickerLimits = Array.isArray(parsed.ticker_limits)
+      ? parsed.ticker_limits.map(sanitizeTickerLimit).filter((item: OverallTickerLimit | null): item is OverallTickerLimit => item !== null)
+      : [];
+    return {
+      version: MULTI_PORTFOLIO_SCHEMA_VERSION,
+      portfolios,
+      ticker_limits: tickerLimits
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function saveLocalMultiPortfolioConfig(config: MultiPortfolioConfig, userId?: string): void {
+  try {
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
+    const normalized: MultiPortfolioConfig = {
+      version: MULTI_PORTFOLIO_SCHEMA_VERSION,
+      portfolios: config.portfolios.map(sanitizePortfolio).filter((item: UserPortfolio | null): item is UserPortfolio => item !== null),
+      ticker_limits: config.ticker_limits.map(sanitizeTickerLimit).filter((item: OverallTickerLimit | null): item is OverallTickerLimit => item !== null)
+    };
+    storage.setItem(getUserPortfoliosStorageKey(userId), JSON.stringify(normalized));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(PORTFOLIO_UPDATED_EVENT));
+  } catch (error) {
+    console.warn('Failed to save multi-portfolio configuration to localStorage:', error);
   }
 }

@@ -150,6 +150,10 @@ describe('portfolioEngine', () => {
     assert.equal(summary.pricing_coverage_pct, 50.0);
     assert.equal(summary.priced_market_value, 4500);
     assert.equal(summary.unpriced_cost_basis, 1500);
+    assert.equal(summary.computed_holdings.every(holding => holding.allocation_pct === 0), true);
+    assert.equal(summary.top_holding_concentration_pct, 0);
+    assert.equal(summary.concentration_risk_alert, false);
+    assert.equal(summary.sector_breakdown.every(sector => sector.allocation_pct === 0), true);
   });
 
   it('loadLocalWatchlist: returns empty array when storage is empty, without masquerading starter tickers (P1-5)', () => {

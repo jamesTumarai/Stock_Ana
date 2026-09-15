@@ -7,6 +7,7 @@
 import {
   MonitoringAlert,
   MonitoringPreferences,
+  MultiPortfolioAllocationSummary,
   PortfolioSummary,
   ReportData,
   DocumentFinding
@@ -33,6 +34,90 @@ export const DEFAULT_MONITORING_PREFERENCES: MonitoringPreferences = {
 export const ALERTS_PREFS_KEY = 'lumina_monitoring_prefs';
 export const ALERTS_READ_KEY = 'lumina_read_alert_ids';
 export const LAST_SEEN_FILING_KEY = 'lumina_last_seen_filing';
+
+const formatLimitKey = (value: number): string => String(Number(value.toFixed(4))).replace('.', '_');
+
+export function evaluateMultiPortfolioAlerts(
+  summary: MultiPortfolioAllocationSummary,
+  readIds: Set<string> = new Set(),
+  timestamp = Date.now()
+): MonitoringAlert[] {
+  if (!summary.is_fully_priced) return [];
+  const dateStr = new Date(timestamp).toISOString().split('T')[0];
+  const alerts: MonitoringAlert[] = [];
+
+  for (const item of summary.portfolios) {
+    if (!item.portfolio || item.status !== 'ABOVE_MAX' || item.actual_pct_of_total === null || item.max_pct_of_total === null) continue;
+    const id = `alert_portfolio_${item.portfolio.id}_ALLOCATION_LIMIT_${formatLimitKey(item.max_pct_of_total)}`;
+    alerts.push({
+      id,
+      ticker: 'PORTFOLIO',
+      type: 'PORTFOLIO_ALLOCATION_LIMIT',
+      severity: 'warning',
+      title: `${item.name} is above its portfolio maximum`,
+      titleTh: `${item.name} เกินสัดส่วนสูงสุดของพอร์ต`,
+      message: `${item.name} is ${item.actual_pct_of_total.toFixed(1)}% of total invested value. Configured maximum: ${item.max_pct_of_total.toFixed(1)}%. Excess: +${item.excess_pct_points?.toFixed(1)} pp.`,
+      messageTh: `${item.name} มีสัดส่วน ${item.actual_pct_of_total.toFixed(1)}% ของมูลค่าเงินลงทุนรวม ขีดจำกัดที่ตั้งไว้ ${item.max_pct_of_total.toFixed(1)}% เกินมา +${item.excess_pct_points?.toFixed(1)} จุดเปอร์เซ็นต์`,
+      timestamp,
+      dateStr,
+      isRead: readIds.has(id),
+      evidence: {
+        metricName: 'Portfolio Overall Allocation',
+        currentValue: `${item.actual_pct_of_total.toFixed(1)}%`,
+        thresholdValue: `${item.max_pct_of_total.toFixed(1)}%`
+      }
+    });
+  }
+
+  for (const position of summary.positions) {
+    if (position.status !== 'ABOVE_MAX' || position.pct_within_portfolio === null || position.max_pct_within_portfolio === null) continue;
+    const stablePositionKey = position.holding.id || `${position.portfolio_id || 'unassigned'}_${position.holding.ticker}`;
+    const id = `alert_position_${stablePositionKey}_POSITION_LIMIT_${formatLimitKey(position.max_pct_within_portfolio)}`;
+    alerts.push({
+      id,
+      ticker: position.holding.ticker.toUpperCase(),
+      type: 'POSITION_PORTFOLIO_LIMIT',
+      severity: 'warning',
+      title: `${position.holding.ticker.toUpperCase()} is above its limit in ${position.portfolio_name}`,
+      titleTh: `${position.holding.ticker.toUpperCase()} เกินสัดส่วนสูงสุดใน ${position.portfolio_name}`,
+      message: `${position.holding.ticker.toUpperCase()} is ${position.pct_within_portfolio.toFixed(1)}% of ${position.portfolio_name}. Configured maximum: ${position.max_pct_within_portfolio.toFixed(1)}%. Excess: +${position.excess_pct_points?.toFixed(1)} pp.`,
+      messageTh: `${position.holding.ticker.toUpperCase()} มีสัดส่วน ${position.pct_within_portfolio.toFixed(1)}% ใน ${position.portfolio_name} ขีดจำกัด ${position.max_pct_within_portfolio.toFixed(1)}% เกินมา +${position.excess_pct_points?.toFixed(1)} จุดเปอร์เซ็นต์`,
+      timestamp,
+      dateStr,
+      isRead: readIds.has(id),
+      evidence: {
+        metricName: 'Position Weight Within Portfolio',
+        currentValue: `${position.pct_within_portfolio.toFixed(1)}%`,
+        thresholdValue: `${position.max_pct_within_portfolio.toFixed(1)}%`
+      }
+    });
+  }
+
+  for (const aggregate of summary.aggregate_tickers) {
+    if (aggregate.status !== 'ABOVE_MAX' || aggregate.total_pct_of_total === null || aggregate.overall_max_pct === null) continue;
+    const id = `alert_${aggregate.ticker}_OVERALL_EXPOSURE_LIMIT_${formatLimitKey(aggregate.overall_max_pct)}`;
+    alerts.push({
+      id,
+      ticker: aggregate.ticker,
+      type: 'OVERALL_TICKER_EXPOSURE_LIMIT',
+      severity: 'warning',
+      title: `${aggregate.ticker} is above its overall exposure maximum`,
+      titleTh: `${aggregate.ticker} เกินสัดส่วนรวมสูงสุดทุกพอร์ต`,
+      message: `${aggregate.ticker} represents ${aggregate.total_pct_of_total.toFixed(1)}% across ${aggregate.portfolios.length} portfolio(s). Configured overall maximum: ${aggregate.overall_max_pct.toFixed(1)}%. Excess: +${aggregate.excess_pct_points?.toFixed(1)} pp.`,
+      messageTh: `${aggregate.ticker} มีสัดส่วนรวม ${aggregate.total_pct_of_total.toFixed(1)}% ใน ${aggregate.portfolios.length} พอร์ต ขีดจำกัดรวม ${aggregate.overall_max_pct.toFixed(1)}% เกินมา +${aggregate.excess_pct_points?.toFixed(1)} จุดเปอร์เซ็นต์`,
+      timestamp,
+      dateStr,
+      isRead: readIds.has(id),
+      evidence: {
+        metricName: 'Aggregate Ticker Exposure',
+        currentValue: `${aggregate.total_pct_of_total.toFixed(1)}%`,
+        thresholdValue: `${aggregate.overall_max_pct.toFixed(1)}%`
+      }
+    });
+  }
+
+  return alerts;
+}
 
 function getSafeLocalStorage(): Storage | null {
   try {
@@ -358,7 +443,8 @@ export function evaluateAllAlerts(
   historicalReports: any[] = [],
   portfolioSummary?: PortfolioSummary,
   preferences: MonitoringPreferences = DEFAULT_MONITORING_PREFERENCES,
-  readIds: Set<string> = new Set()
+  readIds: Set<string> = new Set(),
+  multiPortfolioSummary?: MultiPortfolioAllocationSummary
 ): MonitoringAlert[] {
   const alertMap = new Map<string, MonitoringAlert>();
 
@@ -392,6 +478,12 @@ export function evaluateAllAlerts(
           isRead: readIds.has(alert.id)
         });
       }
+    }
+  }
+
+  if (multiPortfolioSummary) {
+    for (const alert of evaluateMultiPortfolioAlerts(multiPortfolioSummary, readIds)) {
+      if (!alertMap.has(alert.id)) alertMap.set(alert.id, alert);
     }
   }
 
