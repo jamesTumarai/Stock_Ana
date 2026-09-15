@@ -26,11 +26,31 @@ import {
   saveMonitoringPreferences,
   loadReadAlertIds,
   saveReadAlertIds,
+  loadLastSeenAccessions,
+  saveLastSeenAccessions,
+  MONITORING_UPDATED_EVENT,
+  DEFAULT_MONITORING_PREFERENCES,
   evaluateAllAlerts
 } from './utils/monitoringEngine';
-import { loadLocalWatchlist, loadLocalPortfolio, loadLocalMultiPortfolioConfig, calculatePortfolioSummary, PORTFOLIO_UPDATED_EVENT } from './utils/portfolioEngine';
+import {
+  loadLocalWatchlist,
+  loadLocalPortfolio,
+  loadLocalMultiPortfolioConfig,
+  saveLocalWatchlist,
+  saveLocalPortfolio,
+  saveLocalMultiPortfolioConfig,
+  calculatePortfolioSummary,
+  PORTFOLIO_UPDATED_EVENT
+} from './utils/portfolioEngine';
 import { computeMultiPortfolioAllocation } from './utils/multiPortfolioEngine';
 import { unwrapHistoryRecord } from './utils/researchTimeline';
+import {
+  hasMonitoringWorkspaceData,
+  hasPortfolioWorkspaceData,
+  saveMonitoringWorkspace,
+  savePortfolioWorkspace,
+  subscribeToUserWorkspace
+} from './services/userWorkspaceService';
 
 import { 
   DocumentFinding, 
@@ -178,6 +198,97 @@ export default function App() {
     return () => window.removeEventListener(PORTFOLIO_UPDATED_EVENT, refreshPortfolioState);
   }, []);
 
+  // Authenticated workspace data lives in Firestore. Local storage remains an
+  // offline cache and is migrated once when a signed-in user has no cloud copy.
+  useEffect(() => {
+    const userId = user?.uid;
+    if (!userId) return;
+
+    let isApplyingRemoteSnapshot = false;
+    const localPortfolioWorkspace = () => ({
+      holdings: loadLocalPortfolio(userId),
+      watchlist: loadLocalWatchlist(userId),
+      multiPortfolioConfig: loadLocalMultiPortfolioConfig(userId)
+    });
+    const localMonitoringWorkspace = () => ({
+      preferences: loadMonitoringPreferences(userId),
+      readAlertIds: Array.from(loadReadAlertIds(userId)),
+      lastSeenFilings: loadLastSeenAccessions(userId)
+    });
+
+    const syncPortfolioWorkspace = () => {
+      if (isApplyingRemoteSnapshot) return;
+      void savePortfolioWorkspace(userId, localPortfolioWorkspace())
+        .catch(error => console.warn('App: failed to sync portfolio workspace', error));
+    };
+    const syncMonitoringWorkspace = () => {
+      if (isApplyingRemoteSnapshot) return;
+      void saveMonitoringWorkspace(userId, localMonitoringWorkspace())
+        .catch(error => console.warn('App: failed to sync monitoring workspace', error));
+    };
+
+    const hydratePortfolioWorkspace = (workspace: ReturnType<typeof localPortfolioWorkspace>) => {
+      isApplyingRemoteSnapshot = true;
+      try {
+        // Update the cache as well so existing calculation and modal code react
+        // immediately without treating one browser's cache as the source of truth.
+        saveLocalPortfolio(workspace.holdings, userId);
+        saveLocalWatchlist(workspace.watchlist, userId);
+        saveLocalMultiPortfolioConfig(workspace.multiPortfolioConfig, userId);
+        setPortfolioRevision(revision => revision + 1);
+      } finally {
+        isApplyingRemoteSnapshot = false;
+      }
+    };
+
+    const hydrateMonitoringWorkspace = (workspace: ReturnType<typeof localMonitoringWorkspace>) => {
+      isApplyingRemoteSnapshot = true;
+      try {
+        saveMonitoringPreferences(workspace.preferences, userId, false);
+        saveReadAlertIds(new Set(workspace.readAlertIds), userId, false);
+        saveLastSeenAccessions(workspace.lastSeenFilings, userId, false);
+        setMonitoringPreferences(workspace.preferences);
+        setReadAlertIds(new Set(workspace.readAlertIds));
+      } finally {
+        isApplyingRemoteSnapshot = false;
+      }
+    };
+
+    // Reset the in-memory alert state to the signed-in user's cache before the
+    // first Firestore snapshot arrives.
+    const initialMonitoring = localMonitoringWorkspace();
+    setMonitoringPreferences(initialMonitoring.preferences);
+    setReadAlertIds(new Set(initialMonitoring.readAlertIds));
+
+    const unsubscribe = subscribeToUserWorkspace(
+      userId,
+      workspace => {
+        if (workspace.portfolio) {
+          hydratePortfolioWorkspace(workspace.portfolio);
+        } else {
+          const local = localPortfolioWorkspace();
+          if (hasPortfolioWorkspaceData(local)) syncPortfolioWorkspace();
+        }
+
+        if (workspace.monitoring) {
+          hydrateMonitoringWorkspace(workspace.monitoring);
+        } else {
+          const local = localMonitoringWorkspace();
+          if (hasMonitoringWorkspaceData(local, DEFAULT_MONITORING_PREFERENCES)) syncMonitoringWorkspace();
+        }
+      },
+      error => console.warn('App: failed to load synced user workspace', error)
+    );
+
+    window.addEventListener(PORTFOLIO_UPDATED_EVENT, syncPortfolioWorkspace);
+    window.addEventListener(MONITORING_UPDATED_EVENT, syncMonitoringWorkspace);
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener(PORTFOLIO_UPDATED_EVENT, syncPortfolioWorkspace);
+      window.removeEventListener(MONITORING_UPDATED_EVENT, syncMonitoringWorkspace);
+    };
+  }, [user?.uid]);
+
   // Memoized ticker to latest report mapping for portfolio valuation intelligence
   const reportsByTicker = React.useMemo(() => {
     const map: Record<string, any> = {};
@@ -256,7 +367,8 @@ export default function App() {
       portfolioSummary,
       monitoringPreferences,
       readAlertIds,
-      multiPortfolioSummary
+      multiPortfolioSummary,
+      user?.uid
     );
   }, [user?.uid, reportsByTicker, liveQuotes, historyReports, portfolioSummary, multiPortfolioSummary, ticker, monitoringPreferences, readAlertIds, isPortfolioOpen]);
 

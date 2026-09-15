@@ -22,7 +22,8 @@ import {
   saveLocalMultiPortfolioConfig,
   loadLocalWatchlist,
   saveLocalWatchlist,
-  SUGGESTED_WATCHLIST_TICKERS
+  SUGGESTED_WATCHLIST_TICKERS,
+  PORTFOLIO_UPDATED_EVENT
 } from '../utils/portfolioEngine';
 import {
   computeMultiPortfolioAllocation,
@@ -362,6 +363,20 @@ export function PortfolioModal({
           });
       }
     }
+  }, [isOpen, user?.uid]);
+
+  // The application hydrates the local cache from the signed-in user's
+  // Firestore workspace. Keep an already-open modal in sync with that cache
+  // when another browser or device changes the same account.
+  useEffect(() => {
+    if (!isOpen) return;
+    const refreshWorkspace = () => {
+      setHoldings(loadLocalPortfolio(user?.uid));
+      setWatchlist(loadLocalWatchlist(user?.uid));
+      setMultiPortfolioConfig(loadLocalMultiPortfolioConfig(user?.uid));
+    };
+    window.addEventListener(PORTFOLIO_UPDATED_EVENT, refreshWorkspace);
+    return () => window.removeEventListener(PORTFOLIO_UPDATED_EVENT, refreshWorkspace);
   }, [isOpen, user?.uid]);
 
   useEffect(() => {
