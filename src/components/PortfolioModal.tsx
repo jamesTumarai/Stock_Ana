@@ -1308,43 +1308,82 @@ export function PortfolioModal({
                     {(selectedPortfolioId === 'all'
                       ? multiPortfolioSummary.portfolios
                       : selectedPortfolioSummary ? [selectedPortfolioSummary] : []
-                    ).map(portfolio => (
-                      <motion.button
-                        layout
-                        type="button"
-                        key={portfolio.portfolio_id || 'unassigned'}
-                        onClick={() => {
-                          setSelectedPortfolioId(portfolio.portfolio_id || 'unassigned');
-                          setAllocationView('stocks');
-                        }}
-                        className="group rounded-xl border border-stone-200 bg-stone-50/70 p-3 text-left transition-colors hover:border-stone-300 hover:bg-white"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-extrabold text-stone-900">{portfolio.name}</p>
-                            <p className="mt-0.5 text-[9px] text-stone-500">{portfolio.holdings_count} {isThai ? 'รายการ' : 'positions'}</p>
+                    ).map(portfolio => {
+                      const actualWeight = portfolio.actual_pct_of_total;
+                      const targetWeight = portfolio.target_pct_of_total;
+                      const maximumWeight = portfolio.max_pct_of_total;
+                      const weightWidth = Math.min(Math.max(actualWeight ?? 0, 0), 100);
+                      const markerPosition = (value: number) => `${Math.min(Math.max(value, 0), 100)}%`;
+                      const isOverLimit = portfolio.status === 'ABOVE_MAX';
+                      const barTone = isOverLimit
+                        ? 'bg-rose-500'
+                        : portfolio.status === 'INCOMPLETE_PRICING'
+                          ? 'bg-amber-500'
+                          : 'bg-[#0b5a4b]';
+
+                      return (
+                        <motion.button
+                          layout
+                          type="button"
+                          key={portfolio.portfolio_id || 'unassigned'}
+                          onClick={() => {
+                            setSelectedPortfolioId(portfolio.portfolio_id || 'unassigned');
+                            setAllocationView('stocks');
+                          }}
+                          className="group relative overflow-hidden rounded-2xl border border-stone-200 bg-[linear-gradient(120deg,rgba(255,255,255,0.98),rgba(250,250,249,0.82))] p-3.5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md sm:p-4"
+                        >
+                          <div className={`absolute inset-y-0 left-0 w-1 ${isOverLimit ? 'bg-rose-400' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-400' : 'bg-[#0b5a4b]'}`} />
+                          <div className="flex items-start justify-between gap-3 pl-1">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${isOverLimit ? 'border-rose-100 bg-rose-50 text-rose-600' : 'border-emerald-100 bg-emerald-50 text-[#0b5a4b]'}`}>
+                                <Briefcase className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-extrabold tracking-tight text-stone-900">{portfolio.name}</p>
+                                <p className="mt-0.5 text-[10px] text-stone-500">{portfolio.holdings_count} {isThai ? 'รายการในพอร์ต' : 'positions in portfolio'}</p>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${isOverLimit ? 'bg-rose-100 text-rose-700' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-100 text-amber-700' : portfolio.status === 'WITHIN_LIMIT' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
+                                {isOverLimit ? (isThai ? 'เกิน Max' : 'Above max') : portfolio.status === 'INCOMPLETE_PRICING' ? (isThai ? 'ราคายังไม่ครบ' : 'Partial pricing') : portfolio.status === 'WITHIN_LIMIT' ? (isThai ? 'อยู่ในกรอบ' : 'Within limit') : (isThai ? 'ไม่ได้ตั้ง Max' : 'No limit')}
+                              </span>
+                              <ChevronRight className="h-4 w-4 text-stone-400 transition-transform duration-200 group-hover:translate-x-0.5" />
+                            </div>
                           </div>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <span className={`rounded-full px-2 py-1 text-[8px] font-bold ${portfolio.status === 'ABOVE_MAX' ? 'bg-rose-100 text-rose-700' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-100 text-amber-700' : portfolio.status === 'WITHIN_LIMIT' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
-                              {portfolio.status === 'ABOVE_MAX' ? (isThai ? 'เกิน Max' : 'Above max') : portfolio.status === 'INCOMPLETE_PRICING' ? (isThai ? 'ราคายังไม่ครบ' : 'Partial pricing') : portfolio.status === 'WITHIN_LIMIT' ? (isThai ? 'อยู่ในกรอบ' : 'Within limit') : (isThai ? 'ไม่ได้ตั้ง Max' : 'No limit')}
-                            </span>
-                            <ChevronRight className="h-4 w-4 text-stone-400 transition-transform group-hover:translate-x-0.5" />
+
+                          <div className="mt-3.5 grid grid-cols-2 overflow-hidden rounded-xl border border-stone-200/80 bg-white/80 sm:grid-cols-4">
+                            <div className="border-b border-r border-stone-100 p-2.5 sm:border-b-0"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'มูลค่า' : 'Value'}</span><strong className="mt-0.5 block font-mono text-sm font-bold text-stone-900">{portfolio.market_value !== null ? `$${portfolio.market_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}</strong></div>
+                            <div className="border-b border-stone-100 p-2.5 sm:border-b-0 sm:border-r"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'สัดส่วนจริง' : 'Actual weight'}</span><strong className="mt-0.5 block font-mono text-sm font-bold text-stone-900">{actualWeight !== null ? `${actualWeight.toFixed(1)}%` : '—'}</strong></div>
+                            <div className="border-r border-stone-100 p-2.5"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'เป้าหมาย' : 'Target'}</span><strong className="mt-0.5 block font-mono text-sm font-bold text-stone-900">{targetWeight !== null ? `${targetWeight.toFixed(1)}%` : '—'}</strong></div>
+                            <div className="p-2.5"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'เพดานสูงสุด' : 'Maximum'}</span><strong className={isOverLimit ? 'mt-0.5 block font-mono text-sm font-bold text-rose-600' : 'mt-0.5 block font-mono text-sm font-bold text-stone-900'}>{maximumWeight !== null ? `${maximumWeight.toFixed(1)}%` : '—'}</strong></div>
                           </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-3 gap-2 text-[9px]">
-                          <div><span className="block text-stone-500">{isThai ? 'มูลค่า' : 'Value'}</span><strong className="font-mono text-stone-900">{portfolio.market_value !== null ? `$${portfolio.market_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}</strong></div>
-                          <div><span className="block text-stone-500">{isThai ? 'จริง / เป้า' : 'Actual / Target'}</span><strong className="font-mono text-stone-900">{portfolio.actual_pct_of_total !== null ? `${portfolio.actual_pct_of_total.toFixed(1)}%` : '—'} / {portfolio.target_pct_of_total !== null ? `${portfolio.target_pct_of_total.toFixed(1)}%` : '—'}</strong></div>
-                          <div><span className="block text-stone-500">{isThai ? 'สูงสุด' : 'Maximum'}</span><strong className={portfolio.status === 'ABOVE_MAX' ? 'font-mono text-rose-600' : 'font-mono text-stone-900'}>{portfolio.max_pct_of_total !== null ? `${portfolio.max_pct_of_total.toFixed(1)}%` : '—'}</strong></div>
-                        </div>
-                        {portfolio.drift_pct_points !== null && (
-                          <p className={`mt-2 text-[9px] font-bold ${Math.abs(portfolio.drift_pct_points) >= 5 ? 'text-amber-700' : 'text-stone-500'}`}>
-                            {isThai ? 'ต่างจากเป้า' : 'Drift'} {portfolio.drift_pct_points > 0 ? '+' : ''}{portfolio.drift_pct_points.toFixed(1)} pp
-                            {portfolio.excess_pct_points !== null ? ` · ${isThai ? 'เกิน Max' : 'Above max'} +${portfolio.excess_pct_points.toFixed(1)} pp` : ''}
-                          </p>
-                        )}
-                        <p className="mt-1 text-[8px] text-stone-500">{isThai ? 'ความครอบคลุมราคา' : 'Pricing coverage'} {portfolio.pricing_coverage_pct.toFixed(0)}%</p>
-                      </motion.button>
-                    ))}
+
+                          <div className="mt-3 rounded-xl border border-stone-100 bg-stone-50/75 px-2.5 py-2.5">
+                            <div className="mb-1.5 flex items-center justify-between gap-2 text-[9px]">
+                              <span className="font-semibold text-stone-600">{isThai ? 'สัดส่วนเทียบกรอบที่ตั้งไว้' : 'Weight against allocation limits'}</span>
+                              <span className="font-mono font-bold text-stone-700">{actualWeight !== null ? `${actualWeight.toFixed(1)}%` : '—'}</span>
+                            </div>
+                            <div className="relative h-2.5 overflow-hidden rounded-full bg-stone-200/80 shadow-inner">
+                              <motion.span initial={{ width: 0 }} animate={{ width: `${weightWidth}%` }} transition={{ duration: 0.36, ease: 'easeOut' }} className={`absolute inset-y-0 left-0 rounded-full ${barTone}`} />
+                              {targetWeight !== null && <span className="absolute -top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-stone-700/80" style={{ left: markerPosition(targetWeight) }} title={`${isThai ? 'เป้าหมาย' : 'Target'} ${targetWeight.toFixed(1)}%`} />}
+                              {maximumWeight !== null && <span className="absolute -top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-rose-500" style={{ left: markerPosition(maximumWeight) }} title={`${isThai ? 'เพดานสูงสุด' : 'Maximum'} ${maximumWeight.toFixed(1)}%`} />}
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[8px] text-stone-500">
+                              <span><i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-stone-700" />{isThai ? 'เป้าหมาย' : 'Target'} {targetWeight !== null ? `${targetWeight.toFixed(1)}%` : '—'}</span>
+                              <span><i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-rose-500" />{isThai ? 'Max' : 'Maximum'} {maximumWeight !== null ? `${maximumWeight.toFixed(1)}%` : '—'}</span>
+                              <span>{isThai ? 'ครอบคลุมราคา' : 'Pricing coverage'} {portfolio.pricing_coverage_pct.toFixed(0)}%</span>
+                            </div>
+                          </div>
+
+                          {portfolio.drift_pct_points !== null && (
+                            <div className={`mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2.5 py-2 text-[9px] font-bold ${isOverLimit ? 'bg-rose-50 text-rose-700' : Math.abs(portfolio.drift_pct_points) >= 5 ? 'bg-amber-50 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
+                              <span>{isThai ? 'ต่างจากเป้า' : 'Drift'} {portfolio.drift_pct_points > 0 ? '+' : ''}{portfolio.drift_pct_points.toFixed(1)} pp</span>
+                              {portfolio.excess_pct_points !== null && <span className="opacity-80">• {isThai ? 'เกิน Max' : 'Above max'} +{portfolio.excess_pct_points.toFixed(1)} pp</span>}
+                            </div>
+                          )}
+                        </motion.button>
+                      );
+                    })}
                   </div>
                 )}
               </motion.section>
