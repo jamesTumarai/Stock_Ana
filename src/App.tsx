@@ -739,7 +739,10 @@ export default function App() {
 
       if (!resp.ok || !resp.body) {
         const errData = await resp.json().catch(() => null);
-        throw new Error(errData?.error || `Server responded ${resp.status}`);
+        const errorMessage = errData?.message && errData?.error
+          ? `${errData.error}: ${errData.message}`
+          : (errData?.error || errData?.message || `Server responded ${resp.status}`);
+        throw new Error(errorMessage);
       }
 
       const reader = resp.body.getReader();

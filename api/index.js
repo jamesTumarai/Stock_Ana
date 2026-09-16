@@ -2,6 +2,8 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
 // Statically import core server dependencies so Vercel NFT bundles them into the lambda
+import 'dotenv';
+import 'dotenv/config';
 import 'express';
 import 'firebase-admin/app';
 import 'firebase-admin/auth';

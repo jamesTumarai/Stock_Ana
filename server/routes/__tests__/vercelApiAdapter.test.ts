@@ -202,4 +202,18 @@ describe('Vercel API Adapter & Parity (api/index.js)', () => {
     assert.deepEqual(result.body.requestedSymbols, ['SOFI']);
     assert.ok(result.body.sourceStatus !== undefined);
   });
+
+  it('POST /api/analyze -> routes through server app via api/index.js (rejects unauthenticated with 401, not 500)', async () => {
+    const { req, res, waitForFinish } = createMockReqRes({
+      method: 'POST',
+      url: '/api/analyze',
+    });
+
+    await handler(req, res);
+    const result = await waitForFinish();
+
+    assert.equal(result.status, 401);
+    assert.equal(result.body.code, 'AUTH_REQUIRED');
+    assert.equal(result.body.error, 'Authentication required.');
+  });
 });
