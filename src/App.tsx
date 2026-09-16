@@ -62,6 +62,7 @@ import {
   TechnicalAnalysis, 
   FinancialStatementsData,
   MaterialCompanyEvent,
+  RecentTrustedNewsItem,
   ValuationRatioItem,
   ValuationPercentileChart,
   IntrinsicValueData,
@@ -196,6 +197,7 @@ export default function App() {
 
   const [liveQuotes, setLiveQuotes] = useState<Record<string, { price?: number }>>({});
   const [newsEvents, setNewsEvents] = useState<MaterialCompanyEvent[]>([]);
+  const [recentTrustedNews, setRecentTrustedNews] = useState<RecentTrustedNewsItem[]>([]);
   const [isNewsRefreshing, setIsNewsRefreshing] = useState(false);
   const [lastNewsCheckedAt, setLastNewsCheckedAt] = useState<number | null>(null);
   const [newsError, setNewsError] = useState<string | null>(null);
@@ -367,6 +369,7 @@ export default function App() {
 
     if (trackedSymbols.length === 0) {
       setNewsEvents([]);
+      setRecentTrustedNews([]);
       setNewsError(null);
       return;
     }
@@ -375,6 +378,7 @@ export default function App() {
     try {
       const res = await fetchMaterialEvents(trackedSymbols, { forceRefresh: force });
       setNewsEvents(res.events);
+      setRecentTrustedNews(res.recentNews || []);
       setLastNewsCheckedAt(Date.now());
       if (res.status === 'error') {
         setNewsError(res.errorMessage || 'Failed to check recent news');
@@ -1029,6 +1033,7 @@ export default function App() {
             onClose={() => setIsAlertsOpen(false)}
             isThai={selectedLanguage === 'Thai'}
             alerts={alerts}
+            recentNews={recentTrustedNews}
             preferences={monitoringPreferences}
             onUpdatePreferences={handleUpdatePreferences}
             onMarkAsRead={handleMarkAlertAsRead}

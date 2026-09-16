@@ -1,7 +1,8 @@
-import { MaterialCompanyEvent } from '../types';
+import { MaterialCompanyEvent, RecentTrustedNewsItem } from '../types';
 
 export interface MaterialNewsState {
   events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
   status: 'idle' | 'loading' | 'success' | 'partial' | 'error';
   lastCheckedAt: number | null;
   lastCheckedStr: string | null;
@@ -13,26 +14,45 @@ const CLIENT_NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes TTL
 
 interface ClientCacheEntry {
   events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
   timestamp: number;
 }
 
 const clientMemoryCache = new Map<string, ClientCacheEntry>();
 
-export function getClientCachedEvents(ticker: string, nowMs = Date.now()): MaterialCompanyEvent[] | null {
+export function getClientCachedData(ticker: string, nowMs = Date.now()): {
+  events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
+} | null {
   const norm = ticker.toUpperCase().trim();
   const entry = clientMemoryCache.get(norm);
   if (entry && nowMs - entry.timestamp < CLIENT_NEWS_CACHE_TTL_MS) {
-    return entry.events;
+    return { events: entry.events, recentNews: entry.recentNews };
   }
   return null;
 }
 
-export function setClientCachedEvents(ticker: string, events: MaterialCompanyEvent[], nowMs = Date.now()): void {
+export function getClientCachedEvents(ticker: string, nowMs = Date.now()): MaterialCompanyEvent[] | null {
+  return getClientCachedData(ticker, nowMs)?.events || null;
+}
+
+export function setClientCachedData(
+  ticker: string,
+  events: MaterialCompanyEvent[],
+  recentNews: RecentTrustedNewsItem[],
+  nowMs = Date.now()
+): void {
   const norm = ticker.toUpperCase().trim();
   clientMemoryCache.set(norm, {
     events,
+    recentNews,
     timestamp: nowMs,
   });
+}
+
+export function setClientCachedEvents(ticker: string, events: MaterialCompanyEvent[], nowMs = Date.now()): void {
+  const existingRecent = getClientCachedData(ticker, nowMs)?.recentNews || [];
+  setClientCachedData(ticker, events, existingRecent, nowMs);
 }
 
 export function clearClientNewsCache(): void {
@@ -47,6 +67,7 @@ export async function fetchMaterialEvents(
   } = {}
 ): Promise<{
   events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
   status: 'success' | 'partial' | 'error';
   errorMessage?: string;
   checkedAt: string;
@@ -59,6 +80,7 @@ export async function fetchMaterialEvents(
   if (cleanSymbols.length === 0) {
     return {
       events: [],
+      recentNews: [],
       status: 'success',
       checkedAt: new Date(nowMs).toISOString(),
       successfulSymbols: [],
@@ -69,11 +91,13 @@ export async function fetchMaterialEvents(
   // Check client cache if not forced
   if (!options.forceRefresh) {
     const cachedEvents: MaterialCompanyEvent[] = [];
+    const cachedRecentNews: RecentTrustedNewsItem[] = [];
     let allCached = true;
     for (const sym of cleanSymbols) {
-      const cached = getClientCachedEvents(sym, nowMs);
+      const cached = getClientCachedData(sym, nowMs);
       if (cached) {
-        cachedEvents.push(...cached);
+        cachedEvents.push(...cached.events);
+        cachedRecentNews.push(...cached.recentNews);
       } else {
         allCached = false;
         break;
@@ -82,6 +106,7 @@ export async function fetchMaterialEvents(
     if (allCached) {
       return {
         events: cachedEvents,
+        recentNews: cachedRecentNews,
         status: 'success',
         checkedAt: new Date(nowMs).toISOString(),
         successfulSymbols: cleanSymbols,
@@ -105,6 +130,7 @@ export async function fetchMaterialEvents(
       const errorJson = await res.json().catch(() => ({}));
       return {
         events: [],
+        recentNews: [],
         status: 'error',
         errorMessage: errorJson?.error || `HTTP ${res.status}`,
         checkedAt: new Date(nowMs).toISOString(),
@@ -115,13 +141,15 @@ export async function fetchMaterialEvents(
 
     const data: any = await res.json();
     const events: MaterialCompanyEvent[] = Array.isArray(data?.events) ? data.events : [];
+    const recentNews: RecentTrustedNewsItem[] = Array.isArray(data?.recentNews) ? data.recentNews : [];
     const successfulSymbols: string[] = Array.isArray(data?.successfulSymbols) ? data.successfulSymbols : [];
     const failedSymbols: string[] = Array.isArray(data?.failedSymbols) ? data.failedSymbols : [];
 
     // Update client cache per symbol
     for (const sym of successfulSymbols) {
       const symEvents = events.filter(e => e.ticker.toUpperCase() === sym.toUpperCase());
-      setClientCachedEvents(sym, symEvents, nowMs);
+      const symRecentNews = recentNews.filter(n => n.ticker.toUpperCase() === sym.toUpperCase());
+      setClientCachedData(sym, symEvents, symRecentNews, nowMs);
     }
 
     const hasErrors = failedSymbols.length > 0;
@@ -129,6 +157,7 @@ export async function fetchMaterialEvents(
 
     return {
       events,
+      recentNews,
       status: isTotalFailure ? 'error' : hasErrors ? 'partial' : 'success',
       checkedAt: data?.checkedAt || new Date(nowMs).toISOString(),
       successfulSymbols,
@@ -138,6 +167,7 @@ export async function fetchMaterialEvents(
     console.warn('[materialNewsService] Fetch failed:', err);
     return {
       events: [],
+      recentNews: [],
       status: 'error',
       errorMessage: err?.message || 'Network error fetching material events',
       checkedAt: new Date(nowMs).toISOString(),
