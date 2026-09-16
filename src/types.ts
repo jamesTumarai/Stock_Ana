@@ -1426,9 +1426,11 @@ export type MaterialEventMateriality = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type MaterialEventSourceAuthority =
   | 'AUTHORITATIVE_SEC'
-  | 'COMPANY_PRIMARY_IR'
+  | 'COMPANY_OFFICIAL'
+  | 'PRESS_RELEASE_WIRE'
+  | 'REPUTABLE_NEWS'
   | 'RECOGNIZED_MARKET'
-  | 'REPUTABLE_NEWS';
+  | 'COMPANY_PRIMARY_IR';
 
 export type MaterialEventSourceType =
   | 'SEC_EDGAR'
@@ -1462,6 +1464,11 @@ export interface MaterialCompanyEvent {
   eventId: string;
   ticker: string;
   headline: string;
+  originalHeadline?: string;
+  headlineTh?: string;
+  summaryEn?: string;
+  summaryTh?: string;
+  summaryEvidence?: 'STRUCTURED_SOURCE' | 'SOURCE_SNIPPET' | 'HEADLINE_ONLY';
   factualSummary: string;
   category: MaterialEventCategory;
   materiality: MaterialEventMateriality;
@@ -1474,6 +1481,7 @@ export interface MaterialCompanyEvent {
   sourceDocumentId?: string;
   secAccession?: string;
   provenanceStatus?: string;
+  relevance?: 'PRIMARY' | 'RELATED' | 'IRRELEVANT';
   relevanceReasons?: string[];
   whyItMatters?: string;
   whyItMattersTh?: string;
@@ -1491,6 +1499,11 @@ export interface RecentTrustedNewsItem {
   id: string;
   ticker: string;
   headline: string;
+  originalHeadline?: string;
+  headlineTh?: string;
+  summaryEn?: string;
+  summaryTh?: string;
+  summaryEvidence?: 'STRUCTURED_SOURCE' | 'SOURCE_SNIPPET' | 'HEADLINE_ONLY';
   publishedAt: string | null;
   retrievedAt: string;
   sourceName: string;
@@ -1499,6 +1512,7 @@ export interface RecentTrustedNewsItem {
   sourceAuthority: MaterialEventSourceAuthority;
   category: MaterialEventCategory;
   materiality: MaterialEventMateriality;
+  relevance?: 'PRIMARY' | 'RELATED' | 'IRRELEVANT';
   factualSummary?: string;
   dedupeFingerprint?: string;
 }
@@ -1512,6 +1526,11 @@ export interface MonitoringAlert {
   message: string;
   titleTh?: string;
   messageTh?: string;
+  originalHeadline?: string;
+  headlineTh?: string;
+  summaryEn?: string;
+  summaryTh?: string;
+  summaryEvidence?: 'STRUCTURED_SOURCE' | 'SOURCE_SNIPPET' | 'HEADLINE_ONLY';
   timestamp: number;
   dateStr: string;
   isRead: boolean;

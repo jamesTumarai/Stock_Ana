@@ -68,12 +68,13 @@ export function isNoiseHeadline(headline: string): boolean {
 /**
  * Classifies publisher name into Source Authority and Source Type.
  */
-export function classifyPublisher(publisher: string): {
+export function classifyPublisher(publisher: string, url?: string, trackedTicker?: string): {
   sourceAuthority: MaterialEventSourceAuthority;
   sourceType: MaterialEventSourceType;
   isApproved: boolean;
 } {
   const p = (publisher || '').trim().toLowerCase();
+  const u = (url || '').trim().toLowerCase();
 
   // Reject unvetted blogs, SEO article farms, and low-quality subsidiaries FIRST
   // (e.g. 'benzinga insights' must be rejected before broad 'benzinga' match)
@@ -86,12 +87,40 @@ export function classifyPublisher(publisher: string): {
     };
   }
 
-  // Tier 2: Company Primary / Investor Relations Wire Services
-  const irWires = ['pr newswire', 'business wire', 'globenewswire', 'accesswire', 'investor relations'];
-  if (irWires.some(w => p.includes(w))) {
+  // Official Company IR: only when domain or explicit metadata identifies official IR
+  // e.g. ir.microsoft.com, investor.sofi.com, microsoft.com/investor, or explicit official investor relations
+  const isOfficialDomain = Boolean(
+    u.includes('investor.') ||
+    u.includes('investors.') ||
+    u.includes('/investor/') ||
+    u.includes('/investors/') ||
+    u.includes('/investor-relations') ||
+    u.includes('/ir/') ||
+    u.includes('/ir.') ||
+    u.includes('ir.')
+  );
+  const isOfficialPublisher = Boolean(
+    p.includes('investor relations') ||
+    p.includes('official ir') ||
+    p === 'company official ir' ||
+    p === 'official investor relations' ||
+    p.endsWith(' ir')
+  );
+  if (isOfficialDomain || isOfficialPublisher) {
     return {
-      sourceAuthority: 'COMPANY_PRIMARY_IR',
+      sourceAuthority: 'COMPANY_OFFICIAL',
       sourceType: 'COMPANY_IR',
+      isApproved: true,
+    };
+  }
+
+  // Tier 2: Press Release / Wire Services
+  // PR Newswire, Business Wire, GlobeNewswire, Accesswire MUST NOT be classified as Company IR by default
+  const prWires = ['pr newswire', 'business wire', 'globenewswire', 'accesswire'];
+  if (prWires.some(w => p.includes(w))) {
+    return {
+      sourceAuthority: 'PRESS_RELEASE_WIRE',
+      sourceType: 'WIRE_SERVICE',
       isApproved: true,
     };
   }
@@ -135,6 +164,224 @@ export function classifyPublisher(publisher: string): {
     sourceType: 'FINANCIAL_NEWS',
     isApproved: false,
   };
+}
+
+export interface CanonicalCompanyInfo {
+  ticker: string;
+  primaryName: string;
+  aliases: string[];
+}
+
+const CANONICAL_COMPANIES: Record<string, { primaryName: string; aliases: string[] }> = {
+  MSFT: {
+    primaryName: 'Microsoft',
+    aliases: ['Microsoft', 'Microsoft Corporation', 'Microsoft Corp', 'MSFT'],
+  },
+  SOFI: {
+    primaryName: 'SoFi',
+    aliases: ['SoFi', 'SoFi Technologies', 'Social Finance', 'SOFI'],
+  },
+  AAPL: {
+    primaryName: 'Apple',
+    aliases: ['Apple', 'Apple Inc', 'Apple Computer', 'AAPL'],
+  },
+  NVDA: {
+    primaryName: 'NVIDIA',
+    aliases: ['NVIDIA', 'Nvidia', 'Nvidia Corporation', 'NVDA'],
+  },
+  TSLA: {
+    primaryName: 'Tesla',
+    aliases: ['Tesla', 'Tesla Inc', 'Tesla Motors', 'TSLA'],
+  },
+  AMZN: {
+    primaryName: 'Amazon',
+    aliases: ['Amazon', 'Amazon.com', 'Amazon Inc', 'AMZN'],
+  },
+  GOOGL: {
+    primaryName: 'Google',
+    aliases: ['Google', 'Alphabet', 'Alphabet Inc', 'GOOGL', 'GOOG'],
+  },
+  GOOG: {
+    primaryName: 'Google',
+    aliases: ['Google', 'Alphabet', 'Alphabet Inc', 'GOOGL', 'GOOG'],
+  },
+  META: {
+    primaryName: 'Meta',
+    aliases: ['Meta', 'Meta Platforms', 'Facebook', 'META'],
+  },
+};
+
+export function getCanonicalCompany(ticker: string): CanonicalCompanyInfo {
+  const norm = (ticker || '').trim().toUpperCase();
+  if (CANONICAL_COMPANIES[norm]) {
+    return {
+      ticker: norm,
+      primaryName: CANONICAL_COMPANIES[norm].primaryName,
+      aliases: CANONICAL_COMPANIES[norm].aliases,
+    };
+  }
+  return {
+    ticker: norm,
+    primaryName: norm,
+    aliases: [norm],
+  };
+}
+
+/**
+ * Deterministically evaluates whether a headline's primary subject is the tracked issuer.
+ * Return: 'PRIMARY' | 'RELATED' | 'IRRELEVANT'
+ * Only 'PRIMARY' may enter Material Alerts and Recent Trusted News main list.
+ * Fails closed when uncertain.
+ */
+export function evaluateCompanyRelevance(
+  arg1: string,
+  arg2: string,
+  options?: { summary?: string; sourceUrl?: string }
+): { isPrimary: boolean; relevance: 'PRIMARY' | 'RELATED' | 'IRRELEVANT'; reason?: string } {
+  let headline = arg1;
+  let ticker = arg2;
+  // If arg1 looks like a ticker (e.g. short, no spaces) and arg2 is longer or has spaces, swap them
+  if (arg1 && arg2 && !arg1.includes(' ') && (arg2.includes(' ') || arg2.length > arg1.length)) {
+    ticker = arg1;
+    headline = arg2;
+  }
+
+  const createResult = (relevance: 'PRIMARY' | 'RELATED' | 'IRRELEVANT', reason?: string) => ({
+    isPrimary: relevance === 'PRIMARY',
+    relevance,
+    reason,
+  });
+
+  const normTicker = (ticker || '').trim().toUpperCase();
+  const rawH = (headline || '').trim();
+  const h = rawH.toLowerCase();
+
+  // SEC filings for this ticker are authoritative and always PRIMARY
+  if (/\bform\s+(8-k|10-q|10-k|4|3)\b/i.test(h) && (h.includes(normTicker.toLowerCase()) || options?.sourceUrl?.includes('/edgar/'))) {
+    return createResult('PRIMARY', 'Official SEC filing for tracked issuer');
+  }
+
+  const company = getCanonicalCompany(normTicker);
+  const matchedAlias = company.aliases.find(alias => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+    return regex.test(rawH);
+  });
+
+  if (!matchedAlias) {
+    return createResult('IRRELEVANT', 'Issuer not mentioned in headline');
+  }
+
+  // --- DISQUALIFYING PATTERNS (Demote to RELATED or IRRELEVANT) ---
+
+  // 1. Adjective / Ecosystem / Platform modifier (e.g. "Microsoft-First", "Microsoft-based", "Microsoft ecosystem")
+  const escapedAlias = matchedAlias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const adjectiveModifierRegex = new RegExp(`\\b${escapedAlias}-(first|based|powered|centric|ready|native|focused|compatible)\\b`, 'i');
+  if (adjectiveModifierRegex.test(rawH)) {
+    // Check if the company is ALSO mentioned as a standalone corporate actor elsewhere in the headline
+    const rawWithoutModifier = rawH.replace(adjectiveModifierRegex, 'MODIFIER_EXCLUDED');
+    const standaloneRegex = new RegExp(`\\b${escapedAlias}\\b`, 'i');
+    if (!standaloneRegex.test(rawWithoutModifier)) {
+      return createResult('RELATED', 'Issuer used only as adjective/ecosystem modifier');
+    }
+  }
+
+  // 2. Third-Party M&A:
+  // e.g. "Quorum Cyber Announces Intent to Acquire Ontinue, Building an Unrivaled Microsoft-First..."
+  // If headline describes Company A acquiring Company B, and tracked issuer is neither A nor B:
+  const maVerbRegex = /\b(announces?\s+intent\s+to\s+acquire|to\s+acquire|acquires|completes?\s+acquisition\s+of|merger\s+with|buys|takeover\s+of)\b/i;
+  const maMatch = rawH.match(maVerbRegex);
+  if (maMatch && typeof maMatch.index === 'number') {
+    const textBeforeVerb = rawH.slice(0, maMatch.index).trim();
+    const textAfterVerb = rawH.slice(maMatch.index + maMatch[0].length).trim();
+
+    const isAcquirer = company.aliases.some(alias => {
+      const reg = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      return reg.test(textBeforeVerb);
+    });
+
+    const isTarget = company.aliases.some(alias => {
+      const reg = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      const immediateTarget = textAfterVerb.split(/[,;]|(?:\b(for|in|building|expanding|creating)\b)/i)[0] || '';
+      return reg.test(immediateTarget);
+    });
+
+    if (!isAcquirer && !isTarget) {
+      return createResult('RELATED', 'Third-party M&A transaction where tracked issuer is not transaction party');
+    }
+  }
+
+  // 3. Awards / Recognition won by another company from tracked company:
+  // e.g. "Sunrise Technologies Achieves Microsoft AI Business Solutions Inner Circle Award"
+  if (/\b(achieves|wins|awarded|named|honored\s+as|selected\s+as|earns)\s+.*?\b(award|partner\s+of\s+the\s+year|recognition|circle|status)\b/i.test(rawH)) {
+    const awardVerbMatch = rawH.match(/\b(achieves|wins|awarded|named|honored\s+as|selected\s+as|earns)\b/i);
+    if (awardVerbMatch && typeof awardVerbMatch.index === 'number') {
+      const textBefore = rawH.slice(0, awardVerbMatch.index).trim();
+      const isAchiever = company.aliases.some(alias => {
+        const reg = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        return reg.test(textBefore);
+      });
+      if (!isAchiever) {
+        return createResult('RELATED', 'Award won by third party in issuer ecosystem');
+      }
+    }
+  }
+
+  // 4. Product integration / support announcement by another company:
+  // e.g. "Cohesity announces a product supporting Microsoft"
+  // "Cohesity launches new data protection for Microsoft 365"
+  if (/\b(announces|launches|unveils|releases|introduces)\s+.*?\b(supporting|for|integrat(?:es?|ing)\s+with|on)\s+.*?\b/i.test(rawH)) {
+    const launchMatch = rawH.match(/\b(announces|launches|unveils|releases|introduces)\b/i);
+    if (launchMatch && typeof launchMatch.index === 'number') {
+      const textBefore = rawH.slice(0, launchMatch.index).trim();
+      const isLauncher = company.aliases.some(alias => {
+        const reg = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        return reg.test(textBefore);
+      });
+      if (!isLauncher) {
+        return createResult('RELATED', 'Third-party product launch supporting tracked issuer');
+      }
+    }
+  }
+
+  // 5. Industry report / survey / study mentioning issuer:
+  // e.g. "MobileSphere report mentions Microsoft ecosystem"
+  if (
+    /\b(report|study|survey|whitepaper|index)\s+(mentions|highlights|examines|cites|tracks)\s+/i.test(rawH) ||
+    /\b(mentions|cites)\s+.*?\b(ecosystem|platform|market)\b/i.test(rawH)
+  ) {
+    return createResult('RELATED', 'Third-party research study or market report mentioning ecosystem');
+  }
+
+  // --- POSITIVE CONFIRMATION OF PRIMARY SUBJECT ---
+
+  // Check if headline starts with the company name or ticker (or with quotation marks)
+  const startsWithIssuerRegex = new RegExp(`^["']?\\s*(?:${company.aliases.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
+  if (startsWithIssuerRegex.test(rawH)) {
+    return createResult('PRIMARY', 'Issuer is leading subject of headline');
+  }
+
+  // Check if company is followed by an active corporate action verb
+  const actionVerbs = '(?:announces|reports|declares|introduces|raises|cuts|names|appoints|enters|partners|agrees|completes|launches|unveils|expands|files|faces|settles|reaches|posts|delivers|initiates)';
+  const issuerActionRegex = new RegExp(`\\b(?:${company.aliases.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s+${actionVerbs}\\b`, 'i');
+  if (issuerActionRegex.test(rawH)) {
+    return createResult('PRIMARY', 'Issuer is active subject performing corporate action');
+  }
+
+  // Check if ticker is formatted as "<Ticker>: <Action>" or "<Company>: <Action>"
+  const colonPrefixRegex = new RegExp(`^["']?\\s*(?:${company.aliases.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*:\\s+`, 'i');
+  if (colonPrefixRegex.test(rawH)) {
+    return createResult('PRIMARY', 'Headline is formatted with issuer as topic prefix');
+  }
+
+  // Check for direct regulatory or judicial action against the issuer (e.g. "FTC sues Microsoft", "DOJ probes Microsoft")
+  const targetActionRegex = new RegExp(`\\b(sues?|probes?|fines?|investigates?|charges?)\\s+(?:${company.aliases.map(a => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
+  if (targetActionRegex.test(rawH)) {
+    return createResult('PRIMARY', 'Issuer is direct target of regulatory or legal action');
+  }
+
+  // Fail closed when uncertain:
+  return createResult('RELATED', 'Uncertain primary subject attribution (fail-closed)');
 }
 
 /**
@@ -261,8 +508,12 @@ export function evaluateTextMateriality(headline: string): {
   if (/\b(reports\s+q\d\s+results|q\d\s+earnings|beats\s+on\s+revenue|misses\s+on\s+revenue|reports\s+loss)\b/i.test(h)) {
     return { category: 'EARNINGS', materiality: 'HIGH' };
   }
-  if (/\b(share\s+repurchase\s+program|buyback\s+authorization|suspends\s+dividend|dividend\s+cut|dividend\s+hike)\b/i.test(h)) {
-    return { category: 'BUYBACK_DIVIDEND', materiality: 'HIGH' };
+  if (
+    /\b(share\s+repurchase\s+program|buyback\s+authorization|suspends?\s+dividend|dividend\s+suspension|dividend\s+(?:cut|hike|increase|raise)|(?:raises?|hikes?|cuts?|increases?)\s+dividend|announces?\s+(?:quarterly\s+)?dividend(?:\s+increase)?|declares?\s+(?:quarterly\s+)?dividend|special\s+dividend)\b/i.test(h)
+  ) {
+    if (!/\b(\$?[a-z]{3,5}\s+monthly\s+distribution|fund\s+distribution|etf\s+distribution)\b/i.test(h)) {
+      return { category: 'BUYBACK_DIVIDEND', materiality: 'HIGH' };
+    }
   }
   if (/\b(ransomware|cybersecurity\s+incident|data\s+breach)\b/i.test(h)) {
     return { category: 'CYBERSECURITY', materiality: 'HIGH' };
@@ -314,12 +565,14 @@ export function generateDedupeFingerprint(
 export function deduplicateEvents(rawEvents: MaterialCompanyEvent[]): MaterialCompanyEvent[] {
   const map = new Map<string, MaterialCompanyEvent>();
 
-  // Source hierarchy weights: SEC (4) > Company IR (3) > Recognized Market (2) > Financial News (1)
+  // Source hierarchy weights: SEC (5) > Company Official / IR (4) > Wire Service (3) > Financial News (2) > Recognized Market (1)
   const authorityRank: Record<MaterialEventSourceAuthority, number> = {
-    AUTHORITATIVE_SEC: 4,
-    COMPANY_PRIMARY_IR: 3,
-    RECOGNIZED_MARKET: 2,
-    REPUTABLE_NEWS: 1,
+    AUTHORITATIVE_SEC: 5,
+    COMPANY_OFFICIAL: 4,
+    COMPANY_PRIMARY_IR: 4,
+    PRESS_RELEASE_WIRE: 3,
+    REPUTABLE_NEWS: 2,
+    RECOGNIZED_MARKET: 1,
   };
 
   for (const event of rawEvents) {
@@ -378,10 +631,12 @@ export function deduplicateRecentNews(rawNews: RecentTrustedNewsItem[]): RecentT
   const map = new Map<string, RecentTrustedNewsItem>();
 
   const authorityRank: Record<MaterialEventSourceAuthority, number> = {
-    AUTHORITATIVE_SEC: 4,
-    COMPANY_PRIMARY_IR: 3,
-    RECOGNIZED_MARKET: 2,
-    REPUTABLE_NEWS: 1,
+    AUTHORITATIVE_SEC: 5,
+    COMPANY_OFFICIAL: 4,
+    COMPANY_PRIMARY_IR: 4,
+    PRESS_RELEASE_WIRE: 3,
+    REPUTABLE_NEWS: 2,
+    RECOGNIZED_MARKET: 1,
   };
 
   for (const item of rawNews) {
@@ -608,10 +863,17 @@ export async function fetchYahooNewsForTicker(
       if (isNoiseHeadline(title)) continue;
 
       // 2. Source trust check
-      const { sourceAuthority, sourceType, isApproved } = classifyPublisher(publisher);
+      const { sourceAuthority, sourceType, isApproved } = classifyPublisher(publisher, link, normTicker);
       if (!isApproved) continue;
 
-      // 3. Freshness check
+      // 3. Primary-Subject Relevance check (Strict deterministic filtering BEFORE materiality)
+      const { relevance } = evaluateCompanyRelevance(title, normTicker, { sourceUrl: link });
+      if (relevance !== 'PRIMARY') {
+        // Only PRIMARY news enters Material Alerts and Recent Trusted News main list
+        continue;
+      }
+
+      // 4. Freshness check
       let publishedAt: string | null = null;
       let isWithinMaterialWindow = false;
 
@@ -631,7 +893,7 @@ export async function fetchYahooNewsForTicker(
         isWithinMaterialWindow = false;
       }
 
-      // 4. Materiality check
+      // 5. Materiality check
       const { category, materiality } = evaluateTextMateriality(title);
 
       const uuid = (item.uuid || '').trim();
@@ -644,6 +906,8 @@ export async function fetchYahooNewsForTicker(
           eventId,
           ticker: normTicker,
           headline: title,
+          originalHeadline: title,
+          relevance: 'PRIMARY',
           factualSummary: `Reported by ${publisher}.`,
           category,
           materiality,
@@ -663,6 +927,8 @@ export async function fetchYahooNewsForTicker(
         id: eventId,
         ticker: normTicker,
         headline: title,
+        originalHeadline: title,
+        relevance: 'PRIMARY',
         publishedAt,
         retrievedAt: new Date(nowMs).toISOString(),
         sourceName: publisher || 'Financial News Wire',
@@ -683,88 +949,189 @@ export async function fetchYahooNewsForTicker(
 }
 
 /**
- * Optional Gemini batch interpretation for candidate material events.
- * AI adds "whyItMatters" / thesis relevance notes without inventing facts or modifying numbers.
+ * Unified batch AI enrichment for visible Material Events and Recent Trusted News.
+ * Enriches with faithful Thai headline, grounded 1-2 sentence summaries, and research perspectives.
+ * Fails gracefully if Gemini is unavailable, never throwing or blocking news retrieval.
  */
-export async function enrichWithAiInterpretation(
+export async function enrichNewsBatchWithAi(
   events: MaterialCompanyEvent[],
+  recentNews: RecentTrustedNewsItem[],
   apiKey = process.env.GEMINI_API_KEY
-): Promise<MaterialCompanyEvent[]> {
-  if (!apiKey || events.length === 0) {
-    return events;
+): Promise<{
+  events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
+}> {
+  // Ensure originalHeadline is preserved on all items
+  const mappedEvents = events.map(e => ({
+    ...e,
+    originalHeadline: e.originalHeadline || e.headline,
+  }));
+  const mappedRecentNews = recentNews.map(n => ({
+    ...n,
+    originalHeadline: n.originalHeadline || n.headline,
+  }));
+
+  if (!apiKey || (mappedEvents.length === 0 && mappedRecentNews.length === 0)) {
+    return { events: mappedEvents, recentNews: mappedRecentNews };
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    // Bounded batch: interpret top 6 candidate events
-    const candidateEvents = events.slice(0, 6);
-    const eventSummaries = candidateEvents.map((e, idx) => (
-      `[Event ${idx + 1}] Ticker: ${e.ticker} | Category: ${e.category} | Source: ${e.sourceName} | Headline: "${e.headline}"`
-    )).join('\n');
 
-    const prompt = `You are Lumina's institutional research intelligence layer.
-Below is a list of verified corporate events retrieved from authoritative SEC filings and trusted business news wires.
-Provide a concise, 1-2 sentence "Why It Matters" explanation for each event from an equity research / fundamental investor perspective.
+    // Deduplicate items to enrich by ID (up to 12 total items: events first, then recentNews)
+    const itemsToEnrich: Array<{
+      id: string;
+      ticker: string;
+      companyName: string;
+      originalHeadline: string;
+      sourceName: string;
+      category: string;
+      snippet?: string;
+    }> = [];
 
-RULES:
-1. Ground strictly in the headline provided. NEVER invent dates, deal values, guidance numbers, executive names, or financial metrics.
-2. If the impact is uncertain, express prudent analyst caution.
-3. Respond in professional language (both English and Thai).
+    const seenIds = new Set<string>();
 
-INPUT EVENTS:
-${eventSummaries}
+    for (const e of mappedEvents) {
+      if (itemsToEnrich.length >= 12) break;
+      if (!seenIds.has(e.eventId)) {
+        seenIds.add(e.eventId);
+        itemsToEnrich.push({
+          id: e.eventId,
+          ticker: e.ticker,
+          companyName: getCanonicalCompany(e.ticker).primaryName,
+          originalHeadline: e.originalHeadline || e.headline,
+          sourceName: e.sourceName,
+          category: e.category,
+          snippet: e.factualSummary,
+        });
+      }
+    }
+
+    for (const n of mappedRecentNews) {
+      if (itemsToEnrich.length >= 12) break;
+      if (!seenIds.has(n.id)) {
+        seenIds.add(n.id);
+        itemsToEnrich.push({
+          id: n.id,
+          ticker: n.ticker,
+          companyName: getCanonicalCompany(n.ticker).primaryName,
+          originalHeadline: n.originalHeadline || n.headline,
+          sourceName: n.sourceName,
+          category: n.category,
+          snippet: n.factualSummary,
+        });
+      }
+    }
+
+    if (itemsToEnrich.length === 0) {
+      return { events: mappedEvents, recentNews: mappedRecentNews };
+    }
+
+    const itemsJson = JSON.stringify(itemsToEnrich, null, 2);
+
+    const prompt = `You are Lumina's institutional equity research news localization and factual summary engine.
+Below is a list of verified corporate news items and regulatory filings for tracked U.S. companies.
+For each item, translate the headline faithfully into concise professional Thai, and generate a grounded, 1-2 sentence factual summary in both Thai and English.
+
+CRITICAL NON-HALLUCINATION RULES:
+1. STRICTLY GROUND IN SUPPLIED EVIDENCE ONLY.
+   - If only the headline is available, the summary must ONLY restate what the headline directly proves.
+   - NEVER invent or estimate: earnings per share (EPS), revenue, profit margins, deal values, merger consideration, dividend record/payment dates, dividend yields, executive quotes, or business outlook.
+   - Return null or a simple factual restatement if evidence is minimal.
+2. TRANSLATION RULES:
+   - Preserve company names (e.g. Microsoft, SoFi, Apple), ticker symbols, numbers, currencies ($), percentages (%), and SEC form designations (Form 8-K, 10-Q, 10-K).
+   - Use high-quality, professional Thai financial language.
+   - Avoid clickbait, sensational, or exaggerated phrasing.
+3. SUMMARY LENGTH: Exactly 1-2 sentences maximum.
+4. If the item is a material corporate event, provide a 1-sentence "whyItMatters" research perspective in Thai and English.
+
+INPUT ITEMS:
+${itemsJson}
 
 OUTPUT FORMAT:
-Respond STRICTLY with a raw JSON array matching this schema:
+Respond STRICTLY with a raw JSON array matching this exact schema:
 [
   {
-    "eventIndex": 1,
-    "whyItMattersEn": "1-2 sentence institutional analysis in English",
-    "whyItMattersTh": "1-2 sentence institutional analysis in Thai"
+    "id": "string (matching input id)",
+    "headlineTh": "faithful Thai translation of headline",
+    "summaryTh": "1-2 sentence grounded Thai summary",
+    "summaryEn": "1-2 sentence grounded English summary",
+    "summaryEvidence": "STRUCTURED_SOURCE" | "SOURCE_SNIPPET" | "HEADLINE_ONLY",
+    "whyItMattersEn": "optional 1-sentence analyst perspective",
+    "whyItMattersTh": "optional 1-sentence analyst perspective in Thai"
   }
 ]`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
         temperature: 0.1,
-      }
+      },
     });
 
     const text = response.text || '';
     const parsed = JSON.parse(text);
 
     if (Array.isArray(parsed)) {
-      const enrichedMap = new Map<number, { whyItMattersEn: string; whyItMattersTh: string }>();
+      const enrichmentMap = new Map<string, any>();
       for (const item of parsed) {
-        if (typeof item?.eventIndex === 'number') {
-          enrichedMap.set(item.eventIndex, {
-            whyItMattersEn: item.whyItMattersEn || '',
-            whyItMattersTh: item.whyItMattersTh || '',
-          });
+        if (item?.id) {
+          enrichmentMap.set(item.id, item);
         }
       }
 
-      return events.map((event, idx) => {
-        const enriched = enrichedMap.get(idx + 1);
+      const finalEvents = mappedEvents.map(event => {
+        const enriched = enrichmentMap.get(event.eventId);
         if (enriched) {
           return {
             ...event,
-            whyItMatters: enriched.whyItMattersEn || undefined,
-            whyItMattersTh: enriched.whyItMattersTh || undefined,
-            interpretationStatus: 'AI_GROUNDED',
+            headlineTh: enriched.headlineTh || undefined,
+            summaryTh: enriched.summaryTh || undefined,
+            summaryEn: enriched.summaryEn || undefined,
+            summaryEvidence: enriched.summaryEvidence || 'HEADLINE_ONLY',
+            whyItMatters: enriched.whyItMattersEn || event.whyItMatters,
+            whyItMattersTh: enriched.whyItMattersTh || event.whyItMattersTh,
+            interpretationStatus: 'AI_GROUNDED' as const,
           };
         }
         return event;
       });
+
+      const finalRecentNews = mappedRecentNews.map(item => {
+        const enriched = enrichmentMap.get(item.id);
+        if (enriched) {
+          return {
+            ...item,
+            headlineTh: enriched.headlineTh || undefined,
+            summaryTh: enriched.summaryTh || undefined,
+            summaryEn: enriched.summaryEn || undefined,
+            summaryEvidence: enriched.summaryEvidence || 'HEADLINE_ONLY',
+          };
+        }
+        return item;
+      });
+
+      return { events: finalEvents, recentNews: finalRecentNews };
     }
   } catch (err) {
-    console.warn('[materialNewsService] AI interpretation skipped or failed, degrading gracefully:', err);
+    console.warn('[materialNewsService] AI news enrichment skipped or failed, degrading gracefully:', err);
   }
 
-  return events;
+  // Graceful degradation: return news with original headlines untouched
+  return { events: mappedEvents, recentNews: mappedRecentNews };
+}
+
+/**
+ * Optional Gemini batch interpretation for candidate material events (backward-compatible alias).
+ */
+export async function enrichWithAiInterpretation(
+  events: MaterialCompanyEvent[],
+  apiKey = process.env.GEMINI_API_KEY
+): Promise<MaterialCompanyEvent[]> {
+  const res = await enrichNewsBatchWithAi(events, [], apiKey);
+  return res.events;
 }
 
 /**
@@ -864,9 +1231,20 @@ export async function getMaterialEventsForTickers(
   // Deduplicate across all returned events
   let finalEvents = deduplicateEvents(resultEvents);
 
-  // Optional AI batch enrichment if requested and enabled
-  if (options.useAi !== false && finalEvents.length > 0) {
-    finalEvents = await enrichWithAiInterpretation(finalEvents);
+  // Recent news: deduplicate, filter against material events, sort, and bound
+  let finalRecentNews = deduplicateRecentNews(resultRecentNews);
+  finalRecentNews = filterRecentNewsAgainstMaterialEvents(finalRecentNews, finalEvents);
+  finalRecentNews = sortRecentNews(finalRecentNews);
+  finalRecentNews = boundRecentNews(finalRecentNews, 5, 25);
+
+  // AI batch enrichment if requested and enabled (single bounded batch call)
+  if (options.useAi !== false && (finalEvents.length > 0 || finalRecentNews.length > 0)) {
+    const enriched = await enrichNewsBatchWithAi(finalEvents, finalRecentNews);
+    finalEvents = enriched.events;
+    finalRecentNews = enriched.recentNews;
+  } else {
+    finalEvents = finalEvents.map(e => ({ ...e, originalHeadline: e.originalHeadline || e.headline }));
+    finalRecentNews = finalRecentNews.map(n => ({ ...n, originalHeadline: n.originalHeadline || n.headline }));
   }
 
   // Sort: Authoritative SEC first, then HIGH > MEDIUM, then newest publication date
@@ -879,12 +1257,6 @@ export async function getMaterialEventsForTickers(
     const timeB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
     return timeB - timeA;
   });
-
-  // Recent news: deduplicate, filter against material events, sort, and bound
-  let finalRecentNews = deduplicateRecentNews(resultRecentNews);
-  finalRecentNews = filterRecentNewsAgainstMaterialEvents(finalRecentNews, finalEvents);
-  finalRecentNews = sortRecentNews(finalRecentNews);
-  finalRecentNews = boundRecentNews(finalRecentNews, 5, 25);
 
   const cacheStatus: 'HIT' | 'MISS' | 'PARTIAL' =
     cacheHits === cleanTickers.length
