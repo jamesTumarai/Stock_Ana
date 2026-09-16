@@ -5,12 +5,14 @@ import {
   MaterialEventMateriality,
   MaterialEventSourceAuthority,
   MaterialEventSourceType,
-  MaterialEventSupportingSource
+  MaterialEventSupportingSource,
+  RecentTrustedNewsItem
 } from '../../src/types';
 import { SecEdgarClient } from '../../src/services/sec/secClient';
 
 export interface NewsFetchResult {
   events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
   requestedSymbols: string[];
   successfulSymbols: string[];
   failedSymbols: string[];
@@ -23,10 +25,13 @@ export interface NewsFetchResult {
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes canonical TTL
-const LOOKBACK_HOURS = 72; // 72 hours bounded lookback
+export const MATERIAL_EVENT_LOOKBACK_HOURS = 72; // 72 hours bounded lookback for Material Alerts
+export const RECENT_NEWS_LOOKBACK_DAYS = 30; // 30 days bounded lookback for Recent Trusted News
+export const RECENT_NEWS_LOOKBACK_HOURS = RECENT_NEWS_LOOKBACK_DAYS * 24; // 720 hours
 
 interface CacheEntry {
   events: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
   cachedAt: number;
 }
 
@@ -47,11 +52,11 @@ export function isNoiseHeadline(headline: string): boolean {
   const h = headline.trim().toLowerCase();
 
   const noisePatterns = [
-    /\bwhy\s+.+\s+(stock\s+)?(moved|is\s+up|is\s+down|surged|fell|dropped|plunged|jumped|rallied|tumbled)\b/i,
-    /\b(stocks?\s+to\s+buy|stocks?\s+to\s+sell|top\s+picks?|best\s+stocks?|picks?\s+for\s+investors)\b/i,
+    /\bwhy\s+.+\s+(stock\s+)?(moved|is\s+up|is\s+down|surged|fell|dropped|plunged|jumped|rallied|tumbled|soaring|crashing|sinking)\b/i,
+    /\b(stocks?\s+to\s+buy|stocks?\s+to\s+sell|top\s+picks?|best\s+stocks?|picks?\s+for\s+investors|stocks?\s+to\s+watch)\b/i,
     /\bhere'?s\s+why\b/i,
     /\bis\s+.+\s+a\s+(buy|sell|good\s+investment)\b/i,
-    /\b\d+\s+reasons\s+to\s+(buy|sell|hold)\b/i,
+    /\b\d+\s+reasons\s+(to\s+(buy|sell|hold)|why|.+is\s+a\s+(buy|sell|screaming\s+buy))\b/i,
     /\b(options?\s+alert|bullish\s+or\s+bearish|bear\s+of\s+the\s+day|bull\s+of\s+the\s+day)\b/i,
     /\b(how\s+to\s+retire|millionaire-maker|retire\s+rich)\b/i,
     /\b(market\s+recap|stock\s+market\s+today|pre-market\s+movers)\b/i,
@@ -69,6 +74,17 @@ export function classifyPublisher(publisher: string): {
   isApproved: boolean;
 } {
   const p = (publisher || '').trim().toLowerCase();
+
+  // Reject unvetted blogs, SEO article farms, and low-quality subsidiaries FIRST
+  // (e.g. 'benzinga insights' must be rejected before broad 'benzinga' match)
+  const rejected = ['motley fool', 'zacks', 'trefis', 'simply wall st', 'investorplace', 'tipranks', 'benzinga insights'];
+  if (rejected.some(r => p.includes(r))) {
+    return {
+      sourceAuthority: 'REPUTABLE_NEWS',
+      sourceType: 'FINANCIAL_NEWS',
+      isApproved: false,
+    };
+  }
 
   // Tier 2: Company Primary / Investor Relations Wire Services
   const irWires = ['pr newswire', 'business wire', 'globenewswire', 'accesswire', 'investor relations'];
@@ -110,16 +126,6 @@ export function classifyPublisher(publisher: string): {
       sourceAuthority: 'RECOGNIZED_MARKET',
       sourceType: 'MARKET_EXCHANGE',
       isApproved: true,
-    };
-  }
-
-  // Reject unvetted blogs and SEO article farms
-  const rejected = ['motley fool', 'zacks', 'trefis', 'simply wall st', 'investorplace', 'tipranks', 'benzinga insights'];
-  if (rejected.some(r => p.includes(r))) {
-    return {
-      sourceAuthority: 'REPUTABLE_NEWS',
-      sourceType: 'FINANCIAL_NEWS',
-      isApproved: false,
     };
   }
 
@@ -269,7 +275,7 @@ export function evaluateTextMateriality(headline: string): {
   }
 
   // Medium materiality indicators
-  if (/\b(partners?\s+with|partnership|announces\s+collaboration|new\s+product|expands\s+into)\b/i.test(h)) {
+  if (/\b(partners?(?:\s+with|\s+to)?|partnership|announces\s+collaboration|new\s+product|launches|expands\s+into)\b/i.test(h)) {
     return { category: 'PRODUCT', materiality: 'MEDIUM' };
   }
   if (/\b(analyst\s+upgrades?|analyst\s+downgrades?|price\s+target\s+raised|price\s+target\s+cut)\b/i.test(h)) {
@@ -366,28 +372,128 @@ export function deduplicateEvents(rawEvents: MaterialCompanyEvent[]): MaterialCo
 }
 
 /**
+ * Collapses duplicate and syndicated articles into a single logical RecentTrustedNewsItem.
+ */
+export function deduplicateRecentNews(rawNews: RecentTrustedNewsItem[]): RecentTrustedNewsItem[] {
+  const map = new Map<string, RecentTrustedNewsItem>();
+
+  const authorityRank: Record<MaterialEventSourceAuthority, number> = {
+    AUTHORITATIVE_SEC: 4,
+    COMPANY_PRIMARY_IR: 3,
+    RECOGNIZED_MARKET: 2,
+    REPUTABLE_NEWS: 1,
+  };
+
+  for (const item of rawNews) {
+    const key = item.dedupeFingerprint;
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, item);
+    } else {
+      const existingRank = authorityRank[existing.sourceAuthority] || 0;
+      const newRank = authorityRank[item.sourceAuthority] || 0;
+      if (newRank > existingRank) {
+        map.set(key, item);
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+/**
+ * Filters out recent news items that are already represented in material events
+ * to avoid duplicate items being displayed in the news view.
+ */
+export function filterRecentNewsAgainstMaterialEvents(
+  recentNews: RecentTrustedNewsItem[],
+  materialEvents: MaterialCompanyEvent[]
+): RecentTrustedNewsItem[] {
+  const materialFingerprints = new Set(materialEvents.map(e => e.dedupeFingerprint));
+  const materialUrls = new Set(materialEvents.map(e => e.sourceUrl).filter(Boolean));
+  const materialEventIds = new Set(materialEvents.map(e => e.eventId));
+
+  return recentNews.filter(news => {
+    if (materialFingerprints.has(news.dedupeFingerprint)) return false;
+    if (news.sourceUrl && materialUrls.has(news.sourceUrl)) return false;
+    if (materialEventIds.has(news.id)) return false;
+
+    const normNewsHeadline = news.headline.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+    const matchesHeadline = materialEvents.some(
+      m => m.ticker === news.ticker && m.headline.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim() === normNewsHeadline
+    );
+    if (matchesHeadline) return false;
+
+    return true;
+  });
+}
+
+/**
+ * Sorts recent news items: descending by publication date, with undated items sorted last.
+ */
+export function sortRecentNews(items: RecentTrustedNewsItem[]): RecentTrustedNewsItem[] {
+  return [...items].sort((a, b) => {
+    if (!a.publishedAt && !b.publishedAt) return 0;
+    if (!a.publishedAt) return 1;
+    if (!b.publishedAt) return -1;
+    const timeA = new Date(a.publishedAt).getTime();
+    const timeB = new Date(b.publishedAt).getTime();
+    return timeB - timeA;
+  });
+}
+
+/**
+ * Bounds recent news items per ticker (default max 5) and total (default max 25).
+ */
+export function boundRecentNews(
+  items: RecentTrustedNewsItem[],
+  maxPerTicker = 5,
+  totalMax = 25
+): RecentTrustedNewsItem[] {
+  const tickerCounts = new Map<string, number>();
+  const bounded: RecentTrustedNewsItem[] = [];
+
+  for (const item of items) {
+    const count = tickerCounts.get(item.ticker) || 0;
+    if (count < maxPerTicker) {
+      tickerCounts.set(item.ticker, count + 1);
+      bounded.push(item);
+      if (bounded.length >= totalMax) break;
+    }
+  }
+
+  return bounded;
+}
+
+/**
  * Fetches recent SEC 8-K filings for a single ticker via SecEdgarClient.
  */
 export async function fetchSecEventsForTicker(
   ticker: string,
   client?: SecEdgarClient,
   nowMs = Date.now()
-): Promise<MaterialCompanyEvent[]> {
+): Promise<{
+  materialEvents: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
+}> {
   const normTicker = normalizeTicker(ticker);
-  if (!normTicker) return [];
+  if (!normTicker) return { materialEvents: [], recentNews: [] };
 
   const secClient = client || new SecEdgarClient();
-  const events: MaterialCompanyEvent[] = [];
+  const materialEvents: MaterialCompanyEvent[] = [];
+  const recentNews: RecentTrustedNewsItem[] = [];
 
   try {
     const identity = await secClient.resolveTicker(normTicker);
-    if (!identity) return [];
+    if (!identity) return { materialEvents: [], recentNews: [] };
 
     const submissions = await secClient.fetchSubmissions(identity.cik);
     const recent = submissions.filings?.recent;
-    if (!recent || !Array.isArray(recent.form)) return [];
+    if (!recent || !Array.isArray(recent.form)) return { materialEvents: [], recentNews: [] };
 
-    const cutoffMs = nowMs - LOOKBACK_HOURS * 3600 * 1000;
+    const materialCutoffMs = nowMs - MATERIAL_EVENT_LOOKBACK_HOURS * 3600 * 1000;
+    const recentCutoffMs = nowMs - RECENT_NEWS_LOOKBACK_HOURS * 3600 * 1000;
     const len = recent.form.length;
 
     for (let i = 0; i < Math.min(len, 30); i++) {
@@ -398,7 +504,7 @@ export async function fetchSecEventsForTicker(
       const filingDateStr = typeof rawDate === 'string' ? rawDate : null;
       if (!filingDateStr) continue;
       const filingDateMs = new Date(filingDateStr).getTime();
-      if (isNaN(filingDateMs) || filingDateMs < cutoffMs) continue;
+      if (isNaN(filingDateMs) || filingDateMs < recentCutoffMs) continue;
 
       const accession = recent.accessionNumber?.[i] as string;
       const primaryDoc = recent.primaryDocument?.[i] as string;
@@ -414,31 +520,50 @@ export async function fetchSecEventsForTicker(
       const headline = `${normTicker} Form 8-K: ${itemsStr ? `Item ${itemsStr}` : 'Current Report'}`;
       const dedupeFingerprint = `sec_${normTicker}_${accession}`;
 
-      events.push({
-        eventId,
-        ticker: normTicker,
-        headline,
-        factualSummary: summary,
-        category,
-        materiality,
-        publishedAt,
-        retrievedAt: new Date(nowMs).toISOString(),
-        sourceName: 'U.S. SEC EDGAR',
-        sourceUrl,
-        sourceType: 'SEC_EDGAR',
-        sourceAuthority: 'AUTHORITATIVE_SEC',
-        sourceDocumentId: accession,
-        secAccession: accession,
-        provenanceStatus: 'sec_verified',
-        dedupeFingerprint,
-        interpretationStatus: 'DETERMINISTIC_ONLY',
-      });
+      if (filingDateMs >= materialCutoffMs) {
+        materialEvents.push({
+          eventId,
+          ticker: normTicker,
+          headline,
+          factualSummary: summary,
+          category,
+          materiality,
+          publishedAt,
+          retrievedAt: new Date(nowMs).toISOString(),
+          sourceName: 'U.S. SEC EDGAR',
+          sourceUrl,
+          sourceType: 'SEC_EDGAR',
+          sourceAuthority: 'AUTHORITATIVE_SEC',
+          sourceDocumentId: accession,
+          secAccession: accession,
+          provenanceStatus: 'sec_verified',
+          dedupeFingerprint,
+          interpretationStatus: 'DETERMINISTIC_ONLY',
+        });
+      } else {
+        // Filings between 72 hours and 30 days are informational recent news (not alerts)
+        recentNews.push({
+          id: eventId,
+          ticker: normTicker,
+          headline,
+          publishedAt,
+          retrievedAt: new Date(nowMs).toISOString(),
+          sourceName: 'U.S. SEC EDGAR',
+          sourceUrl,
+          sourceType: 'SEC_EDGAR',
+          sourceAuthority: 'AUTHORITATIVE_SEC',
+          category,
+          materiality,
+          factualSummary: summary,
+          dedupeFingerprint,
+        });
+      }
     }
   } catch (err) {
     console.warn(`[materialNewsService] SEC fetch error for ${normTicker}:`, (err as any)?.message || err);
   }
 
-  return events;
+  return { materialEvents, recentNews };
 }
 
 /**
@@ -448,21 +573,27 @@ export async function fetchYahooNewsForTicker(
   ticker: string,
   fetchImpl: typeof fetch = fetch,
   nowMs = Date.now()
-): Promise<MaterialCompanyEvent[]> {
+): Promise<{
+  materialEvents: MaterialCompanyEvent[];
+  recentNews: RecentTrustedNewsItem[];
+}> {
   const normTicker = normalizeTicker(ticker);
-  if (!normTicker) return [];
+  if (!normTicker) return { materialEvents: [], recentNews: [] };
 
-  const events: MaterialCompanyEvent[] = [];
-  const cutoffMs = nowMs - LOOKBACK_HOURS * 3600 * 1000;
+  const materialEvents: MaterialCompanyEvent[] = [];
+  const recentNews: RecentTrustedNewsItem[] = [];
+
+  const materialCutoffMs = nowMs - MATERIAL_EVENT_LOOKBACK_HOURS * 3600 * 1000;
+  const recentCutoffMs = nowMs - RECENT_NEWS_LOOKBACK_HOURS * 3600 * 1000;
 
   try {
-    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(normTicker)}&newsCount=10`;
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(normTicker)}&newsCount=20`;
     const res = await fetchImpl(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
       signal: AbortSignal.timeout(4500),
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) return { materialEvents: [], recentNews: [] };
 
     const json: any = await res.json();
     const newsItems = Array.isArray(json?.news) ? json.news : [];
@@ -482,42 +613,73 @@ export async function fetchYahooNewsForTicker(
 
       // 3. Freshness check
       let publishedAt: string | null = null;
+      let isWithinMaterialWindow = false;
+
       if (publishSec !== null) {
         const publishMs = publishSec * 1000;
-        if (publishMs < cutoffMs) continue; // older than 72 hours
+        if (publishMs < recentCutoffMs) {
+          // Discard if older than 30 days
+          continue;
+        }
         publishedAt = new Date(publishMs).toISOString();
+        if (publishMs >= materialCutoffMs) {
+          isWithinMaterialWindow = true;
+        }
+      } else {
+        // Unknown publish time: never replace with Date.now()
+        publishedAt = null;
+        isWithinMaterialWindow = false;
       }
 
       // 4. Materiality check
       const { category, materiality } = evaluateTextMateriality(title);
-      if (materiality === 'LOW') continue; // Filter out low materiality routine items
 
       const uuid = (item.uuid || '').trim();
       const dedupeFingerprint = generateDedupeFingerprint(normTicker, title, publishedAt);
       const eventId = uuid ? `news_${normTicker}_${uuid}` : `news_${normTicker}_${dedupeFingerprint}`;
 
-      events.push({
-        eventId,
+      // Only qualify for Material Alert if within 72 hours AND materiality !== 'LOW'
+      if (isWithinMaterialWindow && materiality !== 'LOW') {
+        materialEvents.push({
+          eventId,
+          ticker: normTicker,
+          headline: title,
+          factualSummary: `Reported by ${publisher}.`,
+          category,
+          materiality,
+          publishedAt,
+          retrievedAt: new Date(nowMs).toISOString(),
+          sourceName: publisher || 'Financial News Wire',
+          sourceUrl: link || undefined,
+          sourceType,
+          sourceAuthority,
+          dedupeFingerprint,
+          interpretationStatus: 'DETERMINISTIC_ONLY',
+        });
+      }
+
+      // All trusted non-noise headlines within 30 days qualify for Recent Trusted News (regardless of materiality)
+      recentNews.push({
+        id: eventId,
         ticker: normTicker,
         headline: title,
-        factualSummary: `Reported by ${publisher}.`,
-        category,
-        materiality,
         publishedAt,
         retrievedAt: new Date(nowMs).toISOString(),
         sourceName: publisher || 'Financial News Wire',
         sourceUrl: link || undefined,
         sourceType,
         sourceAuthority,
+        category,
+        materiality,
+        factualSummary: `Reported by ${publisher}.`,
         dedupeFingerprint,
-        interpretationStatus: 'DETERMINISTIC_ONLY',
       });
     }
   } catch (err) {
     console.warn(`[materialNewsService] Yahoo news fetch error for ${normTicker}:`, err);
   }
 
-  return events;
+  return { materialEvents, recentNews };
 }
 
 /**
@@ -626,6 +788,7 @@ export async function getMaterialEventsForTickers(
   if (cleanTickers.length === 0) {
     return {
       events: [],
+      recentNews: [],
       requestedSymbols: [],
       successfulSymbols: [],
       failedSymbols: [],
@@ -636,6 +799,7 @@ export async function getMaterialEventsForTickers(
   }
 
   const resultEvents: MaterialCompanyEvent[] = [];
+  const resultRecentNews: RecentTrustedNewsItem[] = [];
   const successfulSymbols: string[] = [];
   const failedSymbols: string[] = [];
   let cacheHits = 0;
@@ -648,6 +812,7 @@ export async function getMaterialEventsForTickers(
       const entry = memoryCache.get(ticker)!;
       if (nowMs - entry.cachedAt < CACHE_TTL_MS) {
         resultEvents.push(...entry.events);
+        resultRecentNews.push(...entry.recentNews);
         successfulSymbols.push(ticker);
         cacheHits++;
         continue;
@@ -662,27 +827,32 @@ export async function getMaterialEventsForTickers(
   if (symbolsToFetch.length > 0) {
     await Promise.all(symbolsToFetch.map(async (sym) => {
       try {
-        const [secEvents, newsEvents] = await Promise.all([
+        const [secRes, newsRes] = await Promise.all([
           fetchSecEventsForTicker(sym, options.secClient, nowMs).catch(() => {
             secStatus = 'PARTIAL';
-            return [];
+            return { materialEvents: [], recentNews: [] };
           }),
           fetchYahooNewsForTicker(sym, options.fetchImpl, nowMs).catch(() => {
             newsStatus = 'PARTIAL';
-            return [];
+            return { materialEvents: [], recentNews: [] };
           }),
         ]);
 
-        const combined = [...secEvents, ...newsEvents];
-        const deduplicated = deduplicateEvents(combined);
+        const combinedEvents = [...secRes.materialEvents, ...newsRes.materialEvents];
+        const deduplicatedEvents = deduplicateEvents(combinedEvents);
+
+        const combinedRecentNews = [...secRes.recentNews, ...newsRes.recentNews];
+        const deduplicatedRecentNews = deduplicateRecentNews(combinedRecentNews);
 
         // Update in-memory cache
         memoryCache.set(sym, {
-          events: deduplicated,
+          events: deduplicatedEvents,
+          recentNews: deduplicatedRecentNews,
           cachedAt: nowMs,
         });
 
-        resultEvents.push(...deduplicated);
+        resultEvents.push(...deduplicatedEvents);
+        resultRecentNews.push(...deduplicatedRecentNews);
         successfulSymbols.push(sym);
       } catch (err) {
         console.error(`[materialNewsService] Failed to process events for ${sym}:`, err);
@@ -710,6 +880,12 @@ export async function getMaterialEventsForTickers(
     return timeB - timeA;
   });
 
+  // Recent news: deduplicate, filter against material events, sort, and bound
+  let finalRecentNews = deduplicateRecentNews(resultRecentNews);
+  finalRecentNews = filterRecentNewsAgainstMaterialEvents(finalRecentNews, finalEvents);
+  finalRecentNews = sortRecentNews(finalRecentNews);
+  finalRecentNews = boundRecentNews(finalRecentNews, 5, 25);
+
   const cacheStatus: 'HIT' | 'MISS' | 'PARTIAL' =
     cacheHits === cleanTickers.length
       ? 'HIT'
@@ -719,6 +895,7 @@ export async function getMaterialEventsForTickers(
 
   return {
     events: finalEvents,
+    recentNews: finalRecentNews,
     requestedSymbols: cleanTickers,
     successfulSymbols,
     failedSymbols,

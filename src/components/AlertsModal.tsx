@@ -5,7 +5,7 @@ import {
   Settings, ExternalLink, ArrowRight, Check, WalletCards,
   RefreshCw, Newspaper, Sparkles, Building2, ChevronDown, ChevronUp, RotateCcw
 } from 'lucide-react';
-import { MonitoringAlert, MonitoringPreferences } from '../types';
+import { MonitoringAlert, MonitoringPreferences, RecentTrustedNewsItem } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { CompanyLogo } from './CompanyLogo';
 import { DEFAULT_MONITORING_PREFERENCES } from '../utils/monitoringEngine';
@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void;
   isThai: boolean;
   alerts: MonitoringAlert[];
+  recentNews?: RecentTrustedNewsItem[];
   preferences: MonitoringPreferences;
   onUpdatePreferences: (prefs: MonitoringPreferences) => void;
   onMarkAsRead: (alertId: string) => void;
@@ -24,6 +25,7 @@ interface Props {
   isNewsRefreshing?: boolean;
   lastNewsCheckedAt?: number | null;
   newsError?: string | null;
+  initialFilterType?: string;
 }
 
 export function AlertsModal({
@@ -31,6 +33,7 @@ export function AlertsModal({
   onClose,
   isThai,
   alerts,
+  recentNews = [],
   preferences,
   onUpdatePreferences,
   onMarkAsRead,
@@ -39,9 +42,10 @@ export function AlertsModal({
   onRefreshNews,
   isNewsRefreshing = false,
   lastNewsCheckedAt,
-  newsError
+  newsError,
+  initialFilterType = 'all'
 }: Props) {
-  const [filterType, setFilterType] = useState<string>('all');
+  const [filterType, setFilterType] = useState<string>(initialFilterType);
   const [showSettings, setShowSettings] = useState(false);
   const [expandedSupportingSources, setExpandedSupportingSources] = useState<Record<string, boolean>>({});
 
@@ -145,6 +149,85 @@ export function AlertsModal({
       ...prev,
       [alertId]: !prev[alertId]
     }));
+  };
+
+  const renderRecentNewsCard = (item: RecentTrustedNewsItem, index: number) => {
+    const isSec = item.sourceType === 'SEC_EDGAR';
+    const isCompanyIr = item.sourceAuthority === 'COMPANY_PRIMARY_IR';
+
+    return (
+      <motion.div
+        key={item.id}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.18 }}
+        className="p-3.5 sm:p-4 rounded-2xl border border-stone-200/80 bg-white hover:border-emerald-300 hover:shadow-2xs transition-all flex flex-col gap-2 relative text-left"
+      >
+        {/* Top Header Row */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <CompanyLogo ticker={item.ticker} className="w-5 h-5" />
+            <span className="font-mono font-bold text-xs text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md">
+              {item.ticker}
+            </span>
+
+            {/* Category Tag */}
+            <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 font-mono">
+              {item.category.replace(/_/g, ' ')}
+            </span>
+
+            {/* Source Provenance Tag */}
+            <span className="text-[10px] font-medium">
+              {isSec ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200/60">
+                  <span>SEC EDGAR</span>
+                </span>
+              ) : isCompanyIr ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200/60">
+                  <Building2 className="w-3 h-3" />
+                  <span>Company IR</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-medium">
+                  {item.sourceName}
+                </span>
+              )}
+            </span>
+          </div>
+
+          <span className="text-[10px] text-stone-400 font-mono">
+            {formatPublishedTime(item.publishedAt)}
+          </span>
+        </div>
+
+        {/* Headline */}
+        <h5 className="text-xs sm:text-sm font-bold text-stone-800 leading-snug font-['Prompt','Mitr','Nunito',sans-serif]">
+          {item.headline}
+        </h5>
+
+        {/* Optional Factual Summary */}
+        {item.factualSummary && item.factualSummary !== `Reported by ${item.sourceName}.` && (
+          <p className="text-[11px] text-stone-600 leading-relaxed font-sans">
+            {item.factualSummary}
+          </p>
+        )}
+
+        {/* External Link */}
+        {item.sourceUrl && (
+          <div className="pt-0.5 flex items-center justify-end">
+            <a
+              href={item.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0b5a4b] hover:text-[#084337] hover:underline cursor-pointer"
+            >
+              <span>{isThai ? 'เปิดแหล่งข่าว' : 'Open Source'}</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+      </motion.div>
+    );
   };
 
   return (
@@ -428,27 +511,94 @@ export function AlertsModal({
           className="no-scrollbar flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 flex flex-col gap-3"
         >
           {filteredAlerts.length === 0 ? (
-            <div className="py-16 flex flex-col items-center justify-center text-center">
-              <div className="w-14 h-14 rounded-full bg-emerald-50 text-[#0b5a4b] flex items-center justify-center mb-3">
-                <CheckCircle2 className="w-7 h-7" />
+            filterType === 'news' ? (
+              newsError ? (
+                /* Case D — Provider Failure */
+                <div className="py-12 flex flex-col items-center justify-center text-center">
+                  <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+                    <AlertTriangle className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-base font-bold text-stone-800 font-['Prompt','Mitr','Nunito',sans-serif]">
+                    {isThai ? 'ไม่สามารถดึงข้อมูลข่าวและเหตุการณ์ได้ในขณะนี้' : 'Failed to Retrieve Recent News'}
+                  </h4>
+                  <p className="text-xs text-stone-500 mt-1 max-w-sm leading-relaxed">
+                    {isThai
+                      ? 'เกิดข้อผิดพลาดในการเชื่อมต่อกับแหล่งข้อมูลข่าว กรุณากดลองใหม่อีกครั้ง'
+                      : 'An error occurred while connecting to news providers. Please retry.'}
+                  </p>
+                  {onRefreshNews && (
+                    <button
+                      type="button"
+                      onClick={onRefreshNews}
+                      className="mt-3 px-3.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer transition-colors"
+                    >
+                      {isThai ? 'ลองใหม่อีกครั้ง' : 'Retry Now'}
+                    </button>
+                  )}
+                </div>
+              ) : recentNews.length > 0 ? (
+                /* Case B — No Material Events, Recent Trusted News Exists */
+                <div className="flex flex-col gap-3">
+                  <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-emerald-900 font-['Prompt','Mitr','Nunito',sans-serif]">
+                        {isThai ? '✓ ไม่มีเหตุการณ์สำคัญใน 72 ชั่วโมงล่าสุด' : '✓ No material events in the last 72 hours'}
+                      </h4>
+                      <p className="text-[11px] text-emerald-700/90 mt-0.5 leading-relaxed">
+                        {isThai
+                          ? 'แต่พบข่าวล่าสุดจากแหล่งข้อมูลที่เชื่อถือได้สำหรับหุ้นที่คุณติดตาม (บริบททั่วไป ไม่สร้างการแจ้งเตือน)'
+                          : 'However, recent trusted headlines were found for your tracked companies (informational context only, not alerts).'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 pb-1 text-xs font-bold text-stone-700">
+                    <Newspaper className="w-3.5 h-3.5 text-stone-500" />
+                    <span>{isThai ? 'ข่าวล่าสุดจากแหล่งที่เชื่อถือได้' : 'Recent Trusted News'}</span>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5">
+                    {recentNews.map(renderRecentNewsCard)}
+                  </div>
+                </div>
+              ) : (
+                /* Case C — No Material Events and No Recent News */
+                <div className="py-16 flex flex-col items-center justify-center text-center">
+                  <div className="w-14 h-14 rounded-full bg-stone-100 text-stone-500 flex items-center justify-center mb-3">
+                    <Newspaper className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-base font-bold text-stone-800 font-['Prompt','Mitr','Nunito',sans-serif]">
+                    {isThai ? 'ไม่พบเหตุการณ์สำคัญล่าสุด' : 'No Material Recent Events Found'}
+                  </h4>
+                  <p className="text-xs text-stone-500 mt-1 max-w-sm leading-relaxed">
+                    {isThai
+                      ? 'ไม่พบข่าวล่าสุดจากแหล่งที่ผ่านเกณฑ์ในช่วง 30 วันที่ตรวจสอบ'
+                      : 'No trusted recent headlines found in the 30-day review window.'}
+                  </p>
+                </div>
+              )
+            ) : (
+              /* Non-news standard empty state */
+              <div className="py-16 flex flex-col items-center justify-center text-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-50 text-[#0b5a4b] flex items-center justify-center mb-3">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <h4 className="text-base font-bold text-stone-800 font-['Prompt','Mitr','Nunito',sans-serif]">
+                  {isThai ? 'ไม่มีการแจ้งเตือนที่ตรงเงื่อนไข' : 'No Active Alerts Found'}
+                </h4>
+                <p className="text-xs text-stone-400 mt-1 max-w-sm leading-relaxed">
+                  {isThai
+                    ? 'หุ้นทั้งหมดในรายการติดตามและพอร์ตยังอยู่ในเกณฑ์ปกติ ไม่มีเหตุการณ์ที่ละเมิดเกณฑ์ความเสี่ยง'
+                    : 'All tracked watchlist & portfolio assets are currently within normal baseline parameters.'}
+                </p>
               </div>
-              <h4 className="text-base font-bold text-stone-800 font-['Prompt','Mitr','Nunito',sans-serif]">
-                {filterType === 'news'
-                  ? (isThai ? 'ไม่พบข่าวหรือเหตุการณ์สำคัญล่าสุด' : 'No Material Recent Events Found')
-                  : (isThai ? 'ไม่มีการแจ้งเตือนที่ตรงเงื่อนไข' : 'No Active Alerts Found')}
-              </h4>
-              <p className="text-xs text-stone-400 mt-1 max-w-sm leading-relaxed">
-                {filterType === 'news'
-                  ? (isThai
-                      ? 'ระบบตรวจหุ้นที่ติดตามจากแหล่งข้อมูลที่กำหนดแล้ว ข่าวทั่วไปและข้อมูลซ้ำจะถูกกรองออก'
-                      : 'Tracked companies were checked against approved sources. Routine and duplicate headlines are filtered out.')
-                  : (isThai
-                      ? 'หุ้นทั้งหมดในรายการติดตามและพอร์ตยังอยู่ในเกณฑ์ปกติ ไม่มีเหตุการณ์ที่ละเมิดเกณฑ์ความเสี่ยง'
-                      : 'All tracked watchlist & portfolio assets are currently within normal baseline parameters.')}
-              </p>
-            </div>
+            )
           ) : (
-            filteredAlerts.map((alert, index) => {
+            <>
+              {filteredAlerts.map((alert, index) => {
               const style = getSeverityStyle(alert.severity);
               const isNewsAlert = alert.type === 'NEWS_MATERIAL_EVENT';
 
@@ -785,8 +935,29 @@ export function AlertsModal({
                   )}
                 </motion.div>
               );
-            })
-          )}
+            })}
+
+            {/* Case A — Additional Recent News when Material Events exist */}
+            {filterType === 'news' && recentNews.length > 0 && (
+              <div className="pt-4 pb-2 flex flex-col gap-2.5">
+                <div className="flex items-center gap-2 pt-2 border-t border-stone-200/80">
+                  <Newspaper className="w-3.5 h-3.5 text-stone-500" />
+                  <span className="text-xs font-bold text-stone-700">
+                    {isThai ? 'ข่าวล่าสุดเพิ่มเติมจากแหล่งที่เชื่อถือได้' : 'Additional Recent Trusted News'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-400 -mt-1 leading-relaxed">
+                  {isThai
+                    ? 'ข่าวสารและบริบททั่วไปที่ผ่านการคัดกรองความน่าเชื่อถือ (ไม่นับเป็นเหตุการณ์สำคัญ)'
+                    : 'Contextual headlines from approved sources (informational only, not alerts)'}
+                </p>
+                <div className="flex flex-col gap-2.5 mt-0.5">
+                  {recentNews.map(renderRecentNewsCard)}
+                </div>
+              </div>
+            )}
+          </>
+        )}
         </motion.div>
       </motion.div>
     </motion.div>

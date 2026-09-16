@@ -1487,6 +1487,22 @@ export interface MaterialCompanyEvent {
   portfolioContext?: MaterialEventPortfolioContext;
 }
 
+export interface RecentTrustedNewsItem {
+  id: string;
+  ticker: string;
+  headline: string;
+  publishedAt: string | null;
+  retrievedAt: string;
+  sourceName: string;
+  sourceUrl?: string;
+  sourceType: MaterialEventSourceType;
+  sourceAuthority: MaterialEventSourceAuthority;
+  category: MaterialEventCategory;
+  materiality: MaterialEventMateriality;
+  factualSummary?: string;
+  dedupeFingerprint?: string;
+}
+
 export interface MonitoringAlert {
   id: string; // Unique deduplication key: `${ticker}-${type}-${dateKey}`
   ticker: string;
