@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module';
+import path from 'node:path';
+import fs from 'node:fs';
 // Statically import core server dependencies so Vercel NFT bundles them into the lambda
 import 'express';
 import 'firebase-admin/app';
@@ -15,18 +17,39 @@ let liveQuotesHandler;
 let materialEventsHandler;
 
 function loadModule(distPath, srcPath, requiredExport) {
+  let primaryErr = null;
   try {
     const mod = require(distPath);
-    if (requiredExport && !mod[requiredExport] && srcPath) {
-      return require(srcPath);
+    if (!requiredExport || mod[requiredExport]) {
+      return mod;
     }
-    return mod;
   } catch (err) {
-    if (err && err.code === 'MODULE_NOT_FOUND' && srcPath) {
-      return require(srcPath);
-    }
-    throw err;
+    primaryErr = err;
   }
+
+  try {
+    const cwdDistPath = path.resolve(process.cwd(), 'dist', path.basename(distPath));
+    if (fs.existsSync(cwdDistPath)) {
+      const mod = require(cwdDistPath);
+      if (!requiredExport || mod[requiredExport]) {
+        return mod;
+      }
+    }
+  } catch {
+    // continue
+  }
+
+  if (process.env.NODE_ENV !== 'production' && srcPath) {
+    try {
+      return require(srcPath);
+    } catch {
+      // ignore
+    }
+  }
+
+  console.error(`[api/index] Failed to load module ${distPath} (requiredExport: ${requiredExport}):`, primaryErr);
+  if (primaryErr) throw primaryErr;
+  throw new Error(`Module ${distPath} does not export ${requiredExport}`);
 }
 
 export const config = {
