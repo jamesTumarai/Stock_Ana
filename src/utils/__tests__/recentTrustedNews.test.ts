@@ -458,7 +458,7 @@ describe('Recent Trusted News & Material Alerts Architecture', () => {
       // 1. Publisher check
       const pubClassification = classifyPublisher(sofiFixture.publisher);
       assert.equal(pubClassification.isApproved, true);
-      assert.equal(pubClassification.sourceAuthority, 'COMPANY_PRIMARY_IR');
+      assert.equal(pubClassification.sourceAuthority, 'PRESS_RELEASE_WIRE');
 
       // 2. Noise check
       assert.equal(isNoiseHeadline(sofiFixture.headline), false);
@@ -484,7 +484,7 @@ describe('Recent Trusted News & Material Alerts Architecture', () => {
         publishedAt: sofiFixture.publishedAt,
         retrievedAt: new Date().toISOString(),
         sourceName: sofiFixture.publisher,
-        sourceType: 'COMPANY_IR',
+        sourceType: 'WIRE_SERVICE',
         sourceAuthority: pubClassification.sourceAuthority,
         sourceUrl: sofiFixture.sourceUrl,
         category,
@@ -508,7 +508,7 @@ describe('Recent Trusted News & Material Alerts Architecture', () => {
 
       assert.equal(alerts.length, 0, 'SOFI recent news must NOT inflate alert count');
       assert.equal(recentItem.ticker, 'SOFI');
-      assert.equal(recentItem.sourceAuthority, 'COMPANY_PRIMARY_IR');
+      assert.equal(recentItem.sourceAuthority, 'PRESS_RELEASE_WIRE');
       assert.ok(recentItem.sourceUrl.includes('businesswire.com'));
     });
   });

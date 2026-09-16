@@ -190,6 +190,8 @@ export default function App() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isPortfolioOpen, setIsPortfolioOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [alertsInitialScope, setAlertsInitialScope] = useState<'all' | 'watchlist' | 'portfolio'>('all');
+  const [alertsInitialTicker, setAlertsInitialTicker] = useState<string | undefined>(undefined);
   const [historyReports, setHistoryReports] = useState<any[]>([]);
   const [monitoringPreferences, setMonitoringPreferences] = useState(() => loadMonitoringPreferences(user?.uid));
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(() => loadReadAlertIds(user?.uid));
@@ -462,6 +464,21 @@ export default function App() {
     const allIds = new Set(alerts.map(a => a.id));
     setReadAlertIds(allIds);
     saveReadAlertIds(allIds, user?.uid);
+  };
+
+  const watchlistSymbols = React.useMemo(() => {
+    return loadLocalWatchlist(user?.uid);
+  }, [user?.uid, isPortfolioOpen, portfolioRevision]);
+
+  const portfolioSymbols = React.useMemo(() => {
+    const portfolio = loadLocalPortfolio(user?.uid);
+    return portfolio.map(h => h.ticker.toUpperCase().trim()).filter(Boolean);
+  }, [user?.uid, isPortfolioOpen, portfolioRevision]);
+
+  const openAlertsModal = (scope: 'all' | 'watchlist' | 'portfolio' = 'all', targetTicker?: string) => {
+    setAlertsInitialScope(scope);
+    setAlertsInitialTicker(targetTicker);
+    setIsAlertsOpen(true);
   };
 
   // $100M Motion Intro State
@@ -1021,6 +1038,9 @@ export default function App() {
             latestReports={reportsByTicker}
             historyReports={historyReports}
             alerts={alerts}
+            onOpenNewsForTicker={(tick, scope) => {
+              openAlertsModal(scope, tick);
+            }}
           />
         )}
       </AnimatePresence>
@@ -1030,7 +1050,11 @@ export default function App() {
         {isAlertsOpen && (
           <AlertsModal
             isOpen={isAlertsOpen}
-            onClose={() => setIsAlertsOpen(false)}
+            onClose={() => {
+              setIsAlertsOpen(false);
+              setAlertsInitialScope('all');
+              setAlertsInitialTicker(undefined);
+            }}
             isThai={selectedLanguage === 'Thai'}
             alerts={alerts}
             recentNews={recentTrustedNews}
@@ -1046,6 +1070,10 @@ export default function App() {
             isNewsRefreshing={isNewsRefreshing}
             lastNewsCheckedAt={lastNewsCheckedAt}
             newsError={newsError}
+            watchlistSymbols={watchlistSymbols}
+            portfolioSymbols={portfolioSymbols}
+            initialNewsScope={alertsInitialScope}
+            initialNewsTicker={alertsInitialTicker}
           />
         )}
       </AnimatePresence>
@@ -1194,7 +1222,7 @@ export default function App() {
             {user ? (
               <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <button
-                  onClick={() => setIsAlertsOpen(true)}
+                  onClick={() => openAlertsModal('all')}
                   className="text-white/80 hover:text-white cursor-pointer transition-colors p-1 relative"
                   title={selectedLanguage === 'Thai' ? 'การตรวจสอบวิจัยและการแจ้งเตือน' : 'On-Open Research Checks & Alerts'}
                 >
@@ -1273,7 +1301,7 @@ export default function App() {
              onLogout={handleLogout}
              onOpenHistory={() => setIsHistoryModalOpen(true)}
              onOpenPortfolio={() => setIsPortfolioOpen(true)}
-             onOpenAlerts={() => setIsAlertsOpen(true)}
+             onOpenAlerts={() => openAlertsModal('all')}
              unreadAlertsCount={unreadAlertsCount}
              onReplayIntro={() => setShowIntro(true)}
              error={error}

@@ -181,10 +181,10 @@ describe('Material News & Corporate Event Intelligence', () => {
 
   // Section 63: Source Authority & Noise Filtering
   describe('63. Source Authority Policy & Noise Filtering', () => {
-    it('approves IR wire services as COMPANY_PRIMARY_IR', () => {
+    it('approves IR wire services as PRESS_RELEASE_WIRE', () => {
       const res = classifyPublisher('PR Newswire');
       assert.equal(res.isApproved, true);
-      assert.equal(res.sourceAuthority, 'COMPANY_PRIMARY_IR');
+      assert.equal(res.sourceAuthority, 'PRESS_RELEASE_WIRE');
     });
 
     it('approves Reuters / Bloomberg as REPUTABLE_NEWS', () => {

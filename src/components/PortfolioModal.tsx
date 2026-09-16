@@ -4,7 +4,7 @@ import {
   X, Plus, Trash2, Briefcase, Star, AlertTriangle, ShieldCheck, PieChart,
   Layers, ArrowRight, Check, ChevronDown,
   Bell, Clock3, FileText, Pencil, Target, SlidersHorizontal, FolderPlus,
-  WalletCards, CircleGauge, Info, ChevronRight
+  WalletCards, CircleGauge, Info, ChevronRight, Newspaper
 } from 'lucide-react';
 import {
   AggregateTickerExposure,
@@ -53,6 +53,7 @@ interface Props {
   latestReports?: Record<string, any>;
   historyReports?: any[];
   alerts?: MonitoringAlert[];
+  onOpenNewsForTicker?: (ticker: string, scope: 'watchlist' | 'portfolio') => void;
 }
 
 const SECTOR_OPTIONS = [
@@ -232,7 +233,8 @@ export function PortfolioModal({
   quotes = {},
   latestReports = {},
   historyReports = [],
-  alerts = []
+  alerts = [],
+  onOpenNewsForTicker
 }: Props) {
   const [activeTab, setActiveTab] = useState<'portfolio' | 'watchlist'>('portfolio');
   const [allocationView, setAllocationView] = useState<'portfolios' | 'stocks' | 'sectors'>('portfolios');
@@ -2126,6 +2128,21 @@ export function PortfolioModal({
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          {onOpenNewsForTicker && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onOpenNewsForTicker(tick, 'watchlist');
+                                onClose();
+                              }}
+                              className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-xl transition duration-200 flex items-center gap-1 cursor-pointer"
+                              title={isThai ? `ดูข่าว ${tick}` : `View ${tick} News`}
+                              aria-label={isThai ? `ดูข่าว ${tick}` : `View ${tick} News`}
+                            >
+                              <Newspaper className="w-3.5 h-3.5 text-[#0b5a4b]" />
+                              <span>{isThai ? 'ข่าว' : 'News'}</span>
+                            </button>
+                          )}
                           {onSelectTicker && (
                             <button
                               type="button"

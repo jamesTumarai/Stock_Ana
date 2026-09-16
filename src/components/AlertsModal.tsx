@@ -5,7 +5,7 @@ import {
   Settings, ExternalLink, ArrowRight, Check, WalletCards,
   RefreshCw, Newspaper, Sparkles, Building2, ChevronDown, ChevronUp, RotateCcw
 } from 'lucide-react';
-import { MonitoringAlert, MonitoringPreferences, RecentTrustedNewsItem } from '../types';
+import { MonitoringAlert, MonitoringPreferences, RecentTrustedNewsItem, MaterialEventSourceAuthority, MaterialEventSourceType } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { CompanyLogo } from './CompanyLogo';
 import { DEFAULT_MONITORING_PREFERENCES } from '../utils/monitoringEngine';
@@ -26,6 +26,10 @@ interface Props {
   lastNewsCheckedAt?: number | null;
   newsError?: string | null;
   initialFilterType?: string;
+  watchlistSymbols?: string[];
+  portfolioSymbols?: string[];
+  initialNewsScope?: 'all' | 'watchlist' | 'portfolio';
+  initialNewsTicker?: string;
 }
 
 export function AlertsModal({
@@ -43,11 +47,25 @@ export function AlertsModal({
   isNewsRefreshing = false,
   lastNewsCheckedAt,
   newsError,
-  initialFilterType = 'all'
+  initialFilterType = 'all',
+  watchlistSymbols = [],
+  portfolioSymbols = [],
+  initialNewsScope = 'all',
+  initialNewsTicker = undefined,
 }: Props) {
   const [filterType, setFilterType] = useState<string>(initialFilterType);
   const [showSettings, setShowSettings] = useState(false);
   const [expandedSupportingSources, setExpandedSupportingSources] = useState<Record<string, boolean>>({});
+  const [newsScope, setNewsScope] = useState<'all' | 'watchlist' | 'portfolio'>(initialNewsScope);
+  const [newsTickerFilter, setNewsTickerFilter] = useState<string | null>(initialNewsTicker || null);
+  const [expandedOriginalHeadlines, setExpandedOriginalHeadlines] = useState<Record<string, boolean>>({});
+
+  const toggleOriginalHeadline = (id: string) => {
+    setExpandedOriginalHeadlines(prev => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   // Settings form local state
   const [mosThreshold, setMosThreshold] = useState(preferences.mosThresholdPct);
@@ -71,6 +89,40 @@ export function AlertsModal({
       'POSITION_PORTFOLIO_LIMIT',
       'OVERALL_TICKER_EXPOSURE_LIMIT'
     ].includes(a.type);
+    return true;
+  });
+
+  // Scope-filtered alerts for the News tab
+  const displayedAlerts = filteredAlerts.filter(a => {
+    if (filterType === 'news') {
+      if (newsScope === 'watchlist') {
+        const set = new Set(watchlistSymbols.map(s => s.toUpperCase().trim()));
+        if (!set.has(a.ticker.toUpperCase().trim())) return false;
+      } else if (newsScope === 'portfolio') {
+        const set = new Set(portfolioSymbols.map(s => s.toUpperCase().trim()));
+        if (!set.has(a.ticker.toUpperCase().trim())) return false;
+      }
+      if (newsTickerFilter) {
+        if (a.ticker.toUpperCase().trim() !== newsTickerFilter.toUpperCase().trim()) return false;
+      }
+    }
+    return true;
+  });
+
+  // Scope-filtered recent news items for the News tab
+  const displayedRecentNews = recentNews.filter(n => {
+    if (filterType === 'news') {
+      if (newsScope === 'watchlist') {
+        const set = new Set(watchlistSymbols.map(s => s.toUpperCase().trim()));
+        if (!set.has(n.ticker.toUpperCase().trim())) return false;
+      } else if (newsScope === 'portfolio') {
+        const set = new Set(portfolioSymbols.map(s => s.toUpperCase().trim()));
+        if (!set.has(n.ticker.toUpperCase().trim())) return false;
+      }
+      if (newsTickerFilter) {
+        if (n.ticker.toUpperCase().trim() !== newsTickerFilter.toUpperCase().trim()) return false;
+      }
+    }
     return true;
   });
 
@@ -151,9 +203,52 @@ export function AlertsModal({
     }));
   };
 
+  const renderProvenanceTag = (
+    sourceAuthority?: MaterialEventSourceAuthority,
+    sourceType?: MaterialEventSourceType,
+    sourceName?: string
+  ) => {
+    if (sourceType === 'SEC_EDGAR' || sourceAuthority === 'AUTHORITATIVE_SEC') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200/60 text-[10px]">
+          <span>{isThai ? 'ก.ล.ต. สหรัฐฯ (SEC)' : 'SEC / Regulator'}</span>
+        </span>
+      );
+    }
+    if (sourceAuthority === 'COMPANY_OFFICIAL' || sourceAuthority === 'COMPANY_PRIMARY_IR') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200/60 text-[10px]">
+          <Building2 className="w-3 h-3" />
+          <span>{isThai ? 'เว็บนักลงทุนสัมพันธ์' : 'Official Company'}</span>
+        </span>
+      );
+    }
+    if (sourceAuthority === 'PRESS_RELEASE_WIRE' || sourceType === 'WIRE_SERVICE') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-semibold border border-purple-200/60 text-[10px]">
+          <Newspaper className="w-3 h-3" />
+          <span>{isThai ? 'ข่าวประชาสัมพันธ์' : 'Press Release'}</span>
+        </span>
+      );
+    }
+    if (sourceAuthority === 'REPUTABLE_NEWS') {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200/60 text-[10px]">
+          <span>{isThai ? 'สำนักข่าวการเงิน' : 'Reputable News'}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-medium text-[10px]">
+        <span>{sourceName || (isThai ? 'ข้อมูลตลาด' : 'Market Source')}</span>
+      </span>
+    );
+  };
+
   const renderRecentNewsCard = (item: RecentTrustedNewsItem, index: number) => {
-    const isSec = item.sourceType === 'SEC_EDGAR';
-    const isCompanyIr = item.sourceAuthority === 'COMPANY_PRIMARY_IR';
+    const isWatchlist = watchlistSymbols.some(s => s.toUpperCase().trim() === item.ticker.toUpperCase().trim());
+    const isPortfolio = portfolioSymbols.some(s => s.toUpperCase().trim() === item.ticker.toUpperCase().trim());
+    const isExpanded = Boolean(expandedOriginalHeadlines[item.id]);
 
     return (
       <motion.div
@@ -161,7 +256,7 @@ export function AlertsModal({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: Math.min(index * 0.03, 0.15), duration: 0.18 }}
-        className="p-3.5 sm:p-4 rounded-2xl border border-stone-200/80 bg-white hover:border-emerald-300 hover:shadow-2xs transition-all flex flex-col gap-2 relative text-left"
+        className="p-3.5 sm:p-4 rounded-2xl border border-stone-200/80 bg-white hover:border-emerald-300 hover:shadow-2xs transition-all flex flex-col gap-2.5 relative text-left"
       >
         {/* Top Header Row */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -177,22 +272,19 @@ export function AlertsModal({
             </span>
 
             {/* Source Provenance Tag */}
-            <span className="text-[10px] font-medium">
-              {isSec ? (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200/60">
-                  <span>SEC EDGAR</span>
-                </span>
-              ) : isCompanyIr ? (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200/60">
-                  <Building2 className="w-3 h-3" />
-                  <span>Company IR</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-medium">
-                  {item.sourceName}
-                </span>
-              )}
-            </span>
+            {renderProvenanceTag(item.sourceAuthority, item.sourceType, item.sourceName)}
+
+            {/* Scope Badge */}
+            {isWatchlist && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono">
+                {isThai ? 'วอทช์ลิสต์' : 'Watchlist'}
+              </span>
+            )}
+            {isPortfolio && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 font-mono">
+                {isThai ? 'พอร์ต' : 'Portfolio'}
+              </span>
+            )}
           </div>
 
           <span className="text-[10px] text-stone-400 font-mono">
@@ -201,31 +293,60 @@ export function AlertsModal({
         </div>
 
         {/* Headline */}
-        <h5 className="text-xs sm:text-sm font-bold text-stone-800 leading-snug font-['Prompt','Mitr','Nunito',sans-serif]">
-          {item.headline}
-        </h5>
+        <div>
+          <h5 className="text-xs sm:text-sm font-bold text-stone-900 leading-snug font-['Prompt','Mitr','Nunito',sans-serif]">
+            {isThai && item.headlineTh ? item.headlineTh : item.headline}
+          </h5>
 
-        {/* Optional Factual Summary */}
-        {item.factualSummary && item.factualSummary !== `Reported by ${item.sourceName}.` && (
-          <p className="text-[11px] text-stone-600 leading-relaxed font-sans">
-            {item.factualSummary}
-          </p>
+          {/* Expandable Original Headline in Thai mode */}
+          {isThai && item.headlineTh && (
+            <div className="mt-1">
+              <button
+                type="button"
+                onClick={() => toggleOriginalHeadline(item.id)}
+                className="text-[11px] text-stone-400 hover:text-stone-700 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>{isExpanded ? 'ซ่อนหัวข้อข่าวต้นฉบับ' : '[ดูหัวข้อข่าวต้นฉบับ]'}</span>
+                {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+              {isExpanded && (
+                <p className="text-[11px] text-stone-500 italic bg-stone-50 p-2 rounded-lg border border-stone-200/60 font-sans mt-1">
+                  {item.originalHeadline || item.headline}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Grounded Summary (สรุป) */}
+        {((isThai && item.summaryTh) || (!isThai && item.summaryEn) || (item.factualSummary && item.factualSummary !== `Reported by ${item.sourceName}.`)) && (
+          <div className="bg-stone-50/80 p-2.5 rounded-xl border border-stone-200/60 text-xs">
+            <div className="font-bold text-stone-700 mb-0.5 text-[11px]">
+              {isThai ? 'สรุป' : 'Summary'}
+            </div>
+            <p className="text-stone-600 leading-relaxed font-sans">
+              {isThai ? (item.summaryTh || item.factualSummary) : (item.summaryEn || item.factualSummary)}
+            </p>
+          </div>
         )}
 
-        {/* External Link */}
-        {item.sourceUrl && (
-          <div className="pt-0.5 flex items-center justify-end">
+        {/* Source Footer & External Link */}
+        <div className="pt-1 flex items-center justify-between gap-2 text-[11px] border-t border-stone-100 mt-0.5">
+          <span className="text-stone-400 font-medium">
+            {item.sourceName} · {item.sourceAuthority === 'PRESS_RELEASE_WIRE' ? (isThai ? 'ข่าวประชาสัมพันธ์' : 'Press Release') : (isThai ? 'แหล่งข้อมูลทางการ' : 'Verified Source')}
+          </span>
+          {item.sourceUrl && (
             <a
               href={item.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0b5a4b] hover:text-[#084337] hover:underline cursor-pointer"
+              className="inline-flex items-center gap-1 font-semibold text-[#0b5a4b] hover:text-[#084337] hover:underline cursor-pointer shrink-0"
             >
               <span>{isThai ? 'เปิดแหล่งข่าว' : 'Open Source'}</span>
               <ExternalLink className="w-3 h-3" />
             </a>
-          </div>
-        )}
+          )}
+        </div>
       </motion.div>
     );
   };
@@ -510,7 +631,72 @@ export function AlertsModal({
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           className="no-scrollbar flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 flex flex-col gap-3"
         >
-          {filteredAlerts.length === 0 ? (
+          {/* Scope Selector for News / Events Tab */}
+          {filterType === 'news' && (
+            <div className="flex items-center justify-between gap-2 pb-2 flex-wrap border-b border-stone-100 mb-1">
+              <div className="flex items-center gap-1 p-1 bg-stone-100/90 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setNewsScope('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    newsScope === 'all'
+                      ? 'bg-white text-stone-900 shadow-2xs font-bold'
+                      : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  {isThai ? 'ทั้งหมดที่ติดตาม' : 'All Tracked'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewsScope('watchlist')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    newsScope === 'watchlist'
+                      ? 'bg-white text-stone-900 shadow-2xs font-bold'
+                      : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  <span>{isThai ? 'วอทช์ลิสต์' : 'Watchlist'}</span>
+                  {watchlistSymbols.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-stone-200 text-stone-700 font-mono">
+                      {watchlistSymbols.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewsScope('portfolio')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    newsScope === 'portfolio'
+                      ? 'bg-white text-stone-900 shadow-2xs font-bold'
+                      : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  <span>{isThai ? 'พอร์ตการลงทุน' : 'Portfolio'}</span>
+                  {portfolioSymbols.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-stone-200 text-stone-700 font-mono">
+                      {portfolioSymbols.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {newsTickerFilter && (
+                <div className="flex items-center gap-1 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                  <span className="font-mono font-bold">{newsTickerFilter}</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewsTickerFilter(null)}
+                    className="hover:text-emerald-950 cursor-pointer p-0.5"
+                    title={isThai ? 'ล้างตัวกรองหุ้น' : 'Clear ticker filter'}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {displayedAlerts.length === 0 ? (
             filterType === 'news' ? (
               newsError ? (
                 /* Case D — Provider Failure */
@@ -536,7 +722,7 @@ export function AlertsModal({
                     </button>
                   )}
                 </div>
-              ) : recentNews.length > 0 ? (
+              ) : displayedRecentNews.length > 0 ? (
                 /* Case B — No Material Events, Recent Trusted News Exists */
                 <div className="flex flex-col gap-3">
                   <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-start gap-3">
@@ -561,7 +747,7 @@ export function AlertsModal({
                   </div>
 
                   <div className="flex flex-col gap-2.5">
-                    {recentNews.map(renderRecentNewsCard)}
+                    {displayedRecentNews.map(renderRecentNewsCard)}
                   </div>
                 </div>
               ) : (
@@ -598,11 +784,14 @@ export function AlertsModal({
             )
           ) : (
             <>
-              {filteredAlerts.map((alert, index) => {
+              {displayedAlerts.map((alert, index) => {
               const style = getSeverityStyle(alert.severity);
               const isNewsAlert = alert.type === 'NEWS_MATERIAL_EVENT';
 
               if (isNewsAlert) {
+                const isWatchlist = watchlistSymbols.some(s => s.toUpperCase().trim() === alert.ticker.toUpperCase().trim());
+                const isPortfolio = portfolioSymbols.some(s => s.toUpperCase().trim() === alert.ticker.toUpperCase().trim());
+                const isExpanded = Boolean(expandedOriginalHeadlines[alert.id]);
                 const isSupportingExpanded = Boolean(expandedSupportingSources[alert.id]);
                 const pCtx = alert.portfolioContext;
 
@@ -641,6 +830,21 @@ export function AlertsModal({
                           </span>
                         )}
 
+                        {/* Provenance Tag */}
+                        {renderProvenanceTag(alert.sourceAuthority, alert.sourceType, String(alert.evidence?.currentValue || alert.newsEvent?.sourceName || ''))}
+
+                        {/* Scope Badges */}
+                        {isWatchlist && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono">
+                            {isThai ? 'วอทช์ลิสต์' : 'Watchlist'}
+                          </span>
+                        )}
+                        {isPortfolio && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/60 font-mono">
+                            {isThai ? 'พอร์ต' : 'Portfolio'}
+                          </span>
+                        )}
+
                         <span className="text-[10px] text-stone-400 font-mono">
                           {formatPublishedTime(alert.newsEvent?.publishedAt)}
                         </span>
@@ -663,46 +867,40 @@ export function AlertsModal({
                     {/* Headline */}
                     <div>
                       <h4 className="text-sm font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] leading-snug">
-                        {isThai && alert.titleTh ? alert.titleTh : alert.title}
+                        {isThai && alert.headlineTh ? alert.headlineTh : (isThai && alert.titleTh ? alert.titleTh : alert.title)}
                       </h4>
-                      <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                        {isThai && alert.messageTh ? alert.messageTh : alert.message}
-                      </p>
-                    </div>
 
-                    {/* Source Attribution Box */}
-                    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-stone-50 border border-stone-200/60 text-xs">
-                      <div className="flex items-center gap-2">
-                        {alert.sourceType === 'SEC_EDGAR' ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                            SEC EDGAR
-                          </span>
-                        ) : alert.sourceAuthority === 'COMPANY_PRIMARY_IR' ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                            <Building2 className="w-3 h-3" />
-                            <span>Company IR</span>
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
-                            Verified Media
-                          </span>
-                        )}
-
-                        <span className="font-semibold text-stone-700">{alert.evidence?.currentValue}</span>
-                      </div>
-
-                      {alert.evidence?.sourceUrl && (
-                        <a
-                          href={alert.evidence.sourceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#0b5a4b] hover:underline flex items-center gap-1 text-[11px] font-sans font-medium shrink-0"
-                        >
-                          <span>{isThai ? 'เปิดแหล่งที่มา' : 'Open Source'}</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
+                      {/* Expandable Original English Headline */}
+                      {isThai && (alert.headlineTh || alert.titleTh) && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleOriginalHeadline(alert.id)}
+                            className="text-[11px] text-stone-400 hover:text-stone-700 flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span>{isExpanded ? 'ซ่อนหัวข้อข่าวต้นฉบับ' : '[ดูหัวข้อข่าวต้นฉบับ]'}</span>
+                            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                          {isExpanded && (
+                            <p className="text-[11px] text-stone-500 italic bg-stone-50 p-2 rounded-lg border border-stone-200/60 font-sans mt-1">
+                              {alert.originalHeadline || alert.title}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
+
+                    {/* Grounded Summary (สรุป) */}
+                    {((isThai && alert.summaryTh) || (!isThai && alert.summaryEn) || alert.message) && (
+                      <div className="bg-stone-50/80 p-2.5 rounded-xl border border-stone-200/60 text-xs">
+                        <div className="font-bold text-stone-700 mb-0.5 text-[11px]">
+                          {isThai ? 'สรุป' : 'Summary'}
+                        </div>
+                        <p className="text-stone-600 leading-relaxed font-sans">
+                          {isThai ? (alert.summaryTh || alert.messageTh || alert.message) : (alert.summaryEn || alert.message)}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Why It Matters (AI Interpretation / Analyst Synthesis) */}
                     {(alert.whyItMatters || alert.whyItMattersTh) && (
@@ -718,6 +916,8 @@ export function AlertsModal({
                         </div>
                       </div>
                     )}
+
+
 
                     {/* Research Relevance Tags */}
                     {((alert.relatedCatalysts && alert.relatedCatalysts.length > 0) ||
@@ -812,6 +1012,24 @@ export function AlertsModal({
                         )}
                       </div>
                     )}
+                    {/* Source Footer Box */}
+                    <div className="pt-1 flex items-center justify-between gap-2 text-[11px] border-t border-stone-100">
+                      <span className="text-stone-400 font-medium">
+                        {alert.evidence?.currentValue || alert.newsEvent?.sourceName} · {alert.sourceAuthority === 'PRESS_RELEASE_WIRE' ? (isThai ? 'ข่าวประชาสัมพันธ์' : 'Press Release') : (isThai ? 'แหล่งข้อมูลทางการ' : 'Verified Source')}
+                      </span>
+
+                      {alert.evidence?.sourceUrl && (
+                        <a
+                          href={alert.evidence.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#0b5a4b] hover:underline flex items-center gap-1 text-[11px] font-sans font-semibold shrink-0"
+                        >
+                          <span>{isThai ? 'เปิดแหล่งข่าว' : 'Open Source'}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
 
                     {/* Action Link to Inspect Ticker */}
                     {onSelectTicker && (
