@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   X, Bell, AlertTriangle, ShieldAlert, Info, CheckCircle2,
-  Settings, ExternalLink, ArrowRight, Filter, Check, Trash2, WalletCards
+  Settings, ExternalLink, ArrowRight, Check, WalletCards,
+  RefreshCw, Newspaper, Sparkles, Building2, ChevronDown, ChevronUp, RotateCcw
 } from 'lucide-react';
 import { MonitoringAlert, MonitoringPreferences } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { CompanyLogo } from './CompanyLogo';
+import { DEFAULT_MONITORING_PREFERENCES } from '../utils/monitoringEngine';
 
 interface Props {
   isOpen: boolean;
@@ -18,6 +20,10 @@ interface Props {
   onMarkAsRead: (alertId: string) => void;
   onMarkAllAsRead: () => void;
   onSelectTicker?: (ticker: string, linkSection?: string) => void;
+  onRefreshNews?: () => void;
+  isNewsRefreshing?: boolean;
+  lastNewsCheckedAt?: number | null;
+  newsError?: string | null;
 }
 
 export function AlertsModal({
@@ -29,23 +35,31 @@ export function AlertsModal({
   onUpdatePreferences,
   onMarkAsRead,
   onMarkAllAsRead,
-  onSelectTicker
+  onSelectTicker,
+  onRefreshNews,
+  isNewsRefreshing = false,
+  lastNewsCheckedAt,
+  newsError
 }: Props) {
   const [filterType, setFilterType] = useState<string>('all');
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedSupportingSources, setExpandedSupportingSources] = useState<Record<string, boolean>>({});
 
   // Settings form local state
   const [mosThreshold, setMosThreshold] = useState(preferences.mosThresholdPct);
   const [convictionThreshold, setConvictionThreshold] = useState(preferences.convictionThresholdPoints);
   const [concentrationThreshold, setConcentrationThreshold] = useState(preferences.concentrationThresholdPct);
+  const [enableNews, setEnableNews] = useState(preferences.enableNewsAlerts ?? true);
 
   if (!isOpen) return null;
 
   const unreadCount = alerts.filter(a => !a.isRead).length;
+  const newsAlertsCount = alerts.filter(a => a.type === 'NEWS_MATERIAL_EVENT').length;
 
   const filteredAlerts = alerts.filter(a => {
     if (filterType === 'unread') return !a.isRead;
     if (filterType === 'valuation') return a.type.startsWith('VALUATION');
+    if (filterType === 'news') return a.type === 'NEWS_MATERIAL_EVENT';
     if (filterType === 'filings') return a.type.startsWith('FILING');
     if (filterType === 'portfolio') return [
       'PORTFOLIO_CONCENTRATION',
@@ -62,9 +76,45 @@ export function AlertsModal({
       ...preferences,
       mosThresholdPct: Number(mosThreshold) || 20,
       convictionThresholdPoints: Number(convictionThreshold) || 10,
-      concentrationThresholdPct: Number(concentrationThreshold) || 30
+      concentrationThresholdPct: Number(concentrationThreshold) || 30,
+      enableNewsAlerts: Boolean(enableNews)
     });
     setShowSettings(false);
+  };
+
+  const handleResetDefaults = () => {
+    setMosThreshold(DEFAULT_MONITORING_PREFERENCES.mosThresholdPct);
+    setConvictionThreshold(DEFAULT_MONITORING_PREFERENCES.convictionThresholdPoints);
+    setConcentrationThreshold(DEFAULT_MONITORING_PREFERENCES.concentrationThresholdPct);
+    setEnableNews(DEFAULT_MONITORING_PREFERENCES.enableNewsAlerts ?? true);
+    onUpdatePreferences({ ...DEFAULT_MONITORING_PREFERENCES });
+    setShowSettings(false);
+  };
+
+  const formatLastCheckedTime = (ts?: number | null): string => {
+    if (!ts) return isThai ? 'ยังไม่ได้ตรวจสอบ' : 'Not checked yet';
+    const d = new Date(ts);
+    return d.toLocaleTimeString(isThai ? 'th-TH' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatPublishedTime = (publishedAt?: string | null): string => {
+    if (!publishedAt) {
+      return isThai ? 'ไม่ระบุเวลาเผยแพร่' : 'Publication time unavailable';
+    }
+    const d = new Date(publishedAt);
+    if (isNaN(d.getTime())) {
+      return isThai ? 'ไม่ระบุเวลาเผยแพร่' : 'Publication time unavailable';
+    }
+    const diffHours = Math.floor((Date.now() - d.getTime()) / (3600 * 1000));
+    if (diffHours < 1) {
+      const diffMins = Math.max(1, Math.floor((Date.now() - d.getTime()) / (60 * 1000)));
+      return isThai ? `${diffMins} นาทีที่แล้ว` : `${diffMins} min ago`;
+    }
+    if (diffHours < 24) {
+      return isThai ? `${diffHours} ชั่วโมงที่แล้ว` : `${diffHours}h ago`;
+    }
+    const diffDays = Math.floor(diffHours / 24);
+    return isThai ? `${diffDays} วันที่แล้ว` : `${diffDays}d ago`;
   };
 
   const getSeverityStyle = (severity: string) => {
@@ -90,6 +140,13 @@ export function AlertsModal({
     }
   };
 
+  const toggleSupportingSources = (alertId: string) => {
+    setExpandedSupportingSources(prev => ({
+      ...prev,
+      [alertId]: !prev[alertId]
+    }));
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -107,13 +164,13 @@ export function AlertsModal({
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
         transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.78 }}
-        className="bg-white rounded-3xl max-w-3xl w-full h-[92vh] sm:h-[640px] max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
+        className="bg-white rounded-3xl max-w-3xl w-full h-[92vh] sm:h-[680px] max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-stone-100 bg-stone-50/60">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center justify-center shadow-2xs relative">
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center justify-center shadow-2xs relative shrink-0">
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">
@@ -128,20 +185,36 @@ export function AlertsModal({
                 </h2>
                 <ProvenanceBadge classification="calculated" isThai={isThai} size="xs" />
               </div>
-              <p className="text-xs text-stone-500 font-sans">
+              <p className="text-xs text-stone-500 font-sans mt-0.5">
                 {isThai
-                  ? `ระบบตรวจสอบความปลอดภัย มูลค่า และเอกสาร SEC เมื่อเปิดแอป อิงข้อมูลราคาตลาดและรายงานจริง`
-                  : `Evaluated dynamically from live market quotes and verified research reports when the application is opened`}
+                  ? 'ตรวจสอบมูลค่า งบ SEC พอร์ต และข่าว/เหตุการณ์สำคัญของหุ้นที่ติดตามเมื่อเปิด Lumina หรือรีเฟรช'
+                  : 'Checks valuation, SEC filings, portfolio risk, and material company events when Lumina opens or refreshes'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            {onRefreshNews && (
+              <motion.button
+                type="button"
+                onClick={onRefreshNews}
+                disabled={isNewsRefreshing}
+                whileTap={{ scale: 0.9 }}
+                className={`p-2 rounded-full transition-colors cursor-pointer text-stone-500 hover:text-stone-900 hover:bg-stone-100 ${
+                  isNewsRefreshing ? 'animate-spin text-[#0b5a4b]' : ''
+                }`}
+                title={isThai ? 'รีเฟรชข่าวล่าสุด' : 'Refresh latest events'}
+              >
+                <RefreshCw className="w-4 h-4" />
+              </motion.button>
+            )}
             <motion.button
               type="button"
               onClick={() => setShowSettings(!showSettings)}
               whileTap={{ scale: 0.9 }}
-              className={`p-2 rounded-full transition-colors cursor-pointer ${showSettings ? 'bg-stone-200 text-stone-900' : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'}`}
+              className={`p-2 rounded-full transition-colors cursor-pointer ${
+                showSettings ? 'bg-stone-200 text-stone-900' : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
+              }`}
               title={isThai ? 'ตั้งค่าเกณฑ์การแจ้งเตือน' : 'Alert Settings'}
             >
               <Settings className="w-5 h-5" />
@@ -212,20 +285,57 @@ export function AlertsModal({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            {/* News & Events Toggle */}
+            <div className="flex items-center justify-between p-3 bg-white border border-stone-200 rounded-xl">
+              <div className="flex items-center gap-2">
+                <Newspaper className="w-4 h-4 text-[#0b5a4b]" />
+                <div>
+                  <div className="text-xs font-bold text-stone-800">
+                    {isThai ? 'ข่าวและเหตุการณ์สำคัญ (News & Events)' : 'News & Material Corporate Events'}
+                  </div>
+                  <div className="text-[11px] text-stone-500">
+                    {isThai
+                      ? 'ตรวจสอบเหตุการณ์สำคัญจาก SEC และสำนักข่าวชั้นนำสำหรับหุ้นที่ติดตาม'
+                      : 'Checks SEC 8-K items and primary corporate news for tracked stocks'}
+                  </div>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableNews}
+                  onChange={(e) => setEnableNews(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0b5a4b]"></div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
-                onClick={() => setShowSettings(false)}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-200 transition-colors"
+                onClick={handleResetDefaults}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-500 hover:text-stone-800 hover:bg-stone-200 transition-colors flex items-center gap-1 cursor-pointer"
               >
-                {isThai ? 'ยกเลิก' : 'Cancel'}
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{isThai ? 'คืนค่าเริ่มต้น' : 'Reset Defaults'}</span>
               </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 rounded-xl bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors"
-              >
-                {isThai ? 'บันทึกเกณฑ์' : 'Save Thresholds'}
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-200 transition-colors"
+                >
+                  {isThai ? 'ยกเลิก' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+                >
+                  {isThai ? 'บันทึกเกณฑ์' : 'Save Thresholds'}
+                </button>
+              </div>
             </div>
           </form>
         )}
@@ -237,6 +347,7 @@ export function AlertsModal({
               { id: 'all', labelEn: 'All', labelTh: 'ทั้งหมด', count: alerts.length },
               { id: 'unread', labelEn: 'Unread', labelTh: 'ยังไม่อ่าน', count: unreadCount },
               { id: 'valuation', labelEn: 'Valuation', labelTh: 'มูลค่า' },
+              { id: 'news', labelEn: 'News / Events', labelTh: 'ข่าว / เหตุการณ์', count: newsAlertsCount },
               { id: 'filings', labelEn: 'Filings', labelTh: 'งบ SEC' },
               { id: 'portfolio', labelEn: 'Portfolio', labelTh: 'พอร์ต' }
             ].map((tab) => (
@@ -254,7 +365,7 @@ export function AlertsModal({
                 <span>{isThai ? tab.labelTh : tab.labelEn}</span>
                 {typeof tab.count === 'number' && tab.count > 0 && (
                   <span className={`ml-1.5 text-[10px] px-1.5 py-0.2 rounded-full ${
-                    filterType === tab.id ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'
+                    filterType === tab.id ? 'bg-[#0b5a4b] text-white' : 'bg-stone-200 text-stone-700'
                   }`}>
                     {tab.count}
                   </span>
@@ -263,18 +374,50 @@ export function AlertsModal({
             ))}
           </div>
 
-          {unreadCount > 0 && (
-            <motion.button
-              type="button"
-              onClick={onMarkAllAsRead}
-              whileTap={{ scale: 0.96 }}
-              className="text-xs font-semibold text-[#0b5a4b] hover:text-[#084237] transition-colors flex items-center gap-1 cursor-pointer shrink-0 ml-2"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>{isThai ? 'อ่านทั้งหมดแล้ว' : 'Mark all read'}</span>
-            </motion.button>
-          )}
+          <div className="flex items-center gap-3 shrink-0 ml-2">
+            {lastNewsCheckedAt && (
+              <span className="text-[11px] text-stone-400 font-mono hidden sm:inline">
+                {isThai ? 'ตรวจล่าสุด: ' : 'Checked: '}
+                {formatLastCheckedTime(lastNewsCheckedAt)}
+              </span>
+            )}
+
+            {unreadCount > 0 && (
+              <motion.button
+                type="button"
+                onClick={onMarkAllAsRead}
+                whileTap={{ scale: 0.96 }}
+                className="text-xs font-semibold text-[#0b5a4b] hover:text-[#084237] transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{isThai ? 'อ่านทั้งหมดแล้ว' : 'Mark all read'}</span>
+              </motion.button>
+            )}
+          </div>
         </div>
+
+        {/* Non-blocking Failure Banner (if news check had errors) */}
+        {newsError && (
+          <div className="px-4 sm:px-6 py-2 bg-amber-50/80 border-b border-amber-200/80 text-amber-800 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                {isThai
+                  ? 'ระบบตรวจสอบข่าวล่าสุดไม่พร้อมใช้งานชั่วคราว การแจ้งเตือนอื่นยังคงแสดงผลตามปกติ'
+                  : 'News check unavailable. Existing research alerts remain available.'}
+              </span>
+            </div>
+            {onRefreshNews && (
+              <button
+                type="button"
+                onClick={onRefreshNews}
+                className="text-[11px] font-bold underline hover:text-amber-900 cursor-pointer shrink-0"
+              >
+                {isThai ? 'ลองใหม่' : 'Retry'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Alerts List */}
         <motion.div
@@ -290,18 +433,257 @@ export function AlertsModal({
                 <CheckCircle2 className="w-7 h-7" />
               </div>
               <h4 className="text-base font-bold text-stone-800 font-['Prompt','Mitr','Nunito',sans-serif]">
-                {isThai ? 'ไม่มีการแจ้งเตือนที่ตรงเงื่อนไข' : 'No Active Alerts Found'}
+                {filterType === 'news'
+                  ? (isThai ? 'ไม่พบข่าวหรือเหตุการณ์สำคัญล่าสุด' : 'No Material Recent Events Found')
+                  : (isThai ? 'ไม่มีการแจ้งเตือนที่ตรงเงื่อนไข' : 'No Active Alerts Found')}
               </h4>
-              <p className="text-xs text-stone-400 mt-1 max-w-sm">
-                {isThai
-                  ? 'หุ้นทั้งหมดในรายการติดตามและพอร์ตยังอยู่ในเกณฑ์ปกติ ไม่มีเหตุการณ์ที่ละเมิดเกณฑ์ความเสี่ยง'
-                  : 'All tracked watchlist & portfolio assets are currently within normal baseline parameters.'}
+              <p className="text-xs text-stone-400 mt-1 max-w-sm leading-relaxed">
+                {filterType === 'news'
+                  ? (isThai
+                      ? 'ระบบตรวจหุ้นที่ติดตามจากแหล่งข้อมูลที่กำหนดแล้ว ข่าวทั่วไปและข้อมูลซ้ำจะถูกกรองออก'
+                      : 'Tracked companies were checked against approved sources. Routine and duplicate headlines are filtered out.')
+                  : (isThai
+                      ? 'หุ้นทั้งหมดในรายการติดตามและพอร์ตยังอยู่ในเกณฑ์ปกติ ไม่มีเหตุการณ์ที่ละเมิดเกณฑ์ความเสี่ยง'
+                      : 'All tracked watchlist & portfolio assets are currently within normal baseline parameters.')}
               </p>
             </div>
           ) : (
             filteredAlerts.map((alert, index) => {
               const style = getSeverityStyle(alert.severity);
+              const isNewsAlert = alert.type === 'NEWS_MATERIAL_EVENT';
 
+              if (isNewsAlert) {
+                const isSupportingExpanded = Boolean(expandedSupportingSources[alert.id]);
+                const pCtx = alert.portfolioContext;
+
+                return (
+                  <motion.div
+                    key={alert.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(index * 0.04, 0.16), duration: 0.2 }}
+                    className={`p-4 rounded-2xl border transition-all flex flex-col gap-3 ${style.border} ${
+                      alert.isRead ? 'opacity-70 bg-stone-50/50' : 'shadow-2xs bg-white'
+                    }`}
+                  >
+                    {/* Header Row */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {style.icon}
+                        <CompanyLogo ticker={alert.ticker} className="w-6 h-6" />
+                        <span className="font-mono font-bold text-sm text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md">
+                          {alert.ticker}
+                        </span>
+
+                        {/* Materiality Badge */}
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border ${
+                          alert.eventMateriality === 'HIGH'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {alert.eventMateriality || 'EVENT'}
+                        </span>
+
+                        {/* Category Badge */}
+                        {alert.eventCategory && (
+                          <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-md bg-stone-100 text-stone-600">
+                            {alert.eventCategory.replace(/_/g, ' ')}
+                          </span>
+                        )}
+
+                        <span className="text-[10px] text-stone-400 font-mono">
+                          {formatPublishedTime(alert.newsEvent?.publishedAt)}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onMarkAsRead(alert.id)}
+                        className="text-stone-400 hover:text-stone-700 text-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                        title={alert.isRead ? 'Mark unread' : 'Mark read'}
+                      >
+                        {alert.isRead ? (
+                          <span className="text-[11px] text-stone-400">{isThai ? 'อ่านแล้ว' : 'Read'}</span>
+                        ) : (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Headline */}
+                    <div>
+                      <h4 className="text-sm font-bold text-stone-900 font-['Prompt','Mitr','Nunito',sans-serif] leading-snug">
+                        {isThai && alert.titleTh ? alert.titleTh : alert.title}
+                      </h4>
+                      <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                        {isThai && alert.messageTh ? alert.messageTh : alert.message}
+                      </p>
+                    </div>
+
+                    {/* Source Attribution Box */}
+                    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-stone-50 border border-stone-200/60 text-xs">
+                      <div className="flex items-center gap-2">
+                        {alert.sourceType === 'SEC_EDGAR' ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                            SEC EDGAR
+                          </span>
+                        ) : alert.sourceAuthority === 'COMPANY_PRIMARY_IR' ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            <Building2 className="w-3 h-3" />
+                            <span>Company IR</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-100 text-stone-700">
+                            Verified Media
+                          </span>
+                        )}
+
+                        <span className="font-semibold text-stone-700">{alert.evidence?.currentValue}</span>
+                      </div>
+
+                      {alert.evidence?.sourceUrl && (
+                        <a
+                          href={alert.evidence.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#0b5a4b] hover:underline flex items-center gap-1 text-[11px] font-sans font-medium shrink-0"
+                        >
+                          <span>{isThai ? 'เปิดแหล่งที่มา' : 'Open Source'}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Why It Matters (AI Interpretation / Analyst Synthesis) */}
+                    {(alert.whyItMatters || alert.whyItMattersTh) && (
+                      <div className="p-2.5 rounded-xl bg-[#0b5a4b]/5 border border-[#0b5a4b]/20 flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" />
+                        <div className="text-xs">
+                          <strong className="text-[#0b5a4b] font-bold block mb-0.5">
+                            {isThai ? 'ทำไมเรื่องนี้ถึงสำคัญต่อการวิจัย:' : 'Why it matters:'}
+                          </strong>
+                          <span className="text-stone-700 leading-relaxed">
+                            {isThai && alert.whyItMattersTh ? alert.whyItMattersTh : alert.whyItMatters}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Research Relevance Tags */}
+                    {((alert.relatedCatalysts && alert.relatedCatalysts.length > 0) ||
+                      (alert.relatedRisks && alert.relatedRisks.length > 0) ||
+                      (alert.relatedExpectations && alert.relatedExpectations.length > 0)) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {alert.relatedCatalysts?.map((c, i) => (
+                          <span key={`cat-${i}`} className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+                            {isThai ? 'เกี่ยวข้องกับ Catalyst' : 'Related to Catalyst'}: {c.slice(0, 40)}
+                          </span>
+                        ))}
+                        {alert.relatedRisks?.map((r, i) => (
+                          <span key={`risk-${i}`} className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-medium">
+                            {isThai ? 'เกี่ยวข้องกับความเสี่ยง' : 'Related to Risk'}: {r.slice(0, 40)}
+                          </span>
+                        ))}
+                        {alert.relatedExpectations?.map((exp, i) => (
+                          <span key={`exp-${i}`} className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 font-medium">
+                            {isThai ? 'เกี่ยวข้องกับเป้าหมาย' : 'Relevant to Expectation'}: {exp}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Portfolio Exposure Context (if held) */}
+                    {pCtx && pCtx.held ? (
+                      <div className="p-2 rounded-xl bg-stone-100/80 border border-stone-200/60 text-xs flex flex-col gap-1">
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-stone-700">
+                          <span className="flex items-center gap-1">
+                            <WalletCards className="w-3.5 h-3.5 text-stone-500" />
+                            {isThai
+                              ? `ถืออยู่ใน ${pCtx.heldPortfolioCount} พอร์ต · สัดส่วนรวม: ${pCtx.aggregateOverallExposurePct !== null ? `${pCtx.aggregateOverallExposurePct}%` : 'ยังไม่ระบุ'}`
+                              : `Held in ${pCtx.heldPortfolioCount} portfolio(s) · Overall exposure: ${pCtx.aggregateOverallExposurePct !== null ? `${pCtx.aggregateOverallExposurePct}%` : 'Unavailable'}`}
+                          </span>
+                          {pCtx.overallTickerMaxPct !== null && (
+                            <span className="text-stone-500 font-mono text-[10px]">
+                              {isThai ? 'ขีดจำกัดรวม' : 'Overall Max'}: {pCtx.overallTickerMaxPct}%
+                            </span>
+                          )}
+                        </div>
+                        {pCtx.portfolioContexts.length > 0 && (
+                          <div className="flex flex-wrap gap-2 text-[10px] text-stone-500">
+                            {pCtx.portfolioContexts.map((ctx, idx) => (
+                              <span key={idx}>
+                                {ctx.portfolioName}: {ctx.pctWithinPortfolio !== null ? `${ctx.pctWithinPortfolio}% ในพอร์ต` : 'ไม่มีราคา'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-stone-400 font-sans italic">
+                        {isThai ? 'ไม่ได้ถือครองในพอร์ต (อยู่ในรายการ Watchlist)' : 'Not held in portfolio (Watchlist asset)'}
+                      </div>
+                    )}
+
+                    {/* Supporting Sources (Progressive Disclosure) */}
+                    {alert.supportingSources && alert.supportingSources.length > 0 && (
+                      <div className="border-t border-stone-100 pt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleSupportingSources(alert.id)}
+                          className="text-[11px] text-stone-500 hover:text-stone-800 flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>
+                            {isThai
+                              ? `+ แหล่งข้อมูลสนับสนุนอีก ${alert.supportingSources.length} แหล่ง`
+                              : `+${alert.supportingSources.length} supporting sources`}
+                          </span>
+                          {isSupportingExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+
+                        {isSupportingExpanded && (
+                          <div className="mt-1.5 flex flex-col gap-1 pl-2 border-l-2 border-stone-200">
+                            {alert.supportingSources.map((s, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-[11px] text-stone-600">
+                                <span>{s.sourceName}</span>
+                                {s.sourceUrl && (
+                                  <a
+                                    href={s.sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#0b5a4b] hover:underline flex items-center gap-0.5 text-[10px]"
+                                  >
+                                    <span>Link</span>
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action Link to Inspect Ticker */}
+                    {onSelectTicker && (
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectTicker(alert.ticker, alert.linkSection);
+                            onClose();
+                          }}
+                          className="text-xs font-bold text-[#0b5a4b] hover:text-[#084237] flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <span>{isThai ? `ดูบทวิเคราะห์ ${alert.ticker}` : `Inspect ${alert.ticker} Analysis`}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              }
+
+              // Standard Alerts (Valuation, SEC, Portfolio limits, Conviction)
               return (
                 <motion.div
                   key={alert.id}
