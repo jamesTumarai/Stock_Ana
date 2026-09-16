@@ -1177,7 +1177,7 @@ export function PortfolioModal({
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          className="no-scrollbar flex-1 overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,rgba(250,250,249,0.72)_0%,rgba(255,255,255,0)_180px)] p-3.5 sm:p-5 flex flex-col gap-4 sm:gap-5 [&>*]:shrink-0"
+          className="no-scrollbar flex-1 overflow-y-auto overscroll-contain bg-stone-100/60 p-3.5 sm:p-6 flex flex-col gap-4 sm:gap-5 [&>*]:shrink-0"
         >
 
           {/* TAB 1: PORTFOLIO */}
@@ -1187,39 +1187,41 @@ export function PortfolioModal({
               <motion.div
                 layout
                 transition={{ layout: { type: 'spring', stiffness: 380, damping: 32, mass: 0.8 } }}
-                className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3"
+                className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5"
               >
                 {/* Total Market Value */}
                 <motion.div
-                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
-                  className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 to-emerald-50/20 border border-stone-200/90 shadow-2xs hover:shadow-sm hover:border-emerald-300 transition-all flex flex-col justify-between"
+                  whileHover={{ y: -3, transition: { duration: 0.15 } }}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200/80 shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(11,90,75,0.08)] hover:border-emerald-300 transition-all flex flex-col justify-between relative overflow-hidden"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                    <span className="text-[11px] font-mono uppercase font-bold text-stone-500 tracking-wider">
                       {isThai ? 'มูลค่าพอร์ตรวม' : 'Total Market Value'}
                     </span>
-                    <div className="w-6 h-6 rounded-lg bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
-                      <WalletCards className="w-3.5 h-3.5" />
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
+                      <WalletCards className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="mt-2">
-                    <span className="text-xl sm:text-2xl font-mono font-black text-stone-900 tracking-tight">
+                  <div className="mt-3">
+                    <span className="text-2xl sm:text-3xl font-mono font-black text-stone-900 tracking-tight">
                       {displaySummary.total_market_value !== null
                         ? `$${displaySummary.total_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : displaySummary.priced_market_value > 0
                         ? `$${displaySummary.priced_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : (isThai ? 'ไม่สามารถระบุได้' : 'Unavailable')}
                     </span>
-                    <div className="text-[10px] text-stone-500 font-mono mt-1">
+                    <div className="text-[11px] text-stone-500 font-mono mt-1.5 flex items-center gap-1.5">
                       {displaySummary.unpriced_holdings_count > 0 ? (
                         <span className="text-amber-700 font-sans inline-flex items-center gap-1 font-semibold">
                           <Info className="w-3 h-3 shrink-0" />
                           {isThai
-                            ? `ครอบคลุมราคา ${displaySummary.pricing_coverage_pct}% (${displaySummary.unpriced_holdings_count} รายการขาดราคาตลาด)`
-                            : `${displaySummary.pricing_coverage_pct}% priced (${displaySummary.unpriced_holdings_count} missing quote)`}
+                            ? `ครอบคลุมราคา ${displaySummary.pricing_coverage_pct}% (${displaySummary.unpriced_holdings_count} ขาดราคา)`
+                            : `${displaySummary.pricing_coverage_pct}% priced (${displaySummary.unpriced_holdings_count} missing)`}
                         </span>
                       ) : (
-                        <span className="text-stone-500 font-medium">{isThai ? 'ต้นทุน:' : 'Cost Basis:'} ${displaySummary.total_cost_basis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-stone-500 font-medium">
+                          {isThai ? 'ต้นทุน:' : 'Cost Basis:'} <strong className="font-mono text-stone-700">${displaySummary.total_cost_basis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1227,35 +1229,33 @@ export function PortfolioModal({
 
                 {/* Total Unrealized P/L */}
                 <motion.div
-                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
-                  className={`p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 ${
-                    displaySummary.total_unrealized_pnl && displaySummary.total_unrealized_pnl >= 0 ? 'to-emerald-50/30' : 'to-rose-50/30'
-                  } border border-stone-200/90 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between`}
+                  whileHover={{ y: -3, transition: { duration: 0.15 } }}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200/80 shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(16,185,129,0.08)] hover:border-emerald-300 transition-all flex flex-col justify-between relative overflow-hidden"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                    <span className="text-[11px] font-mono uppercase font-bold text-stone-500 tracking-wider">
                       {isThai ? 'กำไร/ขาดทุนที่ยังไม่รับรู้' : 'Unrealized Gain / Loss'}
                     </span>
-                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
                       displaySummary.total_unrealized_pnl && displaySummary.total_unrealized_pnl >= 0
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                         : 'bg-rose-50 text-rose-700 border border-rose-100'
                     }`}>
                       {displaySummary.total_unrealized_pnl && displaySummary.total_unrealized_pnl >= 0 ? (
-                        <TrendingUp className="w-3.5 h-3.5" />
+                        <TrendingUp className="w-4 h-4" />
                       ) : (
-                        <TrendingDown className="w-3.5 h-3.5" />
+                        <TrendingDown className="w-4 h-4" />
                       )}
                     </div>
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-3">
                     {displaySummary.total_unrealized_pnl !== null && displaySummary.total_unrealized_pnl_pct !== null ? (
                       <div>
-                        <span className={`text-xl sm:text-2xl font-mono font-black tracking-tight ${displaySummary.total_unrealized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {displaySummary.total_unrealized_pnl >= 0 ? '+' : ''}${displaySummary.total_unrealized_pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <div className="mt-1">
-                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold ${
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className={`text-2xl sm:text-3xl font-mono font-black tracking-tight ${displaySummary.total_unrealized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {displaySummary.total_unrealized_pnl >= 0 ? '+' : ''}${displaySummary.total_unrealized_pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-mono font-extrabold shadow-2xs ${
                             displaySummary.total_unrealized_pnl_pct >= 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                           }`}>
                             {displaySummary.total_unrealized_pnl_pct >= 0 ? '+' : ''}{displaySummary.total_unrealized_pnl_pct.toFixed(2)}%
@@ -1270,7 +1270,7 @@ export function PortfolioModal({
                         <span className="text-[10px] text-amber-700 font-sans mt-0.5 block">
                           {isThai
                             ? `ขาดราคาตลาดสด ${displaySummary.unpriced_holdings_count} รายการ`
-                            : `${displaySummary.unpriced_holdings_count} holdings missing live price`}
+                            : `${displaySummary.unpriced_holdings_count} missing live price`}
                         </span>
                       </div>
                     )}
@@ -1279,29 +1279,30 @@ export function PortfolioModal({
 
                 {/* Top Concentration Risk */}
                 <motion.div
-                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
-                  className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 to-stone-100/30 border border-stone-200/90 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between"
+                  whileHover={{ y: -3, transition: { duration: 0.15 } }}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200/80 shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(245,158,11,0.08)] hover:border-amber-200 transition-all flex flex-col justify-between relative overflow-hidden"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                    <span className="text-[11px] font-mono uppercase font-bold text-stone-500 tracking-wider">
                       {isThai ? 'ความเข้มข้นสูงสุด' : 'Top Concentration'}
                     </span>
-                    <div className="w-6 h-6 rounded-lg bg-stone-100 text-stone-600 border border-stone-200 flex items-center justify-center shrink-0 shadow-2xs">
-                      <PieChart className="w-3.5 h-3.5" />
+                    <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <PieChart className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl sm:text-2xl font-mono font-black text-stone-900 tracking-tight">
+                      <span className="text-2xl sm:text-3xl font-mono font-black text-stone-900 tracking-tight">
                         {displaySummary.is_fully_priced ? `${displaySummary.top_holding_concentration_pct.toFixed(1)}%` : '—'}
                       </span>
                       {displaySummary.concentration_risk_alert && (
-                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-mono rounded font-bold" title={isThai ? 'เกินเกณฑ์ 30%' : 'Above 30% concentration limit'}>
-                          ⚠️ Alert
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold rounded-lg shadow-2xs" title={isThai ? 'เกินเกณฑ์ 30%' : 'Above 30% concentration limit'}>
+                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          <span>Alert</span>
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-stone-500 font-sans mt-1 block line-clamp-1">
+                    <span className="text-[11px] text-stone-500 font-sans mt-1.5 block line-clamp-1">
                       {!displaySummary.is_fully_priced
                         ? (isThai ? 'รอราคาตลาดครบเพื่อคำนวณ' : 'Waiting for complete quotes')
                         : displaySummary.concentration_risk_alert
@@ -1313,19 +1314,19 @@ export function PortfolioModal({
 
                 {/* Weighted Margin of Safety */}
                 <motion.div
-                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
-                  className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 to-emerald-50/20 border border-stone-200/90 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between"
+                  whileHover={{ y: -3, transition: { duration: 0.15 } }}
+                  className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200/80 shadow-[0_4px_16px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(11,90,75,0.08)] hover:border-emerald-300 transition-all flex flex-col justify-between relative overflow-hidden"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                    <span className="text-[11px] font-mono uppercase font-bold text-stone-500 tracking-wider">
                       {isThai ? 'Margin of Safety รวม' : 'Weighted MoS'}
                     </span>
-                    <div className="w-6 h-6 rounded-lg bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
-                      <ShieldCheck className="w-3.5 h-3.5" />
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
+                      <ShieldCheck className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="mt-2">
-                    <span className={`text-xl sm:text-2xl font-mono font-black tracking-tight ${
+                  <div className="mt-3">
+                    <span className={`text-2xl sm:text-3xl font-mono font-black tracking-tight ${
                       displaySummary.weighted_margin_of_safety_pct !== null && displaySummary.weighted_margin_of_safety_pct !== undefined
                         ? (displaySummary.weighted_margin_of_safety_pct >= 0 ? 'text-[#0b5a4b]' : 'text-amber-700')
                         : 'text-stone-400'
@@ -1334,57 +1335,59 @@ export function PortfolioModal({
                         ? `${displaySummary.weighted_margin_of_safety_pct > 0 ? '+' : ''}${displaySummary.weighted_margin_of_safety_pct.toFixed(1)}%`
                         : '-'}
                     </span>
-                    <span className="text-[10px] text-stone-500 font-sans mt-1 block line-clamp-1">
+                    <span className="text-[11px] text-stone-500 font-sans mt-1.5 block line-clamp-1">
                       {isThai ? 'ถ่วงน้ำหนักตามมูลค่าแท้จริง DCF' : 'Weighted across analyzed DCF'}
                     </span>
                   </div>
                 </motion.div>
               </motion.div>
 
-              <motion.section layout className="rounded-2xl border border-stone-200 bg-white p-3.5 shadow-2xs sm:p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <motion.section layout className="rounded-2xl border border-stone-200/90 bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
+                <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <CircleGauge className="h-4 w-4 text-[#0b5a4b]" />
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center">
+                      <CircleGauge className="h-4 w-4" />
+                    </div>
                     <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 font-mono">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-stone-900 font-mono">
                         {selectedPortfolioId === 'all'
                           ? (isThai ? 'ภาพรวมหลายพอร์ต' : 'Multi-portfolio overview')
                           : selectedPortfolioSummary?.name}
                       </h3>
-                      <p className="text-[9px] text-stone-500">
+                      <p className="text-[10px] text-stone-500 font-sans">
                         {isThai ? 'สัดส่วนจริงคำนวณจากมูลค่าตลาดเท่านั้น' : 'Actual weights use market value only'}
                       </p>
                     </div>
                   </div>
                   {!multiPortfolioSummary.is_fully_priced && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-700" title={isThai ? 'จะไม่ใช้ต้นทุนแทนราคาตลาด' : 'Cost basis is never substituted for market price'}>
-                      <Info className="h-3 w-3" />
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 border border-amber-200 shadow-2xs" title={isThai ? 'จะไม่ใช้ต้นทุนแทนราคาตลาด' : 'Cost basis is never substituted for market price'}>
+                      <Info className="h-3.5 w-3.5" />
                       {isThai ? 'รอราคาครบเพื่อคำนวณสัดส่วน' : 'Exact weights unavailable'}
                     </span>
                   )}
                   {selectedPositionUnallocatedTarget !== null && (
-                    <span className="rounded-full bg-stone-100 px-2 py-1 text-[9px] font-bold text-stone-600" title={isThai ? 'ส่วนของเป้าหมายภายในพอร์ตที่ยังไม่ได้กำหนดให้หุ้น' : 'Position target share that has not been configured'}>
-                      {isThai ? 'เป้าหมายหุ้นยังไม่ได้จัดสรร' : 'Unallocated position target'} {selectedPositionUnallocatedTarget.toFixed(1)}%
+                    <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold text-stone-600 border border-stone-200/70" title={isThai ? 'ส่วนของเป้าหมายภายในพอร์ตที่ยังไม่ได้กำหนดให้หุ้น' : 'Position target share that has not been configured'}>
+                      {isThai ? 'เป้าหมายหุ้นยังไม่ได้จัดสรร' : 'Unallocated target'} {selectedPositionUnallocatedTarget.toFixed(1)}%
                     </span>
                   )}
                 </div>
 
                 {multiPortfolioConfig.portfolios.length === 0 && multiPortfolioSummary.portfolios.every(item => item.portfolio_id === null) ? (
-                  <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-dashed border-stone-300 bg-stone-50 p-4 sm:flex-row sm:items-center">
+                  <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-dashed border-stone-300 bg-stone-50/60 p-5 sm:flex-row sm:items-center">
                     <div>
-                      <p className="text-xs font-bold text-stone-800">{isThai ? 'ยังไม่มีพอร์ตที่คุณสร้าง' : 'No user-created portfolios yet'}</p>
-                      <p className="mt-1 text-[10px] leading-relaxed text-stone-500">
+                      <p className="text-sm font-bold text-stone-900">{isThai ? 'ยังไม่มีพอร์ตที่คุณสร้าง' : 'No user-created portfolios yet'}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-stone-500">
                         {holdings.length > 0
                           ? (isThai ? 'สร้างพอร์ตเพื่อจัดระเบียบรายการเดิม โดยรายการเดิมยังอยู่ใน “ยังไม่ได้จัดเข้าพอร์ต”' : 'Create a portfolio to organize existing positions. Legacy holdings remain Unassigned.')
                           : (isThai ? 'สร้างพอร์ตแรกและกำหนด Target/Max ของคุณเอง' : 'Create your first portfolio and set your own Target/Max.')}
                       </p>
                     </div>
-                    <button type="button" onClick={openCreatePortfolioDrawer} className="shrink-0 rounded-xl bg-stone-900 px-3 py-2 text-xs font-bold text-white hover:bg-stone-800">
+                    <button type="button" onClick={openCreatePortfolioDrawer} className="shrink-0 rounded-xl bg-stone-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-stone-800 shadow-xs cursor-pointer">
                       <FolderPlus className="mr-1.5 inline h-3.5 w-3.5" />{isThai ? 'สร้างพอร์ตแรก' : 'Create first portfolio'}
                     </button>
                   </div>
                 ) : (
-                  <div className={`grid gap-2.5 ${selectedPortfolioId === 'all'
+                  <div className={`grid gap-3 ${selectedPortfolioId === 'all'
                     ? (multiPortfolioSummary.portfolios.length <= 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3')
                     : 'grid-cols-1'}`}>
                     {(selectedPortfolioId === 'all'
@@ -1408,57 +1411,80 @@ export function PortfolioModal({
                           layout
                           type="button"
                           key={portfolio.portfolio_id || 'unassigned'}
+                          whileHover={{ y: -3, transition: { duration: 0.15 } }}
                           onClick={() => {
                             setSelectedPortfolioId(portfolio.portfolio_id || 'unassigned');
                             setAllocationView('stocks');
                           }}
-                          className="group relative overflow-hidden rounded-2xl border border-stone-200 bg-[linear-gradient(120deg,rgba(255,255,255,0.98),rgba(250,250,249,0.82))] p-3.5 text-left shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md sm:p-4"
+                          className={`group relative overflow-hidden rounded-2xl border ${
+                            isOverLimit
+                              ? 'border-rose-200 hover:border-rose-300 shadow-[0_4px_16px_rgba(244,63,94,0.06)]'
+                              : 'border-stone-200/90 hover:border-emerald-300 shadow-[0_4px_16px_rgba(0,0,0,0.03)]'
+                          } bg-white p-4 sm:p-5 text-left transition-all duration-200 hover:shadow-md cursor-pointer`}
                         >
-                          <div className={`absolute inset-y-0 left-0 w-1 ${isOverLimit ? 'bg-rose-400' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-400' : 'bg-[#0b5a4b]'}`} />
+                          <div className={`absolute inset-y-0 left-0 w-1.5 ${isOverLimit ? 'bg-rose-500' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-400' : 'bg-[#0b5a4b]'}`} />
+                          
                           <div className="flex items-start justify-between gap-3 pl-1">
-                            <div className="flex min-w-0 items-center gap-2.5">
-                              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${isOverLimit ? 'border-rose-100 bg-rose-50 text-rose-600' : 'border-emerald-100 bg-emerald-50 text-[#0b5a4b]'}`}>
-                                <Briefcase className="h-4 w-4" />
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border shadow-2xs ${
+                                isOverLimit ? 'border-rose-100 bg-rose-50 text-rose-600' : 'border-emerald-100 bg-emerald-50 text-[#0b5a4b]'
+                              }`}>
+                                <Briefcase className="h-4.5 w-4.5" />
                               </span>
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-extrabold tracking-tight text-stone-900">{portfolio.name}</p>
-                                <p className="mt-0.5 text-[10px] text-stone-500">{portfolio.holdings_count} {isThai ? 'รายการในพอร์ต' : 'positions in portfolio'}</p>
+                                <p className="truncate text-base font-black tracking-tight text-stone-900">{portfolio.name}</p>
+                                <p className="mt-0.5 text-xs text-stone-500 font-sans">{portfolio.holdings_count} {isThai ? 'รายการในพอร์ต' : 'positions'}</p>
                               </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${isOverLimit ? 'bg-rose-100 text-rose-700' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-100 text-amber-700' : portfolio.status === 'WITHIN_LIMIT' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider shadow-2xs ${
+                                isOverLimit ? 'bg-rose-50 text-rose-700 border border-rose-200' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-50 text-amber-700 border border-amber-200' : portfolio.status === 'WITHIN_LIMIT' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-stone-100 text-stone-600 border border-stone-200'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isOverLimit ? 'bg-rose-500 animate-pulse' : portfolio.status === 'INCOMPLETE_PRICING' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                                 {isOverLimit ? (isThai ? 'เกิน Max' : 'Above max') : portfolio.status === 'INCOMPLETE_PRICING' ? (isThai ? 'ราคายังไม่ครบ' : 'Partial pricing') : portfolio.status === 'WITHIN_LIMIT' ? (isThai ? 'อยู่ในกรอบ' : 'Within limit') : (isThai ? 'ไม่ได้ตั้ง Max' : 'No limit')}
                               </span>
-                              <ChevronRight className="h-4 w-4 text-stone-400 transition-transform duration-200 group-hover:translate-x-0.5" />
+                              <ChevronRight className="h-4 w-4 text-stone-400 transition-transform duration-200 group-hover:translate-x-1" />
                             </div>
                           </div>
 
-                          <div className="mt-3.5 grid grid-cols-2 overflow-hidden rounded-xl border border-stone-200/80 bg-white/80 sm:grid-cols-4">
-                            <div className="border-b border-r border-stone-100 p-2.5 sm:border-b-0"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'มูลค่า' : 'Value'}</span><strong className="mt-0.5 block font-mono text-sm font-bold text-stone-900">{portfolio.market_value !== null ? `$${portfolio.market_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}</strong></div>
-                            <div className="border-b border-stone-100 p-2.5 sm:border-b-0 sm:border-r"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'สัดส่วนจริง' : 'Actual weight'}</span><strong className="mt-0.5 block font-mono text-sm font-bold text-stone-900">{actualWeight !== null ? `${actualWeight.toFixed(1)}%` : '—'}</strong></div>
-                            <div className="border-r border-stone-100 p-2.5"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'เป้าหมาย' : 'Target'}</span><strong className="mt-0.5 block font-mono text-sm font-bold text-stone-900">{targetWeight !== null ? `${targetWeight.toFixed(1)}%` : '—'}</strong></div>
-                            <div className="p-2.5"><span className="block text-[9px] font-medium text-stone-500">{isThai ? 'เพดานสูงสุด' : 'Maximum'}</span><strong className={isOverLimit ? 'mt-0.5 block font-mono text-sm font-bold text-rose-600' : 'mt-0.5 block font-mono text-sm font-bold text-stone-900'}>{maximumWeight !== null ? `${maximumWeight.toFixed(1)}%` : '—'}</strong></div>
+                          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <div className="bg-stone-50/90 rounded-xl p-2.5 border border-stone-200/60">
+                              <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">{isThai ? 'มูลค่า' : 'Value'}</span>
+                              <strong className="mt-0.5 block font-mono text-base font-black text-stone-900">{portfolio.market_value !== null ? `$${portfolio.market_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—'}</strong>
+                            </div>
+                            <div className="bg-stone-50/90 rounded-xl p-2.5 border border-stone-200/60">
+                              <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">{isThai ? 'สัดส่วนจริง' : 'Actual'}</span>
+                              <strong className={`mt-0.5 block font-mono text-base font-black ${isOverLimit ? 'text-rose-600' : 'text-stone-900'}`}>{actualWeight !== null ? `${actualWeight.toFixed(1)}%` : '—'}</strong>
+                            </div>
+                            <div className="bg-stone-50/90 rounded-xl p-2.5 border border-stone-200/60">
+                              <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">{isThai ? 'เป้าหมาย' : 'Target'}</span>
+                              <strong className="mt-0.5 block font-mono text-base font-bold text-stone-700">{targetWeight !== null ? `${targetWeight.toFixed(1)}%` : '—'}</strong>
+                            </div>
+                            <div className="bg-stone-50/90 rounded-xl p-2.5 border border-stone-200/60">
+                              <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">{isThai ? 'เพดานสูงสุด' : 'Maximum'}</span>
+                              <strong className={`mt-0.5 block font-mono text-base font-bold ${isOverLimit ? 'text-rose-600' : 'text-stone-700'}`}>{maximumWeight !== null ? `${maximumWeight.toFixed(1)}%` : '—'}</strong>
+                            </div>
                           </div>
 
-                          <div className="mt-3 rounded-xl border border-stone-100 bg-stone-50/75 px-2.5 py-2.5">
-                            <div className="mb-1.5 flex items-center justify-between gap-2 text-[9px]">
-                              <span className="font-semibold text-stone-600">{isThai ? 'สัดส่วนเทียบกรอบที่ตั้งไว้' : 'Weight against allocation limits'}</span>
-                              <span className="font-mono font-bold text-stone-700">{actualWeight !== null ? `${actualWeight.toFixed(1)}%` : '—'}</span>
+                          <div className="mt-3.5 rounded-xl border border-stone-200/70 bg-stone-50/80 p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2 text-[10px]">
+                              <span className="font-semibold text-stone-600 font-sans">{isThai ? 'สัดส่วนเทียบกรอบที่ตั้งไว้' : 'Allocation vs Target'}</span>
+                              <span className="font-mono font-black text-stone-800">{actualWeight !== null ? `${actualWeight.toFixed(1)}%` : '—'}</span>
                             </div>
-                            <div className="relative h-2.5 overflow-hidden rounded-full bg-stone-200/80 shadow-inner">
+                            <div className="relative h-2 overflow-hidden rounded-full bg-stone-200 shadow-inner">
                               <motion.span initial={{ width: 0 }} animate={{ width: `${weightWidth}%` }} transition={{ duration: 0.36, ease: 'easeOut' }} className={`absolute inset-y-0 left-0 rounded-full ${barTone}`} />
-                              {targetWeight !== null && <span className="absolute -top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-stone-700/80" style={{ left: markerPosition(targetWeight) }} title={`${isThai ? 'เป้าหมาย' : 'Target'} ${targetWeight.toFixed(1)}%`} />}
+                              {targetWeight !== null && <span className="absolute -top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-stone-800" style={{ left: markerPosition(targetWeight) }} title={`${isThai ? 'เป้าหมาย' : 'Target'} ${targetWeight.toFixed(1)}%`} />}
                               {maximumWeight !== null && <span className="absolute -top-0.5 bottom-0.5 z-10 w-0.5 rounded-full bg-rose-500" style={{ left: markerPosition(maximumWeight) }} title={`${isThai ? 'เพดานสูงสุด' : 'Maximum'} ${maximumWeight.toFixed(1)}%`} />}
                             </div>
-                            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[8px] text-stone-500">
-                              <span><i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-stone-700" />{isThai ? 'เป้าหมาย' : 'Target'} {targetWeight !== null ? `${targetWeight.toFixed(1)}%` : '—'}</span>
-                              <span><i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-rose-500" />{isThai ? 'Max' : 'Maximum'} {maximumWeight !== null ? `${maximumWeight.toFixed(1)}%` : '—'}</span>
+                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-stone-500">
+                              <span className="inline-flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-stone-800" />{isThai ? 'เป้าหมาย' : 'Target'} {targetWeight !== null ? `${targetWeight.toFixed(1)}%` : '—'}</span>
+                              <span className="inline-flex items-center gap-1"><span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-500" />{isThai ? 'Max' : 'Maximum'} {maximumWeight !== null ? `${maximumWeight.toFixed(1)}%` : '—'}</span>
                               <span>{isThai ? 'ครอบคลุมราคา' : 'Pricing coverage'} {portfolio.pricing_coverage_pct.toFixed(0)}%</span>
                             </div>
                           </div>
 
                           {portfolio.drift_pct_points !== null && (
-                            <div className={`mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2.5 py-2 text-[9px] font-bold ${isOverLimit ? 'bg-rose-50 text-rose-700' : Math.abs(portfolio.drift_pct_points) >= 5 ? 'bg-amber-50 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
+                            <div className={`mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2.5 py-1.5 text-[9px] font-bold ${isOverLimit ? 'bg-rose-50 text-rose-700' : Math.abs(portfolio.drift_pct_points) >= 5 ? 'bg-amber-50 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
                               <span>{isThai ? 'ต่างจากเป้า' : 'Drift'} {portfolio.drift_pct_points > 0 ? '+' : ''}{portfolio.drift_pct_points.toFixed(1)} pp</span>
                               {portfolio.excess_pct_points !== null && <span className="opacity-80">• {isThai ? 'เกิน Max' : 'Above max'} +{portfolio.excess_pct_points.toFixed(1)} pp</span>}
                             </div>
@@ -1469,6 +1495,7 @@ export function PortfolioModal({
                   </div>
                 )}
               </motion.section>
+
 
               {selectedRawHoldings.length > 0 && (
                 <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.35fr] gap-3">
