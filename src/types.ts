@@ -1402,7 +1402,90 @@ export type AlertType =
   | 'PORTFOLIO_CONCENTRATION'
   | 'PORTFOLIO_ALLOCATION_LIMIT'
   | 'POSITION_PORTFOLIO_LIMIT'
-  | 'OVERALL_TICKER_EXPOSURE_LIMIT';
+  | 'OVERALL_TICKER_EXPOSURE_LIMIT'
+  | 'NEWS_MATERIAL_EVENT';
+
+export type MaterialEventCategory =
+  | 'EARNINGS'
+  | 'GUIDANCE'
+  | 'M_AND_A'
+  | 'MANAGEMENT'
+  | 'CAPITAL_RAISE'
+  | 'BUYBACK_DIVIDEND'
+  | 'PRODUCT'
+  | 'MAJOR_CONTRACT'
+  | 'LEGAL_REGULATORY'
+  | 'CYBERSECURITY'
+  | 'OPERATIONS'
+  | 'SEC_FILING'
+  | 'ANALYST_RESEARCH'
+  | 'MACRO_EXPOSURE'
+  | 'OTHER';
+
+export type MaterialEventMateriality = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type MaterialEventSourceAuthority =
+  | 'AUTHORITATIVE_SEC'
+  | 'COMPANY_PRIMARY_IR'
+  | 'RECOGNIZED_MARKET'
+  | 'REPUTABLE_NEWS';
+
+export type MaterialEventSourceType =
+  | 'SEC_EDGAR'
+  | 'COMPANY_IR'
+  | 'WIRE_SERVICE'
+  | 'FINANCIAL_NEWS'
+  | 'MARKET_EXCHANGE';
+
+export interface MaterialEventSupportingSource {
+  sourceName: string;
+  sourceUrl?: string;
+  sourceType?: MaterialEventSourceType;
+  publishedAt?: string | null;
+}
+
+export interface MaterialEventPortfolioContext {
+  held: boolean;
+  heldPortfolioCount: number;
+  portfolioContexts: Array<{
+    portfolioId: string | null;
+    portfolioName: string;
+    pctWithinPortfolio: number | null;
+    pctOfTotal: number | null;
+  }>;
+  aggregateOverallExposurePct: number | null;
+  overallTickerMaxPct: number | null;
+  pricingCoverage: 'FULL' | 'PARTIAL' | 'UNAVAILABLE';
+}
+
+export interface MaterialCompanyEvent {
+  eventId: string;
+  ticker: string;
+  headline: string;
+  factualSummary: string;
+  category: MaterialEventCategory;
+  materiality: MaterialEventMateriality;
+  publishedAt: string | null;
+  retrievedAt: string;
+  sourceName: string;
+  sourceUrl?: string;
+  sourceType: MaterialEventSourceType;
+  sourceAuthority: MaterialEventSourceAuthority;
+  sourceDocumentId?: string;
+  secAccession?: string;
+  provenanceStatus?: string;
+  relevanceReasons?: string[];
+  whyItMatters?: string;
+  whyItMattersTh?: string;
+  relatedThesisDrivers?: string[];
+  relatedRisks?: string[];
+  relatedCatalysts?: string[];
+  relatedExpectations?: string[];
+  dedupeFingerprint: string;
+  interpretationStatus?: 'AI_GROUNDED' | 'DETERMINISTIC_ONLY' | 'UNAVAILABLE';
+  supportingSources?: MaterialEventSupportingSource[];
+  portfolioContext?: MaterialEventPortfolioContext;
+}
 
 export interface MonitoringAlert {
   id: string; // Unique deduplication key: `${ticker}-${type}-${dateKey}`
@@ -1426,6 +1509,20 @@ export interface MonitoringAlert {
     sourceUrl?: string;
   };
   linkSection?: string;
+  newsEvent?: MaterialCompanyEvent;
+  eventCategory?: MaterialEventCategory;
+  eventMateriality?: MaterialEventMateriality;
+  userRelevance?: 'HIGH' | 'MEDIUM' | 'LOW';
+  portfolioContext?: MaterialEventPortfolioContext;
+  whyItMatters?: string;
+  whyItMattersTh?: string;
+  relatedThesisDrivers?: string[];
+  relatedRisks?: string[];
+  relatedCatalysts?: string[];
+  relatedExpectations?: string[];
+  supportingSources?: MaterialEventSupportingSource[];
+  sourceAuthority?: MaterialEventSourceAuthority;
+  sourceType?: MaterialEventSourceType;
 }
 
 export interface MonitoringPreferences {
@@ -1437,6 +1534,7 @@ export interface MonitoringPreferences {
   enableFilingAlerts: boolean;
   enableConcentrationAlerts: boolean;
   concentrationThresholdPct: number; // default 30%
+  enableNewsAlerts?: boolean; // default true
 }
 
 export interface ValuationScenario {

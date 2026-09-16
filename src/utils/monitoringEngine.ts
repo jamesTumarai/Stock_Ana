@@ -10,7 +10,9 @@ import {
   MultiPortfolioAllocationSummary,
   PortfolioSummary,
   ReportData,
-  DocumentFinding
+  DocumentFinding,
+  MaterialCompanyEvent,
+  MaterialEventPortfolioContext
 } from '../types';
 import {
   extractReportDate,
@@ -28,7 +30,8 @@ export const DEFAULT_MONITORING_PREFERENCES: MonitoringPreferences = {
   convictionThresholdPoints: 10,
   enableFilingAlerts: true,
   enableConcentrationAlerts: true,
-  concentrationThresholdPct: 30
+  concentrationThresholdPct: 30,
+  enableNewsAlerts: true
 };
 
 export const ALERTS_PREFS_KEY = 'lumina_monitoring_prefs';
@@ -469,6 +472,299 @@ export function evaluateTickerAlerts(
   return alerts;
 }
 
+/**
+ * Derives the tracked symbols eligible for Material News/Event checks.
+ * Scope:
+ * - A: Watchlist tickers
+ * - B: All holdings across ALL user-created Portfolios
+ * - C: Legacy Unassigned holdings
+ * - D: Active research ticker (if selected)
+ * Historical report tickers are explicitly EXCLUDED.
+ * Deduplicates symbols.
+ */
+export function deriveTrackedNewsSymbols(
+  watchlist: string[] = [],
+  portfolioHoldings: Array<{ ticker: string }> = [],
+  activeResearchTicker?: string | null
+): string[] {
+  const allSymbols = [
+    ...watchlist,
+    ...portfolioHoldings.map(h => h.ticker),
+    ...(activeResearchTicker ? [activeResearchTicker] : [])
+  ];
+
+  const seen = new Set<string>();
+  const deduplicated: string[] = [];
+
+  for (const s of allSymbols) {
+    if (typeof s !== 'string') continue;
+    const clean = s.toUpperCase().trim();
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      deduplicated.push(clean);
+    }
+  }
+
+  return deduplicated;
+}
+
+/**
+ * Extracts deterministic Multi-Portfolio allocation context for a ticker.
+ */
+export function deriveMultiPortfolioContextForTicker(
+  ticker: string,
+  multiPortfolioSummary?: MultiPortfolioAllocationSummary
+): MaterialEventPortfolioContext {
+  const normTicker = ticker.toUpperCase().trim();
+  if (!multiPortfolioSummary) {
+    return {
+      held: false,
+      heldPortfolioCount: 0,
+      portfolioContexts: [],
+      aggregateOverallExposurePct: null,
+      overallTickerMaxPct: null,
+      pricingCoverage: 'UNAVAILABLE'
+    };
+  }
+
+  const aggregate = multiPortfolioSummary.aggregate_tickers.find(
+    a => a.ticker.toUpperCase().trim() === normTicker
+  );
+
+  const matchingPositions = multiPortfolioSummary.positions.filter(
+    p => p.holding.ticker.toUpperCase().trim() === normTicker
+  );
+
+  if (!aggregate && matchingPositions.length === 0) {
+    return {
+      held: false,
+      heldPortfolioCount: 0,
+      portfolioContexts: [],
+      aggregateOverallExposurePct: null,
+      overallTickerMaxPct: null,
+      pricingCoverage: multiPortfolioSummary.is_fully_priced ? 'FULL' : 'PARTIAL'
+    };
+  }
+
+  const portfolioContexts = matchingPositions.map(p => ({
+    portfolioId: p.portfolio_id,
+    portfolioName: p.portfolio_name,
+    pctWithinPortfolio: p.pct_within_portfolio,
+    pctOfTotal: p.pct_of_total
+  }));
+
+  const uniquePortfolios = new Set(matchingPositions.map(p => p.portfolio_id || 'unassigned'));
+
+  return {
+    held: true,
+    heldPortfolioCount: uniquePortfolios.size,
+    portfolioContexts,
+    aggregateOverallExposurePct: aggregate?.total_pct_of_total ?? null,
+    overallTickerMaxPct: aggregate?.overall_max_pct ?? null,
+    pricingCoverage: multiPortfolioSummary.is_fully_priced ? 'FULL' : 'PARTIAL'
+  };
+}
+
+/**
+ * Evaluates thesis and expectation relevance for an event without mutating thesis state or claiming invalidation without proof.
+ */
+export function evaluateEventThesisRelevance(
+  event: MaterialCompanyEvent,
+  thesis?: {
+    keyDrivers?: string[];
+    keyRisks?: string[];
+    catalysts?: string[];
+    summary?: string;
+  } | null,
+  expectations?: Array<{
+    metricOrEvent: string;
+    metricLabel: string;
+    targetValue: number | string;
+    targetPeriod: string;
+  }>
+): {
+  relatedThesisDrivers: string[];
+  relatedRisks: string[];
+  relatedCatalysts: string[];
+  relatedExpectations: string[];
+  userRelevance: 'HIGH' | 'MEDIUM' | 'LOW';
+} {
+  const drivers: string[] = [];
+  const risks: string[] = [];
+  const catalysts: string[] = [];
+  const expectationLinks: string[] = [];
+
+  const headlineLower = event.headline.toLowerCase();
+
+  if (thesis) {
+    // Check Catalysts
+    for (const c of (thesis.catalysts || [])) {
+      const words = c.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      if (words.some(w => headlineLower.includes(w))) {
+        catalysts.push(c);
+      }
+    }
+
+    // Check Risks
+    for (const r of (thesis.keyRisks || [])) {
+      const words = r.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      if (words.some(w => headlineLower.includes(w))) {
+        risks.push(r);
+      }
+    }
+
+    // Check Drivers
+    for (const d of (thesis.keyDrivers || [])) {
+      const words = d.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      if (words.some(w => headlineLower.includes(w))) {
+        drivers.push(d);
+      }
+    }
+  }
+
+  if (expectations && expectations.length > 0) {
+    if (event.category === 'EARNINGS' || event.category === 'GUIDANCE') {
+      for (const exp of expectations) {
+        const metricLower = exp.metricOrEvent.toLowerCase();
+        if (metricLower.includes('revenue') && (headlineLower.includes('revenue') || headlineLower.includes('sales'))) {
+          expectationLinks.push(`${exp.metricLabel} (${exp.targetPeriod}): Target ${exp.targetValue}`);
+        } else if (metricLower.includes('margin') && headlineLower.includes('margin')) {
+          expectationLinks.push(`${exp.metricLabel} (${exp.targetPeriod}): Target ${exp.targetValue}`);
+        } else if (metricLower.includes('cash') && headlineLower.includes('fcf')) {
+          expectationLinks.push(`${exp.metricLabel} (${exp.targetPeriod}): Target ${exp.targetValue}`);
+        }
+      }
+    }
+  }
+
+  let userRelevance: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
+  if (catalysts.length > 0 || risks.length > 0 || expectationLinks.length > 0) {
+    userRelevance = 'HIGH';
+  } else if (drivers.length > 0) {
+    userRelevance = 'MEDIUM';
+  }
+
+  return {
+    relatedThesisDrivers: drivers.slice(0, 2),
+    relatedRisks: risks.slice(0, 2),
+    relatedCatalysts: catalysts.slice(0, 2),
+    relatedExpectations: expectationLinks.slice(0, 2),
+    userRelevance
+  };
+}
+
+/**
+ * Converts MaterialCompanyEvents to MonitoringAlerts with deterministic portfolio context and thesis connections.
+ */
+export function convertMaterialEventsToAlerts(
+  events: MaterialCompanyEvent[],
+  multiPortfolioSummary?: MultiPortfolioAllocationSummary,
+  thesesByTicker: Record<string, any> = {},
+  expectationsByTicker: Record<string, any[]> = {},
+  readIds: Set<string> = new Set(),
+  existingAlerts: MonitoringAlert[] = []
+): MonitoringAlert[] {
+  const alerts: MonitoringAlert[] = [];
+
+  // Build a set of existing SEC filing accessions and dates to suppress exact duplicates
+  const existingSecFilings = new Set<string>();
+  for (const a of existingAlerts) {
+    if (a.type === 'FILING_MATERIAL_8K' || a.type === 'FILING_NEW_10K_10Q') {
+      const filingKey = a.evidence?.filingDate || a.dateStr;
+      if (filingKey) existingSecFilings.add(`${a.ticker}_${filingKey}`);
+      if (a.evidence?.sourceUrl) existingSecFilings.add(a.evidence.sourceUrl);
+    }
+  }
+
+  for (const event of events) {
+    const cleanTicker = event.ticker.toUpperCase().trim();
+
+    // SEC Duplicate Suppression: if this event is an SEC filing that matches an existing filing alert exactly
+    if (event.sourceType === 'SEC_EDGAR') {
+      const dateKey = event.publishedAt ? event.publishedAt.split('T')[0] : '';
+      if (dateKey && existingSecFilings.has(`${cleanTicker}_${dateKey}`)) {
+        continue; // Suppress duplicate filing alert
+      }
+      if (event.sourceUrl && existingSecFilings.has(event.sourceUrl)) {
+        continue;
+      }
+    }
+
+    // Portfolio Context
+    const portfolioContext = deriveMultiPortfolioContextForTicker(cleanTicker, multiPortfolioSummary);
+
+    // Thesis Relevance
+    const userThesis = thesesByTicker[cleanTicker] || null;
+    const expectations = expectationsByTicker[cleanTicker] || [];
+    const thesisRel = evaluateEventThesisRelevance(event, userThesis, expectations);
+
+    // Combine user relevance: elevated to HIGH if heavily held
+    let finalUserRelevance = thesisRel.userRelevance;
+    if (portfolioContext.held && portfolioContext.aggregateOverallExposurePct !== null && portfolioContext.aggregateOverallExposurePct >= 10) {
+      finalUserRelevance = 'HIGH';
+    } else if (portfolioContext.held && finalUserRelevance === 'LOW') {
+      finalUserRelevance = 'MEDIUM';
+    }
+
+    // Materiality threshold rule:
+    // HIGH -> Alert
+    // MEDIUM -> Alert only if held or active thesis or relevance >= MEDIUM
+    // LOW -> Suppress
+    if (event.materiality === 'LOW') continue;
+    if (event.materiality === 'MEDIUM' && !portfolioContext.held && !userThesis && finalUserRelevance === 'LOW') {
+      continue;
+    }
+
+    const stableAlertId = `alert_${cleanTicker}_NEWS_${event.eventId}`;
+    const isRead = readIds.has(stableAlertId);
+
+    const alertDate = event.publishedAt ? event.publishedAt.split('T')[0] : new Date().toISOString().split('T')[0];
+    const timestamp = event.publishedAt ? new Date(event.publishedAt).getTime() : Date.now();
+
+    const severity = event.materiality === 'HIGH'
+      ? (finalUserRelevance === 'HIGH' ? 'critical' : 'warning')
+      : 'info';
+
+    alerts.push({
+      id: stableAlertId,
+      ticker: cleanTicker,
+      type: 'NEWS_MATERIAL_EVENT',
+      severity,
+      title: event.headline,
+      titleTh: event.headline,
+      message: event.factualSummary,
+      messageTh: event.factualSummary,
+      timestamp,
+      dateStr: alertDate,
+      isRead,
+      evidence: {
+        metricName: 'Corporate Event Source',
+        currentValue: event.sourceName,
+        filingType: event.category,
+        filingDate: event.publishedAt || undefined,
+        sourceUrl: event.sourceUrl
+      },
+      linkSection: 'section-summary',
+      newsEvent: event,
+      eventCategory: event.category,
+      eventMateriality: event.materiality,
+      userRelevance: finalUserRelevance,
+      portfolioContext,
+      whyItMatters: event.whyItMatters,
+      whyItMattersTh: event.whyItMattersTh,
+      relatedThesisDrivers: thesisRel.relatedThesisDrivers,
+      relatedRisks: thesisRel.relatedRisks,
+      relatedCatalysts: thesisRel.relatedCatalysts,
+      relatedExpectations: thesisRel.relatedExpectations,
+      supportingSources: event.supportingSources,
+      sourceAuthority: event.sourceAuthority,
+      sourceType: event.sourceType
+    });
+  }
+
+  return alerts;
+}
+
 export function evaluateAllAlerts(
   monitoredTickers: string[],
   latestReports: Record<string, ReportData> = {},
@@ -478,7 +774,10 @@ export function evaluateAllAlerts(
   preferences: MonitoringPreferences = DEFAULT_MONITORING_PREFERENCES,
   readIds: Set<string> = new Set(),
   multiPortfolioSummary?: MultiPortfolioAllocationSummary,
-  userId?: string
+  userId?: string,
+  newsEvents: MaterialCompanyEvent[] = [],
+  thesesByTicker: Record<string, any> = {},
+  expectationsByTicker: Record<string, any[]> = {}
 ): MonitoringAlert[] {
   const alertMap = new Map<string, MonitoringAlert>();
 
@@ -519,6 +818,28 @@ export function evaluateAllAlerts(
   if (multiPortfolioSummary) {
     for (const alert of evaluateMultiPortfolioAlerts(multiPortfolioSummary, readIds)) {
       if (!alertMap.has(alert.id)) alertMap.set(alert.id, alert);
+    }
+  }
+
+  // Convert and merge Material News Events (if enabled)
+  if (preferences.enableNewsAlerts !== false && newsEvents && newsEvents.length > 0) {
+    const existingAlerts = Array.from(alertMap.values());
+    const newsAlerts = convertMaterialEventsToAlerts(
+      newsEvents,
+      multiPortfolioSummary,
+      thesesByTicker,
+      expectationsByTicker,
+      readIds,
+      existingAlerts
+    );
+
+    for (const alert of newsAlerts) {
+      if (!alertMap.has(alert.id)) {
+        alertMap.set(alert.id, {
+          ...alert,
+          isRead: readIds.has(alert.id)
+        });
+      }
     }
   }
 

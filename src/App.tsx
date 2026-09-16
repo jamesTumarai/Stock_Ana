@@ -30,8 +30,11 @@ import {
   saveLastSeenAccessions,
   MONITORING_UPDATED_EVENT,
   DEFAULT_MONITORING_PREFERENCES,
-  evaluateAllAlerts
+  evaluateAllAlerts,
+  deriveTrackedNewsSymbols
 } from './utils/monitoringEngine';
+import { fetchMaterialEvents } from './services/materialNewsService';
+import { loadUserThesis, loadExpectations } from './services/thesisExpectationsService';
 import {
   loadLocalWatchlist,
   loadLocalPortfolio,
@@ -58,6 +61,7 @@ import {
   ComprehensiveAnalysis, 
   TechnicalAnalysis, 
   FinancialStatementsData,
+  MaterialCompanyEvent,
   ValuationRatioItem,
   ValuationPercentileChart,
   IntrinsicValueData,
@@ -191,6 +195,12 @@ export default function App() {
   const [portfolioRevision, setPortfolioRevision] = useState(0);
 
   const [liveQuotes, setLiveQuotes] = useState<Record<string, { price?: number }>>({});
+  const [newsEvents, setNewsEvents] = useState<MaterialCompanyEvent[]>([]);
+  const [isNewsRefreshing, setIsNewsRefreshing] = useState(false);
+  const [lastNewsCheckedAt, setLastNewsCheckedAt] = useState<number | null>(null);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [thesesByTicker, setThesesByTicker] = useState<Record<string, any>>({});
+  const [expectationsByTicker, setExpectationsByTicker] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     const refreshPortfolioState = () => setPortfolioRevision(revision => revision + 1);
@@ -349,6 +359,58 @@ export default function App() {
     return computeMultiPortfolioAllocation(config.portfolios, portfolioSummary.computed_holdings, config.ticker_limits);
   }, [user?.uid, portfolioSummary, isPortfolioOpen, portfolioRevision]);
 
+  // Fetch material news events for tracked universe (Watchlist + Portfolios)
+  const refreshMaterialNews = React.useCallback(async (force = false) => {
+    const watchlist = loadLocalWatchlist(user?.uid);
+    const portfolio = loadLocalPortfolio(user?.uid);
+    const trackedSymbols = deriveTrackedNewsSymbols(watchlist, portfolio, ticker);
+
+    if (trackedSymbols.length === 0) {
+      setNewsEvents([]);
+      setNewsError(null);
+      return;
+    }
+
+    setIsNewsRefreshing(true);
+    try {
+      const res = await fetchMaterialEvents(trackedSymbols, { forceRefresh: force });
+      setNewsEvents(res.events);
+      setLastNewsCheckedAt(Date.now());
+      if (res.status === 'error') {
+        setNewsError(res.errorMessage || 'Failed to check recent news');
+      } else {
+        setNewsError(null);
+      }
+
+      // Load theses & expectations for tracked symbols in background
+      Promise.all(trackedSymbols.map(async (sym) => {
+        const [t, exp] = await Promise.all([
+          loadUserThesis(sym, user).catch(() => null),
+          loadExpectations(sym, user).catch(() => [])
+        ]);
+        return { sym, t, exp };
+      })).then(results => {
+        const tMap: Record<string, any> = {};
+        const expMap: Record<string, any[]> = {};
+        for (const item of results) {
+          if (item.t) tMap[item.sym] = item.t;
+          if (item.exp && item.exp.length > 0) expMap[item.sym] = item.exp;
+        }
+        setThesesByTicker(tMap);
+        setExpectationsByTicker(expMap);
+      }).catch(e => console.warn('App: failed to load theses/expectations for news', e));
+    } catch (err: any) {
+      console.warn('App: error fetching material news', err);
+      setNewsError(err?.message || 'Error fetching news');
+    } finally {
+      setIsNewsRefreshing(false);
+    }
+  }, [user?.uid, ticker, isPortfolioOpen, portfolioRevision]);
+
+  useEffect(() => {
+    refreshMaterialNews(false);
+  }, [refreshMaterialNews]);
+
   const alerts = React.useMemo(() => {
     const watchlist = loadLocalWatchlist(user?.uid);
     const portfolio = loadLocalPortfolio(user?.uid);
@@ -368,9 +430,12 @@ export default function App() {
       monitoringPreferences,
       readAlertIds,
       multiPortfolioSummary,
-      user?.uid
+      user?.uid,
+      newsEvents,
+      thesesByTicker,
+      expectationsByTicker
     );
-  }, [user?.uid, reportsByTicker, liveQuotes, historyReports, portfolioSummary, multiPortfolioSummary, ticker, monitoringPreferences, readAlertIds, isPortfolioOpen]);
+  }, [user?.uid, reportsByTicker, liveQuotes, historyReports, portfolioSummary, multiPortfolioSummary, ticker, monitoringPreferences, readAlertIds, isPortfolioOpen, newsEvents, thesesByTicker, expectationsByTicker]);
 
   const unreadAlertsCount = React.useMemo(() => alerts.filter(a => !a.isRead).length, [alerts]);
 
@@ -972,6 +1037,10 @@ export default function App() {
               setTicker(selectedTicker);
               setIsAlertsOpen(false);
             }}
+            onRefreshNews={() => refreshMaterialNews(true)}
+            isNewsRefreshing={isNewsRefreshing}
+            lastNewsCheckedAt={lastNewsCheckedAt}
+            newsError={newsError}
           />
         )}
       </AnimatePresence>

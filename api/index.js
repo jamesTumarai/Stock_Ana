@@ -12,6 +12,7 @@ let secCompareHandler;
 let secDiffHandler;
 let healthHandler;
 let liveQuotesHandler;
+let materialEventsHandler;
 
 function loadModule(distPath, srcPath, requiredExport) {
   try {
@@ -66,6 +67,13 @@ export default async function handler(req, res) {
       ({ handleSecDiff: secDiffHandler } = loadModule('../dist/sec-preview.cjs', '../server/secPreviewHandler.ts', 'handleSecDiff'));
     }
     return secDiffHandler(req, res);
+  }
+
+  if ((req.url || '').startsWith('/api/material-events')) {
+    if (!materialEventsHandler) {
+      ({ handleMaterialEvents: materialEventsHandler } = loadModule('../dist/server.cjs', '../server/routes/materialNewsRoutes.ts', 'handleMaterialEvents'));
+    }
+    return materialEventsHandler(req, res);
   }
 
   try {

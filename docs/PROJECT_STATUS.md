@@ -253,6 +253,16 @@ Application-behavior baseline SHA: `73905f585ea8001c462aaf8a7014b3c7ff926b9a`.
 - Client-evaluated on application open and watchlist/portfolio state changes with real market quotes (`liveQuotes`) and dynamically derived `portfolioSummary`.
 - Alerts for valuation breaches, overvalued warnings, conviction score shifts (>= 10 pts using canonical `getPreviousReport`), new SEC filings (accession-verified, duplicate citations suppressed), and portfolio concentration risk.
 - Interactive `AlertsModal.tsx` with filter tabs, unread indicators, and threshold controls.
+- Upgraded with Material News & Corporate Event Intelligence:
+  - Truthful On-Open / On-Refresh research checks only (no 24/7 background daemon, no fake continuous monitoring claims).
+  - Tracked scope: Watchlist + all user-created Portfolios + legacy Unassigned holdings + active research ticker (historical-only tickers excluded).
+  - Multi-Portfolio deduplication: Tickers held across multiple portfolios or in watchlist are fetched exactly ONCE per refresh cycle.
+  - Multi-tier source authority: Tier 1 Authoritative (SEC EDGAR 8-K items), Tier 2 Company Primary (IR wires: PR Newswire, Business Wire, GlobeNewswire), Tier 3 Market/Exchange, Tier 4 Reputable financial journalism (Reuters, Bloomberg). Unvetted blogs, SEO clickbait, social chatter, and stock recaps are filtered out.
+  - Deterministic materiality (HIGH/MEDIUM/LOW) with noise filtering and SEC duplicate suppression.
+  - Multi-Portfolio exposure context: Deterministic aggregate exposure and portfolio breakdown attached to event without duplicating alerts per portfolio.
+  - Thesis & expectation relevance: Contextual links to active catalysts, risks, drivers, and expectations without mutating thesis or fabricating state.
+  - Permanent AI invariant: AI is optional batch interpretation only, never the factual source.
+  - Failure isolation: News service degradation preserves all valuation, SEC, and portfolio alerts.
 
 ### Phase 9 — Comparison & Decision Tools ✅
 - Built `decisionEngine.ts` featuring Reverse DCF back-solving for market-implied Revenue CAGR hurdle.
