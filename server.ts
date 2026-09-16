@@ -19,7 +19,8 @@ import { registerFileRoutes } from "./server/routes/fileRoutes.ts";
 import { registerMarketRoutes } from "./server/routes/marketRoutes.ts";
 import { registerSecRoutes } from "./server/routes/secRoutes.ts";
 import { registerHealthRoutes } from "./server/routes/healthRoutes.ts";
-import { registerMaterialNewsRoutes } from "./server/routes/materialNewsRoutes.ts";
+import { registerMaterialNewsRoutes, handleMaterialEvents } from "./server/routes/materialNewsRoutes.ts";
+export { handleMaterialEvents };
 
 import { streamInteraction } from "./server/lib/agentClient.ts";
 import { loadAgentFiles } from "./server/lib/agentFiles.ts";
