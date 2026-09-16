@@ -657,7 +657,7 @@ export default function ReportTemplate({
               <button 
                 type="button" 
                 onClick={handlePrintPdf} 
-                className="text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-50 transition-all rounded-full px-3 py-1.5 border border-stone-200 shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                className="hidden sm:flex text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-50 transition-all rounded-full px-3 py-1.5 border border-stone-200 shadow-xs items-center gap-1.5 text-xs font-semibold cursor-pointer"
                 title={isThai ? 'พิมพ์หรือบันทึกรายงานเป็น PDF เต็มหน้า' : 'Print or Save Report as PDF'}
               >
                 <Printer className="w-3.5 h-3.5 text-[#0b5a4b]" />
@@ -725,7 +725,7 @@ export default function ReportTemplate({
             </div>
           </div>
 
-          <div className="flex items-center gap-4 sm:gap-6 flex-wrap border-t md:border-t-0 md:border-l border-stone-100 pt-4 md:pt-0 md:pl-6 shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-6 border-t md:border-t-0 md:border-l border-stone-100 pt-4 md:pt-0 md:pl-6 shrink-0 w-full sm:w-auto">
             {/* Current Price */}
             {(data.intrinsic_value?.current_price || data.company_profile?.stock_price) && (
               <div className="flex flex-col">
@@ -752,8 +752,8 @@ export default function ReportTemplate({
 
             {/* Conviction Score Pill */}
             {typeof data.verdict?.conviction_score === 'number' && (
-              <div className="flex flex-col items-center justify-center px-4 py-2 rounded-2xl bg-stone-900 text-white shadow-xs">
-                <span className="text-[9px] font-mono uppercase font-bold tracking-wider opacity-75">
+              <div className="col-span-2 sm:col-span-1 flex flex-row sm:flex-col items-center justify-between sm:justify-center px-4 py-2 rounded-2xl bg-stone-900 text-white shadow-xs">
+                <span className="text-[10px] sm:text-[9px] font-mono uppercase font-bold tracking-wider opacity-75">
                   Conviction
                 </span>
                 <span className="text-base sm:text-lg font-bold font-mono leading-tight text-amber-300">
@@ -821,7 +821,7 @@ export default function ReportTemplate({
                    />
                  </div>
                  
-                 <div className="grid grid-cols-5 gap-1 border-t border-stone-200 pt-4 mt-auto w-full">
+                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 sm:gap-1 border-t border-stone-200 pt-3 sm:pt-4 mt-auto w-full">
                    <div className="flex flex-col items-center">
                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "เอกสาร" : "Docs"}</div>
                      <div className="text-sm font-mono text-stone-800">{documentCount}</div>
@@ -841,7 +841,7 @@ export default function ReportTemplate({
                      </div>
                    </div>
                     <div
-                      className="flex flex-col items-center border-l border-stone-200"
+                      className="col-span-4 sm:col-span-1 flex flex-col items-center border-t sm:border-t-0 sm:border-l border-stone-200 pt-2 sm:pt-0"
                       title={
                         !tokenCostEstimate.isAvailable
                           ? (isThai ? `ไม่พร้อมใช้งาน: ${tokenCostEstimate.reason}` : `Unavailable: ${tokenCostEstimate.reason}`)
