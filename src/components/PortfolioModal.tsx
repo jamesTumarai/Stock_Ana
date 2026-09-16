@@ -4,7 +4,8 @@ import {
   X, Plus, Trash2, Briefcase, Star, AlertTriangle, ShieldCheck, PieChart,
   Layers, ArrowRight, Check, ChevronDown,
   Bell, Clock3, FileText, Pencil, Target, SlidersHorizontal, FolderPlus,
-  WalletCards, CircleGauge, Info, ChevronRight
+  WalletCards, CircleGauge, Info, ChevronRight,
+  TrendingUp, TrendingDown, Search, Sparkles
 } from 'lucide-react';
 import {
   AggregateTickerExposure,
@@ -1042,34 +1043,62 @@ export function PortfolioModal({
 
         {/* Tab Switcher */}
         <div className="flex flex-col gap-2.5 px-3.5 sm:px-6 py-3 border-b border-stone-100 bg-white sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-1 rounded-2xl bg-stone-100 p-1 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 rounded-2xl bg-stone-100/90 p-1 overflow-x-auto no-scrollbar">
             <motion.button
               type="button"
               onClick={() => setActiveTab('portfolio')}
               whileTap={{ scale: 0.97 }}
               aria-pressed={activeTab === 'portfolio'}
-              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition duration-200 flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+              className={`relative px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-colors duration-150 flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                 activeTab === 'portfolio'
-                  ? 'bg-white text-[#0b5a4b] shadow-sm'
+                  ? 'text-[#0b5a4b]'
                   : 'text-stone-500 hover:text-stone-800'
               }`}
             >
-              <Briefcase className="w-4 h-4" />
-              <span>{isThai ? 'พอร์ตการลงทุน' : 'Portfolio Holdings'} ({holdings.length})</span>
+              {activeTab === 'portfolio' && (
+                <motion.div
+                  layoutId="active-portfolio-tab-indicator"
+                  className="absolute inset-0 bg-white rounded-xl shadow-xs"
+                  transition={{ type: 'spring', stiffness: 440, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Briefcase className="w-4 h-4" />
+                <span>{isThai ? 'พอร์ตการลงทุน' : 'Portfolio Holdings'}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                  activeTab === 'portfolio' ? 'bg-[#0b5a4b]/10 text-[#0b5a4b]' : 'bg-stone-200/70 text-stone-600'
+                }`}>
+                  {holdings.length}
+                </span>
+              </span>
             </motion.button>
             <motion.button
               type="button"
               onClick={() => setActiveTab('watchlist')}
               whileTap={{ scale: 0.97 }}
               aria-pressed={activeTab === 'watchlist'}
-              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition duration-200 flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+              className={`relative px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-colors duration-150 flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                 activeTab === 'watchlist'
-                  ? 'bg-white text-[#0b5a4b] shadow-sm'
+                  ? 'text-[#0b5a4b]'
                   : 'text-stone-500 hover:text-stone-800'
               }`}
             >
-              <Star className="w-4 h-4" />
-              <span>{isThai ? 'รายการติดตาม (Watchlist)' : 'Watchlist'} ({watchlist.length})</span>
+              {activeTab === 'watchlist' && (
+                <motion.div
+                  layoutId="active-portfolio-tab-indicator"
+                  className="absolute inset-0 bg-white rounded-xl shadow-xs"
+                  transition={{ type: 'spring', stiffness: 440, damping: 32 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                <Star className="w-4 h-4" />
+                <span>{isThai ? 'รายการติดตาม (Watchlist)' : 'Watchlist'}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                  activeTab === 'watchlist' ? 'bg-[#0b5a4b]/10 text-[#0b5a4b]' : 'bg-stone-200/70 text-stone-600'
+                }`}>
+                  {watchlist.length}
+                </span>
+              </span>
             </motion.button>
           </div>
 
@@ -1161,102 +1190,155 @@ export function PortfolioModal({
                 className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3"
               >
                 {/* Total Market Value */}
-                <div className="p-3 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-col">
-                  <span className="text-[10px] font-mono uppercase font-bold text-stone-500">
-                    {isThai ? 'มูลค่าพอร์ตรวม' : 'Total Market Value'}
-                  </span>
-                  <span className="text-xl font-mono font-extrabold text-stone-900 mt-1">
-                    {displaySummary.total_market_value !== null
-                      ? `$${displaySummary.total_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : displaySummary.priced_market_value > 0
-                      ? `$${displaySummary.priced_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : (isThai ? 'ไม่สามารถระบุได้' : 'Unavailable')}
-                  </span>
-                  <span className="text-[10px] text-stone-500 font-mono mt-0.5">
-                    {displaySummary.unpriced_holdings_count > 0 ? (
-                      <span className="text-amber-700 font-sans">
-                        {isThai
-                          ? `ครอบคลุมราคา ${displaySummary.pricing_coverage_pct}% (${displaySummary.unpriced_holdings_count} รายการขาดราคาตลาด)`
-                          : `${displaySummary.pricing_coverage_pct}% priced (${displaySummary.unpriced_holdings_count} missing quote)`}
-                      </span>
-                    ) : (
-                      <>{isThai ? 'ต้นทุน:' : 'Cost Basis:'} ${displaySummary.total_cost_basis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
-                    )}
-                  </span>
-                </div>
+                <motion.div
+                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                  className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 to-emerald-50/20 border border-stone-200/90 shadow-2xs hover:shadow-sm hover:border-emerald-300 transition-all flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                      {isThai ? 'มูลค่าพอร์ตรวม' : 'Total Market Value'}
+                    </span>
+                    <div className="w-6 h-6 rounded-lg bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
+                      <WalletCards className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <span className="text-xl sm:text-2xl font-mono font-black text-stone-900 tracking-tight">
+                      {displaySummary.total_market_value !== null
+                        ? `$${displaySummary.total_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : displaySummary.priced_market_value > 0
+                        ? `$${displaySummary.priced_market_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : (isThai ? 'ไม่สามารถระบุได้' : 'Unavailable')}
+                    </span>
+                    <div className="text-[10px] text-stone-500 font-mono mt-1">
+                      {displaySummary.unpriced_holdings_count > 0 ? (
+                        <span className="text-amber-700 font-sans inline-flex items-center gap-1 font-semibold">
+                          <Info className="w-3 h-3 shrink-0" />
+                          {isThai
+                            ? `ครอบคลุมราคา ${displaySummary.pricing_coverage_pct}% (${displaySummary.unpriced_holdings_count} รายการขาดราคาตลาด)`
+                            : `${displaySummary.pricing_coverage_pct}% priced (${displaySummary.unpriced_holdings_count} missing quote)`}
+                        </span>
+                      ) : (
+                        <span className="text-stone-500 font-medium">{isThai ? 'ต้นทุน:' : 'Cost Basis:'} ${displaySummary.total_cost_basis.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
 
                 {/* Total Unrealized P/L */}
-                <div className="p-3 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-col">
-                  <span className="text-[10px] font-mono uppercase font-bold text-stone-500">
-                    {isThai ? 'กำไร/ขาดทุนที่ยังไม่รับรู้' : 'Unrealized Gain / Loss'}
-                  </span>
-                  {displaySummary.total_unrealized_pnl !== null && displaySummary.total_unrealized_pnl_pct !== null ? (
-                    <>
-                      <div className="flex items-baseline gap-1.5 mt-1">
-                        <span className={`text-xl font-mono font-extrabold ${displaySummary.total_unrealized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <motion.div
+                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                  className={`p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 ${
+                    displaySummary.total_unrealized_pnl && displaySummary.total_unrealized_pnl >= 0 ? 'to-emerald-50/30' : 'to-rose-50/30'
+                  } border border-stone-200/90 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                      {isThai ? 'กำไร/ขาดทุนที่ยังไม่รับรู้' : 'Unrealized Gain / Loss'}
+                    </span>
+                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${
+                      displaySummary.total_unrealized_pnl && displaySummary.total_unrealized_pnl >= 0
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                        : 'bg-rose-50 text-rose-700 border border-rose-100'
+                    }`}>
+                      {displaySummary.total_unrealized_pnl && displaySummary.total_unrealized_pnl >= 0 ? (
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <TrendingDown className="w-3.5 h-3.5" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    {displaySummary.total_unrealized_pnl !== null && displaySummary.total_unrealized_pnl_pct !== null ? (
+                      <div>
+                        <span className={`text-xl sm:text-2xl font-mono font-black tracking-tight ${displaySummary.total_unrealized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {displaySummary.total_unrealized_pnl >= 0 ? '+' : ''}${displaySummary.total_unrealized_pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
+                        <div className="mt-1">
+                          <span className={`inline-flex items-center px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold ${
+                            displaySummary.total_unrealized_pnl_pct >= 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}>
+                            {displaySummary.total_unrealized_pnl_pct >= 0 ? '+' : ''}{displaySummary.total_unrealized_pnl_pct.toFixed(2)}%
+                          </span>
+                        </div>
                       </div>
-                      <span className={`text-[10px] font-mono font-bold ${displaySummary.total_unrealized_pnl_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {displaySummary.total_unrealized_pnl_pct >= 0 ? '+' : ''}{displaySummary.total_unrealized_pnl_pct.toFixed(2)}%
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-sm font-semibold text-stone-600 mt-1">
-                        {isThai ? 'ไม่สามารถคำนวณกำไร/ขาดทุนรวมได้' : 'Total P/L Unavailable'}
+                    ) : (
+                      <div>
+                        <div className="text-xs font-bold text-stone-600">
+                          {isThai ? 'ยังไม่สามารถคำนวณกำไร/ขาดทุนรวม' : 'P/L Unavailable'}
+                        </div>
+                        <span className="text-[10px] text-amber-700 font-sans mt-0.5 block">
+                          {isThai
+                            ? `ขาดราคาตลาดสด ${displaySummary.unpriced_holdings_count} รายการ`
+                            : `${displaySummary.unpriced_holdings_count} holdings missing live price`}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-amber-700 font-sans mt-0.5">
-                        {isThai
-                          ? `ขาดราคาตลาดสด ${displaySummary.unpriced_holdings_count} รายการ`
-                          : `${displaySummary.unpriced_holdings_count} holdings missing live price`}
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {/* Top Concentration Risk */}
-                <div className="p-3 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-col">
-                  <span className="text-[10px] font-mono uppercase font-bold text-stone-500">
-                    {isThai ? 'ความเข้มข้นสูงสุด (Concentration)' : 'Top Holding Weight'}
-                  </span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xl font-mono font-extrabold text-stone-900">
-                      {displaySummary.is_fully_priced ? `${displaySummary.top_holding_concentration_pct.toFixed(1)}%` : '—'}
-                    </span>
-                    {displaySummary.concentration_risk_alert && (
-                      <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-mono rounded font-bold" title={isThai ? 'เกินเกณฑ์ 30%' : 'Above 30% concentration limit'}>
-                        ⚠️ Alert
-                      </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-stone-500 font-sans mt-0.5">
-                    {!displaySummary.is_fully_priced
-                      ? (isThai ? 'รอราคาตลาดครบก่อนคำนวณสัดส่วน' : 'Waiting for complete market pricing')
-                      : displaySummary.concentration_risk_alert
-                      ? (isThai ? 'มีหุ้นสัดส่วนเกิน 30% ควรพิจารณา Diversify' : 'Exceeds 30% single-holding prudent limit')
-                      : (isThai ? 'สัดส่วนกระจายตัวในเกณฑ์ปลอดภัย' : 'Prudently diversified weight')}
-                  </span>
-                </div>
+                </motion.div>
+
+                {/* Top Concentration Risk */}
+                <motion.div
+                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                  className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 to-stone-100/30 border border-stone-200/90 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                      {isThai ? 'ความเข้มข้นสูงสุด' : 'Top Concentration'}
+                    </span>
+                    <div className="w-6 h-6 rounded-lg bg-stone-100 text-stone-600 border border-stone-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <PieChart className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl sm:text-2xl font-mono font-black text-stone-900 tracking-tight">
+                        {displaySummary.is_fully_priced ? `${displaySummary.top_holding_concentration_pct.toFixed(1)}%` : '—'}
+                      </span>
+                      {displaySummary.concentration_risk_alert && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-mono rounded font-bold" title={isThai ? 'เกินเกณฑ์ 30%' : 'Above 30% concentration limit'}>
+                          ⚠️ Alert
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-stone-500 font-sans mt-1 block line-clamp-1">
+                      {!displaySummary.is_fully_priced
+                        ? (isThai ? 'รอราคาตลาดครบเพื่อคำนวณ' : 'Waiting for complete quotes')
+                        : displaySummary.concentration_risk_alert
+                        ? (isThai ? 'สัดส่วนหุ้นเดี่ยวเกิน 30%' : 'Exceeds 30% limit')
+                        : (isThai ? 'สัดส่วนกระจายตัวปลอดภัย' : 'Prudently diversified')}
+                    </span>
+                  </div>
+                </motion.div>
 
                 {/* Weighted Margin of Safety */}
-                <div className="p-3 sm:p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-col">
-                  <span className="text-[10px] font-mono uppercase font-bold text-stone-500">
-                    {isThai ? 'Margin of Safety เฉลี่ยของพอร์ต' : 'Weighted Margin of Safety'}
-                  </span>
-                  <span className={`text-xl font-mono font-extrabold mt-1 ${
-                    displaySummary.weighted_margin_of_safety_pct !== null && displaySummary.weighted_margin_of_safety_pct !== undefined
-                      ? (displaySummary.weighted_margin_of_safety_pct >= 0 ? 'text-[#0b5a4b]' : 'text-amber-700')
-                      : 'text-stone-400'
-                  }`}>
-                    {displaySummary.weighted_margin_of_safety_pct !== null && displaySummary.weighted_margin_of_safety_pct !== undefined
-                      ? `${displaySummary.weighted_margin_of_safety_pct > 0 ? '+' : ''}${displaySummary.weighted_margin_of_safety_pct.toFixed(1)}%`
-                      : '-'}
-                  </span>
-                  <span className="text-[10px] text-stone-500 font-sans mt-0.5">
-                    {isThai ? 'ถ่วงน้ำหนักตามมูลค่าแท้จริง DCF' : 'Weighted across analyzed holdings'}
-                  </span>
-                </div>
+                <motion.div
+                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                  className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-white via-stone-50/80 to-emerald-50/20 border border-stone-200/90 shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase font-bold text-stone-500 tracking-wider">
+                      {isThai ? 'Margin of Safety รวม' : 'Weighted MoS'}
+                    </span>
+                    <div className="w-6 h-6 rounded-lg bg-emerald-50 text-[#0b5a4b] border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <span className={`text-xl sm:text-2xl font-mono font-black tracking-tight ${
+                      displaySummary.weighted_margin_of_safety_pct !== null && displaySummary.weighted_margin_of_safety_pct !== undefined
+                        ? (displaySummary.weighted_margin_of_safety_pct >= 0 ? 'text-[#0b5a4b]' : 'text-amber-700')
+                        : 'text-stone-400'
+                    }`}>
+                      {displaySummary.weighted_margin_of_safety_pct !== null && displaySummary.weighted_margin_of_safety_pct !== undefined
+                        ? `${displaySummary.weighted_margin_of_safety_pct > 0 ? '+' : ''}${displaySummary.weighted_margin_of_safety_pct.toFixed(1)}%`
+                        : '-'}
+                    </span>
+                    <span className="text-[10px] text-stone-500 font-sans mt-1 block line-clamp-1">
+                      {isThai ? 'ถ่วงน้ำหนักตามมูลค่าแท้จริง DCF' : 'Weighted across analyzed DCF'}
+                    </span>
+                  </div>
+                </motion.div>
               </motion.div>
 
               <motion.section layout className="rounded-2xl border border-stone-200 bg-white p-3.5 shadow-2xs sm:p-4">
@@ -1942,220 +2024,293 @@ export function PortfolioModal({
             <div className="flex flex-col gap-4">
               {watchlistEntries.length > 0 && (
                 <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1.35fr_0.9fr]">
-                  <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4">
+                  {/* Top Priority Spotlight */}
+                  <motion.div
+                    whileHover={{ y: -1, transition: { duration: 0.15 } }}
+                    className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 via-white to-stone-50/70 p-4 shadow-2xs"
+                  >
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <Target className="h-4 w-4 text-[#0b5a4b]" />
+                        <div className="w-6 h-6 rounded-lg bg-emerald-100/70 text-[#0b5a4b] flex items-center justify-center">
+                          <Target className="h-3.5 w-3.5" />
+                        </div>
                         <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 font-mono">
                           {isThai ? 'หุ้นที่ควรดูก่อน' : 'Top Research Priority'}
                         </h3>
                       </div>
-                      <span title={isThai ? watchlistEntries[0].summaryReasonTh : watchlistEntries[0].summaryReason} className={`rounded-full border px-2 py-1 text-[9px] font-bold cursor-help ${
+                      <span title={isThai ? watchlistEntries[0].summaryReasonTh : watchlistEntries[0].summaryReason} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider cursor-help shadow-2xs ${
                         watchlistEntries[0].priority === 'URGENT_ATTENTION'
                           ? 'border-rose-200 bg-rose-50 text-rose-700'
                           : watchlistEntries[0].priority === 'REVIEW_RECOMMENDED'
                             ? 'border-amber-200 bg-amber-50 text-amber-700'
                             : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                       }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          watchlistEntries[0].priority === 'URGENT_ATTENTION' ? 'bg-rose-500 animate-pulse' : watchlistEntries[0].priority === 'REVIEW_RECOMMENDED' ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`} />
                         {watchlistEntries[0].attentionScore}/100
                       </span>
                     </div>
                     <div className="flex items-start gap-3">
-                      <CompanyLogo ticker={watchlistEntries[0].ticker} className="h-10 w-10" />
+                      <div className="w-11 h-11 rounded-2xl bg-white border border-stone-200/80 p-1 flex items-center justify-center shrink-0 shadow-2xs">
+                        <CompanyLogo ticker={watchlistEntries[0].ticker} className="h-9 w-9" />
+                      </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-base font-extrabold text-stone-900">{watchlistEntries[0].ticker}</span>
+                          <span className="font-mono text-base font-black text-stone-900 tracking-tight">{watchlistEntries[0].ticker}</span>
                           {typeof watchlistEntries[0].currentPrice === 'number' && (
-                            <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-mono font-bold text-stone-600 border border-stone-200">
+                            <span className="rounded-lg bg-white px-2 py-0.5 text-[10px] font-mono font-bold text-stone-700 border border-stone-200 shadow-2xs">
                               ${watchlistEntries[0].currentPrice.toFixed(2)}
                             </span>
                           )}
                         </div>
-                        <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                        <p className="mt-1 text-xs leading-relaxed text-stone-600 font-sans line-clamp-2">
                           {isThai ? watchlistEntries[0].summaryReasonTh : watchlistEntries[0].summaryReason}
                         </p>
                       </div>
                       {onSelectTicker && (
-                        <button
+                        <motion.button
                           type="button"
+                          whileHover={{ scale: 1.03, y: -1 }}
+                          whileTap={{ scale: 0.97 }}
                           onClick={() => {
                             onSelectTicker(watchlistEntries[0].ticker);
                             onClose();
                           }}
-                          className="shrink-0 rounded-xl bg-[#0b5a4b] px-3 py-2 text-[10px] font-bold text-white hover:bg-[#09473b] cursor-pointer"
+                          className="shrink-0 rounded-xl bg-gradient-to-r from-[#0b5a4b] to-[#0d6e5c] hover:from-[#09473b] hover:to-[#0b5a4b] px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:shadow-md cursor-pointer flex items-center gap-1.5 transition-all"
                         >
-                          {isThai ? 'เปิด Research' : 'Open Research'}
-                        </button>
+                          <span>{isThai ? 'เปิด Research' : 'Open Research'}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </motion.button>
                       )}
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-stone-200 bg-white p-3">
+                  </motion.div>
+
+                  {/* Priority Breakdown Interactive Pills */}
+                  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-stone-200/90 bg-white p-3 shadow-2xs">
                     {[
-                      { label: isThai ? 'เร่งด่วน' : 'Urgent', value: watchlistStats.urgent, tone: 'text-rose-600 bg-rose-50' },
-                      { label: isThai ? 'ควรทบทวน' : 'Review', value: watchlistStats.review, tone: 'text-amber-700 bg-amber-50' },
-                      { label: isThai ? 'ปกติ' : 'Routine', value: watchlistStats.routine, tone: 'text-emerald-700 bg-emerald-50' },
-                      { label: isThai ? 'ไม่มี Research' : 'No Research', value: watchlistStats.withoutResearch, tone: 'text-stone-600 bg-stone-100' }
+                      { id: 'urgent' as const, label: isThai ? 'เร่งด่วน' : 'Urgent', value: watchlistStats.urgent, tone: 'text-rose-700 bg-rose-50/80 border-rose-200/80', activeTone: 'ring-2 ring-rose-400 bg-rose-100' },
+                      { id: 'review' as const, label: isThai ? 'ควรทบทวน' : 'Review', value: watchlistStats.review, tone: 'text-amber-700 bg-amber-50/80 border-amber-200/80', activeTone: 'ring-2 ring-amber-400 bg-amber-100' },
+                      { id: 'routine' as const, label: isThai ? 'ปกติ' : 'Routine', value: watchlistStats.routine, tone: 'text-emerald-700 bg-emerald-50/80 border-emerald-200/80', activeTone: 'ring-2 ring-emerald-400 bg-emerald-100' },
+                      { id: 'all' as const, label: isThai ? 'ไม่มี Research' : 'No Research', value: watchlistStats.withoutResearch, tone: 'text-stone-700 bg-stone-100/80 border-stone-200/80', activeTone: 'ring-2 ring-stone-400 bg-stone-200' }
                     ].map(stat => (
-                      <div key={stat.label} title={`${stat.label}: ${stat.value}`} className={`rounded-xl px-3 py-2 cursor-help ${stat.tone}`}>
+                      <motion.button
+                        key={stat.label}
+                        type="button"
+                        whileHover={{ y: -1 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => setWatchlistFilter(watchlistFilter === stat.id ? 'all' : stat.id)}
+                        title={`${stat.label}: ${stat.value} (คลิกเพื่อกรอง)`}
+                        className={`rounded-xl px-3 py-2 text-left cursor-pointer border transition-all ${stat.tone} ${
+                          watchlistFilter === stat.id ? stat.activeTone : ''
+                        }`}
+                      >
                         <span className="block text-lg font-mono font-extrabold">{stat.value}</span>
-                        <span className="text-[9px] font-bold">{stat.label}</span>
-                      </div>
+                        <span className="text-[10px] font-bold tracking-tight">{stat.label}</span>
+                      </motion.button>
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Add Watchlist Ticker input */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <form onSubmit={handleAddWatchlistTicker} className="flex min-w-0 items-center gap-2">
-                <input
-                  type="text"
-                  placeholder={isThai ? "พิมพ์ชื่อย่อหุ้น e.g. NVDA, AMZN" : "Enter ticker e.g. NVDA, AMZN"}
-                  value={newWatchTicker}
-                  onChange={(e) => setNewWatchTicker(e.target.value.toUpperCase())}
-                  className="min-w-0 flex-1 sm:flex-none px-3.5 py-2 text-xs font-mono font-bold text-stone-900 placeholder:text-stone-400 bg-stone-50 border border-stone-200 rounded-xl uppercase sm:max-w-xs focus:bg-white focus:border-[#0b5a4b] transition-colors"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold rounded-xl transition duration-200 shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{isThai ? 'เพิ่มใน Watchlist' : 'Add to Watchlist'}</span>
-                </button>
-              </form>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {/* Add Watchlist Ticker Input & Filter Bar */}
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <form onSubmit={handleAddWatchlistTicker} className="flex min-w-0 items-center gap-2 flex-1 max-w-md">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder={isThai ? "ค้นหา/เพิ่มย่อหุ้น e.g. NVDA, AMZN" : "Enter ticker e.g. NVDA, AMZN"}
+                      value={newWatchTicker}
+                      onChange={(e) => setNewWatchTicker(e.target.value.toUpperCase())}
+                      className="w-full pl-8 pr-3.5 py-2 text-xs font-mono font-bold text-stone-900 placeholder:text-stone-400 bg-stone-50 border border-stone-200 rounded-xl uppercase focus:bg-white focus:border-[#0b5a4b] focus:ring-2 focus:ring-[#0b5a4b]/20 transition-all outline-none"
+                    />
+                  </div>
+                  <motion.button
+                    type="submit"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold rounded-xl transition duration-200 shadow-xs hover:shadow-sm cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{isThai ? 'เพิ่มใน Watchlist' : 'Add to Watchlist'}</span>
+                  </motion.button>
+                </form>
+
+                <div className="flex items-center gap-1 rounded-xl bg-stone-100/90 p-1 overflow-x-auto no-scrollbar shrink-0">
                   {([
-                    { id: 'all', label: isThai ? 'ทั้งหมด' : 'All', count: watchlist.length },
-                    { id: 'urgent', label: isThai ? 'เร่งด่วน' : 'Urgent', count: watchlistStats.urgent },
-                    { id: 'review', label: isThai ? 'ทบทวน' : 'Review', count: watchlistStats.review },
-                    { id: 'routine', label: isThai ? 'ปกติ' : 'Routine', count: watchlistStats.routine }
-                  ] as const).map(option => (
+                    { id: 'all' as const, label: isThai ? 'ทั้งหมด' : 'All', count: watchlist.length },
+                    { id: 'urgent' as const, label: isThai ? 'เร่งด่วน' : 'Urgent', count: watchlistStats.urgent },
+                    { id: 'review' as const, label: isThai ? 'ทบทวน' : 'Review', count: watchlistStats.review },
+                    { id: 'routine' as const, label: isThai ? 'ปกติ' : 'Routine', count: watchlistStats.routine }
+                  ]).map(option => (
                     <button
                       key={option.id}
                       type="button"
                       onClick={() => setWatchlistFilter(option.id)}
                       aria-pressed={watchlistFilter === option.id}
-                      className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[9px] font-bold transition-colors cursor-pointer ${
+                      className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-all cursor-pointer ${
                         watchlistFilter === option.id
-                          ? 'bg-stone-900 text-white'
-                          : 'border border-stone-200 bg-white text-stone-500 hover:text-stone-800'
+                          ? 'bg-white text-stone-900 shadow-xs font-extrabold'
+                          : 'text-stone-500 hover:text-stone-800'
                       }`}
                     >
-                      {option.label} {option.count}
+                      <span>{option.label}</span>
+                      <span className={`ml-1 text-[9px] px-1 py-0.2 rounded-full font-mono ${
+                        watchlistFilter === option.id ? 'bg-stone-900 text-white' : 'bg-stone-200/80 text-stone-600'
+                      }`}>
+                        {option.count}
+                      </span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Watchlist Table */}
-              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-2xs divide-y divide-stone-100">
+              {/* Watchlist Cards List */}
+              <div className="flex flex-col gap-2.5">
                 {watchlist.length === 0 ? (
-                  <div className="p-8 text-center space-y-3">
-                    <p className="text-stone-500 text-xs italic">
-                      {isThai ? 'ยังไม่มีหุ้นใน Watchlist ของคุณ' : 'No stocks on your watchlist.'}
-                    </p>
+                  <div className="p-8 text-center space-y-4 rounded-2xl border border-dashed border-stone-300 bg-stone-50/60">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/80 flex items-center justify-center mx-auto shadow-2xs">
+                      <Star className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-stone-800 font-['Prompt','Mitr',sans-serif]">
+                        {isThai ? 'ยังไม่มีหุ้นใน Watchlist ของคุณ' : 'No stocks on your watchlist'}
+                      </h4>
+                      <p className="text-stone-500 text-xs mt-1">
+                        {isThai
+                          ? 'เพิ่มหุ้นที่คุณสนใจเพื่อรับการวิเคราะห์ลำดับความสนใจและเหตุการณ์สำคัญ'
+                          : 'Add stocks you are researching to monitor priority attention and news'}
+                      </p>
+                    </div>
                     <div className="pt-2">
-                      <span className="text-xs text-stone-500 font-semibold block mb-2">
+                      <span className="text-[11px] text-stone-500 font-semibold block mb-2.5">
                         {isThai ? 'หุ้นแนะนำเริ่มต้น (Suggested Tickers):' : 'Suggested Tickers:'}
                       </span>
                       <div className="flex flex-wrap justify-center gap-2">
                         {SUGGESTED_WATCHLIST_TICKERS.map((sug) => (
-                          <button
+                          <motion.button
                             key={sug}
                             type="button"
+                            whileHover={{ scale: 1.04, y: -1 }}
+                            whileTap={{ scale: 0.96 }}
                             onClick={() => {
                               const next = Array.from(new Set([...watchlist, sug]));
                               setWatchlist(next);
                               saveLocalWatchlist(next, user?.uid);
                             }}
-                            className="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-mono font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-100 text-stone-800 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer border border-stone-200/80"
                           >
                             <Plus className="w-3 h-3 text-[#0b5a4b]" />
                             <CompanyLogo ticker={sug} className="w-5 h-5" />
                             <span>{sug}</span>
-                          </button>
+                          </motion.button>
                         ))}
                       </div>
                     </div>
                   </div>
                 ) : (
-                  visibleWatchlistEntries.map((entry) => {
-                    const tick = entry.ticker;
-                    const q = activeQuotes[tick];
-                    const price = typeof q === 'number' ? q : q?.price;
-                    let priorityBadgeClass = 'bg-stone-100 text-stone-600 border-stone-200';
-                    let priorityLabel = isThai ? 'เฝ้าระวังปกติ' : 'Routine';
+                  <AnimatePresence mode="popLayout">
+                    {visibleWatchlistEntries.map((entry) => {
+                      const tick = entry.ticker;
+                      const q = activeQuotes[tick];
+                      const price = typeof q === 'number' ? q : q?.price;
+                      let priorityBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      let dotColor = 'bg-emerald-500';
+                      let priorityLabel = isThai ? 'เฝ้าระวังปกติ' : 'Routine';
 
-                    if (entry.priority === 'URGENT_ATTENTION') {
-                      priorityBadgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
-                      priorityLabel = isThai ? 'ต้องตรวจสอบเร่งด่วน' : 'Urgent';
-                    } else if (entry.priority === 'REVIEW_RECOMMENDED') {
-                      priorityBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
-                      priorityLabel = isThai ? 'ควรทบทวน' : 'Review';
-                    }
+                      if (entry.priority === 'URGENT_ATTENTION') {
+                        priorityBadgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                        dotColor = 'bg-rose-500 animate-pulse';
+                        priorityLabel = isThai ? 'ต้องตรวจสอบเร่งด่วน' : 'Urgent';
+                      } else if (entry.priority === 'REVIEW_RECOMMENDED') {
+                        priorityBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+                        dotColor = 'bg-amber-500';
+                        priorityLabel = isThai ? 'ควรทบทวน' : 'Review';
+                      }
 
-                    return (
-                      <div key={tick} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50 transition-colors">
-                        <div className="flex flex-col gap-1.5 min-w-0">
-                          <div className="flex items-center gap-2.5 flex-wrap">
-                            <CompanyLogo ticker={tick} className="w-7 h-7" />
-                            <span className="font-mono font-bold text-sm sm:text-base text-stone-900">{tick}</span>
-                            {typeof price === 'number' && (
-                              <span className="font-mono font-bold text-xs text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
-                                ${price.toFixed(2)}
-                              </span>
-                            )}
-                            <span title={isThai ? entry.summaryReasonTh : entry.summaryReason} className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border cursor-help ${priorityBadgeClass}`}>
-                              {priorityLabel} • {entry.attentionScore}/100
-                            </span>
+                      return (
+                        <motion.div
+                          layout
+                          key={tick}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.96 }}
+                          whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                          className="group relative p-3.5 sm:p-4 rounded-2xl border border-stone-200/90 bg-white hover:border-emerald-300 hover:shadow-md transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="w-10 h-10 rounded-2xl bg-stone-50 border border-stone-200/80 p-1 flex items-center justify-center shrink-0 group-hover:border-emerald-200 transition-colors shadow-2xs">
+                              <CompanyLogo ticker={tick} className="w-8 h-8" />
+                            </div>
+
+                            <div className="flex flex-col gap-1 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-black text-sm sm:text-base text-stone-900 tracking-tight">{tick}</span>
+                                {typeof price === 'number' && (
+                                  <span className="font-mono font-bold text-xs text-stone-700 bg-stone-100 border border-stone-200/80 px-2 py-0.5 rounded-lg shadow-2xs">
+                                    ${price.toFixed(2)}
+                                  </span>
+                                )}
+                                <span title={isThai ? entry.summaryReasonTh : entry.summaryReason} className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shadow-2xs cursor-help ${priorityBadgeClass}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                                  {priorityLabel} · {entry.attentionScore}/100
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-stone-600 font-sans leading-relaxed line-clamp-2">
+                                {isThai ? entry.summaryReasonTh : entry.summaryReason}
+                              </p>
+
+                              {entry.factors.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {entry.factors.map(f => (
+                                    <span key={f.code} title={isThai ? f.labelTh : f.label} className="text-[9px] font-medium font-mono px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200/70 cursor-help">
+                                      {isThai ? f.labelTh : f.label} (+{f.points})
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
 
-                          <p className="text-xs text-stone-600 font-sans truncate">
-                            {isThai ? entry.summaryReasonTh : entry.summaryReason}
-                          </p>
-
-                          {entry.factors.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-0.5">
-                              {entry.factors.map(f => (
-                                <span key={f.code} title={isThai ? f.labelTh : f.label} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200/80 cursor-help">
-                                  {isThai ? f.labelTh : f.label} (+{f.points})
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          {onSelectTicker && (
-                            <button
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            {onSelectTicker && (
+                              <motion.button
+                                type="button"
+                                whileHover={{ scale: 1.03, y: -1 }}
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => {
+                                  onSelectTicker(tick);
+                                  onClose();
+                                }}
+                                className="px-3.5 py-2 bg-gradient-to-r from-[#0b5a4b] to-[#0d6e5c] hover:from-[#09473b] hover:to-[#0b5a4b] text-white text-xs font-bold rounded-xl transition-all duration-150 flex items-center gap-1.5 shadow-xs hover:shadow-md cursor-pointer"
+                                aria-label={isThai ? `วิเคราะห์ ${tick}` : `Analyze ${tick}`}
+                              >
+                                <span>{isThai ? 'วิเคราะห์' : 'Analyze'}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </motion.button>
+                            )}
+                            <motion.button
                               type="button"
-                              onClick={() => {
-                                onSelectTicker(tick);
-                                onClose();
-                              }}
-                              className="px-3 py-1.5 bg-[#0b5a4b] hover:bg-[#09473b] text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1 shadow-xs cursor-pointer"
-                              aria-label={isThai ? `วิเคราะห์ ${tick}` : `Analyze ${tick}`}
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => handleRemoveWatchlistTicker(tick)}
+                              className="inline-flex h-8 w-8 items-center justify-center text-stone-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                              aria-label={isThai ? `ลบ ${tick} ออกจาก Watchlist` : `Remove ${tick} from watchlist`}
+                              title={isThai ? 'ลบออกจาก Watchlist' : 'Remove from watchlist'}
                             >
-                              <span>{isThai ? 'วิเคราะห์' : 'Analyze'}</span>
-                              <ArrowRight className="w-3 h-3" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveWatchlistTicker(tick)}
-                            className="inline-flex h-8 w-8 items-center justify-center text-stone-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                            aria-label={isThai ? `ลบ ${tick} ออกจาก Watchlist` : `Remove ${tick} from watchlist`}
-                            title={isThai ? 'ลบออกจาก Watchlist' : 'Remove from watchlist'}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
+                              <Trash2 className="w-4 h-4" />
+                            </motion.button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 )}
                 {watchlist.length > 0 && visibleWatchlistEntries.length === 0 && (
-                  <div className="p-8 text-center text-xs text-stone-500">
+                  <div className="p-8 text-center text-xs text-stone-500 bg-stone-50/50 rounded-2xl border border-stone-200/70">
                     {isThai ? 'ไม่มีหุ้นในสถานะนี้' : 'No watchlist items match this filter'}
                   </div>
                 )}
