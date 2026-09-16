@@ -997,7 +997,7 @@ export function PortfolioModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-stone-900/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-5 bg-stone-900/60 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -1008,7 +1008,7 @@ export function PortfolioModal({
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
         transition={{ type: 'spring', stiffness: 360, damping: 32, mass: 0.8 }}
-        className="portfolio-cute-font relative bg-white rounded-2xl sm:rounded-3xl max-w-6xl w-full h-[calc(100dvh-1rem)] sm:h-[720px] max-h-[calc(100dvh-1rem)] sm:max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-slate-200 flex flex-col overflow-hidden [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-[#0b5a4b]/35 [&_button]:focus-visible:ring-offset-1 [&_input]:focus-visible:outline-none [&_input]:focus-visible:ring-2 [&_input]:focus-visible:ring-[#0b5a4b]/30 [&_textarea]:focus-visible:outline-none [&_textarea]:focus-visible:ring-2 [&_textarea]:focus-visible:ring-[#0b5a4b]/30"
+        className="portfolio-cute-font relative bg-white rounded-t-[28px] sm:rounded-3xl max-w-6xl w-full h-[92dvh] sm:h-[720px] max-h-[92dvh] sm:max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-slate-200 flex flex-col overflow-hidden [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-2 [&_button]:focus-visible:ring-[#0b5a4b]/35 [&_button]:focus-visible:ring-offset-1 [&_input]:focus-visible:outline-none [&_input]:focus-visible:ring-2 [&_input]:focus-visible:ring-[#0b5a4b]/30 [&_textarea]:focus-visible:outline-none [&_textarea]:focus-visible:ring-2 [&_textarea]:focus-visible:ring-[#0b5a4b]/30"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}

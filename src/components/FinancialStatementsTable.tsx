@@ -1262,11 +1262,15 @@ export function FinancialStatementsTable({
 
         {/* Tab 1: Key Indicators Table */}
         {statementTab === 'indicators' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[760px]">
-              <thead>
-                <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                  <th className="py-3 px-4 min-w-[220px] sticky left-0 bg-stone-50 z-10 shadow-xs">
+          <div className="relative">
+            <div className="sm:hidden text-[10px] text-stone-400 font-sans px-4 py-1 flex items-center justify-end gap-1 bg-stone-50/50 border-b border-stone-100">
+              <span>{isThai ? 'เลื่อนตารางในแนวนอนเพื่อดูงบย้อนหลัง →' : 'Swipe table horizontally to view periods →'}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[760px]">
+                <thead>
+                  <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
+                    <th className="py-3 px-4 min-w-[145px] sm:min-w-[220px] sticky left-0 bg-stone-50 z-10 shadow-xs">
                     {isThai ? 'ดัชนีชี้วัดทางการเงิน (Metric)' : 'Financial Metric'}
                   </th>
                   {periods.map((p, idx) => (
@@ -1359,15 +1363,20 @@ export function FinancialStatementsTable({
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Tab 2: Income Statement Table (GAAP Detailed) */}
-        {statementTab === 'income' && income && (
+      {/* Tab 2: Income Statement Table (GAAP Detailed) */}
+      {statementTab === 'income' && income && (
+        <div className="relative">
+          <div className="sm:hidden text-[10px] text-stone-400 font-sans px-4 py-1 flex items-center justify-end gap-1 bg-stone-50/50 border-b border-stone-100">
+            <span>{isThai ? 'เลื่อนตารางในแนวนอนเพื่อดูงบย้อนหลัง →' : 'Swipe table horizontally to view periods →'}</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[760px]">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                  <th className="py-3 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs min-w-[240px]">
+                  <th className="py-3 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs min-w-[155px] sm:min-w-[240px]">
                     {isThai ? 'รายการงบกำไรขาดทุน (Income Statement Item)' : 'Income Statement Item'}
                   </th>
                   {periods.map((p, idx) => (
@@ -1831,15 +1840,20 @@ export function FinancialStatementsTable({
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Tab 3: Balance Sheet Table (Hierarchical GAAP) */}
-        {statementTab === 'balance' && (
+      {/* Tab 3: Balance Sheet Table (Hierarchical GAAP) */}
+      {statementTab === 'balance' && (
+        <div className="relative">
+          <div className="sm:hidden text-[10px] text-stone-400 font-sans px-4 py-1 flex items-center justify-end gap-1 bg-stone-50/50 border-b border-stone-100">
+            <span>{isThai ? 'เลื่อนตารางในแนวนอนเพื่อดูงบย้อนหลัง →' : 'Swipe table horizontally to view periods →'}</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[760px]">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                  <th className="py-3 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs min-w-[240px]">
+                  <th className="py-3 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs min-w-[155px] sm:min-w-[240px]">
                     {isThai ? 'รายการงบดุล (Balance Sheet Item)' : 'Balance Sheet Item'}
                   </th>
                   {periods.map((p, idx) => (
@@ -1937,15 +1951,20 @@ export function FinancialStatementsTable({
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Tab 4: Cash Flow Table (Hierarchical GAAP) */}
-        {statementTab === 'cashflow' && (
+      {/* Tab 4: Cash Flow Table (Hierarchical GAAP) */}
+      {statementTab === 'cashflow' && (
+        <div className="relative">
+          <div className="sm:hidden text-[10px] text-stone-400 font-sans px-4 py-1 flex items-center justify-end gap-1 bg-stone-50/50 border-b border-stone-100">
+            <span>{isThai ? 'เลื่อนตารางในแนวนอนเพื่อดูงบย้อนหลัง →' : 'Swipe table horizontally to view periods →'}</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[760px]">
               <thead>
                 <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                  <th className="py-3 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs min-w-[240px]">
+                  <th className="py-3 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs min-w-[155px] sm:min-w-[240px]">
                     {isThai ? 'รายการกระแสเงินสด (Cash Flow Item)' : 'Cash Flow Item'}
                   </th>
                   {periods.map((p, idx) => (
@@ -2033,7 +2052,8 @@ export function FinancialStatementsTable({
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      )}
 
         {/* Dynamic AI Financial Analyst Live Deep-Dive Inspection Box */}
         {(() => {

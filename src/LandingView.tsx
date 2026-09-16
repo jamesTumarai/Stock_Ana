@@ -168,10 +168,10 @@ export function LandingView({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[100vh] min-h-[100dvh] overflow-hidden bg-transparent text-white select-none">
+    <div className="relative w-full h-full min-h-[100vh] min-h-[100dvh] overflow-y-auto sm:overflow-hidden bg-transparent text-white select-none">
       {/* Main Single-Viewport Page Layout (3 Regions: Header, Hero, Stats) */}
       <div 
-        className="relative z-10 w-full h-full min-h-[100vh] min-h-[100dvh] flex flex-col justify-between items-center overflow-hidden"
+        className="relative z-10 w-full min-h-[100vh] min-h-[100dvh] flex flex-col justify-between items-center overflow-y-auto sm:overflow-hidden"
         style={{
           padding: 'clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px)',
         }}
@@ -389,14 +389,14 @@ export function LandingView({
               <div className="flex items-center gap-2.5 sm:gap-3">
                 <button
                   onClick={onOpenHistory}
-                  className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
+                  className="hidden sm:flex text-white/80 hover:text-white cursor-pointer transition-colors p-1"
                   title="History"
                 >
                   <HistoryIcon className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
                 </button>
                 <button
                   onClick={onLogout}
-                  className="text-white/80 hover:text-white cursor-pointer transition-colors p-1"
+                  className="hidden sm:flex text-white/80 hover:text-white cursor-pointer transition-colors p-1"
                   title="Logout"
                 >
                   <LogOut className="w-[18px] h-[18px] sm:w-[20px] sm:h-[20px]" strokeWidth={2} />
@@ -439,7 +439,7 @@ export function LandingView({
                 animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
                 exit={{ opacity: 0, y: -12, scale: 0.97, filter: 'blur(4px)' }}
                 transition={{ type: 'spring', stiffness: 420, damping: 30, mass: 0.72 }}
-                className="fixed top-20 left-4 right-4 md:left-auto md:right-6 md:w-[460px] bg-white/95 backdrop-blur-xl text-[#2e2e2e] rounded-[28px] md:rounded-[24px] p-5 md:p-4 shadow-[0_24px_70px_rgba(0,0,0,0.42)] border border-white/80 ring-1 ring-black/5 z-50 flex flex-col gap-2.5 md:gap-2 overflow-hidden"
+                className="fixed top-16 sm:top-20 left-3 right-3 sm:left-auto sm:right-6 sm:w-[460px] max-h-[85dvh] overflow-y-auto bg-white/95 backdrop-blur-xl text-[#2e2e2e] rounded-[28px] sm:rounded-[24px] p-5 sm:p-4 shadow-[0_24px_70px_rgba(0,0,0,0.42)] border border-white/80 ring-1 ring-black/5 z-50 flex flex-col gap-2.5 sm:gap-2"
               >
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
@@ -745,7 +745,7 @@ export function LandingView({
                 <button
                   key={sym}
                   onClick={() => handleSelectQuickTicker(sym)}
-                  className={`px-2.5 py-1 rounded-full text-[10.5px] sm:text-[11px] font-mono transition-all cursor-pointer border ${
+                  className={`px-3 py-1 min-h-[30px] sm:min-h-0 inline-flex items-center justify-center rounded-full text-[11px] font-mono transition-all cursor-pointer border ${
                     ticker.toUpperCase() === sym 
                       ? 'bg-white text-black border-white font-bold' 
                       : 'bg-black/30 text-white/90 border-white/20 hover:bg-white/15 hover:text-white backdrop-blur-sm'

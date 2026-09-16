@@ -357,7 +357,7 @@ export function AlertsModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-900/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-5 bg-stone-900/60 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -368,7 +368,7 @@ export function AlertsModal({
         animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 12, scale: 0.98, filter: 'blur(3px)' }}
         transition={{ type: 'spring', stiffness: 380, damping: 30, mass: 0.78 }}
-        className="bg-white rounded-3xl max-w-3xl w-full h-[92vh] sm:h-[680px] max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
+        className="bg-white rounded-t-[28px] sm:rounded-3xl max-w-3xl w-full h-[92dvh] sm:h-[680px] max-h-[92dvh] sm:max-h-[92vh] shadow-[0_24px_72px_rgba(0,0,0,0.28)] border border-stone-200 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
