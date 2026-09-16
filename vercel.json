@@ -5,7 +5,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
-      "includeFiles": "{dist/**,agent/**}"
+      "includeFiles": "{dist/**,agent/**,node_modules/@google/genai/**}"
     }
   },
   "rewrites": [
