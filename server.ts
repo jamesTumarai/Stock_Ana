@@ -1,4 +1,9 @@
-import "dotenv/config";
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("dotenv/config");
+} catch {
+  // Dotenv is optional in serverless/production environments where environment variables are injected
+}
 import express from "express";
 import path from "path";
 import fs from "fs";
