@@ -199,3 +199,4 @@ export async function handleSecCompare(req: any, res: any) {
 
 export { handleHealthCheck } from './routes/healthRoutes.ts';
 export { handleLiveQuotes } from './routes/marketRoutes.ts';
+export { handleMaterialEvents } from './routes/materialNewsRoutes.ts';

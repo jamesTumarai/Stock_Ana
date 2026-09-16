@@ -71,7 +71,7 @@ export default async function handler(req, res) {
 
   if ((req.url || '').startsWith('/api/material-events')) {
     if (!materialEventsHandler) {
-      ({ handleMaterialEvents: materialEventsHandler } = loadModule('../dist/server.cjs', '../server/routes/materialNewsRoutes.ts', 'handleMaterialEvents'));
+      ({ handleMaterialEvents: materialEventsHandler } = loadModule('../dist/sec-preview.cjs', '../server/routes/materialNewsRoutes.ts', 'handleMaterialEvents'));
     }
     return materialEventsHandler(req, res);
   }

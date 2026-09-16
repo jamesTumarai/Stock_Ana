@@ -186,4 +186,20 @@ describe('Vercel API Adapter & Parity (api/index.js)', () => {
       else delete process.env.VERCEL_ENV;
     }
   });
+
+  it('GET /api/material-events -> routes cleanly through api/index.js on Vercel', async () => {
+    const { req, res, waitForFinish } = createMockReqRes({
+      method: 'GET',
+      url: '/api/material-events?symbols=SOFI',
+    });
+
+    await handler(req, res);
+    const result = await waitForFinish();
+
+    assert.equal(result.status, 200);
+    assert.ok(Array.isArray(result.body.events));
+    assert.ok(Array.isArray(result.body.recentNews));
+    assert.deepEqual(result.body.requestedSymbols, ['SOFI']);
+    assert.ok(result.body.sourceStatus !== undefined);
+  });
 });
