@@ -131,8 +131,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
    - For Forward P/E: Retrieve the current standard NTM (Next Twelve Months / FY+1) consensus EPS from an identified, dated financial source. Do not mix it with a later fiscal-year estimate, and never use numerical examples from the prompt as market data.
    - For EV/EBITDA and PEG: Retrieve the current figures and their calculation basis from identified, dated market sources. If the provider does not publish a value, leave it unavailable.
 3. 100% REAL DATA & ZERO HALLUCINATIONS: Every single metric, revenue number, margin percentage, cash flow, debt level, institutional holder name, and insider transaction MUST come from verified, authentic public records (SEC Form 10-K, 10-Q, 8-K, Form 4, 13F filings, and official investor relations).
-4. EXHAUST ALL SEARCH EFFORTS: You MUST execute multiple thorough web searches to locate authentic figures for all required fields.
-5. NO INVENTED NUMBERS: If a specific niche metric or disclosure truly cannot be found after exhaustive searching, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) rather than fabricating or guessing plausible numbers.
+4. EXHAUST ALL SEARCH EFFORTS (MULTI-QUERY DEEP SEARCH PROTOCOL): You MUST execute multiple thorough, targeted web searches to locate authentic figures for all required fields. Do NOT give up on a critical metric (such as balance sheet items, cash & short-term investments, debt, shares outstanding, free cash flow, institutional holders, valuation multiples) on a single failed search. You MUST attempt alternative targeted search angles (e.g., Query 1: SEC EDGAR Form 10-Q/10-K filing; Query 2: Investor Relations press release/earnings deck; Query 3: Financial portal data from Yahoo Finance / Macrotrends / StockAnalysis) before deciding that public disclosure is absent.
+5. NO INVENTED NUMBERS: Only if exhaustive targeted search attempts across multiple sources yield no verified public disclosure, explicitly state "ไม่พบข้อมูล" (Data not available / No disclosure found) or null rather than fabricating or guessing plausible numbers.
 6. PEER BENCHMARK & TARGET TICKER LIVE SEARCH MANDATE:
    - SELECT DIRECT, MODERN PURE-PLAY PEERS: Always select the most direct, relevant, and modern public peers in the same niche industry:
      * For Space & Orbital Launch (e.g., RKLB): You may compare with pure-play space companies such as ASTS, LUNR, RDW, and PL. Compare a private company such as SpaceX only when a dated, identified private-market source supports the comparison; never assume a private valuation.
@@ -1664,6 +1664,12 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
         console.log('[valuation-assumptions] Appended canonical DCF assumption contract; fair values remain deterministic-only.');
       };
 
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+          res.write(': keepalive\n\n');
+        }
+      }, 15000);
+
       if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Validation Protocol...' })}\n\n`);
 
@@ -1671,6 +1677,7 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
 
           const resAgent = await createInteractionWithRetry(res, { prompt, inlineSources: agentFiles, tools: [{ type: "google_search" }], model: actualModel });
           if (!resAgent.ok) {
+              clearInterval(heartbeat);
               const errTxt = await resAgent.text();
               const authError = resAgent.status === 401 || resAgent.status === 403;
               const message = authError
@@ -1695,15 +1702,16 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
               }
           }
 
-          res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Primary Analysis complete. Running Validator Agent for 10/10 Accuracy...' })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Primary Analysis complete. Running Lead Validator Agent to verify calculations and actively retrieve any missing data...' })}\n\n`);
 
-          const validatePrompt = `You are the Lead Validator. You have received an analysis report for ${ticker}.
+          const validatePrompt = `You are the Lead Validator & Senior Data Auditor. You have received an analysis report for ${ticker}.
 TODAY'S EXACT DATE IS: ${todayISO} (Year ${currentYear}).
-Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, fix any mathematical inconsistencies, and produce the final perfect JSON report.
+Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, actively search for and fill in any missing data gaps, fix any mathematical inconsistencies, and produce the final perfect JSON report.
 
-CRITICAL INSTRUCTION: You are encouraged to verify the calculations and logic step-by-step. Keep your internal thinking concise (under 120 words). DO NOT repeat or summarize the original report in your internal thoughts. Once numbers are checked, immediately output the final JSON report wrapped in \`\`\`json ... \`\`\` without delay.
+CRITICAL INSTRUCTION: You are encouraged to verify the calculations and logic step-by-step. Keep your internal thinking concise (under 150 words). DO NOT repeat or summarize the original report in your internal thoughts. Once numbers are checked and missing data retrieved, immediately output the final JSON report wrapped in \`\`\`json ... \`\`\` without delay.
 
-CRITICAL CHECKS:
+CRITICAL CHECKS & DATA COMPLETION MANDATE:
+- Active Gap-Filling & Data Completion: Carefully inspect the Primary Analyst Output above. If any required section, ratio, balance sheet item, shares count, cash/debt figure, institutional holding, or peer valuation multiple was left as null, "ไม่พบข้อมูล", or omitted, you are explicitly directed and authorized to execute targeted Google Search queries right now to find the missing authentic numbers. Fill in those missing values before synthesizing the final JSON report. Keep strict zero-hallucination standards: only fill in numbers if verified from live search. If a metric truly has no public disclosure or does not apply to this company's business model (e.g. bank FCFF or non-dividend stock), keep it null.
 - Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
 - Natural Thai Language Check: If outputting in Thai, verify that phrasing sounds like a real human investor/analyst. Eliminate robotic AI filler phrases (e.g. replace "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น" with natural phrasing like "แสดงให้เห็นว่า", "สภาพแวดล้อมทางธุรกิจ", "ความได้เปรียบในการแข่งขัน (Moat)", "Dilution จากหุ้นเพิ่มทุน/SBC"). Ensure tone is professional, direct, and easy to read.
 - Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.
@@ -1729,13 +1737,14 @@ CRITICAL CHECKS:
 Primary Analyst Output:
 ${fullText}
 
-Check the facts and re-calculate the Risk/Reward ratios and DCF values yourself to be 100% sure they are correct.
+Check the facts, actively fill any missing metrics with search, and re-calculate the Risk/Reward ratios and DCF values yourself to be 100% sure they are correct.
 You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block.
 Use the exact schema requested originally:
 ${dynamicSchema}`;
 
           const mergeResponse = await createInteractionWithRetry(res, { prompt: validatePrompt, inlineSources: [], tools: [{ type: "google_search" }], model: actualModel });
           if (!mergeResponse.ok) {
+              clearInterval(heartbeat);
               const errTxt = await mergeResponse.text();
               console.error("Validator error:", errTxt);
               if (fullText && fullText.includes('{')) {
@@ -1762,6 +1771,8 @@ ${dynamicSchema}`;
           } catch (err: any) {
               console.error("Validator stream error:", err);
               res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+          } finally {
+              clearInterval(heartbeat);
           }
 
           // Fallback: If validator did not produce JSON, stream Primary Analyst output so the client gets a complete report
@@ -1788,6 +1799,7 @@ ${dynamicSchema}`;
       });
 
       if (!response.ok) {
+        clearInterval(heartbeat);
         const errorText = await response.text();
         console.error(`[analyze] createInteraction failed: ${response.status} ${errorText}`);
         res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to start agent interaction.' })}\n\n`);
@@ -1943,8 +1955,10 @@ ${event.message}
         }
       } catch (e) {
         console.error("Failed to write debug log", e);
+      } finally {
+        clearInterval(heartbeat);
       }
-          
+
       res.end();
     } catch (err: any) {
       console.error("[analyze] Error:", err);

@@ -108,7 +108,7 @@ export async function createInteraction(
     headers: {
       "Content-Type": "application/json",
       "x-goog-api-key": process.env.GEMINI_API_KEY || "",
-      "x-server-timeout": "600",
+      "x-server-timeout": "1800",
       "Api-Revision": "2026-05-20",
     },
     body: JSON.stringify(payload),

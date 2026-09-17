@@ -790,7 +790,10 @@ export default function App() {
               } else if (evt.type === 'tool_result') {
                   pushEvt('tool_result', `Analysis retrieved`, evt.result, undefined, evt.callId);
               } else if (evt.type === 'thinking') {
-                  const thinkingLabel = selectedLanguage === 'Thai' ? 'AI กำลังคิดและตรวจสอบความถูกต้อง...' : 'Analyzing & Verifying...';
+                  let thinkingLabel = selectedLanguage === 'Thai' ? 'AI กำลังคิดและตรวจสอบความถูกต้อง...' : 'Analyzing & Verifying...';
+                  if (evt.text && (evt.text.includes('Validator') || evt.text.includes('Validating') || evt.text.includes('Auditor'))) {
+                    thinkingLabel = selectedLanguage === 'Thai' ? 'Lead Validator กำลังตรวจทานและค้นหาข้อมูลเพิ่มเติม...' : 'Lead Validator checking & completing data...';
+                  }
                   pushEvt('thinking', thinkingLabel, evt.text);
               } else if (evt.type === 'error') {
                   setErr(evt.message);
