@@ -20,8 +20,11 @@ const devClientEnv = {
   const resolution = resolveFirebaseClientConfig({});
   assert.equal(resolution.source, 'legacy_production_fallback');
   assert.equal(resolution.config.projectId, LEGACY_PRODUCTION_FIREBASE_PROJECT_ID);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'stock-ana.vercel.app'), true);
   assert.equal(isFirebaseDataAccessAllowed(resolution, 'stock-ana-ten.vercel.app'), true);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'www.stock-ana-ten.vercel.app'), true);
   assert.equal(isFirebaseDataAccessAllowed(resolution, 'stock-ana-git-main-jamestumarais-projects.vercel.app'), true);
+  assert.equal(isFirebaseDataAccessAllowed(resolution, 'stock-ana-preview-xyz.vercel.app'), true);
   assert.equal(isFirebaseDataAccessAllowed(resolution, 'localhost'), false);
   assert.equal(isFirebaseDataAccessAllowed(resolution, 'preview-123.vercel.app'), false);
   assert.equal(isFirebaseDataAccessAllowed(resolution, 'localhost', true), true);

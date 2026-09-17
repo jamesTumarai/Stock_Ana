@@ -40,6 +40,7 @@ const OPTIONAL_ENV_KEYS = ['VITE_FIREBASE_MEASUREMENT_ID'] as const;
 const ALL_FIREBASE_ENV_KEYS = [...REQUIRED_ENV_KEYS, ...OPTIONAL_ENV_KEYS] as const;
 
 const KNOWN_PRODUCTION_HOSTS = new Set([
+  'stock-ana.vercel.app',
   'stock-ana-ten.vercel.app',
   'stock-ana-jamestumarais-projects.vercel.app',
   'stock-ana-git-main-jamestumarais-projects.vercel.app',
@@ -87,6 +88,13 @@ export function resolveFirebaseClientConfig(
   };
 }
 
+export function isKnownProductionHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().trim().replace(/^www\./, '');
+  if (KNOWN_PRODUCTION_HOSTS.has(normalized)) return true;
+  if (normalized.endsWith('.vercel.app') && normalized.startsWith('stock-ana')) return true;
+  return false;
+}
+
 export function isFirebaseDataAccessAllowed(
   resolution: FirebaseClientConfigResolution,
   hostname: string,
@@ -94,5 +102,5 @@ export function isFirebaseDataAccessAllowed(
 ): boolean {
   if (resolution.config.projectId !== LEGACY_PRODUCTION_FIREBASE_PROJECT_ID) return true;
   if (allowProductionProjectOverride) return true;
-  return KNOWN_PRODUCTION_HOSTS.has(hostname.toLowerCase());
+  return isKnownProductionHost(hostname);
 }
