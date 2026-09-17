@@ -1618,25 +1618,6 @@ CRITICAL: You MUST output the final synthesis report as a raw JSON object wrappe
 ${dynamicSchema}
 Do not include multiple sub-agents, just do the analysis yourself based on the retrieved documents and searches.
 CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MUST write a short validation text explaining your calculations for the Technical Trade Plan. You MUST explicitly show the ATR value, the distance of each Support/Resistance level from the current price in terms of ATR, and the math for Risk/Reward Ratio 1 and 2. Only after you have written this validation text, output the final JSON.`;
-
-      if (useSelfConsistency) {
-        prompt += `\n\nCRITICAL 10/10 DEEP VERIFICATION & SELF-CONSISTENCY PROTOCOL:
-- Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
-- Natural Thai Language Check: If outputting in Thai, verify that phrasing sounds like a real human investor/analyst. Eliminate robotic AI filler phrases (e.g. replace "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น" with natural phrasing like "แสดงให้เห็นว่า", "สภาพแวดล้อมทางธุรกิจ", "ความได้เปรียบในการแข่งขัน (Moat)", "Dilution จากหุ้นเพิ่มทุน/SBC"). Ensure tone is professional, direct, and easy to read.
-- Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.
-- Technical Key Levels: Ensure ALL Support/Resistance levels (S1, S2, S3, R1, R2, R3) are at least 1.5x ATR away from the current price AND spaced at least 1.5x ATR away from EACH OTHER (e.g., S1-S2 >= 1.5x ATR).
-- Technical Completeness: You MUST verify that BOTH 'Divergence' (under momentum indicators) and 'Candlestick Pattern' (under chart patterns or momentum indicators) are explicitly analyzed and present in the final output. Even if they do not exist, they MUST be explicitly stated as "No Divergence observed" and "No clear Candlestick pattern observed". If they are missing, you MUST deduce them from the data and include them.
-- Formatting Checks: Make sure 'business_overview', 'target_customers', 'revenue_model', and 'financial_overview' are formatted as Markdown bullet points (-), NOT large paragraphs. Make sure the R:R calculation in 'trade_plan' is nicely formatted as a Markdown table (Target | Formula | Result) using proper \\n newlines.
-- Fundamental Fundamentals Check: Must have exactly 8 numbered points.
-- Fundamental Key Risks: Must have exactly 8 risk categories.
-- Financial Statements & Latest Quarter Grounding: Attempt to retrieve four completed fiscal quarters, including the latest public Form 10-Q or Form 10-K available as of ${todayISO}. Every period must reflect its own identified filing. Never shift a value between periods or reconstruct a missing period. If a period cannot be verified, leave its observations null and flag the history as incomplete. Ensure all available revenue, net income, margins, growth, balance-sheet, and cash-flow figures are mathematically consistent.
-- Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest available Form 10-Q or Form 10-K for the most recent completed period. Ensure its URL, filing date, period end, and key figures agree with the report.
-- Peer Comparison Grounding: Independently retrieve and verify current prices, market capitalizations, and valuation multiples for ${ticker} and every company in "peer_comparison" from identified sources dated as of ${todayISO}.
-- Earnings Analysis History Check: Attempt to retrieve the last four completed quarters matching "financial_statements.periods" in chronological order. Independently verify every missing quarter from identified dated filings, earnings releases, and consensus sources. Never extrapolate or reconstruct a quarter from trends. If a quarter cannot be verified, leave its observations null/unavailable, flag the history as incomplete, and calculate streaks and averages only from verified quarters.
-- Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
-- DCF input integrity: All financial-statement money values are USD millions. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default.
-- Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn: WACC MUST reflect size and distress premiums (16%–22%+), Base Case terminal margin MUST NOT be unrealistically high (3%–6%).`;
-      }
       const actualModel = (model === 'gemini-3.8-flash' || model === 'gemini-3.7-flash' || model === 'perseus' || !model)
         ? 'gemini-3.8-flash'
         : model === 'gemini-3.6-flash'
@@ -1683,8 +1664,120 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
         console.log('[valuation-assumptions] Appended canonical DCF assumption contract; fair values remain deterministic-only.');
       };
 
-      if (useSelfConsistency) {
-        res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Deep Reasoning Protocol...' })}\n\n`);
+      if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
+          res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Validation Protocol...' })}\n\n`);
+
+          res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Running Primary Analyst Agent...' })}\n\n`);
+
+          const resAgent = await createInteractionWithRetry(res, { prompt, inlineSources: agentFiles, tools: [{ type: "google_search" }], model: actualModel });
+          if (!resAgent.ok) {
+              const errTxt = await resAgent.text();
+              const authError = resAgent.status === 401 || resAgent.status === 403;
+              const message = authError
+                ? "Gemini ปฏิเสธการเชื่อมต่อ กรุณาตรวจว่า GEMINI_API_KEY ถูกต้อง เปิดใช้งาน API แล้ว และคีย์อนุญาตให้ใช้โมเดล/Agent นี้"
+                : `Gemini analysis failed (HTTP ${resAgent.status}). Please retry.`;
+              console.error(`[analyze] Primary agent failed (${resAgent.status}): ${errTxt.slice(0, 500)}`);
+              res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+          }
+
+          const stream = streamInteraction(resAgent);
+          let fullText = "";
+          for await (const event of stream) {
+              if (event.type === 'tool_call' || event.type === 'tool_result') {
+                  res.write(`data: ${JSON.stringify(event)}\n\n`);
+              } else if (event.type === 'text' && event.text) {
+                  fullText += event.text;
+              } else if (event.type === 'thinking') {
+                  res.write(`data: ${JSON.stringify(event)}\n\n`);
+              }
+          }
+
+          res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Primary Analysis complete. Running Validator Agent for 10/10 Accuracy...' })}\n\n`);
+
+          const validatePrompt = `You are the Lead Validator. You have received an analysis report for ${ticker}.
+TODAY'S EXACT DATE IS: ${todayISO} (Year ${currentYear}).
+Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, fix any mathematical inconsistencies, and produce the final perfect JSON report.
+
+CRITICAL INSTRUCTION: You are encouraged to verify the calculations and logic step-by-step. Keep your internal thinking concise (under 120 words). DO NOT repeat or summarize the original report in your internal thoughts. Once numbers are checked, immediately output the final JSON report wrapped in \`\`\`json ... \`\`\` without delay.
+
+CRITICAL CHECKS:
+- Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
+- Natural Thai Language Check: If outputting in Thai, verify that phrasing sounds like a real human investor/analyst. Eliminate robotic AI filler phrases (e.g. replace "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น" with natural phrasing like "แสดงให้เห็นว่า", "สภาพแวดล้อมทางธุรกิจ", "ความได้เปรียบในการแข่งขัน (Moat)", "Dilution จากหุ้นเพิ่มทุน/SBC"). Ensure tone is professional, direct, and easy to read.
+- Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.
+- Technical Key Levels: Ensure ALL Support/Resistance levels (S1, S2, S3, R1, R2, R3) are at least 1.5x ATR away from the current price AND spaced at least 1.5x ATR away from EACH OTHER (e.g., S1-S2 >= 1.5x ATR).
+- Technical Completeness: You MUST verify that BOTH 'Divergence' (under momentum indicators) and 'Candlestick Pattern' (under chart patterns or momentum indicators) are explicitly analyzed and present in the final output. Even if they do not exist, they MUST be explicitly stated as "No Divergence observed" and "No clear Candlestick pattern observed". If they are missing, you MUST deduce them from the data and include them.
+- Formatting Checks: Make sure 'business_overview', 'target_customers', 'revenue_model', and 'financial_overview' are formatted as Markdown bullet points (-), NOT large paragraphs. Make sure the R:R calculation in 'trade_plan' is nicely formatted as a Markdown table (Target | Formula | Result) using proper \n newlines.
+- Fundamental Fundamentals Check: Must have exactly 8 numbered points.
+- Fundamental Key Risks: Must have exactly 8 risk categories.
+- Financial Statements & Latest Quarter Grounding: Attempt to retrieve four completed fiscal quarters, including the latest public Form 10-Q or Form 10-K available as of ${todayISO}. Every period must reflect its own identified filing. Never shift a value between periods or reconstruct a missing period. If a period cannot be verified, leave its observations null and flag the history as incomplete. Ensure all available revenue, net income, margins, growth, balance-sheet, and cash-flow figures are mathematically consistent.
+- Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest available Form 10-Q or Form 10-K for the most recent completed period. Ensure its URL, filing date, period end, and key figures agree with the report. Replace an older citation only after retrieving and verifying the newer filing; otherwise flag the source as unavailable.
+- Peer Comparison Grounding: Independently retrieve and verify current prices, market capitalizations, and valuation multiples for ${ticker} and every company in "peer_comparison" from identified sources dated as of ${todayISO}. Never use numerical examples from this prompt as market data, and leave unavailable values null.
+- Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
+- DCF input integrity: All financial-statement money values are USD millions. Attempt to retrieve four completed quarterly periods in chronological order, the latest diluted shares outstanding in company_profile.shares_outstanding, and cash, short-term investments, total debt, revenue, and free cash flow for matching periods. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default, a market-cap-derived share count, or a price-derived revenue estimate. If a primary source cannot supply an input, leave it unavailable and do not produce a fair value.
+  * Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn (e.g. EOSE, RIVN, PLUG, QS):
+    - WACC MUST reflect size and distress premiums (16%–22%+), NEVER use a single-digit mega-cap WACC (7%–10%).
+    - Base Case terminal margin MUST NOT be unrealistically high (e.g. 12%–16%) when current gross margin is negative; it must reflect conservative turnaround execution (3%–6%) with dilution risk factored in.
+    - Check Wall Street consensus targets and Relative Valuation (EV/Sales): DCF Base Case must NOT disconnect wildly (e.g. > 2x consensus or > 2.5x Relative Valuation).
+- Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
+- Earnings Analysis History Check: Attempt to retrieve the last four completed quarters matching "financial_statements.periods" in chronological order. Independently verify every missing quarter from identified dated filings, earnings releases, and consensus sources. Never extrapolate or reconstruct a quarter from trends. If a quarter cannot be verified, leave its observations null/unavailable, flag the history as incomplete, and calculate streaks and averages only from verified quarters.
+- Insider Ownership: Use a numeric percentage only when an identified dated source supplies it; otherwise leave it null/unavailable.
+- Morningstar Equity Research Check: include Morningstar fields only when an accessible dated Morningstar source verifies the exact ticker, analyst, rating, fair value, and research text. Company size or ticker identity is never evidence of coverage. If any coverage claim cannot be verified, set has_coverage = false and leave rating, analyst, fair value, moat, uncertainty, allocation, and thesis fields absent.
+
+Primary Analyst Output:
+${fullText}
+
+Check the facts and re-calculate the Risk/Reward ratios and DCF values yourself to be 100% sure they are correct.
+You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block.
+Use the exact schema requested originally:
+${dynamicSchema}`;
+
+          const mergeResponse = await createInteractionWithRetry(res, { prompt: validatePrompt, inlineSources: [], tools: [{ type: "google_search" }], model: actualModel });
+          if (!mergeResponse.ok) {
+              const errTxt = await mergeResponse.text();
+              console.error("Validator error:", errTxt);
+              if (fullText && fullText.includes('{')) {
+                  console.warn('[analyze] Validator start failed. Falling back to Primary Analyst output.');
+                  res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
+                  await appendCanonicalValuationIfNeeded(fullText);
+                  res.write(`data: [DONE]\n\n`);
+                  res.end();
+                  return;
+              }
+              res.write(`data: ${JSON.stringify({ type: 'error', message: "Validation failed: " + errTxt })}\n\n`);
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+          }
+          const mergeStream = streamInteraction(mergeResponse);
+          let validatedText = '';
+
+          try {
+              for await (const event of mergeStream) {
+                  res.write(`data: ${JSON.stringify(event)}\n\n`);
+                  if (event.type === 'text' && event.text) validatedText += event.text;
+              }
+          } catch (err: any) {
+              console.error("Validator stream error:", err);
+              res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+          }
+
+          // Fallback: If validator did not produce JSON, stream Primary Analyst output so the client gets a complete report
+          if (!validatedText || !validatedText.includes('{')) {
+              if (fullText && fullText.includes('{')) {
+                  console.warn('[analyze] Validator output lacked JSON. Falling back to Primary Analyst output.');
+                  res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
+                  validatedText = fullText;
+              }
+          }
+
+          await appendCanonicalValuationIfNeeded(validatedText || fullText);
+
+          res.write(`data: [DONE]\n\n`);
+          res.end();
+          return;
       }
 
       const response = await createInteractionWithRetry(res, {
