@@ -510,7 +510,11 @@ export default function App() {
 
   const handleLogin = async () => {
     if (!firebaseDataAccessAllowed) {
-      setError('Firebase is not configured for this environment. Production Firebase access is blocked outside approved production hosts.');
+      setError(
+        selectedLanguage === 'Thai'
+          ? 'ระบบยังไม่ได้เปิดการเข้าถึง Firebase สำหรับโดเมนนี้ กรุณาเข้าใช้งานผ่านโดเมนหลัก'
+          : 'Firebase is not configured for this environment. Production Firebase access is blocked outside approved production hosts.'
+      );
       return;
     }
     try {
@@ -697,7 +701,11 @@ export default function App() {
     setActModel?: any
   ) => {
     if (!firebaseDataAccessAllowed) {
-      setErr('Firebase is not configured for this environment. Analysis is blocked to prevent production-account cross-environment access.');
+      setErr(
+        selectedLanguage === 'Thai'
+          ? 'ระบบยังไม่ได้เปิดการเข้าถึง Firebase สำหรับโดเมนนี้ การวิเคราะห์ถูกระงับเพื่อความปลอดภัย'
+          : 'Firebase is not configured for this environment. Analysis is blocked to prevent production-account cross-environment access.'
+      );
       return;
     }
     setRun(true);
