@@ -1664,11 +1664,11 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
         console.log('[valuation-assumptions] Appended canonical DCF assumption contract; fair values remain deterministic-only.');
       };
 
-            if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
+      if (useSelfConsistency && (analysisType === 'technical' || analysisType === 'combined')) {
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Initiating 10/10 Validation Protocol...' })}\n\n`);
-          
+
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Running Primary Analyst Agent...' })}\n\n`);
-          
+
           const resAgent = await createInteractionWithRetry(res, { prompt, inlineSources: agentFiles, tools: [{ type: "google_search" }], model: actualModel });
           if (!resAgent.ok) {
               const errTxt = await resAgent.text();
@@ -1696,8 +1696,8 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
           }
 
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Primary Analysis complete. Running Validator Agent for 10/10 Accuracy...' })}\n\n`);
-          
-          const validatePrompt = `You are the Lead Validator. You have received an analysis report for ${ticker}. 
+
+          const validatePrompt = `You are the Lead Validator. You have received an analysis report for ${ticker}.
 TODAY'S EXACT DATE IS: ${todayISO} (Year ${currentYear}).
 Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, fix any mathematical inconsistencies, and produce the final perfect JSON report.
 
@@ -1753,7 +1753,7 @@ ${dynamicSchema}`;
           }
           const mergeStream = streamInteraction(mergeResponse);
           let validatedText = '';
-          
+
           try {
               for await (const event of mergeStream) {
                   res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -1774,7 +1774,7 @@ ${dynamicSchema}`;
           }
 
           await appendCanonicalValuationIfNeeded(validatedText || fullText);
-          
+
           res.write(`data: [DONE]\n\n`);
           res.end();
           return;
