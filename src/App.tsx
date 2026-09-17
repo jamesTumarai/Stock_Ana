@@ -630,17 +630,6 @@ export default function App() {
       const newEvents = [...prev];
       if (newEvents.length > 0) {
         const lastIndex = newEvents.length - 1;
-        if (kind === 'thinking' && newEvents[lastIndex].kind === 'thinking') {
-          const prevDetail = newEvents[lastIndex].detail || '';
-          const newDetail = detail ? (prevDetail ? `${prevDetail}\n\n${detail}` : detail) : prevDetail;
-          newEvents[lastIndex] = {
-            ...newEvents[lastIndex],
-            label,
-            detail: newDetail,
-            endTime: undefined
-          };
-          return newEvents;
-        }
         if (!newEvents[lastIndex].endTime) {
           newEvents[lastIndex] = { ...newEvents[lastIndex], endTime: now };
         }

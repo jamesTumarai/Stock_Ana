@@ -24,28 +24,19 @@ const ICONS = {
 
 function formatTimelineDetail(detail: string, kind: string) {
   if (kind === 'thinking') {
-    const sections = detail.split(/\n\n+/);
+    const boldMatch = detail.match(/^\*\*([^*]+)\*\*\s*\n*([\s\S]*)$/);
+    if (boldMatch) {
+      return (
+        <div className="space-y-1.5 text-[11px] sm:text-xs">
+          <span className="block font-bold text-white tracking-wide">{boldMatch[1]}</span>
+          <p className="text-white/80 font-sans leading-relaxed whitespace-pre-wrap">{boldMatch[2].trim()}</p>
+        </div>
+      );
+    }
     return (
-      <div className="space-y-2 text-[11px] sm:text-xs">
-        {sections.map((sec, idx) => {
-          const boldMatch = sec.match(/^\*\*([^*]+)\*\*\s*\n*([\s\S]*)$/);
-          if (boldMatch) {
-            return (
-              <div key={idx} className="space-y-1">
-                <span className="block font-bold text-white tracking-wide">{boldMatch[1]}</span>
-                {boldMatch[2].trim() && (
-                  <p className="text-white/80 font-sans leading-relaxed whitespace-pre-wrap">{boldMatch[2].trim()}</p>
-                )}
-              </div>
-            );
-          }
-          return (
-            <p key={idx} className="text-white/80 font-sans leading-relaxed whitespace-pre-wrap">
-              {sec.replace(/\*\*([^*]+)\*\*/g, '$1')}
-            </p>
-          );
-        })}
-      </div>
+      <p className="text-[11px] sm:text-xs text-white/85 font-sans leading-relaxed whitespace-pre-wrap">
+        {detail.replace(/\*\*([^*]+)\*\*/g, '$1')}
+      </p>
     );
   }
 
@@ -110,11 +101,7 @@ export function AgentTimeline({
             const durationMs = e.endTime
               ? (e.endTime - (e.startTime || e.endTime))
               : (e.startTime ? Math.max(0, now - e.startTime) : 0);
-            const safeDurationMs = (durationMs === 0 && e.startTime) ? Math.max(500, now - e.startTime) : durationMs;
-            const durationSec = (safeDurationMs / 1000).toFixed(2);
-            const displayLabel = (e.kind === 'thinking' && (e.label === 'Analyzing...' || isThai))
-              ? (isThai ? 'AI กำลังคิดและตรวจสอบความถูกต้อง...' : 'Analyzing & Verifying...')
-              : e.label;
+            const durationSec = (durationMs / 1000).toFixed(2);
 
             return (
               <motion.div
@@ -128,7 +115,7 @@ export function AgentTimeline({
                     <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 border border-white/10">
                       <Icon className="w-4 h-4 text-white" />
                     </div>
-                    <h3 className="font-bold text-white text-sm sm:text-base tracking-tight">{displayLabel}</h3>
+                    <h3 className="font-bold text-white text-sm sm:text-base tracking-tight">{e.label}</h3>
                   </div>
                   
                   {e.detail && (
@@ -159,7 +146,7 @@ export function AgentTimeline({
                     ) : (
                       <>
                         <ChevronDown className="w-3 h-3" />
-                        <span className="cursor-pointer">{isThai ? 'รายละเอียด' : 'Details'}</span>
+                        <span className="cursor-pointer">Details</span>
                       </>
                     )}
                   </div>
