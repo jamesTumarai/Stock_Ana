@@ -790,7 +790,8 @@ export default function App() {
               } else if (evt.type === 'tool_result') {
                   pushEvt('tool_result', `Analysis retrieved`, evt.result, undefined, evt.callId);
               } else if (evt.type === 'thinking') {
-                  pushEvt('thinking', `Analyzing...`, evt.text);
+                  const thinkingLabel = selectedLanguage === 'Thai' ? 'AI กำลังคิดและตรวจสอบความถูกต้อง...' : 'Analyzing & Verifying...';
+                  pushEvt('thinking', thinkingLabel, evt.text);
               } else if (evt.type === 'error') {
                   setErr(evt.message);
               } else if (evt.type === 'complete') {
@@ -888,21 +889,35 @@ export default function App() {
                 console.warn('Report was rendered but not saved because critical validation failed.', prepared.validation.issues);
               }
             } else {
-              setErr('The analysis response could not be validated as a report.');
+              setErr(selectedLanguage === 'Thai'
+                ? 'โครงสร้างข้อมูลรายงานไม่ผ่านการตรวจสอบความสมบูรณ์ กรุณากดลองวิเคราะห์ใหม่อีกครั้ง'
+                : 'The analysis response could not be validated as a report. Please retry.');
             }
+          } else {
+            setErr(selectedLanguage === 'Thai'
+              ? 'ไม่พบข้อมูลรายงานสมบูรณ์ในผลลัพธ์การวิเคราะห์ กรุณากดลองวิเคราะห์ใหม่อีกครั้ง'
+              : 'Incomplete report output received. Please retry.');
           }
+      } else if (!controller.signal.aborted) {
+          setErr(selectedLanguage === 'Thai'
+            ? 'การเชื่อมต่อสิ้นสุดลงก่อนได้รับข้อมูลรายงาน (อาจเกิดจากโมเดลประมวลผลนานเกินกำหนด) กรุณากดลองวิเคราะห์ใหม่อีกครั้ง'
+            : 'Analysis connection closed before receiving report data. Please retry.');
       }
       
-      setDur(Math.round((Date.now() - startTimestamp) / 1000));
+      const finishTime = Date.now();
+      setEvts((prev: any) => prev.map((e: any) => e.endTime ? e : { ...e, endTime: finishTime }));
+      setDur(Math.round((finishTime - startTimestamp) / 1000));
       setRun(false);
       
     } catch (e: any) {
+      const finishTime = Date.now();
+      setEvts((prev: any) => prev.map((e: any) => e.endTime ? e : { ...e, endTime: finishTime }));
       if (e.name === 'AbortError') {
          console.log('Aborted');
       } else {
          setErr(e.message || 'Unknown error');
       }
-      setDur(Math.round((Date.now() - startTimestamp) / 1000));
+      setDur(Math.round((finishTime - startTimestamp) / 1000));
       setRun(false);
     }
   };
@@ -1346,6 +1361,9 @@ export default function App() {
                     hasReport={allReports.length > 0 && !isReportOpen && !running}
                     onViewReport={() => setIsReportOpen(true)}
                     metrics={currentReport ? { durationSecs, tokenCount, documentCount: currentReport.findings?.length || 0 } : undefined}
+                    error={error}
+                    onRetry={runAnalysis}
+                    isThai={selectedLanguage === 'Thai'}
                   />
                 </div>
               </div>

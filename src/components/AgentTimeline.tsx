@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Info, Brain, Code, CheckCircle, MessageSquare, AlertCircle, Loader2, ChevronDown, HelpCircle } from 'lucide-react';
+import { Info, Brain, Code, CheckCircle, MessageSquare, AlertCircle, Loader2, ChevronDown, HelpCircle, RotateCcw } from 'lucide-react';
 
 export interface TimelineEvent {
   id: number;
@@ -22,7 +22,54 @@ const ICONS = {
   error: AlertCircle,
 } as const;
 
-export function AgentTimeline({ events, running, paused, hasReport, onViewReport, onDecisionClick, metrics }: { events: TimelineEvent[]; running: boolean; paused?: boolean; hasReport?: boolean; onViewReport?: () => void; onDecisionClick?: () => void; metrics?: { durationSecs: number; tokenCount: number; documentCount: number } }) {
+function formatTimelineDetail(detail: string, kind: string) {
+  if (kind === 'thinking') {
+    const boldMatch = detail.match(/^\*\*([^*]+)\*\*\s*\n*([\s\S]*)$/);
+    if (boldMatch) {
+      return (
+        <div className="space-y-1.5 text-[11px] sm:text-xs">
+          <span className="block font-bold text-white tracking-wide">{boldMatch[1]}</span>
+          <p className="text-white/80 font-sans leading-relaxed whitespace-pre-wrap">{boldMatch[2].trim()}</p>
+        </div>
+      );
+    }
+    return (
+      <p className="text-[11px] sm:text-xs text-white/85 font-sans leading-relaxed whitespace-pre-wrap">
+        {detail.replace(/\*\*([^*]+)\*\*/g, '$1')}
+      </p>
+    );
+  }
+
+  return (
+    <div className="text-[11px] sm:text-xs leading-relaxed text-white/80 font-mono overflow-x-auto whitespace-pre-wrap break-all sm:break-words max-h-48 overflow-y-auto scrollbar-hide w-full">
+      {detail}
+    </div>
+  );
+}
+
+export function AgentTimeline({
+  events,
+  running,
+  paused,
+  hasReport,
+  onViewReport,
+  onDecisionClick,
+  metrics,
+  error,
+  onRetry,
+  isThai
+}: {
+  events: TimelineEvent[];
+  running: boolean;
+  paused?: boolean;
+  hasReport?: boolean;
+  onViewReport?: () => void;
+  onDecisionClick?: () => void;
+  metrics?: { durationSecs: number; tokenCount: number; documentCount: number };
+  error?: string | null;
+  onRetry?: () => void;
+  isThai?: boolean;
+}) {
   const endRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
 
@@ -38,7 +85,7 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [events.length, running]);
+  }, [events.length, running, error]);
 
   return (
     <div className="w-full flex flex-col items-center py-6 sm:py-12 relative px-3 sm:px-6">
@@ -51,7 +98,9 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
           {events.map((e) => {
             const Icon = ICONS[e.kind];
             const now = Date.now();
-            const durationMs = e.endTime ? (e.endTime - (e.startTime || e.endTime)) : (e.startTime && running ? Math.max(0, now - e.startTime) : 0);
+            const durationMs = e.endTime
+              ? (e.endTime - (e.startTime || e.endTime))
+              : (e.startTime ? Math.max(0, now - e.startTime) : 0);
             const durationSec = (durationMs / 1000).toFixed(2);
 
             return (
@@ -74,12 +123,14 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
                       <div className="shrink-0 mt-0.5">
                          {e.kind === 'tool_result' ? (
                             <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                         ) : e.kind === 'thinking' ? (
+                            <Brain className="w-3.5 h-3.5 text-purple-300" />
                          ) : (
                             <div className="w-3.5 h-3.5 border-2 border-white/40 border-dashed rounded-full" />
                          )}
                       </div>
-                      <div className="text-[11px] sm:text-xs leading-relaxed text-white/80 font-mono overflow-x-auto whitespace-pre-wrap break-all sm:break-words max-h-48 overflow-y-auto scrollbar-hide w-full">
-                        {e.detail}
+                      <div className="w-full">
+                        {formatTimelineDetail(e.detail, e.kind)}
                       </div>
                     </div>
                   )}
@@ -116,8 +167,12 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
                <Loader2 className="w-4 h-4 text-white animate-spin" />
              </div>
              <div className="flex flex-col">
-               <span className="font-bold text-white text-sm sm:text-base tracking-tight">AI is analyzing stock...</span>
-               <span className="text-[11px] text-white/60">Fetching 10-K, price feeds & computing multi-step metrics</span>
+               <span className="font-bold text-white text-sm sm:text-base tracking-tight">
+                 {isThai ? 'AI กำลังวิเคราะห์ข้อมูลหุ้น...' : 'AI is analyzing stock...'}
+               </span>
+               <span className="text-[11px] text-white/60">
+                 {isThai ? 'กำลังดึงงบ Form 10-Q/10-K, ราคาตลาด และคำนวณสูตรสถิติ' : 'Fetching 10-K, price feeds & computing multi-step metrics'}
+               </span>
              </div>
            </motion.div>
         )}
@@ -138,6 +193,38 @@ export function AgentTimeline({ events, running, paused, hasReport, onViewReport
              </div>
              <ChevronDown className="w-4 h-4 text-white/50 -rotate-90 shrink-0" />
            </motion.div>
+        )}
+
+        {error && !running && !hasReport && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-rose-950/50 backdrop-blur-xl border border-rose-500/40 rounded-2xl p-4 sm:p-5 w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 shadow-2xl"
+          >
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                <AlertCircle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-sm sm:text-base tracking-tight">
+                  {isThai ? 'การวิเคราะห์ยังไม่เสร็จสมบูรณ์' : 'Analysis Incomplete'}
+                </h3>
+                <p className="text-xs text-rose-200/90 font-medium mt-0.5 leading-relaxed">
+                  {error}
+                </p>
+              </div>
+            </div>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-900 hover:bg-white/90 transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {isThai ? 'ลองวิเคราะห์อีกครั้ง' : 'Retry Analysis'}
+              </button>
+            )}
+          </motion.div>
         )}
 
         {hasReport && (

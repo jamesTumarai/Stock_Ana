@@ -1701,7 +1701,7 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
 TODAY'S EXACT DATE IS: ${todayISO} (Year ${currentYear}).
 Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, fix any mathematical inconsistencies, and produce the final perfect JSON report.
 
-CRITICAL INSTRUCTION: You are encouraged to think deeply and step-by-step to verify the calculations and logic. However, to avoid hitting output token limits, DO NOT repeat or summarize the original report in your internal thoughts. Focus your thinking strictly on the mathematical corrections, then output the final JSON.
+CRITICAL INSTRUCTION: You are encouraged to verify the calculations and logic step-by-step. Keep your internal thinking concise (under 120 words). DO NOT repeat or summarize the original report in your internal thoughts. Once numbers are checked, immediately output the final JSON report wrapped in \`\`\`json ... \`\`\` without delay.
 
 CRITICAL CHECKS:
 - Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
@@ -1738,6 +1738,14 @@ ${dynamicSchema}`;
           if (!mergeResponse.ok) {
               const errTxt = await mergeResponse.text();
               console.error("Validator error:", errTxt);
+              if (fullText && fullText.includes('{')) {
+                  console.warn('[analyze] Validator start failed. Falling back to Primary Analyst output.');
+                  res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
+                  await appendCanonicalValuationIfNeeded(fullText);
+                  res.write(`data: [DONE]\n\n`);
+                  res.end();
+                  return;
+              }
               res.write(`data: ${JSON.stringify({ type: 'error', message: "Validation failed: " + errTxt })}\n\n`);
               res.write(`data: [DONE]\n\n`);
               res.end();
@@ -1754,6 +1762,15 @@ ${dynamicSchema}`;
           } catch (err: any) {
               console.error("Validator stream error:", err);
               res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+          }
+
+          // Fallback: If validator did not produce JSON, stream Primary Analyst output so the client gets a complete report
+          if (!validatedText || !validatedText.includes('{')) {
+              if (fullText && fullText.includes('{')) {
+                  console.warn('[analyze] Validator output lacked JSON. Falling back to Primary Analyst output.');
+                  res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
+                  validatedText = fullText;
+              }
           }
 
           await appendCanonicalValuationIfNeeded(validatedText || fullText);
