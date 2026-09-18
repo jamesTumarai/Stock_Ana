@@ -1,6 +1,7 @@
 import { ReportData } from '../types';
 import { ResearchMemorySnapshot, extractMemorySnapshot } from './investmentMemory';
 import { unwrapHistoryRecord } from '../utils/researchTimeline';
+import { detectValuationModel } from '../utils/valuation/modelSelector';
 
 export type ThesisStatus =
   | 'ACTIVE'
@@ -34,6 +35,26 @@ export interface InvestmentThesisRecord {
   notes?: string;
 }
 
+export type BusinessCategory = 'operating' | 'financial' | 'reit' | 'cyclical' | 'early_stage';
+export type EvaluationMode = 'AUTO' | 'MANUAL';
+
+export interface ActiveValuationAssumption {
+  labelTh: string;
+  labelEn: string;
+  valueText: string;
+  provenance?: 'DETERMINISTIC_DERIVATION' | 'AI_DRAFT' | 'VERIFIED_FACT' | 'USER_CONFIRMED';
+}
+
+export interface ActiveValuationBasis {
+  methodTitleTh: string;
+  methodTitleEn: string;
+  guardStatusTh?: string;
+  guardStatusEn?: string;
+  isGuarded: boolean;
+  modelType: string | null;
+  assumptions: ActiveValuationAssumption[];
+}
+
 export type ExpectationMetric =
   | 'revenue'
   | 'revenue_growth_yoy_pct'
@@ -42,7 +63,407 @@ export type ExpectationMetric =
   | 'net_income'
   | 'eps_diluted'
   | 'gross_margin_pct'
+  | 'cash_and_equivalents'
+  | 'deposits'
+  | 'net_interest_margin'
+  | 'tier_1_capital_ratio'
+  | 'net_charge_off_rate'
+  | 'affo'
+  | 'ffo'
+  | 'occupancy_rate'
   | 'custom_event';
+
+export interface ExpectationMetricDefinition {
+  id: string;
+  labelEn: string;
+  labelTh: string;
+  unit: string;
+  category: 'FINANCIAL' | 'OPERATIONAL' | 'CREDIT' | 'CUSTOM';
+  applicableBusinessTypes: BusinessCategory[];
+  evaluationMode: EvaluationMode;
+  supportedPeriods: ('QUARTER' | 'ANNUAL')[];
+  descriptionTh?: string;
+  descriptionEn?: string;
+  availabilityReasonTh?: string;
+  availabilityReasonEn?: string;
+}
+
+export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
+  // 1. Operating / General Metrics
+  {
+    id: 'revenue',
+    labelEn: 'Revenue',
+    labelTh: 'รายได้รวม',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'financial', 'reit', 'cyclical', 'early_stage'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'รายได้รวมตามงบการเงินที่รายงานต่อ ก.ล.ต. สหรัฐฯ (SEC)',
+    descriptionEn: 'Total revenue from official SEC filing.'
+  },
+  {
+    id: 'revenue_growth_yoy_pct',
+    labelEn: 'YoY Revenue Growth',
+    labelTh: 'อัตราเติบโตของรายได้ (YoY)',
+    unit: '%',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'cyclical', 'early_stage'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'อัตราการเติบโตของรายได้เทียบกับไตรมาสเดียวกันของปีก่อนหน้า',
+    descriptionEn: 'Year-over-year revenue growth percentage compared to prior-year period.'
+  },
+  {
+    id: 'operating_margin_pct',
+    labelEn: 'Operating Margin',
+    labelTh: 'อัตรากำไรจากการดำเนินงาน',
+    unit: '%',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'cyclical', 'early_stage'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'อัตรากำไรจากการดำเนินงาน (Operating Income / Revenue)',
+    descriptionEn: 'Operating margin percentage from verified statement.'
+  },
+  {
+    id: 'free_cash_flow',
+    labelEn: 'Free Cash Flow',
+    labelTh: 'กระแสเงินสดอิสระ',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'cyclical'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'กระแสเงินสดจากการดำเนินงานหักค่าใช้จ่ายฝ่ายทุน (OCF - CapEx)',
+    descriptionEn: 'Free cash flow (Operating cash flow less Capital expenditures).'
+  },
+  {
+    id: 'net_income',
+    labelEn: 'Net Income',
+    labelTh: 'กำไรสุทธิ',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'financial', 'reit', 'cyclical'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'กำไรสุทธิทางบัญชีตามมาตรฐาน GAAP',
+    descriptionEn: 'GAAP net income from verified financial statement.'
+  },
+  {
+    id: 'eps_diluted',
+    labelEn: 'Diluted EPS',
+    labelTh: 'กำไรต่อหุ้นปรับลด (EPS)',
+    unit: '$/share',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'financial', 'cyclical'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'กำไรต่อหุ้นปรับลดตามมาตรฐาน GAAP',
+    descriptionEn: 'Diluted earnings per share from official statement.'
+  },
+  {
+    id: 'gross_margin_pct',
+    labelEn: 'Gross Margin',
+    labelTh: 'อัตรากำไรขั้นต้น',
+    unit: '%',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'early_stage', 'cyclical'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'อัตรากำไรขั้นต้น (Gross Profit / Revenue)',
+    descriptionEn: 'Gross margin percentage from verified statement.'
+  },
+  {
+    id: 'cash_and_equivalents',
+    labelEn: 'Cash & Equivalents',
+    labelTh: 'เงินสดและรายการเทียบเท่า',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'early_stage'],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'เงินสดและรายการเทียบเท่าเงินสดในงบดุล',
+    descriptionEn: 'Cash and cash equivalents on balance sheet.'
+  },
+
+  // 2. Financial Institutions / FinTech Metrics (MANUAL REVIEW)
+  {
+    id: 'deposits',
+    labelEn: 'Total Deposits',
+    labelTh: 'เงินฝากรวม (Total Deposits)',
+    unit: '$M',
+    category: 'CREDIT',
+    applicableBusinessTypes: ['financial'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มสถาบันการเงิน',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as specialized financial metric.'
+  },
+  {
+    id: 'net_interest_margin',
+    labelEn: 'Net Interest Margin (NIM)',
+    labelTh: 'ส่วนต่างรายได้ดอกเบี้ยสุทธิ (NIM)',
+    unit: '%',
+    category: 'CREDIT',
+    applicableBusinessTypes: ['financial'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มสถาบันการเงิน',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as specialized financial metric.'
+  },
+  {
+    id: 'tier_1_capital_ratio',
+    labelEn: 'Tier 1 Capital Ratio',
+    labelTh: 'อัตราส่วนเงินกองทุนชั้นที่ 1 (Tier 1)',
+    unit: '%',
+    category: 'CREDIT',
+    applicableBusinessTypes: ['financial'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มสถาบันการเงิน',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as regulatory capital ratio.'
+  },
+  {
+    id: 'net_charge_off_rate',
+    labelEn: 'Net Charge-Off Rate (NCO)',
+    labelTh: 'อัตราการตัดหนี้สูญสุทธิ (NCO)',
+    unit: '%',
+    category: 'CREDIT',
+    applicableBusinessTypes: ['financial'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดคุณภาพสินเชื่อ',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as credit quality metric.'
+  },
+
+  // 3. REIT Metrics (MANUAL REVIEW)
+  {
+    id: 'affo',
+    labelEn: 'Adjusted Funds From Operations (AFFO)',
+    labelTh: 'กระแสเงินสดปรับปรุงอสังหาฯ (AFFO)',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['reit'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัด Non-GAAP เฉพาะกลุ่ม REIT',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as specialized Non-GAAP REIT metric.'
+  },
+  {
+    id: 'ffo',
+    labelEn: 'Funds From Operations (FFO)',
+    labelTh: 'กระแสเงินสดจากการดำเนินงาน (FFO)',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['reit'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัด Non-GAAP เฉพาะกลุ่ม REIT',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as specialized Non-GAAP REIT metric.'
+  },
+  {
+    id: 'occupancy_rate',
+    labelEn: 'Portfolio Occupancy Rate',
+    labelTh: 'อัตราการเช่าพื้นที่เฉลี่ย',
+    unit: '%',
+    category: 'OPERATIONAL',
+    applicableBusinessTypes: ['reit'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงานผลการดำเนินงานของผู้บริหาร',
+    availabilityReasonEn: 'Requires manual review from management operational report.'
+  }
+];
+
+export function resolveBusinessCategory(reportInput: any, ticker?: string): BusinessCategory {
+  const unwrapped = unwrapHistoryRecord(reportInput);
+  const data: ReportData = unwrapped?.data || (reportInput?.data ? reportInput.data : reportInput) || {};
+  const sym = (ticker || unwrapped?.ticker || data.ticker || (data as any)?.symbol || '').toUpperCase().trim();
+  const profile = data.company_profile;
+  const sector = (profile?.sector || profile?.overview?.country || '').toLowerCase();
+  const industry = (profile?.industry || profile?.overview?.description || '').toLowerCase();
+  const template = data.financial_statements?.statement_template;
+  const detected = detectValuationModel(data, sym);
+
+  if (
+    detected.model_type === 'fintech_pe' ||
+    detected.model_type === 'ddm' ||
+    template === 'banking' ||
+    sector.includes('financial') ||
+    sector.includes('bank') ||
+    sector.includes('fintech') ||
+    sector.includes('insurance') ||
+    industry.includes('credit services') ||
+    ['SOFI', 'NU', 'HOOD', 'COIN', 'AFRM', 'UPST', 'PYPL', 'SQ', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS'].includes(sym)
+  ) {
+    return 'financial';
+  }
+
+  if (
+    detected.model_type === 'reit_affo' ||
+    template === 'reit' ||
+    sector.includes('real estate') ||
+    industry.includes('reit') ||
+    ['PLD', 'AMT', 'EQIX', 'SPG', 'O', 'PSA', 'CCI'].includes(sym)
+  ) {
+    return 'reit';
+  }
+
+  if (
+    detected.model_type === 'relative_only' ||
+    ['RKLB', 'ASTS', 'LUNR', 'RDW', 'SPCE', 'PL', 'RIVN', 'LCID', 'PLUG', 'QS', 'JOBY', 'ACHR', 'EOSE'].includes(sym)
+  ) {
+    return 'early_stage';
+  }
+
+  return 'operating';
+}
+
+export function getApplicableExpectationMetrics(
+  reportInput: any,
+  ticker?: string
+): ExpectationMetricDefinition[] {
+  const category = resolveBusinessCategory(reportInput, ticker);
+  return EXPECTATION_METRIC_REGISTRY.filter(m => m.applicableBusinessTypes.includes(category));
+}
+
+export function getActiveValuationAssumptions(
+  reportInput: any,
+  isThai = false
+): ActiveValuationBasis {
+  const unwrapped = unwrapHistoryRecord(reportInput);
+  const data: ReportData = unwrapped?.data || (reportInput?.data ? reportInput.data : reportInput) || {};
+  const sym = (unwrapped?.ticker || data.ticker || (data as any)?.symbol || 'STOCK').toUpperCase().trim();
+  const detected = detectValuationModel(data, sym);
+  const dcfModel = data.intrinsic_value?.dcf_model;
+  const dcfInputs = dcfModel?.inputs;
+  const category = resolveBusinessCategory(reportInput, sym);
+
+  // 1. Check Financial Sector Guard / Banking / FinTech
+  const isSectorGuardActive = (
+    category === 'financial' ||
+    detected.model_type === 'fintech_pe' ||
+    detected.model_type === 'ddm' ||
+    (dcfInputs?.isValid === false && (
+      dcfInputs?.missingFields?.some((f: string) => f.includes('operating-company FCFF model fit')) ||
+      dcfInputs?.missingFields?.some((f: string) => f.includes('fintech_pe selected')) ||
+      (data.intrinsic_value?.summary?.verdict_text || '').includes('Financial Sector Guard')
+    ))
+  );
+
+  if (isSectorGuardActive) {
+    const isFintech = detected.model_type === 'fintech_pe' || (data.company_profile?.description || '').toLowerCase().includes('fintech') || sym === 'SOFI';
+    return {
+      methodTitleTh: isFintech
+        ? 'วิธีประเมิน: Multiples & Solvency (Financial Sector Guard)'
+        : 'วิธีประเมิน: DDM & Residual Income (Financial Sector Guard)',
+      methodTitleEn: isFintech
+        ? 'Valuation Approach: Multiples & Solvency (Financial Sector Guard)'
+        : 'Valuation Approach: DDM & Residual Income (Financial Sector Guard)',
+      guardStatusTh: 'แบบจำลอง FCFF DCF: ไม่ใช้กับธุรกิจประเภทนี้ (Financial Sector Guard)',
+      guardStatusEn: 'FCFF DCF Model: Not applicable for this business type (Financial Sector Guard active)',
+      isGuarded: true,
+      modelType: detected.model_type || 'fintech_pe',
+      assumptions: []
+    };
+  }
+
+  // 2. Check REIT
+  if (category === 'reit' || detected.model_type === 'reit_affo') {
+    return {
+      methodTitleTh: 'วิธีประเมิน: FFO / AFFO Multiple & Cash Yield Valuation',
+      methodTitleEn: 'Valuation Approach: FFO / AFFO Multiple & Yield Valuation',
+      guardStatusTh: 'แบบจำลอง FCFF DCF: ไม่ใช้กับธุรกิจประเภท REIT (REIT Guard — ใช้ AFFO/FFO Multiple แทน)',
+      guardStatusEn: 'FCFF DCF Model: Not applicable for REITs (REIT Guard active — AFFO/FFO model required)',
+      isGuarded: true,
+      modelType: 'reit_affo',
+      assumptions: []
+    };
+  }
+
+  // 3. Check Early Stage / Negative Gross Margin / Negative FCF
+  if (category === 'early_stage' || detected.model_type === 'relative_only') {
+    return {
+      methodTitleTh: 'วิธีประเมิน: Relative Valuation (EV/Revenue Multiples)',
+      methodTitleEn: 'Valuation Approach: Relative Valuation (EV/Revenue Multiples)',
+      guardStatusTh: 'แบบจำลอง FCFF DCF: ระงับชั่วคราวเนื่องจากกระแสเงินสดติดลบต่อเนื่อง',
+      guardStatusEn: 'FCFF DCF Model: Suspended due to consecutive negative FCF',
+      isGuarded: true,
+      modelType: 'relative_only',
+      assumptions: []
+    };
+  }
+
+  // 4. Operating Company with DCF
+  const assumptionsObj = (data.intrinsic_value as any)?.assumptions;
+  const dcfAssumptions = dcfModel?.assumptions;
+  const wacc = typeof assumptionsObj?.discount_rate === 'number'
+    ? assumptionsObj.discount_rate
+    : (typeof dcfAssumptions?.wacc_pct === 'number' ? dcfAssumptions.wacc_pct : null);
+  const terminalGrowth = typeof assumptionsObj?.terminal_growth_rate === 'number'
+    ? assumptionsObj.terminal_growth_rate
+    : (typeof dcfAssumptions?.terminal_growth_pct === 'number' ? dcfAssumptions.terminal_growth_pct : null);
+  const projYears = typeof dcfAssumptions?.projection_years === 'number'
+    ? dcfAssumptions.projection_years
+    : (typeof dcfInputs?.projectionYears === 'number' ? dcfInputs.projectionYears : null);
+  const baseScenario = dcfModel?.scenarios?.base;
+  const revCagr = typeof baseScenario?.revenue_cagr_pct === 'number' ? baseScenario.revenue_cagr_pct : null;
+  const terminalMargin = typeof baseScenario?.terminal_margin_pct === 'number' ? baseScenario.terminal_margin_pct : null;
+
+  const assumptions: ActiveValuationAssumption[] = [];
+  if (wacc !== null) {
+    assumptions.push({
+      labelTh: 'อัตราคิดลด (WACC)',
+      labelEn: 'Discount rate (WACC)',
+      valueText: `${wacc.toFixed(1)}%`,
+      provenance: 'DETERMINISTIC_DERIVATION'
+    });
+  }
+  if (terminalGrowth !== null) {
+    assumptions.push({
+      labelTh: 'อัตราเติบโตระยะยาว (Terminal Growth)',
+      labelEn: 'Terminal growth rate',
+      valueText: `${terminalGrowth.toFixed(1)}%`,
+      provenance: 'DETERMINISTIC_DERIVATION'
+    });
+  }
+  if (projYears !== null) {
+    assumptions.push({
+      labelTh: 'ระยะเวลาประมาณการ',
+      labelEn: 'Explicit forecast period',
+      valueText: `${projYears} ${isThai ? 'ปี' : 'Years'}`,
+      provenance: 'DETERMINISTIC_DERIVATION'
+    });
+  }
+  if (revCagr !== null) {
+    assumptions.push({
+      labelTh: 'รายได้เติบโตเฉลี่ย (Base Revenue CAGR)',
+      labelEn: 'Base Revenue CAGR',
+      valueText: `${revCagr.toFixed(1)}%`,
+      provenance: 'AI_DRAFT'
+    });
+  }
+  if (terminalMargin !== null) {
+    assumptions.push({
+      labelTh: 'อัตรากำไรเป้าหมาย (Terminal Margin)',
+      labelEn: 'Target terminal margin',
+      valueText: `${terminalMargin.toFixed(1)}%`,
+      provenance: 'AI_DRAFT'
+    });
+  }
+
+  const isDcfInvalid = dcfInputs?.isValid === false;
+  return {
+    methodTitleTh: 'วิธีประเมิน: แบบจำลองคิดลดกระแสเงินสด (FCFF DCF)',
+    methodTitleEn: 'Valuation Approach: Discounted Cash Flow (FCFF DCF)',
+    guardStatusTh: isDcfInvalid ? 'แบบจำลอง FCFF DCF: ข้อมูลไม่ครบถ้วนสำหรับการประเมิน' : undefined,
+    guardStatusEn: isDcfInvalid ? 'FCFF DCF Model: Insufficient data for valuation' : undefined,
+    isGuarded: isDcfInvalid,
+    modelType: detected.model_type || 'dcf_standard',
+    assumptions: isDcfInvalid ? [] : assumptions
+  };
+}
 
 export type ExpectationCondition =
   | 'gte'
@@ -75,6 +496,8 @@ export interface TrackedExpectation {
   targetPeriod: string; // e.g. 'Q3 2026', 'FY26', '2026-10-30'
   status: ExpectationStatus;
   origin: ExpectationOrigin;
+  evaluationMode?: EvaluationMode;
+  unit?: string;
   sourceReportId: string | null;
   actualValue: number | string | null;
   actualPeriodFound?: string | null;
@@ -118,24 +541,30 @@ export function extractDraftThesisFromReport(
   const data: ReportData = reportInput?.data || (reportInput?.ticker ? reportInput : null);
   const now = new Date().toISOString();
 
+  const activeBasis = getActiveValuationAssumptions(reportInput, false);
   const keyAssumptions: string[] = [];
-  if (snapshot.valuation.assumptions.waccPct !== null) {
-    keyAssumptions.push(`Discount rate (WACC): ${snapshot.valuation.assumptions.waccPct}%`);
-  }
-  if (snapshot.valuation.assumptions.terminalGrowthPct !== null) {
-    keyAssumptions.push(`Terminal growth rate: ${snapshot.valuation.assumptions.terminalGrowthPct}%`);
-  }
-  if (snapshot.valuation.assumptions.revenueCagrPct !== null) {
-    keyAssumptions.push(`Revenue CAGR: ${snapshot.valuation.assumptions.revenueCagrPct}%`);
-  }
-  if (snapshot.valuation.assumptions.fcfMarginPct !== null) {
-    keyAssumptions.push(`Target FCF margin: ${snapshot.valuation.assumptions.fcfMarginPct}%`);
+  if (activeBasis.isGuarded) {
+    keyAssumptions.push(`Valuation approach: ${activeBasis.methodTitleEn}`);
+    if (activeBasis.guardStatusEn) {
+      keyAssumptions.push(activeBasis.guardStatusEn);
+    }
+  } else {
+    for (const a of activeBasis.assumptions) {
+      keyAssumptions.push(`${a.labelEn}: ${a.valueText}`);
+    }
   }
 
+  const category = resolveBusinessCategory(reportInput, snapshot.ticker);
   const invalidationConditions: string[] = [];
-  // Propose sensible invalidation conditions based on identified risks
-  if (snapshot.financials.operatingMarginPct !== null) {
-    invalidationConditions.push(`Operating margin drops below ${(snapshot.financials.operatingMarginPct * 0.8).toFixed(1)}%`);
+  // Propose sensible invalidation conditions based on business category and risks
+  if (category === 'operating' || category === 'cyclical') {
+    if (snapshot.financials.operatingMarginPct !== null) {
+      invalidationConditions.push(`Operating margin drops below ${(snapshot.financials.operatingMarginPct * 0.8).toFixed(1)}%`);
+    }
+  } else if (category === 'financial') {
+    if (snapshot.financials.netIncome !== null && snapshot.financials.netIncome > 0) {
+      invalidationConditions.push(`Net income turns negative or drops below ${(snapshot.financials.netIncome * 0.7).toFixed(0)}M`);
+    }
   }
   if (snapshot.thesis.keyRisks.length > 0) {
     invalidationConditions.push(`Materialization of primary risk: ${snapshot.thesis.keyRisks[0]}`);
@@ -297,6 +726,19 @@ export function evaluateExpectations(
       return exp;
     }
 
+    const metricDef = EXPECTATION_METRIC_REGISTRY.find(m => m.id === exp.metricOrEvent);
+    const isManual = exp.evaluationMode === 'MANUAL' || metricDef?.evaluationMode === 'MANUAL';
+
+    // Invariant 4: MANUAL_REVIEW expectations must never be auto-resolved to MET/MISSED by AI or engine
+    if (isManual) {
+      return {
+        ...exp,
+        evaluationMode: 'MANUAL',
+        unit: exp.unit || metricDef?.unit,
+        evaluationNotes: exp.evaluationNotes || 'Manual review required: Verify actual results from official 10-Q/10-K SEC filing.'
+      };
+    }
+
     const expPeriod = exp.targetPeriod.toUpperCase().trim();
     const normExpPeriod = normalizePeriodForMatch(expPeriod);
 
@@ -304,15 +746,27 @@ export function evaluateExpectations(
     let matchedPeriod: string | null = null;
     let actualValue: number | null = null;
 
+    const extractMetricValue = (source: any): number | null => {
+      if (!source) return null;
+      const m = exp.metricOrEvent.toLowerCase();
+      if (m === 'revenue') return typeof source.revenue === 'number' ? source.revenue : null;
+      if (m === 'revenue_growth_yoy_pct') return typeof source.revenueYoYPct === 'number' ? source.revenueYoYPct : null;
+      if (m === 'operating_margin_pct') return typeof source.operatingMarginPct === 'number' ? source.operatingMarginPct : null;
+      if (m === 'free_cash_flow') return typeof source.freeCashFlow === 'number' ? source.freeCashFlow : null;
+      if (m === 'net_income') return typeof source.netIncome === 'number' ? source.netIncome : null;
+      if (m === 'gross_margin_pct') return typeof source.grossMarginPct === 'number' ? source.grossMarginPct : null;
+      if (m === 'cash_and_equivalents') {
+        if (typeof source.netCash === 'number') return source.netCash;
+        if (typeof source.cashAndEquivalents === 'number') return source.cashAndEquivalents;
+        return null;
+      }
+      return null;
+    };
+
     // Check 1: Does current snapshot latestPeriod match target?
     if (currentPeriod && (normCurrentPeriod === normExpPeriod || currentPeriod === expPeriod)) {
       matchedPeriod = currentPeriod;
-      const metric = exp.metricOrEvent.toLowerCase();
-      if (metric === 'revenue') actualValue = financials.revenue;
-      else if (metric === 'revenue_growth_yoy_pct') actualValue = financials.revenueYoYPct;
-      else if (metric === 'operating_margin_pct') actualValue = financials.operatingMarginPct;
-      else if (metric === 'free_cash_flow') actualValue = financials.freeCashFlow;
-      else if (metric === 'net_income') actualValue = financials.netIncome;
+      actualValue = extractMetricValue(financials);
     }
 
     // Check 2: Check current snapshot periodHistory
@@ -323,11 +777,7 @@ export function evaluateExpectations(
       });
       if (histItem) {
         matchedPeriod = histItem.period;
-        const metric = exp.metricOrEvent.toLowerCase();
-        if (metric === 'revenue') actualValue = histItem.revenue;
-        else if (metric === 'operating_margin_pct') actualValue = histItem.operatingMarginPct;
-        else if (metric === 'free_cash_flow') actualValue = histItem.freeCashFlow;
-        else if (metric === 'net_income') actualValue = histItem.netIncome;
+        actualValue = extractMetricValue(histItem);
       }
     }
 
@@ -338,14 +788,35 @@ export function evaluateExpectations(
         const normH = normalizePeriodForMatch(hPeriod);
         if (normH === normExpPeriod || hPeriod === expPeriod) {
           matchedPeriod = hPeriod;
-          const metric = exp.metricOrEvent.toLowerCase();
-          if (metric === 'revenue') actualValue = hSnap.financials.revenue;
-          else if (metric === 'revenue_growth_yoy_pct') actualValue = hSnap.financials.revenueYoYPct;
-          else if (metric === 'operating_margin_pct') actualValue = hSnap.financials.operatingMarginPct;
-          else if (metric === 'free_cash_flow') actualValue = hSnap.financials.freeCashFlow;
-          else if (metric === 'net_income') actualValue = hSnap.financials.netIncome;
+          actualValue = extractMetricValue(hSnap.financials);
           if (actualValue !== null) break;
         }
+      }
+    }
+
+    // Period mismatch validation (e.g. comparing quarterly target Q4 2026 against annual FY2026 data)
+    const expYearMatch = expPeriod.match(/\b(20\d\d)\b/);
+    const currYearMatch = currentPeriod.match(/\b(20\d\d)\b/);
+    const isQuarterlyTarget = /^Q[1-4]/i.test(normExpPeriod) || /\bQ[1-4]\b/i.test(expPeriod);
+    const isAnnualCurrent = /^FY/i.test(normCurrentPeriod) || /^(?:FY\s*)?20\d\d$/i.test(currentPeriod);
+
+    let periodMismatchNote: string | undefined;
+    if (expYearMatch && currYearMatch && expYearMatch[1] === currYearMatch[1] && isQuarterlyTarget && isAnnualCurrent) {
+      periodMismatchNote = `Period mismatch: target requires quarterly data (${exp.targetPeriod}) but only annual (${currentPeriod}) is available. Data not compared.`;
+    }
+
+    if (matchedPeriod) {
+      const normMatched = normalizePeriodForMatch(matchedPeriod);
+      const isAnnualMatched = /^FY/i.test(normMatched);
+      if (isQuarterlyTarget && isAnnualMatched) {
+        return {
+          ...exp,
+          status: 'UNAVAILABLE',
+          actualPeriodFound: matchedPeriod,
+          actualValue: null,
+          evaluationDate: now,
+          evaluationNotes: `Period mismatch: target period ${exp.targetPeriod} cannot be compared against available ${matchedPeriod} data.`
+        };
       }
     }
 
@@ -356,6 +827,7 @@ export function evaluateExpectations(
           ...exp,
           status: 'UNAVAILABLE',
           actualPeriodFound: matchedPeriod,
+          actualValue: null,
           evaluationDate: now,
           evaluationNotes: `Target period reached (${matchedPeriod}) but metric ${exp.metricOrEvent} was unavailable.`
         };
@@ -363,7 +835,9 @@ export function evaluateExpectations(
 
       return {
         ...exp,
-        status: 'PENDING'
+        status: 'PENDING',
+        actualValue: null,
+        evaluationNotes: periodMismatchNote || exp.evaluationNotes
       };
     }
 
@@ -373,6 +847,7 @@ export function evaluateExpectations(
         ...exp,
         status: 'UNAVAILABLE',
         actualPeriodFound: matchedPeriod,
+        actualValue: null,
         evaluationDate: now,
         evaluationNotes: 'Non-numeric target value cannot be evaluated against financial metric.'
       };
@@ -402,6 +877,8 @@ export function evaluateExpectations(
       status,
       actualValue,
       actualPeriodFound: matchedPeriod,
+      evaluationMode: 'AUTO',
+      unit: exp.unit || metricDef?.unit,
       evaluationDate: now,
       updatedAt: now,
       evaluationNotes: `Evaluated against ${matchedPeriod} data: actual ${actualValue} vs target ${targetNum} (${exp.condition})`

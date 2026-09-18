@@ -171,25 +171,37 @@ export function extractMemorySnapshot(
   const assumptionsObj = (data.intrinsic_value as any)?.assumptions;
   const dcfAssumptions = dcfModel?.assumptions;
 
-  const wacc = typeof assumptionsObj?.discount_rate === 'number'
-    ? assumptionsObj.discount_rate
-    : (typeof dcfAssumptions?.wacc_pct === 'number' ? dcfAssumptions.wacc_pct : null);
+  // Active DCF guard: only extract DCF assumptions if DCF model is actively selected and valid
+  const isDcfActive = (detected?.model_type === 'dcf_standard' || detected?.model_type === 'dcf_multistage')
+    && dcfModel?.inputs?.isValid !== false;
 
-  const terminalGrowth = typeof assumptionsObj?.terminal_growth_rate === 'number'
-    ? assumptionsObj.terminal_growth_rate
-    : (typeof dcfAssumptions?.terminal_growth_pct === 'number' ? dcfAssumptions.terminal_growth_pct : null);
+  const wacc = isDcfActive
+    ? (typeof assumptionsObj?.discount_rate === 'number'
+        ? assumptionsObj.discount_rate
+        : (typeof dcfAssumptions?.wacc_pct === 'number' ? dcfAssumptions.wacc_pct : null))
+    : null;
 
-  const revCagr = typeof assumptionsObj?.revenue_growth_rate === 'number'
-    ? assumptionsObj.revenue_growth_rate
-    : (typeof dcfModel?.scenarios?.base?.revenue_cagr_pct === 'number'
-        ? dcfModel.scenarios.base.revenue_cagr_pct
-        : null);
+  const terminalGrowth = isDcfActive
+    ? (typeof assumptionsObj?.terminal_growth_rate === 'number'
+        ? assumptionsObj.terminal_growth_rate
+        : (typeof dcfAssumptions?.terminal_growth_pct === 'number' ? dcfAssumptions.terminal_growth_pct : null))
+    : null;
 
-  const fcfMargin = typeof assumptionsObj?.target_fcf_margin === 'number'
-    ? assumptionsObj.target_fcf_margin
-    : (typeof dcfModel?.scenarios?.base?.terminal_margin_pct === 'number'
-        ? dcfModel.scenarios.base.terminal_margin_pct
-        : null);
+  const revCagr = isDcfActive
+    ? (typeof assumptionsObj?.revenue_growth_rate === 'number'
+        ? assumptionsObj.revenue_growth_rate
+        : (typeof dcfModel?.scenarios?.base?.revenue_cagr_pct === 'number'
+            ? dcfModel.scenarios.base.revenue_cagr_pct
+            : null))
+    : null;
+
+  const fcfMargin = isDcfActive
+    ? (typeof assumptionsObj?.target_fcf_margin === 'number'
+        ? assumptionsObj.target_fcf_margin
+        : (typeof dcfModel?.scenarios?.base?.terminal_margin_pct === 'number'
+            ? dcfModel.scenarios.base.terminal_margin_pct
+            : null))
+    : null;
 
   const mosPct = (typeof marketPrice === 'number' && typeof fv === 'number' && marketPrice > 0)
     ? Number((((fv - marketPrice) / marketPrice) * 100).toFixed(1))
