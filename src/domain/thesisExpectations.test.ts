@@ -7,6 +7,10 @@ import {
   matchRiskCatalystTransitions,
   resolveActiveThesisForReport,
   classifyInvalidationCondition,
+  resolveBusinessCategory,
+  getActiveValuationAssumptions,
+  getApplicableExpectationMetrics,
+  EXPECTATION_METRIC_REGISTRY,
   InvestmentThesisRecord,
   TrackedExpectation
 } from './thesisExpectations';
@@ -516,6 +520,386 @@ describe('thesisExpectations', () => {
       assert.equal(condReg.type, 'MANUAL_REVIEW_TRIGGER');
       assert.equal(condReg.metric, null);
       assert.equal(condReg.threshold, null);
+    });
+  });
+
+  describe('Sections 38, 39, 40 — Adaptive Valuation Assumptions & Guards (SOFI, MSFT, REIT)', () => {
+    it('Section 38: SOFI with Financial Sector Guard does NOT show generic FCFF assumptions (WACC, terminal growth)', () => {
+      const sofiReport: any = {
+        ticker: 'SOFI',
+        company_profile: {
+          sector: 'Financial Services',
+          industry: 'Credit Services'
+        },
+        valuation_model_used: {
+          model_name: 'fintech_pe',
+          is_guarded: true,
+          guard_reason: 'Financial sector company: FCFF DCF inappropriate due to banking liabilities and capital requirements'
+        },
+        intrinsic_value: {
+          current_price: 15.2,
+          summary: { base_case_fair_value: 18.0 },
+          // Even if generic prompt returned assumptions, Lumina guard filters them out
+          assumptions: {
+            discount_rate: 10.5,
+            terminal_growth_rate: 3.0
+          }
+        },
+        financial_statements: {
+          periods: ['Q3 2026'],
+          income_statement: {
+            revenue: [750],
+            net_income: [65]
+          }
+        }
+      };
+
+      // 1. Check business category resolution
+      const category = resolveBusinessCategory(sofiReport, 'SOFI');
+      assert.equal(category, 'financial');
+
+      // 2. Check active valuation assumptions
+      const activeBasis = getActiveValuationAssumptions(sofiReport, true);
+      assert.equal(activeBasis.isGuarded, true);
+      assert.ok(activeBasis.guardStatusTh?.includes('Financial Sector Guard'));
+      // Invariant: No generic WACC or terminal growth assumptions presented
+      assert.equal(activeBasis.assumptions.length, 0);
+      assert.ok(!activeBasis.assumptions.some(a => a.labelEn.includes('WACC') || a.labelEn.includes('Terminal growth')));
+
+      // 3. Check applicable metrics: FCF is NOT an AUTO metric for financial companies
+      const applicable = getApplicableExpectationMetrics(sofiReport, 'SOFI');
+      const autoMetrics = applicable.filter(m => m.evaluationMode === 'AUTO');
+      assert.ok(autoMetrics.some(m => m.id === 'revenue'));
+      assert.ok(autoMetrics.some(m => m.id === 'net_income'));
+      assert.ok(!autoMetrics.some(m => m.id === 'free_cash_flow'), 'FCF must not be an AUTO expectation metric for banks/fintech');
+
+      // Unsupported metrics are MANUAL only
+      const manualMetrics = applicable.filter(m => m.evaluationMode === 'MANUAL');
+      assert.ok(manualMetrics.some(m => m.id === 'deposits'));
+      assert.ok(manualMetrics.some(m => m.id === 'net_interest_margin'));
+      assert.ok(manualMetrics.some(m => m.id === 'net_charge_off_rate'));
+
+      // 4. Draft thesis extraction preserves guarded status
+      const draft = extractDraftThesisFromReport(sofiReport, 'user_sofi');
+      assert.ok(draft);
+      assert.ok(!draft?.keyAssumptions.some(a => a.toLowerCase().includes('wacc')), 'Draft keyAssumptions must not include generic WACC');
+    });
+
+    it('Section 39: MSFT Operating Company shows active DCF assumptions and operating metrics', () => {
+      const msftReport: any = {
+        ticker: 'MSFT',
+        company_profile: {
+          sector: 'Technology',
+          industry: 'Software - Infrastructure'
+        },
+        intrinsic_value: {
+          current_price: 430.0,
+          summary: { base_case_fair_value: 480.0 },
+          assumptions: {
+            discount_rate: 8.5,
+            terminal_growth_rate: 2.5,
+            revenue_growth_rate: 12.0,
+            target_fcf_margin: 32.0,
+            forecast_years: 5
+          }
+        },
+        financial_statements: {
+          periods: ['Q3 2026'],
+          income_statement: {
+            revenue: [62000],
+            operating_margin_pct: [45.0],
+            net_income: [21900]
+          },
+          cash_flow: {
+            free_cash_flow: [19500]
+          }
+        }
+      };
+
+      const category = resolveBusinessCategory(msftReport, 'MSFT');
+      assert.equal(category, 'operating');
+
+      const activeBasis = getActiveValuationAssumptions(msftReport, false);
+      assert.equal(activeBasis.isGuarded, false);
+      assert.ok(activeBasis.assumptions.some(a => a.labelEn.includes('WACC') && a.valueText === '8.5%'));
+      assert.ok(activeBasis.assumptions.some(a => a.labelEn.includes('Terminal growth') && a.valueText === '2.5%'));
+
+      const applicable = getApplicableExpectationMetrics(msftReport, 'MSFT');
+      const autoMetrics = applicable.filter(m => m.evaluationMode === 'AUTO');
+      assert.ok(autoMetrics.some(m => m.id === 'free_cash_flow'), 'FCF must be available for operating companies');
+      assert.ok(autoMetrics.some(m => m.id === 'operating_margin_pct'));
+    });
+
+    it('Section 40: REIT company adapts valuation basis and does not fake AFFO evaluator', () => {
+      const reitReport: any = {
+        ticker: 'O',
+        company_profile: {
+          sector: 'Real Estate',
+          industry: 'REIT - Retail'
+        },
+        valuation_model_used: {
+          model_name: 'reit_affo',
+          is_guarded: true,
+          guard_reason: 'REIT company: Standard FCFF DCF unsuited for depreciation-heavy real estate'
+        },
+        intrinsic_value: {
+          current_price: 52.0,
+          summary: { base_case_fair_value: 58.0 }
+        }
+      };
+
+      const category = resolveBusinessCategory(reitReport, 'O');
+      assert.equal(category, 'reit');
+
+      const activeBasis = getActiveValuationAssumptions(reitReport, true);
+      assert.equal(activeBasis.isGuarded, true);
+      assert.ok(activeBasis.guardStatusTh?.includes('REIT Guard'));
+      assert.equal(activeBasis.assumptions.length, 0, 'No fake FCFF assumptions for REIT');
+
+      const applicable = getApplicableExpectationMetrics(reitReport, 'O');
+      // AFFO and FFO are MANUAL until canonical backend produces verified real estate fields
+      const ffoDef = applicable.find(m => m.id === 'ffo');
+      assert.ok(ffoDef);
+      assert.equal(ffoDef?.evaluationMode, 'MANUAL', 'REIT FFO must be MANUAL without fake auto-evaluator');
+    });
+  });
+
+  describe('Sections 41, 42 — Negative FCF and Missing Data Invariants', () => {
+    it('Section 41: Negative FCF is handled correctly and not treated as missing or forced positive', () => {
+      const negativeFcfReport: any = {
+        ticker: 'GROWTH',
+        financial_statements: {
+          periods: ['Q2 2026'],
+          income_statement: {
+            revenue: [1200]
+          },
+          cash_flow: {
+            free_cash_flow: [-350] // Real negative FCF
+          }
+        }
+      };
+      const snap = extractMemorySnapshot(negativeFcfReport)!;
+      assert.equal(snap.financials.freeCashFlow, -350);
+
+      const exp: TrackedExpectation = {
+        expectationId: 'exp_neg_fcf',
+        ticker: 'GROWTH',
+        metricOrEvent: 'free_cash_flow',
+        metricLabel: 'FCF Burn Target',
+        targetValue: -400, // Target is to burn no worse than -$400M (i.e. >= -400)
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_prev',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([exp], snap);
+      // Actual -350 >= -400 -> MET or EXCEEDED!
+      assert.ok(evaluated[0].status === 'MET' || evaluated[0].status === 'EXCEEDED');
+      assert.equal(evaluated[0].actualValue, -350);
+    });
+
+    it('Section 42: Missing data is strictly UNAVAILABLE and never converted to 0', () => {
+      const missingDataReport: any = {
+        ticker: 'MISSING',
+        financial_statements: {
+          periods: ['Q2 2026'],
+          income_statement: {
+            revenue: [500]
+            // net_income is missing
+          }
+        }
+      };
+      const snap = extractMemorySnapshot(missingDataReport)!;
+
+      const exp: TrackedExpectation = {
+        expectationId: 'exp_missing_ni',
+        ticker: 'MISSING',
+        metricOrEvent: 'net_income',
+        metricLabel: 'Net Income Target',
+        targetValue: 50,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_prev',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([exp], snap);
+      assert.equal(evaluated[0].status, 'UNAVAILABLE');
+      assert.equal(evaluated[0].actualValue, null, 'Must NOT convert missing net income to 0');
+    });
+  });
+
+  describe('Sections 43, 44, 45 — Period Mismatch & Auto vs Manual Expectations', () => {
+    it('Section 43: Auto expectation evaluates to MET with verified canonical data', () => {
+      const report: any = {
+        ticker: 'AUTO_CO',
+        financial_statements: {
+          periods: ['Q4 2026'],
+          income_statement: {
+            revenue: [1100]
+          }
+        }
+      };
+      const snap = extractMemorySnapshot(report)!;
+
+      const exp: TrackedExpectation = {
+        expectationId: 'exp_auto_rev',
+        ticker: 'AUTO_CO',
+        metricOrEvent: 'revenue',
+        metricLabel: 'Revenue',
+        targetValue: 1000,
+        condition: 'gte',
+        targetPeriod: 'Q4 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_prev',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([exp], snap);
+      assert.ok(evaluated[0].status === 'MET' || evaluated[0].status === 'EXCEEDED');
+      assert.equal(evaluated[0].actualValue, 1100);
+    });
+
+    it('Section 44: Period mismatch (quarterly target vs annual only data) prevents silent comparison', () => {
+      const annualOnlyReport: any = {
+        ticker: 'ANNUAL_CO',
+        financial_statements: {
+          // Annual period only, no Q4 2026!
+          periods: ['FY 2026'],
+          income_statement: {
+            revenue: [4500] // Annual revenue 4,500M
+          }
+        }
+      };
+      const snap = extractMemorySnapshot(annualOnlyReport)!;
+
+      const quarterlyExp: TrackedExpectation = {
+        expectationId: 'exp_q4_mismatch',
+        ticker: 'ANNUAL_CO',
+        metricOrEvent: 'revenue',
+        metricLabel: 'Q4 Revenue',
+        targetValue: 1200, // Target is Q4 2026 revenue of 1,200M
+        condition: 'gte',
+        targetPeriod: 'Q4 2026', // Quarterly target!
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: 'rep_prev',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([quarterlyExp], snap);
+      // Invariant: Must NOT compare 4500 (annual) against 1200 (quarterly target) to mark it MET!
+      assert.equal(evaluated[0].actualValue, null);
+      assert.notEqual(evaluated[0].status, 'MET');
+      assert.ok(evaluated[0].status === 'PENDING' || evaluated[0].status === 'UNAVAILABLE');
+      assert.ok(evaluated[0].evaluationNotes?.includes('Period mismatch'), 'Note must explain period mismatch');
+    });
+
+    it('Section 45: Manual expectation is NEVER auto-resolved by AI or deterministic engine', () => {
+      const bankReport: any = {
+        ticker: 'BANK',
+        financial_statements: {
+          periods: ['Q3 2026'],
+          income_statement: {
+            revenue: [800],
+            net_income: [90]
+          }
+        }
+      };
+      const snap = extractMemorySnapshot(bankReport)!;
+
+      const manualExp: TrackedExpectation = {
+        expectationId: 'exp_manual_nim',
+        ticker: 'BANK',
+        metricOrEvent: 'net_interest_margin',
+        metricLabel: 'Net Interest Margin (%)',
+        targetValue: 3.2,
+        condition: 'gte',
+        targetPeriod: 'Q3 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        evaluationMode: 'MANUAL', // Marked manual review
+        sourceReportId: 'rep_prev',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([manualExp], snap);
+      // Invariant: Must remain PENDING with manual review note
+      assert.equal(evaluated[0].status, 'PENDING');
+      assert.equal(evaluated[0].actualValue, null);
+      assert.ok(evaluated[0].evaluationNotes?.includes('Manual review required'));
+    });
+  });
+
+  describe('Sections 46, 47, 48 — Invalidation Triggers, Thesis Revision & Isolation', () => {
+    it('Section 46: Narrative invalidation condition is classified as manual review and never auto-invalidated', () => {
+      const narrativeCond = 'Material deterioration in consumer lending credit quality';
+      const classified = classifyInvalidationCondition(narrativeCond);
+      assert.equal(classified.type, 'MANUAL_REVIEW_TRIGGER');
+      assert.equal(classified.metric, null);
+    });
+
+    it('Section 47: Thesis revision v1 -> edit -> v2 preserves history and does not overwrite v1', () => {
+      const initialDraft = extractDraftThesisFromReport(sampleReport, 'user_alice')!;
+      assert.equal(initialDraft.version, 1);
+      assert.equal(initialDraft.confirmationStatus, 'AI_DRAFT');
+
+      const confirmedV2 = confirmUserThesis(initialDraft, {
+        summary: 'Confirmed v2 summary by user'
+      }, 'user_alice');
+
+      assert.equal(confirmedV2.version, 2);
+      assert.equal(confirmedV2.confirmationStatus, 'USER_EDITED');
+      assert.equal(confirmedV2.summary, 'Confirmed v2 summary by user');
+
+      // v1 remains immutable
+      assert.equal(initialDraft.version, 1);
+      assert.equal(initialDraft.confirmationStatus, 'AI_DRAFT');
+    });
+
+    it('Section 48: User scoping ensures User A thesis/expectations carry their userId', () => {
+      const thesisA = extractDraftThesisFromReport(sampleReport, 'user_A')!;
+      assert.equal(thesisA.userId, 'user_A');
+
+      const expA: TrackedExpectation = {
+        expectationId: 'exp_A',
+        ticker: 'MSFT',
+        metricOrEvent: 'revenue',
+        metricLabel: 'Revenue',
+        targetValue: 60000,
+        condition: 'gte',
+        targetPeriod: 'Q3 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        userId: 'user_A',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+      assert.equal(expA.userId, 'user_A');
     });
   });
 });

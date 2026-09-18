@@ -11,7 +11,9 @@ import {
   extractDraftThesisFromReport,
   confirmUserThesis,
   evaluateExpectations,
-  classifyInvalidationCondition
+  classifyInvalidationCondition,
+  getActiveValuationAssumptions,
+  getApplicableExpectationMetrics
 } from '../domain/thesisExpectations';
 import {
   loadUserThesis,
@@ -67,6 +69,32 @@ export function ThesisExpectationsCard({
   const snapshot = useMemo(() => {
     return extractMemorySnapshot(currentReport);
   }, [currentReport]);
+
+  const activeBasis = useMemo(() => {
+    return getActiveValuationAssumptions(currentReport, isThai);
+  }, [currentReport, isThai]);
+
+  const applicableMetrics = useMemo(() => {
+    return getApplicableExpectationMetrics(currentReport, ticker);
+  }, [currentReport, ticker]);
+
+  const autoMetrics = useMemo(() => {
+    return applicableMetrics.filter(m => m.evaluationMode === 'AUTO');
+  }, [applicableMetrics]);
+
+  const manualMetrics = useMemo(() => {
+    return applicableMetrics.filter(m => m.evaluationMode === 'MANUAL');
+  }, [applicableMetrics]);
+
+  const selectedMetricDef = useMemo(() => {
+    return applicableMetrics.find(m => m.id === newMetric) || applicableMetrics[0];
+  }, [applicableMetrics, newMetric]);
+
+  useEffect(() => {
+    if (applicableMetrics.length > 0 && !applicableMetrics.some(m => m.id === newMetric)) {
+      setNewMetric(applicableMetrics[0].id);
+    }
+  }, [applicableMetrics, newMetric]);
 
   useEffect(() => {
     if (!isEditing && thesis) {
@@ -160,23 +188,35 @@ export function ThesisExpectationsCard({
     const targetNum = parseFloat(newTarget);
     if (isNaN(targetNum)) return;
 
-    const metricLabels: Record<string, string> = {
-      revenue: isThai ? 'รายได้รวม ($M)' : 'Revenue ($M)',
-      operating_margin_pct: isThai ? 'อัตรากำไรจากการดำเนินงาน (%)' : 'Operating Margin (%)',
-      free_cash_flow: isThai ? 'กระแสเงินสดอิสระ ($M)' : 'Free Cash Flow ($M)',
-      net_income: isThai ? 'กำไรสุทธิ ($M)' : 'Net Income ($M)'
-    };
+    const metricDef = applicableMetrics.find(m => m.id === newMetric) || applicableMetrics[0];
+    const metricLabel = isThai ? metricDef.labelTh : metricDef.labelEn;
+    const cleanPeriod = newPeriod.trim().toUpperCase();
+
+    // Prevent duplicate identical active expectation
+    const isDuplicate = expectations.some(
+      exp => exp.metricOrEvent === newMetric &&
+             exp.targetPeriod.trim().toUpperCase() === cleanPeriod &&
+             exp.condition === newCondition &&
+             Number(exp.targetValue) === targetNum &&
+             (exp.status === 'PENDING' || exp.status === 'MET')
+    );
+    if (isDuplicate) {
+      setIsAddingExp(false);
+      return;
+    }
 
     const newExp: TrackedExpectation = {
       expectationId: `exp_${Date.now()}`,
       ticker: ticker.toUpperCase().trim(),
       metricOrEvent: newMetric,
-      metricLabel: metricLabels[newMetric] || newMetric,
+      metricLabel: `${metricLabel} (${metricDef.unit})`,
       targetValue: targetNum,
       condition: newCondition,
-      targetPeriod: newPeriod.trim().toUpperCase(),
+      targetPeriod: cleanPeriod,
       status: 'PENDING',
       origin: 'USER_EXPECTATION',
+      evaluationMode: metricDef.evaluationMode,
+      unit: metricDef.unit,
       sourceReportId: snapshot?.reportId || null,
       actualValue: null,
       evaluationDate: null,
@@ -314,18 +354,44 @@ export function ThesisExpectationsCard({
 
               {/* Assumptions & Invalidation */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-stone-200/60">
-                {thesis.keyAssumptions.length > 0 && (
-                  <div>
-                    <span className="text-[10px] font-bold uppercase text-stone-500 tracking-wider block mb-1">
-                      {isThai ? 'สมมติฐานหลักในการประเมินมูลค่า' : 'Key Valuation Assumptions'}
-                    </span>
-                    <ul className="list-disc list-inside text-xs text-stone-700 space-y-0.5">
-                      {thesis.keyAssumptions.map((a, idx) => (
-                        <li key={idx}>{a}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-stone-500 tracking-wider block mb-1">
+                    {isThai ? 'ฐานและสมมติฐานการประเมินมูลค่า' : 'Valuation Basis & Assumptions'}
+                  </span>
+                  {activeBasis.isGuarded ? (
+                    <div className="flex flex-col gap-1.5 text-xs">
+                      <div className="font-semibold text-stone-800">
+                        {isThai ? activeBasis.methodTitleTh : activeBasis.methodTitleEn}
+                      </div>
+                      {activeBasis.guardStatusTh && (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50/90 text-amber-800 border border-amber-200/80 text-[11px] leading-snug">
+                          <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>{isThai ? activeBasis.guardStatusTh : activeBasis.guardStatusEn}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1 text-xs">
+                      <div className="font-semibold text-stone-800 mb-0.5">
+                        {isThai ? activeBasis.methodTitleTh : activeBasis.methodTitleEn}
+                      </div>
+                      {activeBasis.assumptions.length > 0 ? (
+                        <ul className="list-disc list-inside text-xs text-stone-700 space-y-0.5">
+                          {activeBasis.assumptions.map((a, idx) => (
+                            <li key={idx}>
+                              <span className="font-medium text-stone-700">{isThai ? a.labelTh : a.labelEn}:</span>{' '}
+                              <span className="font-mono text-stone-900 font-semibold">{a.valueText}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-stone-400 italic text-[11px]">
+                          {isThai ? 'ไม่มีสมมติฐานที่ต้องระบุเพิ่มเติม' : 'No explicit assumptions required.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {thesis.invalidationConditions.length > 0 && (
                   <div>
@@ -379,19 +445,33 @@ export function ThesisExpectationsCard({
             {/* Add Expectation Form */}
             {isAddingExp && (
               <form onSubmit={handleAddExpectation} className="bg-stone-50 p-3.5 rounded-2xl border border-stone-200 flex flex-wrap gap-2.5 items-end text-xs print:hidden">
-                <div className="flex-1 min-w-[120px]">
+                <div className="flex-1 min-w-[140px]">
                   <label className="block text-[10px] font-bold text-stone-600 mb-1">
-                    {isThai ? 'ตัวชี้วัด' : 'Metric'}
+                    {isThai ? 'ตัวชี้วัด (ตามประเภทธุรกิจ)' : 'Metric (Business-Aware)'}
                   </label>
                   <select
                     value={newMetric}
                     onChange={e => setNewMetric(e.target.value)}
                     className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs"
                   >
-                    <option value="revenue">Revenue ($M)</option>
-                    <option value="operating_margin_pct">Operating Margin (%)</option>
-                    <option value="free_cash_flow">Free Cash Flow ($M)</option>
-                    <option value="net_income">Net Income ($M)</option>
+                    {autoMetrics.length > 0 && (
+                      <optgroup label={isThai ? 'ประเมินผลอัตโนมัติ (Auto-evaluable)' : 'Auto-evaluable'}>
+                        {autoMetrics.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {isThai ? m.labelTh : m.labelEn} ({m.unit})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {manualMetrics.length > 0 && (
+                      <optgroup label={isThai ? 'ต้องตรวจสอบเอง (Manual Review)' : 'Manual Review'}>
+                        {manualMetrics.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {isThai ? m.labelTh : m.labelEn} ({m.unit})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
 
@@ -410,19 +490,27 @@ export function ThesisExpectationsCard({
                   </select>
                 </div>
 
-                <div className="w-24">
-                  <label className="block text-[10px] font-bold text-stone-600 mb-1">
-                    {isThai ? 'เป้าหมาย' : 'Target'}
+                <div className="w-28">
+                  <label className="block text-[10px] font-bold text-stone-600 mb-1 flex items-center justify-between">
+                    <span>{isThai ? 'เป้าหมาย' : 'Target'}</span>
+                    <span className="text-stone-400 font-mono text-[9px]">{selectedMetricDef?.unit || ''}</span>
                   </label>
-                  <input
-                    type="number"
-                    step="any"
-                    required
-                    value={newTarget}
-                    onChange={e => setNewTarget(e.target.value)}
-                    placeholder="e.g. 60000"
-                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={newTarget}
+                      onChange={e => setNewTarget(e.target.value)}
+                      placeholder={selectedMetricDef?.unit === '%' ? 'e.g. 25.5' : 'e.g. 60000'}
+                      className="w-full p-2 pr-7 bg-white border border-stone-300 rounded-lg text-xs font-mono"
+                    />
+                    {selectedMetricDef?.unit && (
+                      <span className="absolute right-2 top-2 text-[10px] text-stone-400 pointer-events-none font-mono">
+                        {selectedMetricDef.unit}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="w-28">
@@ -435,7 +523,7 @@ export function ThesisExpectationsCard({
                     value={newPeriod}
                     onChange={e => setNewPeriod(e.target.value)}
                     placeholder="e.g. Q4 2026"
-                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs uppercase"
+                    className="w-full p-2 bg-white border border-stone-300 rounded-lg text-xs uppercase font-mono"
                   />
                 </div>
 
@@ -504,10 +592,20 @@ export function ThesisExpectationsCard({
 
                       return (
                         <tr key={exp.expectationId} className="hover:bg-stone-50/50">
-                          <td className="py-2 px-3 font-medium text-stone-900">{exp.metricLabel}</td>
-                          <td className="py-2 px-3 font-mono">{exp.condition} {exp.targetValue}</td>
+                          <td className="py-2 px-3">
+                            <div className="font-medium text-stone-900 flex items-center gap-1.5 flex-wrap">
+                              <span>{exp.metricLabel}</span>
+                              {exp.evaluationMode === 'MANUAL' && (
+                                <span className="px-1.5 py-0.2 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[9px] font-semibold">
+                                  {isThai ? 'ตรวจสอบเอง' : 'Manual'}
+                                </span>
+                              )}
+                            </div>
+                            {exp.evaluationNotes && <div className="text-[10px] text-stone-400 mt-0.5 font-normal">{exp.evaluationNotes}</div>}
+                          </td>
+                          <td className="py-2 px-3 font-mono">{exp.condition} {exp.targetValue} {exp.unit && !exp.metricLabel.includes(`(${exp.unit})`) ? exp.unit : ''}</td>
                           <td className="py-2 px-3 font-mono uppercase">{exp.targetPeriod}</td>
-                          <td className="py-2 px-3 font-mono">{exp.actualValue !== null ? exp.actualValue : '—'}</td>
+                          <td className="py-2 px-3 font-mono">{exp.actualValue !== null && exp.actualValue !== undefined ? `${exp.actualValue} ${exp.unit || ''}` : '—'}</td>
                           <td className="py-2 px-3 text-right">{statusBadge}</td>
                         </tr>
                       );
