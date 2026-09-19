@@ -440,6 +440,9 @@ export default function ReportTemplate({
           }
         }
       }
+      if (!symbolsToFetch.includes('^TNX')) {
+        symbolsToFetch.push('^TNX');
+      }
 
       const res = await fetchLiveQuotes(symbolsToFetch);
       if (res && res.quotes && Object.keys(res.quotes).length > 0) {

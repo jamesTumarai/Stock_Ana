@@ -41,14 +41,14 @@ export function resolveAdaptiveFivePillars(
   const getKi = (key: string): number | undefined => {
     // Check root key_indicators first
     const rootKi = report.key_indicators as any;
-    if (rootKi?.profitability?.[key] !== undefined && finite(rootKi.profitability[key])) {
-      return rootKi.profitability[key];
-    }
-    if (rootKi?.financial_health?.[key] !== undefined && finite(rootKi.financial_health[key])) {
-      return rootKi.financial_health[key];
-    }
     if (rootKi?.[key] !== undefined && finite(rootKi[key])) {
       return rootKi[key];
+    }
+    // Also check rootKi sub-objects e.g. rootKi.growth?.[key], rootKi.profitability?.[key]
+    for (const subKey of ['growth', 'profitability', 'valuation', 'financial_health', 'per_share']) {
+      if (rootKi?.[subKey]?.[key] !== undefined && finite(rootKi[subKey][key])) {
+        return rootKi[subKey][key];
+      }
     }
 
     // Check financial_statements.key_indicators
@@ -75,8 +75,8 @@ export function resolveAdaptiveFivePillars(
   const totalDebt = at(bs?.total_debt);
   const totalEquity = at(bs?.total_equity);
 
-  const totalCash = cash !== undefined && stInvestments !== undefined
-    ? cash + stInvestments
+  const totalCash = cash !== undefined
+    ? cash + (stInvestments ?? 0)
     : undefined;
 
   const netCashOrDebt = totalCash !== undefined && totalDebt !== undefined
@@ -85,7 +85,28 @@ export function resolveAdaptiveFivePillars(
 
   // 3. Resolve Pillar 1: Growth
   const revGrowth = at(inc?.yoy_revenue_growth_pct) ?? getKi('revenue_growth_yoy_pct');
-  const epsGrowth = at((inc as any)?.yoy_eps_growth_pct) ?? getKi('eps_growth') ?? getKi('eps_growth_yoy_pct');
+  let epsGrowth = at((inc as any)?.yoy_eps_growth_pct) ?? getKi('yoy_eps_growth_pct') ?? getKi('eps_growth') ?? getKi('eps_growth_yoy_pct');
+  let epsGrowthBasis: string | undefined;
+
+  if (epsGrowth === undefined && inc?.eps_diluted && inc.eps_diluted.length >= 2) {
+    const epsArr = inc.eps_diluted;
+    const curEps = epsArr[epsArr.length - 1];
+    // Prior year same period: if >= 5 quarters, compare with 4 quarters ago; if 4 quarters, compare with index 0
+    const priorIndex = epsArr.length >= 5 ? epsArr.length - 5 : (epsArr.length === 4 ? 0 : epsArr.length - 2);
+    const priorEps = epsArr[priorIndex];
+
+    if (finite(curEps) && finite(priorEps)) {
+      if (priorEps > 0) {
+        epsGrowth = rounded(((curEps / priorEps) - 1) * 100);
+        epsGrowthBasis = `SEC Diluted EPS YoY (${periods[epsArr.length - 1] || 'Latest'} vs ${periods[priorIndex] || 'Prior Year'})`;
+      } else if (priorEps < 0 && curEps > 0) {
+        epsGrowthBasis = 'Turnaround: Loss to Profit';
+      } else if (priorEps < 0 && curEps < 0) {
+        epsGrowthBasis = 'Both periods negative (EPS Growth not meaningful)';
+      }
+    }
+  }
+
   const fcfGrowth = at((cf as any)?.yoy_fcf_growth_pct) ?? getKi('fcf_growth');
   const revCagr3Yr = getKi('revenue_cagr_3yr_pct');
 
@@ -115,7 +136,7 @@ export function resolveAdaptiveFivePillars(
         : `PEG ${pegRatio}x สะท้อนความคาดหวังการเติบโตในราคาสูง (Premium Valuation)`;
   } else if (finite(peRatio) && peRatio > 0) {
     if (epsGrowth === undefined || epsGrowth === null) {
-      pegInterpretation = 'ข้อมูลการเติบโตของกำไรต่อหุ้น (EPS Growth) ไม่พร้อมใช้งาน จึงไม่สามารถคำนวณ PEG Ratio ได้';
+      pegInterpretation = epsGrowthBasis || 'ข้อมูลการเติบโตของกำไรต่อหุ้น (EPS Growth) ไม่พร้อมใช้งาน จึงไม่สามารถคำนวณ PEG Ratio ได้';
     } else if (epsGrowth <= 0) {
       pegInterpretation = 'PEG ไม่สามารถคำนวณได้เนื่องจากอัตราเติบโตของกำไร (EPS Growth) ติดลบหรือเท่ากับศูนย์';
     }
@@ -124,6 +145,7 @@ export function resolveAdaptiveFivePillars(
   const growthData: FivePillarsGrowthData = {
     revenue_growth_yoy_pct: revGrowth,
     eps_growth_yoy_pct: epsGrowth,
+    eps_growth_basis: epsGrowthBasis,
     fcf_growth_yoy_pct: isFinancial ? undefined : fcfGrowth,
     revenue_cagr_3yr_pct: revCagr3Yr,
     peg_ratio: pegRatio,
@@ -132,8 +154,53 @@ export function resolveAdaptiveFivePillars(
 
   // 4. Resolve Pillar 2: Profitability & Returns
   const roe = getKi('roe') ?? getKi('roe_pct') ?? (netInc !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded((netInc / totalEquity) * 100) : undefined);
-  const roic = getKi('roic') ?? getKi('roic_pct');
-  const roa = getKi('roa') ?? getKi('roa_pct');
+  let roic = getKi('roic') ?? getKi('roic_pct');
+  let roicBasis: string | undefined;
+  let roicFormula: string | undefined;
+
+  const totalAssets = at(bs?.total_assets);
+  const roa = getKi('roa') ?? getKi('roa_pct') ?? (netInc !== undefined && totalAssets !== undefined && totalAssets > 0 ? rounded((netInc / totalAssets) * 100) : undefined);
+
+  if (roic === undefined && !isFinancial) {
+    // Deterministic ROIC derivation: NOPAT / Average Invested Capital
+    if (opInc !== undefined && totalEquity !== undefined && totalDebt !== undefined && totalCash !== undefined) {
+      const taxExp = at(inc?.income_tax_expense);
+      const ebt = at(inc?.income_before_tax);
+      const effTaxRate = (taxExp !== undefined && ebt !== undefined && ebt > 0 && taxExp >= 0 && taxExp <= ebt)
+        ? taxExp / ebt
+        : 0.21;
+      const nopat = opInc * (1 - effTaxRate);
+
+      const endingIC = totalEquity + totalDebt - totalCash;
+      const eqArr = bs?.total_equity || [];
+      const debtArr = bs?.total_debt || [];
+      const cashArr = bs?.cash_and_equivalents || [];
+      const stArr = bs?.short_term_investments || [];
+      let avgIC = endingIC;
+
+      if (eqArr.length >= 2) {
+        const beginEq = eqArr[0];
+        const beginDebt = debtArr[0] ?? 0;
+        const beginCash = (cashArr[0] ?? 0) + (stArr[0] ?? 0);
+        if (finite(beginEq) && finite(beginDebt)) {
+          const beginIC = beginEq + beginDebt - beginCash;
+          if (beginIC > 0) {
+            avgIC = (beginIC + endingIC) / 2;
+            roicBasis = 'NOPAT / Average Invested Capital (Beginning & Ending Period)';
+          }
+        }
+      }
+      if (!roicBasis) {
+        roicBasis = 'NOPAT / Ending Invested Capital';
+      }
+
+      if (avgIC > 0) {
+        roic = rounded((nopat / avgIC) * 100);
+        roicFormula = 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash)';
+      }
+    }
+  }
+
   const nim = getKi('nim') ?? getKi('net_interest_margin_pct');
   const efficiencyRatio = getKi('efficiency_ratio') ?? getKi('efficiency_ratio_pct');
   const netMargin = at(inc?.net_margin_pct) ?? (rev !== undefined && netInc !== undefined && rev > 0 ? rounded((netInc / rev) * 100) : undefined);
@@ -161,6 +228,8 @@ export function resolveAdaptiveFivePillars(
     gross_margin_pct: isFinancial ? undefined : grossMargin,
     roe_pct: roe,
     roic_pct: isFinancial ? undefined : roic,
+    roic_basis: roicBasis,
+    roic_formula: roicFormula,
     roa_pct: roa,
     net_interest_margin_pct: isFinancial ? nim : undefined,
     efficiency_ratio_pct: isFinancial ? efficiencyRatio : undefined,
@@ -235,6 +304,10 @@ export function resolveAdaptiveFivePillars(
     fcfGuardReason = 'Not used — Financial Sector Guard';
   } else if (finite(pfcfRatio) && pfcfRatio > 0) {
     fcfYield = rounded(100 / pfcfRatio);
+  } else if (finite(report.five_pillars?.yields?.fcf_yield_pct)) {
+    fcfYield = report.five_pillars!.yields.fcf_yield_pct;
+  } else if (finite(getKi('fcf_yield_pct'))) {
+    fcfYield = getKi('fcf_yield_pct');
   }
 
   let yieldInterpretation = 'N/A';
@@ -264,6 +337,15 @@ export function resolveAdaptiveFivePillars(
     }
   }
 
+  let yieldSpread: number | undefined;
+  if (treasury10Yr !== undefined) {
+    if (fcfYield !== undefined) {
+      yieldSpread = rounded(fcfYield - treasury10Yr);
+    } else if (earningsYield !== undefined) {
+      yieldSpread = rounded(earningsYield - treasury10Yr);
+    }
+  }
+
   const yieldsData: FivePillarsYieldsData = {
     pe_multiple: peRatio,
     earnings_yield_pct: earningsYield,
@@ -275,7 +357,7 @@ export function resolveAdaptiveFivePillars(
     treasury_10yr_yield_pct: treasury10Yr,
     treasury_as_of_date: treasuryAsOf,
     treasury_source: treasurySource,
-    yield_spread_vs_treasury: (earningsYield !== undefined && treasury10Yr !== undefined) ? rounded(earningsYield - treasury10Yr) : undefined,
+    yield_spread_vs_treasury: yieldSpread,
     yield_interpretation: yieldInterpretation,
   };
 
@@ -283,14 +365,31 @@ export function resolveAdaptiveFivePillars(
   const peerDiscovery = discoverPeers(report, sym);
   const peerMatrix = peerDiscovery.benchmarkRows;
 
+  // Build missing reason mapping for user-facing precision
+  const unavailableReasons: Record<string, string> = {};
+  if (growthData.eps_growth_yoy_pct === undefined) {
+    unavailableReasons.eps_growth = epsGrowthBasis || 'Insufficient comparable EPS history';
+  }
+  if (profitabilityData.roic_pct === undefined && !isFinancial) {
+    unavailableReasons.roic = 'Insufficient verified invested-capital inputs';
+  }
+  if (peerMatrix.length === 0) {
+    unavailableReasons.peer = 'No verified comparable candidates';
+  }
+  if (yieldsData.treasury_10yr_yield_pct === undefined) {
+    unavailableReasons.treasury = 'Current official observation unavailable';
+  }
+
   // Build the FivePillarsData object
   const fivePillarsData: FivePillarsData = {
     as_of_date: report.as_of_date || new Date().toISOString().split('T')[0],
+    archetype,
     growth: growthData,
     profitability: profitabilityData,
     balance_sheet: balanceSheetData,
     yields: yieldsData,
     peer_matrix: peerMatrix,
+    unavailable_reasons: unavailableReasons,
     analyst_takeaway: report.five_pillars?.analyst_takeaway || (
       isFinancial
         ? 'วิเคราะห์ตามเกณฑ์สถาบันการเงิน (Financial Sector Guard บังคับใช้): เน้น ROE, NIM, คุณภาพสินเชื่อ และ Equity Multiples แทน FCF'

@@ -746,9 +746,13 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   },
   "company_profile": {
     "as_of_date": null,
+    "sector": "...",
+    "industry": "...",
     "overview": {
       "company_name": "...",
       "symbol": "...",
+      "sector": "...",
+      "industry": "...",
       "listing_date": null,
       "issue_price": null,
       "isin": null,
@@ -1322,9 +1326,13 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   },
   "company_profile": {
     "as_of_date": null,
+    "sector": "...",
+    "industry": "...",
     "overview": {
       "company_name": "...",
       "symbol": "...",
+      "sector": "...",
+      "industry": "...",
       "listing_date": null,
       "issue_price": null,
       "isin": null,

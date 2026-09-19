@@ -725,7 +725,7 @@ export default function App() {
     const secVerificationPromise = aType === 'technical'
       ? Promise.resolve(null)
       : fetchSecVerificationEnvelope(requestedTicker, controller.signal);
-    const marketSnapshotPromise = fetchLiveQuotes([requestedTicker]);
+    const marketSnapshotPromise = fetchLiveQuotes([requestedTicker, '^TNX']);
     const startTimestamp = Date.now();
     let currentToolRuns = 0;
 
