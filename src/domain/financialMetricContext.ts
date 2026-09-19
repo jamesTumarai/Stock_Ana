@@ -910,6 +910,12 @@ export function buildFinancialMetricAnalysisPrompt(
   } = options;
 
   // Format historical sequence
+  const missingPeriods = (periods || []).filter((_, idx) => historyValues[idx] === null || historyValues[idx] === undefined);
+  const availablePeriods = (periods || []).filter((_, idx) => historyValues[idx] !== null && historyValues[idx] !== undefined);
+  const partialNote = missingPeriods.length > 0
+    ? `\n- PARTIAL SERIES NOTE: Verified data is available only for [${availablePeriods.join(', ')}]. Missing periods: [${missingPeriods.join(', ')}]. Analyze ONLY the available periods. Do NOT claim continuous 4-quarter history or interpolate missing periods.`
+    : '';
+
   const historySummary = (periods || []).map((p: string, idx: number) => {
     const val = historyValues[idx];
     const yoy = yoyPcts[idx];
@@ -959,7 +965,7 @@ ${context.denominatorCaveats.length > 0 ? `DENOMINATOR / MAGNITUDE GUARDS:\n${co
 ======================================================================
 2. HISTORICAL DATA & RETRIEVED CONTEXT
 ======================================================================
-- Historical Sequence: ${historySummary}
+- Historical Sequence: ${historySummary}${partialNote}
 ${contextSummary ? `- Wider Financial Statement Context (recent periods in $M):\n${contextSummary}\n` : ''}
 - Verified Related Metrics for this Archetype:
 ${relatedMetricsSummary}
@@ -1035,11 +1041,11 @@ export function getBusinessAwareLocalFallback(
       status_label_en: 'Data unavailable',
       what_is_it_th: `${context.metricNameTh}: ${context.formulaTh || 'ไม่มีข้อมูลเพียงพอสำหรับอธิบายตัวชี้วัดนี้'}`,
       what_is_it_en: `${context.metricName}: ${context.formula || 'Data unavailable for this metric.'}`,
-      interpretation_th: 'ไม่มีข้อมูล จึงไม่สร้างค่าหรือข้อสรุปทดแทนตามหลัก Financial Integrity',
-      interpretation_en: 'Data unavailable; no substitute value or conclusion was generated under Financial Integrity.',
-      pros_th: [],
-      pros_en: [],
-      benchmark_th: 'ไม่มีข้อมูล',
+      interpretation_th: 'ยังไม่มีข้อมูลที่เพียงพอสำหรับการวิเคราะห์ตัวชี้วัดนี้ (ไม่มีข้อมูล จึงไม่สร้างค่าหรือข้อสรุปทดแทนตามหลัก Financial Integrity)',
+      interpretation_en: 'Insufficient data to analyze this metric. (Data unavailable; no substitute value or conclusion was generated under Financial Integrity.)',
+      pros_th: ['ยังไม่มีข้อมูลที่เพียงพอสำหรับการประเมินข้อดี'],
+      pros_en: ['Insufficient data to evaluate specific strengths.'],
+      benchmark_th: 'ไม่มีข้อมูลที่ตรวจสอบได้',
       benchmark_en: 'Data unavailable',
       watchouts_th: 'รอข้อมูลงบการเงินจากแหล่งอ้างอิงก่อนประเมิน',
       watchouts_en: 'Wait for sourced financial-statement data before evaluating this metric.'

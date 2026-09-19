@@ -21,6 +21,11 @@ import {
   getBusinessAwareLocalFallback,
   MetricInterpretationContext
 } from '../domain/financialMetricContext';
+import {
+  resolveGrossMarginLineage,
+  findKeyIndicatorInSource,
+  alignMetricValuesByPeriod
+} from '../domain/metricLineage';
 import { authenticatedFetch } from '../services/authenticatedFetch';
 
 interface Props {
@@ -152,27 +157,16 @@ export function FinancialStatementsTable({
   const balance = effectiveData.balance_sheet;
   const cashflow = effectiveData.cash_flow;
 
-  // Find key indicators from effectiveData.key_indicators if present
+  // Find key indicators from effectiveData.key_indicators if present (period-aware)
   const findExistingKeyIndicator = (nameOrKey: string): (number | null)[] | undefined => {
-    const list = effectiveData.key_indicators;
-    if (!Array.isArray(list)) return undefined;
-    const target = nameOrKey.toLowerCase().replace(/[\s_-]+/g, '');
-    const found = list.find((item: any) => {
-      const k = (item.key || item.name || item.name_en || '').toLowerCase().replace(/[\s_-]+/g, '');
-      return k === target;
-    });
-    return found?.values;
+    const found = findKeyIndicatorInSource(effectiveData.key_indicators, nameOrKey);
+    if (!found) return undefined;
+    return alignMetricValuesByPeriod(rawPeriods, found.periods, found.values);
   };
 
   // Dynamic Key Indicators derived deterministically from company's actual statements
-  const grossMarginVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const gp = income?.gross_profit?.[i] ?? (rev !== null && rev !== undefined && income?.cogs?.[i] !== null && income?.cogs?.[i] !== undefined ? rev - income.cogs[i] : null);
-    if (rev && gp !== undefined && gp !== null && rev > 0) return Number(((gp / rev) * 100).toFixed(2));
-    if (income?.gross_margin_pct?.[i] !== undefined && income?.gross_margin_pct?.[i] !== null) return income.gross_margin_pct[i];
-    const existing = findExistingKeyIndicator('gross_margin')?.[i] ?? findExistingKeyIndicator('gross_profit_margin')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
+  const grossMarginVals = rawPeriods.map((p, i) => {
+    return resolveGrossMarginLineage(p, i, effectiveData).value;
   });
 
   const opMarginVals = rawPeriods.map((_, i) => {
@@ -712,6 +706,7 @@ export function FinancialStatementsTable({
   };
 
   const chartConfig = getActiveChartConfig();
+  const hasValidPoints = chartConfig.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
   const chartData = chartConfig.periods.map((p, idx) => ({
     period: p,
     value: chartConfig.values[idx] !== undefined ? chartConfig.values[idx] : null,
@@ -722,6 +717,11 @@ export function FinancialStatementsTable({
   useEffect(() => {
     if (!ticker.trim()) return;
     const activeCfg = getActiveChartConfig();
+    const hasPoints = activeCfg.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
+    if (!hasPoints) {
+      setIsAiAnalyzing(false);
+      return;
+    }
     const isSourceReconciled = Boolean(validation?.is_reconciled);
     const metricContext = getMetricInterpretationContext({
       metricKey: selectedRowKey,
@@ -1090,9 +1090,9 @@ export function FinancialStatementsTable({
                   </span>
                 )}
                 <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-[#0b5a4b] font-mono text-xs font-bold border border-emerald-200/80 shadow-2xs">
-                  {chartConfig.values[chartConfig.values.length - 1] !== null
+                  {hasValidPoints && chartConfig.values[chartConfig.values.length - 1] !== null && chartConfig.values[chartConfig.values.length - 1] !== undefined
                     ? (chartConfig.isCurrency ? `${formatNum(chartConfig.values[chartConfig.values.length - 1])}` : `${chartConfig.values[chartConfig.values.length - 1]}${chartConfig.unit}`)
-                    : '-'}
+                    : '—'}
                 </span>
               </div>
 
@@ -1203,108 +1203,122 @@ export function FinancialStatementsTable({
 
             {/* Recharts Composed Bar + Line Chart (Harmonious Theme & Accurate Linear Connectors) */}
             <div className="h-60 w-full mt-1">
-              <ResponsiveContainer width="100%" height={240} minHeight={240}>
-                <ComposedChart data={chartData} margin={{ top: 15, right: 20, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0efed" />
-                  <XAxis
-                    dataKey="period"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 11, fill: '#78716c' }}
-                    dy={5}
-                  />
-                  <YAxis
-                    yAxisId="left"
-                    domain={[(dataMin: number) => (dataMin < 0 ? Math.floor(dataMin * 1.15) : 0), (dataMax: number) => Math.ceil(dataMax * 1.15)]}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 11, fill: '#2563eb' }}
-                    tickFormatter={(val: number) => {
-                      if (!chartConfig.isCurrency) return `${val}${chartConfig.unit || ''}`;
-                      const converted = val * multiplier;
-                      if (Math.abs(converted) >= 1000) return `${(converted / 1000).toFixed(1)}B`;
-                      return `${converted.toFixed(0)}M`;
-                    }}
-                  />
-                  {compareMode !== 'hide' && (
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      domain={['auto', 'auto']}
+              {hasValidPoints ? (
+                <ResponsiveContainer width="100%" height={240} minHeight={240}>
+                  <ComposedChart data={chartData} margin={{ top: 15, right: 20, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0efed" />
+                    <XAxis
+                      dataKey="period"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fontSize: 11, fill: '#ea580c' }}
-                      tickFormatter={(val: number) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`}
+                      tick={{ fontSize: 11, fill: '#78716c' }}
+                      dy={5}
                     />
-                  )}
-                  <RechartsTooltip
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="bg-[#1c1917] text-white p-3 rounded-xl border border-white/15 shadow-2xl text-xs font-sans space-y-1.5 min-w-[200px]">
-                            <div className="text-stone-300 font-mono text-[11px] border-b border-stone-800 pb-1 font-bold">
-                              {label}
-                            </div>
-                            {payload.map((entry: any, i: number) => {
-                              const isVal = entry.dataKey === 'value';
-                              const nameLabel = isVal ? chartConfig.title : (compareMode === 'qoq' ? 'QoQ Change' : 'YoY Change');
-                              const valStr = isVal
-                                ? (chartConfig.isCurrency ? `${formatNum(entry.value)}` : `${Number(entry.value).toFixed(2)}${chartConfig.unit}`)
-                                : `${Number(entry.value) > 0 ? '+' : ''}${Number(entry.value).toFixed(2)}%`;
-                              const colorDot = isVal ? '#38bdf8' : '#fb923c';
-                              return (
-                                <div key={i} className="flex items-center justify-between gap-3 text-xs">
-                                  <div className="flex items-center gap-1.5 text-stone-300">
-                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: colorDot }} />
-                                    <span>{nameLabel}:</span>
-                                  </div>
-                                  <span className="font-mono font-bold text-white">{valStr}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={28}
-                    formatter={(val) => (
-                      <span className="text-xs text-stone-700 font-medium">
-                        {val === 'value' ? `■ ${chartConfig.title}` : `— ${compareMode === 'qoq' ? 'QoQ Change' : 'YoY Change'}`}
-                      </span>
+                    <YAxis
+                      yAxisId="left"
+                      domain={[(dataMin: number) => (dataMin < 0 ? Math.floor(dataMin * 1.15) : 0), (dataMax: number) => Math.ceil(dataMax * 1.15)]}
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: '#2563eb' }}
+                      tickFormatter={(val: number) => {
+                        if (!chartConfig.isCurrency) return `${val}${chartConfig.unit || ''}`;
+                        const converted = val * multiplier;
+                        if (Math.abs(converted) >= 1000) return `${(converted / 1000).toFixed(1)}B`;
+                        return `${converted.toFixed(0)}M`;
+                      }}
+                    />
+                    {compareMode !== 'hide' && (
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        domain={['auto', 'auto']}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#ea580c' }}
+                        tickFormatter={(val: number) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`}
+                      />
                     )}
-                  />
-                  {compareMode !== 'hide' && (
-                    <ReferenceLine yAxisId="right" y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
-                  )}
-                  <Bar
-                    yAxisId="left"
-                    dataKey="value"
-                    fill="#0b5a4b"
-                    radius={[6, 6, 0, 0]}
-                    name="value"
-                    maxBarSize={36}
-                    isAnimationActive={false}
-                  />
-                  {compareMode !== 'hide' && (
-                    <Line
-                      yAxisId="right"
-                      type="linear"
-                      dataKey="yoy_pct"
-                      stroke="#d97706"
-                      strokeWidth={2.5}
-                      dot={{ r: 4, fill: '#d97706', stroke: '#ffffff', strokeWidth: 2 }}
-                      activeDot={{ r: 6, fill: '#d97706', stroke: '#ffffff', strokeWidth: 2 }}
-                      connectNulls={true}
-                      name="yoy_pct"
+                    <RechartsTooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-[#1c1917] text-white p-3 rounded-xl border border-white/15 shadow-2xl text-xs font-sans space-y-1.5 min-w-[200px]">
+                              <div className="text-stone-300 font-mono text-[11px] border-b border-stone-800 pb-1 font-bold">
+                                {label}
+                              </div>
+                              {payload.map((entry: any, i: number) => {
+                                const isVal = entry.dataKey === 'value';
+                                const nameLabel = isVal ? chartConfig.title : (compareMode === 'qoq' ? 'QoQ Change' : 'YoY Change');
+                                const valStr = isVal
+                                  ? (chartConfig.isCurrency ? `${formatNum(entry.value)}` : `${Number(entry.value).toFixed(2)}${chartConfig.unit}`)
+                                  : `${Number(entry.value) > 0 ? '+' : ''}${Number(entry.value).toFixed(2)}%`;
+                                const colorDot = isVal ? '#38bdf8' : '#fb923c';
+                                return (
+                                  <div key={i} className="flex items-center justify-between gap-3 text-xs">
+                                    <div className="flex items-center gap-1.5 text-stone-300">
+                                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: colorDot }} />
+                                      <span>{nameLabel}:</span>
+                                    </div>
+                                    <span className="font-mono font-bold text-white">{valStr}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend
+                      verticalAlign="bottom"
+                      height={28}
+                      formatter={(val) => (
+                        <span className="text-xs text-stone-700 font-medium">
+                          {val === 'value' ? `■ ${chartConfig.title}` : `— ${compareMode === 'qoq' ? 'QoQ Change' : 'YoY Change'}`}
+                        </span>
+                      )}
+                    />
+                    {compareMode !== 'hide' && (
+                      <ReferenceLine yAxisId="right" y={0} stroke="#cbd5e1" strokeDasharray="3 3" />
+                    )}
+                    <Bar
+                      yAxisId="left"
+                      dataKey="value"
+                      fill="#0b5a4b"
+                      radius={[6, 6, 0, 0]}
+                      name="value"
+                      maxBarSize={36}
                       isAnimationActive={false}
                     />
+                    {compareMode !== 'hide' && (
+                      <Line
+                        yAxisId="right"
+                        type="linear"
+                        dataKey="yoy_pct"
+                        stroke="#d97706"
+                        strokeWidth={2.5}
+                        dot={{ r: 4, fill: '#d97706', stroke: '#ffffff', strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: '#d97706', stroke: '#ffffff', strokeWidth: 2 }}
+                        connectNulls={false}
+                        name="yoy_pct"
+                        isAnimationActive={false}
+                      />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-6 text-center bg-stone-50/60 rounded-2xl border border-dashed border-stone-200">
+                  <Info className="w-5 h-5 text-stone-400" />
+                  <p className="text-xs font-semibold text-stone-700">
+                    {isThai ? 'ยังไม่มีข้อมูลที่ตรวจสอบได้เพียงพอสำหรับตัวชี้วัดนี้ในช่วงเวลาที่เลือก' : 'Insufficient verified data for this metric in the selected period.'}
+                  </p>
+                  {periods.length > 0 && (
+                    <span className="text-[11px] font-mono text-stone-400">
+                      {isThai ? `สำหรับ ${periods[0]} – ${periods[periods.length - 1]}` : `For ${periods[0]} – ${periods[periods.length - 1]}`}
+                    </span>
                   )}
-                </ComposedChart>
-              </ResponsiveContainer>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2134,10 +2148,11 @@ export function FinancialStatementsTable({
         {/* Dynamic AI Financial Analyst Live Deep-Dive Inspection Box */}
         {(() => {
           const activeCfg = getActiveChartConfig();
-          const latestVal = activeCfg.values[activeCfg.values.length - 1];
+          const hasPoints = activeCfg.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
+          const latestVal = hasPoints ? activeCfg.values[activeCfg.values.length - 1] : null;
           const uStr = activeCfg.unit || (activeCfg.isCurrency ? 'M' : '');
           const latestPeriod = activeCfg.periods[activeCfg.periods.length - 1];
-          const latestYoY = activeCfg.yoy_pcts && activeCfg.yoy_pcts.length > 0
+          const latestYoY = hasPoints && activeCfg.yoy_pcts && activeCfg.yoy_pcts.length > 0
             ? activeCfg.yoy_pcts[activeCfg.yoy_pcts.length - 1]
             : null;
 
@@ -2159,7 +2174,7 @@ export function FinancialStatementsTable({
           });
 
           const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;
-          const liveInsight = liveAiInsights[cacheKey];
+          const liveInsight = hasPoints ? liveAiInsights[cacheKey] : undefined;
           const localInsight = getBusinessAwareLocalFallback(
             metricContext,
             latestVal,
@@ -2293,13 +2308,13 @@ export function FinancialStatementsTable({
                   {/* Hero Value Display */}
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-stone-900">
-                      {latestVal !== null && latestVal !== undefined
+                      {hasPoints && latestVal !== null && latestVal !== undefined
                         ? (activeCfg.isCurrency ? `${formatNum(latestVal)}` : `${latestVal}${uStr}`)
-                        : '-'}
+                        : '—'}
                     </span>
                     <div className="flex items-center gap-1.5 text-xs font-mono">
                       <span className="text-stone-400">({latestPeriod || (isThai ? 'งบล่าสุด' : 'Latest')})</span>
-                      {latestYoY !== null && latestYoY !== undefined && (
+                      {hasPoints && latestYoY !== null && latestYoY !== undefined && (
                         <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${
                           latestYoY >= 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}>
