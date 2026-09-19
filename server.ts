@@ -1711,7 +1711,20 @@ Your job is to cross-check it, verify that all numbers are authentic real-time d
 CRITICAL INSTRUCTION: You are encouraged to verify the calculations and logic step-by-step. Keep your internal thinking concise (under 150 words). DO NOT repeat or summarize the original report in your internal thoughts. Once numbers are checked and missing data retrieved, immediately output the final JSON report wrapped in \`\`\`json ... \`\`\` without delay.
 
 CRITICAL CHECKS & DATA COMPLETION MANDATE:
-- Active Gap-Filling & Data Completion: Carefully inspect the Primary Analyst Output above. If any required section, ratio, balance sheet item, shares count, cash/debt figure, institutional holding, or peer valuation multiple was left as null, "ไม่พบข้อมูล", or omitted, you are explicitly directed and authorized to execute targeted Google Search queries right now to find the missing authentic numbers. Fill in those missing values before synthesizing the final JSON report. Keep strict zero-hallucination standards: only fill in numbers if verified from live search. If a metric truly has no public disclosure or does not apply to this company's business model (e.g. bank FCFF or non-dividend stock), keep it null.
+- Active Gap-Filling & Data Completion (Verified Data Completion Layer):
+  * Trusted Source Hierarchy:
+    1. Tier 1 (Highest Authority): SEC EDGAR Form 10-K, 10-Q, 8-K, Inline XBRL, filing tables, footnotes, and exhibits; U.S. financial regulators (Fed, FDIC, OCC, etc.).
+    2. Tier 2 (Issuer Official): Company Investor Relations, official earnings releases, investor presentations, financial supplements, and shareholder letters.
+    3. Tier 3 (Industry Authority): Relevant regulatory bodies (EIA, CMS, FDA, etc.).
+    4. Tier 4 (External Cross-Check): Reputable financial providers (Yahoo Finance, Bloomberg) — for cross-check/fallback discovery only; NEVER silently override Tier 1/2.
+  * AI Is Not The Source: AI may extract facts from filing or IR documents, but the extracted fact MUST retain the ORIGINAL DOCUMENT (e.g. "SoFi Q2 2025 Earnings Release", "SEC Form 10-Q") as source. NEVER cite "Gemini" as source authority.
+  * Business-Aware Gap Prioritization:
+    - For Banks / Lenders / FinTech (e.g. SOFI): Prioritize officially reported Net Interest Margin (NIM), Total Deposits, Loans Held for Investment, Provision for Credit Losses, and Tier 1 Capital Ratio. DO NOT force or fabricate Gross Margin or COGS.
+    - For REITs: Prioritize FFO, AFFO, NOI, and Rental Revenue. Do NOT search for COGS.
+    - For Insurers: Prioritize Combined Ratio, Loss Reserves, and Net Premiums Earned. Do NOT search for Inventory.
+    - For Software / SaaS: Prioritize ARR, RPO, and Subscription Revenue.
+  * Strict Period & Unit Normalization: Match exact period identity (e.g. Q2 2026 must NEVER be filled with FY2025). Normalize USD values to USD millions and preserve original units.
+  * Source Conflicts: If two authoritative sources disagree without an explanatory GAAP/Non-GAAP definition difference, leave the field null/unavailable rather than silently guessing.
 - Real-Time Grounding: Ensure all stock prices, valuation ratios, market caps, and dates are grounded in live reality as of ${todayISO}. If a data point was truly unavailable and marked as "ไม่พบข้อมูล" (Data not available), keep it factual and DO NOT fabricate fake numbers.
 - Natural Thai Language Check: If outputting in Thai, verify that phrasing sounds like a real human investor/analyst. Eliminate robotic AI filler phrases (e.g. replace "สะท้อนให้เห็นถึง", "ในภูมิทัศน์ที่มีพลวัต", "คูเมืองทางเศรษฐกิจ", "การเจือจางของหุ้น" with natural phrasing like "แสดงให้เห็นว่า", "สภาพแวดล้อมทางธุรกิจ", "ความได้เปรียบในการแข่งขัน (Moat)", "Dilution จากหุ้นเพิ่มทุน/SBC"). Ensure tone is professional, direct, and easy to read.
 - Technical Trade Plan: Ensure Risk/Reward ratio for BOTH Target 1 and Target 2 is mathematically correct. CRITICAL: You MUST format the R:R ratios cleanly as a 3-column Markdown table or distinct bullet points (Target | Formula | Result) so it is easy to read. Do NOT cram the R:R calculation into a single long string.

@@ -77,6 +77,25 @@ const METRIC_SPECS: MetricSpec[] = [
   // It is a fallback only for fiscal periods where the narrower PPE concept is unavailable.
   { statement: 'cash_flow', metric: 'capex', concepts: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'cash_flow', metric: 'dividends_paid', concepts: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+
+  // Banking / FinTech
+  { statement: 'income_statement', metric: 'net_interest_income', concepts: ['NetInterestIncome', 'InterestIncomeExpenseNet', 'InterestAndDividendIncomeOperating'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'non_interest_income', concepts: ['NoninterestIncome', 'FeesAndCommissionsOtherThanFromSecuritiesTransactions'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'provision_for_credit_losses', concepts: ['ProvisionForLoanLeaseAndOtherLosses', 'ProvisionForCreditLosses'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'net_interest_margin_pct', concepts: ['NetInterestMargin', 'NetInterestMarginAnnualized'], unit: 'pure', canonicalUnit: 'percent', factKind: 'duration' },
+  { statement: 'balance_sheet', metric: 'deposits', concepts: ['Deposits', 'InterestBearingDepositLiabilities', 'DepositsDomestic'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'loans_held_for_investment', concepts: ['LoansAndLeasesReceivableNetReported', 'LoansAndLeasesReceivableGrossReported', 'FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss', 'LoansHeldForInvestment'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'tier1_capital_ratio', concepts: ['Tier1CapitalRatio', 'CommonEquityTier1RiskBasedCapitalRatio'], unit: 'pure', canonicalUnit: 'percent', factKind: 'instant' },
+
+  // REITs
+  { statement: 'income_statement', metric: 'ffo', concepts: ['FundsFromOperations', 'FundsFromOperationsPerDilutedShare'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'noi', concepts: ['NetOperatingIncome'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'rental_revenue', concepts: ['OperatingLeasesIncomeStatementLeaseRevenue', 'RentalIncome'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+
+  // Insurance
+  { statement: 'income_statement', metric: 'combined_ratio_pct', concepts: ['CombinedRatio', 'CombinedRatioPropertyAndCasualty'], unit: 'pure', canonicalUnit: 'percent', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'net_premiums_earned', concepts: ['PremiumsEarnedNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'balance_sheet', metric: 'loss_reserve', concepts: ['LiabilityForClaimsAndClaimsAdjustmentExpense', 'LossAndLossAdjustmentExpenseReserve'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
 ];
 
 const quarterKey = (fact: Pick<NormalizedSecQuarterFact, 'fiscalYear' | 'fiscalQuarter'>) => `${fact.fiscalYear}-Q${fact.fiscalQuarter}`;
@@ -95,11 +114,20 @@ const normalizedSort = (a: string, b: string) => {
 
 const toMillions = (value: number, unit: string) => unit === 'USD' ? value / 1_000_000 : value;
 
-const getConcept = (facts: SecCompanyFactsResponse, conceptName: string): SecCompanyConcept | undefined =>
-  facts.facts?.['us-gaap']?.[conceptName];
+const getConcept = (facts: SecCompanyFactsResponse, conceptName: string): SecCompanyConcept | undefined => {
+  if (!facts?.facts) return undefined;
+  if (facts.facts['us-gaap']?.[conceptName]) return facts.facts['us-gaap'][conceptName];
+  if (facts.facts['dei']?.[conceptName]) return facts.facts['dei'][conceptName];
+  for (const [ns, concepts] of Object.entries(facts.facts)) {
+    if (ns !== 'us-gaap' && ns !== 'dei' && concepts?.[conceptName]) {
+      return concepts[conceptName];
+    }
+  }
+  return undefined;
+};
 
 const normalizeConcept = (concept: SecCompanyConcept | undefined, spec: MetricSpec): NormalizedSecQuarterFact[] => {
-  const rawFacts = concept?.units?.[spec.unit];
+  const rawFacts = concept?.units?.[spec.unit] || (spec.unit === 'pure' ? concept?.units?.['pure'] : undefined);
   if (!Array.isArray(rawFacts)) return [];
   return spec.factKind === 'duration'
     ? normalizeDurationFactsToStandaloneQuarters(rawFacts)

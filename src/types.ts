@@ -1,7 +1,8 @@
 import type { SecVerificationEnvelope, SecPeriodStatement } from './domain/secVerification';
 import type { ReportProvenanceManifest } from './domain/reportProvenance';
+import type { DataCompletenessSummary } from './domain/dataCompleteness/types';
 
-export type { SecPeriodStatement };
+export type { SecPeriodStatement, DataCompletenessSummary };
 
 export interface IncomeStatementData {
   revenue: (number | null)[];
@@ -1229,6 +1230,7 @@ export interface AnalysisReport {
   };
   final_report?: string;
   chartImage?: string;
+  data_completeness?: DataCompletenessSummary;
 }
 
 export interface RawAnalysisReport extends Partial<AnalysisReport> {}

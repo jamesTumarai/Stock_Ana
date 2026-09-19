@@ -1,5 +1,7 @@
 import React from 'react';
 import { ShieldCheck, Calculator, Sliders, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
+import type { DataGapState } from '../domain/dataCompleteness/types';
+import { DATA_GAP_EXPLANATIONS } from '../domain/dataCompleteness/userFacingExplanation';
 
 export type FinancialClassification =
   | 'verified'          // Verified SEC EDGAR XBRL / Filing fact
@@ -14,6 +16,7 @@ interface Props {
   isThai: boolean;
   label?: string;
   detail?: string;
+  dataGapState?: DataGapState;
   size?: 'xs' | 'sm' | 'md';
   className?: string;
 }
@@ -95,13 +98,15 @@ export function ProvenanceBadge({
   isThai,
   label,
   detail,
+  dataGapState,
   size = 'sm',
   className = '',
 }: Props) {
   const cfg = CONFIGS[classification];
   const Icon = cfg.icon;
-  const displayLabel = label || (isThai ? cfg.labelTh : cfg.labelEn);
-  const displayTitle = detail || (isThai ? cfg.detailTh : cfg.detailEn);
+  const gapExplanation = dataGapState ? DATA_GAP_EXPLANATIONS[dataGapState] : undefined;
+  const displayLabel = label || (gapExplanation ? (isThai ? gapExplanation.badgeLabelTh : gapExplanation.badgeLabelEn) : (isThai ? cfg.labelTh : cfg.labelEn));
+  const displayTitle = detail || (gapExplanation ? (isThai ? gapExplanation.textTh : gapExplanation.textEn) : (isThai ? cfg.detailTh : cfg.detailEn));
 
   const sizeClasses = {
     xs: 'px-1.5 py-0.5 text-[10px] gap-1',
