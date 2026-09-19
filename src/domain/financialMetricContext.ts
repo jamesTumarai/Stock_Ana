@@ -22,6 +22,18 @@ export type BusinessArchetype =
   | 'early_stage'
   | 'general_operating';
 
+export type MetricValueState =
+  | 'REPORTED'
+  | 'CALCULATED'
+  | 'NOT_APPLICABLE'
+  | 'NOT_AVAILABLE';
+
+export type MetricInterpretationRole =
+  | 'PRIMARY'
+  | 'SECONDARY'
+  | 'CONTEXT_ONLY'
+  | 'NOT_MEANINGFUL';
+
 export type MetricApplicability =
   | 'PRIMARY'
   | 'RELEVANT'
@@ -80,6 +92,10 @@ export interface MetricInterpretationContext {
   isUnavailable: boolean;
   isNegative: boolean;
   isPeriodMismatch: boolean;
+  valueState: MetricValueState;
+  interpretationRole: MetricInterpretationRole;
+  isSourceReconciled: boolean;
+  provenanceStatus?: string;
 }
 
 export interface MetricContextOptions {
@@ -94,6 +110,8 @@ export interface MetricContextOptions {
   unit?: string;
   isCurrency?: boolean;
   isThai?: boolean;
+  isSourceReconciled?: boolean;
+  provenanceStatus?: string;
 }
 
 /**
@@ -349,7 +367,9 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     historyValues = [],
     yoyPcts = [],
     unit = '',
-    isCurrency = false
+    isCurrency = false,
+    isSourceReconciled = true,
+    provenanceStatus
   } = options;
 
   const data: Partial<ReportData> = reportData?.data ? reportData.data : (reportData || {});
@@ -397,6 +417,15 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
   const denominatorCaveats: string[] = [];
   const denominatorCaveatsTh: string[] = [];
   const relatedMetrics: RelatedMetricItem[] = [];
+
+  if (!isSourceReconciled) {
+    interpretationCaveats.push(
+      'Source reconciliation between filing tables is not verified. Bounded confidence required; values should not be treated as fully reconciled SEC figures.'
+    );
+    interpretationCaveatsTh.push(
+      'ยังไม่ได้ตรวจสอบการกระทบยอดแหล่งข้อมูลระหว่างตารางงบการเงิน ต้องใช้ความรอบคอบในการตีความระดับ Bounded Confidence โดยไม่ระบุว่าเป็นตัวเลขที่กระทบยอดตรงกับ SEC ครบถ้วนแล้ว'
+    );
+  }
 
   // Helper to extract last numeric value string
   const getLastValStr = (arr?: (number | null | undefined)[], isPct = false, isDollar = false): string | undefined => {
@@ -708,6 +737,49 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     }
 
     // -----------------------------------------------------------------------
+    // 8. Solvency & Capital Structure (Debt to Equity, Debt to Asset, Equity Ratio)
+    // -----------------------------------------------------------------------
+    case 'debt_to_equity':
+    case 'debt_to_asset':
+    case 'equity_ratio': {
+      formula = metricKey === 'debt_to_equity'
+        ? 'Debt to Equity = Total Debt / Total Equity'
+        : metricKey === 'debt_to_asset'
+        ? 'Debt to Asset = (Total Debt / Total Assets) * 100'
+        : 'Equity Ratio = (Total Equity / Total Assets) * 100';
+      formulaTh = metricKey === 'debt_to_equity'
+        ? 'อัตราส่วนหนี้สินต่อทุน (D/E) = หนี้สินรวม / ส่วนของผู้ถือหุ้นรวม'
+        : metricKey === 'debt_to_asset'
+        ? 'อัตราส่วนหนี้สินต่อสินทรัพย์รวม = (หนี้สินรวม / สินทรัพย์รวม) * 100'
+        : 'อัตราส่วนทุนต่อสินทรัพย์รวม = (ส่วนของผู้ถือหุ้นรวม / สินทรัพย์รวม) * 100';
+      periodType = 'POINT_IN_TIME';
+      industryStandardStatus = 'STANDARD_ACCOUNTING_METRIC';
+
+      if (isDepositoryOrLender) {
+        applicability = 'SECONDARY';
+        interpretationCaveats.push(
+          'For banks and lenders, leverage is managed via regulatory capital ratios (e.g. CET1, Tier 1 Leverage) rather than unweighted gross debt-to-equity.'
+        );
+        interpretationCaveatsTh.push(
+          'สำหรับสถาบันการเงิน การก่อหนี้ถูกกำกับด้วยอัตราส่วนเงินกองทุนตามเกณฑ์ทางการ (เช่น CET1, Tier 1) มากกว่าอัตราส่วนหนี้สินต่อทุนแบบไม่ถ่วงน้ำหนักความเสี่ยง'
+        );
+      } else {
+        applicability = 'PRIMARY';
+      }
+
+      // Negative equity or extreme leverage guard
+      if (metricKey === 'debt_to_equity' && isNegative) {
+        denominatorCaveats.push(
+          'Negative Equity: The company has negative stockholders equity (accumulated deficit or heavy share repurchases), causing the D/E ratio to be mathematically negative.'
+        );
+        denominatorCaveatsTh.push(
+          'ส่วนของผู้ถือหุ้นติดลบ: บริษัทมีส่วนของผู้ถือหุ้นติดลบ (จากขาดทุนสะสมหรือการซื้อหุ้นคืนจำนวนมาก) ทำให้อัตราส่วน D/E มีค่าติดลบทางคณิตศาสตร์'
+        );
+      }
+      break;
+    }
+
+    // -----------------------------------------------------------------------
     // Default Fallback
     // -----------------------------------------------------------------------
     default: {
@@ -754,6 +826,21 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     GENERIC_DERIVED_RATIO: { en: 'Generic Ratio', th: 'อัตราส่วนทางการเงินทั่วไป' }
   };
 
+  const interpretationRole: MetricInterpretationRole =
+    applicability === 'PRIMARY' ? 'PRIMARY' :
+    applicability === 'RELEVANT' ? 'SECONDARY' :
+    applicability === 'SECONDARY' ? 'SECONDARY' :
+    applicability === 'CONTEXT_ONLY' ? 'CONTEXT_ONLY' : 'NOT_MEANINGFUL';
+
+  let valueState: MetricValueState = 'CALCULATED';
+  if (isUnavailable) {
+    valueState = 'NOT_AVAILABLE';
+  } else if (provenance === 'SEC_VERIFIED' || (provenance as any) === 'COMPANY_REPORTED') {
+    valueState = 'REPORTED';
+  } else {
+    valueState = 'CALCULATED';
+  }
+
   return {
     metricKey,
     metricName,
@@ -783,7 +870,11 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     isCalculableButLimited: applicability === 'CONTEXT_ONLY' || applicability === 'SECONDARY' || applicability === 'NOT_MEANINGFUL_FOR_PRIMARY_INTERPRETATION',
     isUnavailable,
     isNegative,
-    isPeriodMismatch
+    isPeriodMismatch,
+    valueState,
+    interpretationRole,
+    isSourceReconciled,
+    provenanceStatus: provenanceStatus || (isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified')
   };
 }
 
@@ -857,10 +948,11 @@ export function buildFinancialMetricAnalysisPrompt(
 - Sector: ${context.sector} | Industry: ${context.industry}
 - Selected Metric: ${context.metricName} (${context.metricKey})
 - Metric Applicability: ${context.applicabilityLabelEn} (${context.applicability})
+- Metric Value State: ${context.valueState} | Interpretation Role: ${context.interpretationRole}
 - Industry Standard Status: ${context.statusLabelEn} (${context.industryStandardStatus})
 - Formula / Provenance: ${context.formula || 'Standard calculation'} [${context.provenance}]
 - Financial Sector Guard Active: ${context.isFinancialSectorGuardActive ? 'YES (FCF / Cash Conversion guarded for financial model)' : 'NO'}
-
+${!context.isSourceReconciled ? '- Provenance Status: Source reconciliation between filing tables is NOT verified. Bounded confidence required. Do NOT describe values as fully SEC-reconciled.\n' : ''}
 ${context.interpretationCaveats.length > 0 ? `SPECIFIC BUSINESS CAVEATS:\n${context.interpretationCaveats.map(c => `- ${c}`).join('\n')}\n` : ''}
 ${context.denominatorCaveats.length > 0 ? `DENOMINATOR / MAGNITUDE GUARDS:\n${context.denominatorCaveats.map(c => `- ${c}`).join('\n')}\n` : ''}
 
@@ -898,6 +990,8 @@ ${redFlagsSummary ? `- Related Red Flags from SEC filings: ${redFlagsSummary}\n`
    - Analyze legitimately negative numbers accurately without converting them to missing.
 7. LANGUAGE & TONE:
    - ${isThai ? 'ตอบเป็นภาษาไทยระดับนักวิเคราะห์สถาบัน (Equity Research) ชัดเจน ตรงประเด็น กระชับ ใช้ศัพท์การเงินสากล (EBITDA, ROE, FCF, NIM) อย่างถูกต้อง' : 'Respond in professional Wall Street Equity Research English.'}
+8. RECONCILIATION CONFIDENCE BOUNDS:
+   - ${!context.isSourceReconciled ? 'Source reconciliation between filing tables is NOT verified. Maintain bounded confidence; do NOT state or imply that statement lines reconcile with audited precision.' : 'Source reconciliation verified across SEC filing tables.'}
 
 OUTPUT FORMAT:
 Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matching this schema:
