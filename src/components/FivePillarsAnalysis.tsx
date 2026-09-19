@@ -140,7 +140,13 @@ export function FivePillarsAnalysis({
                   ? growth.revenue_growth_yoy_pct !== undefined
                     ? `Rev +${growth.revenue_growth_yoy_pct}%`
                     : 'N/A'
-                  : `PEG ${metric(growth.peg_ratio, 'x', '')}`}
+                  : typeof growth.peg_ratio === 'number' && Number.isFinite(growth.peg_ratio)
+                    ? `PEG ${metric(growth.peg_ratio, 'x', '')}`
+                    : growth.peg_status === 'BASIS_MISMATCH'
+                      ? (isThai ? 'PEG ต่างฐานเวลา' : 'PEG Basis Mismatch')
+                      : growth.peg_status === 'TURNAROUND'
+                        ? (isThai ? 'PEG Turnaround' : 'PEG Turnaround')
+                        : 'PEG N/A'}
               </span>
             </div>
 
@@ -403,8 +409,21 @@ export function FivePillarsAnalysis({
                     <th className="py-3 px-3 text-right font-mono min-w-[110px]">
                       {isThai ? 'ค่ากลางกลุ่มคู่แข่ง (Peer)' : 'Peer Median'}
                     </th>
-                    <th className="py-3 px-3 text-right font-mono min-w-[110px]">
-                      {isThai ? 'คู่แข่งตรง (Direct Peer)' : 'Direct Peer'}
+                    <th className="py-3 px-3 text-right font-mono min-w-[130px]">
+                      {peerMatrix[0]?.direct_peer_ticker ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-stone-400 font-sans font-normal uppercase">
+                            {isThai
+                              ? (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'คู่แข่งตรง' : 'บริษัทเทียบเคียง')
+                              : (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'Direct Peer' : 'Closest Comparable')}
+                          </span>
+                          <span className="text-xs font-bold text-stone-800 truncate max-w-[180px]" title={`${peerMatrix[0].direct_peer_ticker} — ${peerMatrix[0].direct_peer_name || ''}`}>
+                            {peerMatrix[0].direct_peer_ticker} {peerMatrix[0].direct_peer_name ? `— ${peerMatrix[0].direct_peer_name}` : ''}
+                          </span>
+                        </div>
+                      ) : (
+                        isThai ? 'คู่แข่งตรง (Direct Peer)' : 'Direct Peer'
+                      )}
                     </th>
                     <th className="py-3 px-4 text-center font-sans min-w-[140px]">
                       {isThai ? 'การประเมินสถานะ' : 'Benchmark Status'}

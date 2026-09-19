@@ -215,6 +215,44 @@ export async function handleLiveQuotes(req: any, res: any) {
   }
 }
 
+export async function handlePeerCandidates(req: any, res: any) {
+  try {
+    const url = new URL(req.url || '/api/peer-candidates', 'http://localhost');
+    const body = req.body || {};
+    const ticker = (body.ticker || req.query?.ticker || url.searchParams.get('ticker') || '').toUpperCase().trim();
+    if (!ticker) {
+      return sendJson(res, 400, { error: "Missing 'ticker' parameter" });
+    }
+
+    const archetype = (body.archetype || body.primaryArchetype || req.query?.archetype || url.searchParams.get('archetype') || 'general_operating') as any;
+    const sector = body.sector || req.query?.sector || url.searchParams.get('sector') || undefined;
+    const industry = body.industry || req.query?.industry || url.searchParams.get('industry') || undefined;
+    const subIndustry = body.subIndustry || req.query?.subIndustry || url.searchParams.get('subIndustry') || undefined;
+    const companyName = body.companyName || req.query?.companyName || url.searchParams.get('companyName') || undefined;
+
+    const { discoverRuntimePeerCandidates } = await import('../services/runtimePeerDiscoveryService.ts');
+    const candidates = await discoverRuntimePeerCandidates({
+      ticker,
+      companyName,
+      primaryArchetype: archetype,
+      sector,
+      industry,
+      subIndustry,
+    });
+
+    return sendJson(res, 200, {
+      candidates,
+      count: candidates.length,
+      asOf: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("[/api/peer-candidates] Unexpected error:", error);
+    return sendJson(res, 500, { error: error?.message || "Internal server error" });
+  }
+}
+
 export function registerMarketRoutes(app: Express) {
   app.get("/api/live-quotes", handleLiveQuotes);
+  app.get("/api/peer-candidates", handlePeerCandidates);
+  app.post("/api/peer-candidates", handlePeerCandidates);
 }

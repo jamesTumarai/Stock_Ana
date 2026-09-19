@@ -952,8 +952,14 @@ export interface FivePillarsGrowthData {
   eps_growth_basis?: string;
   eps_cagr_3yr_pct?: number;
   fcf_growth_yoy_pct?: number;
+  fcf_growth_status?: string;
+  fcf_growth_basis?: string;
+  revenue_cagr_status?: string;
+  revenue_cagr_basis?: string;
   peg_ratio?: number;
   peg_interpretation?: string;
+  peg_status?: string;
+  peg_basis?: string;
 }
 
 export interface FivePillarsProfitabilityData {
@@ -1008,6 +1014,11 @@ export interface PeerBenchmarkRow {
   industry_leader_value?: string | number;
   status: 'better' | 'worse' | 'neutral' | 'premium' | 'discount';
   status_label_th?: string;
+  direct_peer_ticker?: string;
+  direct_peer_name?: string;
+  direct_peer_relation?: 'DIRECT_PEER' | 'CLOSE_COMPARABLE' | 'BROADER_SECTOR_REFERENCE' | string;
+  direct_peer_header_th?: string;
+  direct_peer_header_en?: string;
 }
 
 export interface FivePillarsData {
