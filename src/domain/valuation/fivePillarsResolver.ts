@@ -94,7 +94,7 @@ export function resolveAdaptiveFivePillars(
   const pbRatio = report.valuation_ratios?.find(r => /P\/B/i.test(r.name))?.value ?? getKi('price_to_book');
   const pfcfRatio = report.valuation_ratios?.find(r => /P\/FCF/i.test(r.name))?.value;
 
-  // PEG ratio computation (only for applicable operating companies with positive growth and P/E)
+  // PEG ratio computation (relates P/E to EPS/earnings growth, NEVER revenue growth)
   let pegRatio: number | undefined;
   let pegInterpretation = 'N/A';
   const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
@@ -102,15 +102,23 @@ export function resolveAdaptiveFivePillars(
 
   if (isFinancial) {
     pegInterpretation = 'PEG ไม่เหมาะกับสถาบันการเงินเนื่องจากโครงสร้างกำไรและเงินทุนอิง Net Interest Spread';
+  } else if (archetype === 'reit') {
+    pegInterpretation = 'PEG ไม่เหมาะกับกองทรัสต์อสังหาริมทรัพย์ (REIT) เนื่องจากกำไรสุทธิทางบัญชีถูกบิดเบือนจากค่าเสื่อมราคา';
   } else if (isPreProfit) {
     pegInterpretation = 'PEG ไม่เหมาะกับบริษัทที่ยังไม่มีกำไรสุทธิสม่ำเสมอ';
-  } else if (finite(peRatio) && peRatio > 0 && finite(revGrowth) && revGrowth > 0) {
-    pegRatio = rounded(peRatio / revGrowth);
+  } else if (finite(peRatio) && peRatio > 0 && finite(epsGrowth) && epsGrowth > 0) {
+    pegRatio = rounded(peRatio / epsGrowth);
     pegInterpretation = pegRatio < 1.0
-      ? `PEG ${pegRatio}x สะท้อนราคาที่เติบโตสมเหตุสมผลเมื่อเทียบกับการเติบโตรายได้ (+${revGrowth}%)`
+      ? `PEG ${pegRatio}x สะท้อนราคาที่เติบโตสมเหตุสมผลเมื่อเทียบกับการเติบโตของกำไร EPS (+${epsGrowth}%)`
       : pegRatio <= 2.0
         ? `PEG ${pegRatio}x อยู่ในเกณฑ์มาตรฐานของกลุ่มอุตสาหกรรม`
         : `PEG ${pegRatio}x สะท้อนความคาดหวังการเติบโตในราคาสูง (Premium Valuation)`;
+  } else if (finite(peRatio) && peRatio > 0) {
+    if (epsGrowth === undefined || epsGrowth === null) {
+      pegInterpretation = 'ข้อมูลการเติบโตของกำไรต่อหุ้น (EPS Growth) ไม่พร้อมใช้งาน จึงไม่สามารถคำนวณ PEG Ratio ได้';
+    } else if (epsGrowth <= 0) {
+      pegInterpretation = 'PEG ไม่สามารถคำนวณได้เนื่องจากอัตราเติบโตของกำไร (EPS Growth) ติดลบหรือเท่ากับศูนย์';
+    }
   }
 
   const growthData: FivePillarsGrowthData = {
@@ -128,11 +136,9 @@ export function resolveAdaptiveFivePillars(
   const roa = getKi('roa') ?? getKi('roa_pct');
   const nim = getKi('nim') ?? getKi('net_interest_margin_pct');
   const efficiencyRatio = getKi('efficiency_ratio') ?? getKi('efficiency_ratio_pct');
-  const combinedRatio = getKi('combined_ratio') ?? getKi('combined_ratio_pct');
-
-  const grossMargin = at(inc?.gross_margin_pct) ?? (grossProfit !== undefined && rev !== undefined && rev > 0 ? rounded((grossProfit / rev) * 100) : undefined);
-  const operatingMargin = at(inc?.operating_margin_pct) ?? (opInc !== undefined && rev !== undefined && rev > 0 ? rounded((opInc / rev) * 100) : undefined);
-  const netMargin = at(inc?.net_margin_pct) ?? (netInc !== undefined && rev !== undefined && rev > 0 ? rounded((netInc / rev) * 100) : undefined);
+  const netMargin = at(inc?.net_margin_pct) ?? (rev !== undefined && netInc !== undefined && rev > 0 ? rounded((netInc / rev) * 100) : undefined);
+  const opMargin = at(inc?.operating_margin_pct) ?? (rev !== undefined && opInc !== undefined && rev > 0 ? rounded((opInc / rev) * 100) : undefined);
+  const grossMargin = at(inc?.gross_margin_pct) ?? (rev !== undefined && grossProfit !== undefined && rev > 0 ? rounded((grossProfit / rev) * 100) : undefined);
 
   let capitalEfficiencyVerdict = 'N/A';
   if (isFinancial) {
@@ -150,31 +156,46 @@ export function resolveAdaptiveFivePillars(
   }
 
   const profitabilityData: FivePillarsProfitabilityData = {
-    roic_pct: isFinancial ? undefined : roic,
-    roe_pct: roe,
-    gross_margin_pct: isFinancial ? undefined : grossMargin,
-    operating_margin_pct: operatingMargin,
     net_margin_pct: netMargin,
+    operating_margin_pct: opMargin,
+    gross_margin_pct: isFinancial ? undefined : grossMargin,
+    roe_pct: roe,
+    roic_pct: isFinancial ? undefined : roic,
+    roa_pct: roa,
+    net_interest_margin_pct: isFinancial ? nim : undefined,
+    efficiency_ratio_pct: isFinancial ? efficiencyRatio : undefined,
     capital_efficiency_verdict: capitalEfficiencyVerdict,
   };
 
-  // 5. Resolve Pillar 3: Balance Sheet Solvency / Capital Strength
-  const debtToEquity = getKi('debt_to_equity') ?? (totalDebt !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded(totalDebt / totalEquity) : undefined);
+  // 5. Resolve Pillar 3: Balance Sheet / Financial Health
+  let balanceSheetTitle = isFinancial ? 'Capital & Funding' : 'Financial Strength';
+  let balanceSheetSummary = '';
+  if (isFinancial) {
+    balanceSheetTitle = archetype === 'bank' ? 'Capital & Deposits' : 'Capital & Funding';
+    balanceSheetSummary = 'สถาบันการเงินใช้เงินฝากและวงเงินสินเชื่อเป็นสินค้าคงคลังในการดำเนินงาน (Operating Inventory) โครงสร้างเงินทุนจึงวัดด้วยความเพียงพอของเงินกองทุนและการจัดหาทุน';
+  }
+
+  const debtToEquity = at(bs?.debt_to_equity) ?? getKi('debt_to_equity') ?? (totalDebt !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded(totalDebt / totalEquity) : undefined);
   const interestCoverage = getKi('interest_coverage');
-  const deposits = at(bs?.deposits) ?? getKi('deposits');
-  const loans = at(bs?.loans_held_for_investment) ?? getKi('loans');
-  const tier1Ratio = getKi('tier1_capital_ratio');
   const cashRunway = getKi('cash_runway_months');
 
-  let solvencyScoreLabel = 'งบดุลตรวจสอบจากรายงานทางการเงินที่เผยแพร่';
+  let solvencyScoreLabel = 'ฐานะการเงินระดับมาตรฐาน';
   if (isFinancial) {
     solvencyScoreLabel = 'โครงสร้างเงินทุนสถาบันการเงิน: เงินฝากและพอร์ตสินเชื่อเป็นวัตถุดิบดำเนินงาน (Financial Sector Guard บังคับใช้)';
   } else if (archetype === 'early_stage' && cashRunway !== undefined) {
     solvencyScoreLabel = `ระยะเวลากระแสเงินสดคงเหลือประมาณ ${cashRunway} เดือน`;
-  } else if (netCashOrDebt !== undefined) {
-    solvencyScoreLabel = netCashOrDebt >= 0
-      ? `เงินสดสุทธิ (Net Cash) $${Math.abs(netCashOrDebt)}B สะท้อนฐานะการเงินที่มั่นคง`
-      : `หนี้สินสุทธิ (Net Debt) $${Math.abs(netCashOrDebt)}B มีภาระหนี้สินสุทธิที่ต้องบริหารจัดการ`;
+  } else if (!isFinancial) {
+    if (netCashOrDebt !== undefined && netCashOrDebt > 0) {
+      solvencyScoreLabel = `สถานะเงินสดสุทธิ (Net Cash +$${netCashOrDebt}B) มีความมั่นคงทางการเงินสูง`;
+    } else if (debtToEquity !== undefined && debtToEquity <= 1.0) {
+      solvencyScoreLabel = `ภาระหนี้สินอยู่ในเกณฑ์บริหารจัดการได้ (D/E ${debtToEquity}x)`;
+    } else if (debtToEquity !== undefined && debtToEquity > 2.0) {
+      solvencyScoreLabel = `ภาระหนี้สินค่อนข้างสูง (D/E ${debtToEquity}x) ควรติดตามกระแสเงินสดดำเนินงาน`;
+    } else if (netCashOrDebt !== undefined) {
+      solvencyScoreLabel = netCashOrDebt >= 0
+        ? `เงินสดสุทธิ (Net Cash) $${Math.abs(netCashOrDebt)}B สะท้อนฐานะการเงินที่มั่นคง`
+        : `หนี้สินสุทธิ (Net Debt) $${Math.abs(netCashOrDebt)}B มีภาระหนี้สินสุทธิที่ต้องบริหารจัดการ`;
+    }
   }
 
   const balanceSheetData: FivePillarsBalanceSheetData = {
@@ -188,8 +209,10 @@ export function resolveAdaptiveFivePillars(
   };
 
   // 6. Resolve Pillar 4: Yields Perspective
-  // Treasury 10Y Benchmark
-  const treasury10Yr = report.five_pillars?.yields?.treasury_10yr_yield_pct ?? 4.25;
+  // Treasury 10Y Benchmark: strictly from verified source, NEVER fall back to hardcoded constant
+  const treasury10Yr = report.five_pillars?.yields?.treasury_10yr_yield_pct;
+  const treasuryAsOf = report.five_pillars?.yields?.treasury_as_of_date;
+  const treasurySource = report.five_pillars?.yields?.treasury_source;
 
   // Earnings Yield Basis: Prefer Trailing P/E if available, else Forward P/E
   let earningsYield: number | undefined;
@@ -216,17 +239,29 @@ export function resolveAdaptiveFivePillars(
 
   let yieldInterpretation = 'N/A';
   if (isFinancial) {
-    yieldInterpretation = earningsYield !== undefined
-      ? `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% เทียบกับผลตอบแทนพันธบัตร 10 ปี (${treasury10Yr}%) สำหรับสถาบันการเงิน`
-      : 'การประเมินผลตอบแทนสถาบันการเงินอิงตาม P/E, P/B และผลตอบแทนจากกำไร';
+    if (earningsYield !== undefined) {
+      yieldInterpretation = treasury10Yr !== undefined
+        ? `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% เทียบกับผลตอบแทนพันธบัตร 10 ปี (${treasury10Yr}%) สำหรับสถาบันการเงิน`
+        : `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% สำหรับสถาบันการเงิน (ข้อมูลพันธบัตร 10 ปีไม่พร้อมใช้งาน)`;
+    } else {
+      yieldInterpretation = 'การประเมินผลตอบแทนสถาบันการเงินอิงตาม P/E, P/B และผลตอบแทนจากกำไร';
+    }
   } else if (fcfYield !== undefined) {
-    const spread = rounded(fcfYield - treasury10Yr);
-    yieldInterpretation = spread > 0
-      ? `FCF Yield ${fcfYield}% สูงกว่าพันธบัตรสหรัฐฯ 10 ปี (+${spread}% Spread) สะท้อนผลตอบแทนเงินสดที่ดี`
-      : `FCF Yield ${fcfYield}% ต่ำกว่าพันธบัตรสหรัฐฯ 10 ปี (${spread}% Spread) ตลาดสะท้อนการเติบโตในอนาคต`;
+    if (treasury10Yr !== undefined) {
+      const spread = rounded(fcfYield - treasury10Yr);
+      yieldInterpretation = spread > 0
+        ? `FCF Yield ${fcfYield}% สูงกว่าพันธบัตรสหรัฐฯ 10 ปี (+${spread}% Spread) สะท้อนผลตอบแทนเงินสดที่ดี`
+        : `FCF Yield ${fcfYield}% ต่ำกว่าพันธบัตรสหรัฐฯ 10 ปี (${spread}% Spread) ตลาดสะท้อนการเติบโตในอนาคต`;
+    } else {
+      yieldInterpretation = `FCF Yield ${fcfYield}% สะท้อนผลตอบแทนกระแสเงินสดอิสระ (ข้อมูลพันธบัตร 10 ปีไม่พร้อมใช้งาน)`;
+    }
   } else if (earningsYield !== undefined) {
-    const spread = rounded(earningsYield - treasury10Yr);
-    yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% เทียบกับพันธบัตรสหรัฐฯ (${spread}% Spread)`;
+    if (treasury10Yr !== undefined) {
+      const spread = rounded(earningsYield - treasury10Yr);
+      yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% เทียบกับพันธบัตรสหรัฐฯ (${spread}% Spread)`;
+    } else {
+      yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% (ข้อมูลพันธบัตร 10 ปีไม่พร้อมใช้งาน)`;
+    }
   }
 
   const yieldsData: FivePillarsYieldsData = {
@@ -238,7 +273,9 @@ export function resolveAdaptiveFivePillars(
     is_fcf_guarded: isFcfGuarded ? true : undefined,
     fcf_guard_reason: isFcfGuarded ? fcfGuardReason : undefined,
     treasury_10yr_yield_pct: treasury10Yr,
-    yield_spread_vs_treasury: earningsYield !== undefined ? rounded(earningsYield - treasury10Yr) : undefined,
+    treasury_as_of_date: treasuryAsOf,
+    treasury_source: treasurySource,
+    yield_spread_vs_treasury: (earningsYield !== undefined && treasury10Yr !== undefined) ? rounded(earningsYield - treasury10Yr) : undefined,
     yield_interpretation: yieldInterpretation,
   };
 
@@ -515,6 +552,7 @@ function buildAdaptivePillarSections(
       metrics: profitMetrics,
       interpretationEn: p.capital_efficiency_verdict,
       interpretationTh: p.capital_efficiency_verdict,
+      isGuarded: isFinancial,
     },
     solvency: {
       id: 'solvency',

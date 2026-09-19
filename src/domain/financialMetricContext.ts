@@ -1,5 +1,4 @@
 import { ReportData } from '../types';
-import { detectValuationModel } from '../utils/valuation/modelSelector';
 import { FinancialAiInsight } from '../utils/financialAiInsights';
 
 export type BusinessArchetype =
@@ -21,6 +20,26 @@ export type BusinessArchetype =
   | 'telecom'
   | 'early_stage'
   | 'general_operating';
+
+export interface BusinessClassificationEvidence {
+  archetype: BusinessArchetype;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  strongSignals: string[];
+  supportingSignals: string[];
+  conflictingSignals: string[];
+  primaryArchetype: BusinessArchetype;
+  secondaryBusinessLines: string[];
+}
+
+export interface ResolvedBusinessClassification {
+  primaryArchetype: BusinessArchetype;
+  secondaryBusinessLines: string[];
+  sector: string;
+  industry: string;
+  subIndustry?: string;
+  evidence: BusinessClassificationEvidence;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+}
 
 export type MetricValueState =
   | 'REPORTED'
@@ -115,18 +134,32 @@ export interface MetricContextOptions {
 }
 
 /**
- * Deterministically resolves the authoritative Business Archetype for any stock
- * using sector, industry, company description, statement template, valuation model,
- * and financial profile without hardcoded ticker conditionals.
+ * Deterministically resolves the authoritative Business Classification for any stock
+ * using an evidence hierarchy:
+ * - Strong evidence: official sector, official industry, statement template, primary revenue segments
+ * - Supporting evidence: official business description, major business lines
+ * - Conflicting signals: weak keywords in narrative (e.g. "financial services", "financing")
+ *
+ * Crucial invariants:
+ * 1. Strong structured evidence wins over weak textual clues.
+ * 2. Secondary financial activities (e.g. captive auto finance, retail credit cards, platform payments)
+ *    do not convert the consolidated company into a bank/lender/fintech.
+ * 3. Never falls back to using narrative description as the industry string.
  */
-export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): BusinessArchetype {
+export function resolveBusinessClassification(
+  reportOrData?: any,
+  ticker?: string
+): ResolvedBusinessClassification {
   const unwrapped = reportOrData?.data ? reportOrData.data : reportOrData;
   const data: Partial<ReportData> = unwrapped || {};
   const sym = (ticker || data.ticker || (data as any)?.symbol || '').toUpperCase().trim();
 
   const profile = data.company_profile;
-  const sector = (profile?.sector || profile?.overview?.country || '').toLowerCase();
-  const industry = (profile?.industry || profile?.overview?.description || '').toLowerCase();
+  const rawSector = (profile?.sector || (profile as any)?.overview?.sector || '').trim();
+  const rawIndustry = (profile?.industry || (profile as any)?.overview?.industry || '').trim();
+  const sector = rawSector.toLowerCase();
+  const industry = rawIndustry.toLowerCase();
+
   const businessSummary = (
     profile?.description ||
     profile?.overview?.description ||
@@ -134,31 +167,120 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
     data?.comprehensive_analysis?.business_overview ||
     ''
   ).toLowerCase();
-  const template = data.financial_statements?.statement_template;
-  const detected = detectValuationModel(data, sym);
 
-  // 1. Insurance
+  const template = data.financial_statements?.statement_template;
+
+  const strongSignals: string[] = [];
+  const supportingSignals: string[] = [];
+  const conflictingSignals: string[] = [];
+  const secondaryBusinessLines: string[] = [];
+
+  if (rawSector) strongSignals.push(`Sector: ${rawSector}`);
+  if (rawIndustry) strongSignals.push(`Industry: ${rawIndustry}`);
+  if (template) strongSignals.push(`Statement Template: ${template}`);
+
+  // 1. Check Automotive / Motor Vehicles (Primary: industrial_manufacturing, Sub-industry: Auto Manufacturers)
+  const isAutomotive =
+    industry.includes('auto manufacturers') ||
+    industry.includes('automotive') ||
+    industry.includes('automobile') ||
+    industry.includes('motor vehicle') ||
+    industry.includes('trucks') ||
+    ((sector.includes('consumer cyclical') || sector.includes('consumer discretionary') || sector.includes('industrials')) &&
+      (industry.includes('auto') || industry.includes('vehicle') || businessSummary.includes('electric vehicles')));
+
+  if (isAutomotive) {
+    // Detect secondary financial/energy business lines
+    if (businessSummary.includes('financing') || businessSummary.includes('lending') || businessSummary.includes('leasing') || businessSummary.includes('credit')) {
+      secondaryBusinessLines.push('vehicle_financing');
+      conflictingSignals.push('Secondary automotive financing/leasing activity noted; consolidated operating framework preserved');
+    }
+    if (businessSummary.includes('energy storage') || businessSummary.includes('solar') || businessSummary.includes('energy generation')) {
+      secondaryBusinessLines.push('energy_storage');
+      supportingSignals.push('Secondary energy generation and storage business noted');
+    }
+    if (businessSummary.includes('insurance')) {
+      secondaryBusinessLines.push('insurance');
+      conflictingSignals.push('Secondary vehicle insurance activity noted; does not override primary manufacturing archetype');
+    }
+
+    const primaryArchetype: BusinessArchetype = 'industrial_manufacturing';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Consumer Cyclical',
+      industry: rawIndustry || 'Auto Manufacturers',
+      subIndustry: 'Auto Manufacturers',
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
+  }
+
+  // 2. Insurance
   if (
-    sector.includes('insurance') ||
     industry.includes('insurance') ||
+    sector.includes('insurance') ||
+    template === 'insurance' ||
     businessSummary.includes('insurance carrier') ||
     businessSummary.includes('life insurance') ||
     businessSummary.includes('property and casualty')
   ) {
-    return 'insurer';
+    const primaryArchetype: BusinessArchetype = 'insurer';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Insurance',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 2. Asset Management
+  // 3. Asset Management
   if (
     industry.includes('asset management') ||
     industry.includes('wealth management') ||
     businessSummary.includes('asset management') ||
     businessSummary.includes('investment management')
   ) {
-    return 'asset_manager';
+    const primaryArchetype: BusinessArchetype = 'asset_manager';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Asset Management',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 3. Brokerage / Exchange / Capital Markets
+  // 4. Brokerage / Exchange / Capital Markets
   if (
     industry.includes('broker') ||
     industry.includes('exchange') ||
@@ -166,59 +288,168 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
     businessSummary.includes('digital brokerage') ||
     businessSummary.includes('financial exchange')
   ) {
-    return 'broker_exchange';
+    const primaryArchetype: BusinessArchetype = 'broker_exchange';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Capital Markets',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 4. FinTech / Digital Banking / Credit Services
+  const selectedModel = (data?.intrinsic_value as any)?.model_selection?.selected_model || (data?.intrinsic_value as any)?.model_type;
+  if (selectedModel) strongSignals.push(`Valuation Model: ${selectedModel}`);
+
+  // 5. FinTech / Digital Banking / Consumer Finance
   const isFintech =
-    detected.model_type === 'fintech_pe' ||
-    industry.includes('financial technology') ||
-    industry.includes('fintech') ||
-    industry.includes('digital bank') ||
-    industry.includes('consumer finance') ||
-    industry.includes('credit services') ||
-    businessSummary.includes('fintech') ||
-    businessSummary.includes('digital banking') ||
-    businessSummary.includes('financial technology') ||
-    (sector.includes('financial') && (businessSummary.includes('platform') || businessSummary.includes('technology') || industry.includes('technology')));
+    (sector.includes('financial') || template === 'banking' || selectedModel === 'fintech_pe') &&
+    (selectedModel === 'fintech_pe' ||
+      industry.includes('financial technology') ||
+      industry.includes('fintech') ||
+      industry.includes('digital bank') ||
+      industry.includes('consumer finance') ||
+      industry.includes('credit services') ||
+      businessSummary.includes('digital banking') ||
+      businessSummary.includes('financial technology') ||
+      businessSummary.includes('fintech'));
 
   if (isFintech) {
-    return 'fintech';
+    const primaryArchetype: BusinessArchetype = 'fintech';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Credit Services',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 5. Commercial / Retail Banks
+  // 6. Commercial / Retail Banks
   if (
     template === 'banking' ||
-    detected.model_type === 'ddm' ||
-    (industry.includes('bank') && !industry.includes('investment bank')) ||
+    (industry.includes('bank') && !industry.includes('investment bank') && !industry.includes('food bank')) ||
     sector.includes('bank')
   ) {
-    return 'bank';
+    const primaryArchetype: BusinessArchetype = 'bank';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Banks',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 6. Non-bank Lenders / Consumer Finance
+  // 7. Non-bank Lenders / Consumer Finance
   if (
-    industry.includes('lending') ||
-    industry.includes('mortgage') ||
-    businessSummary.includes('loan origination') ||
-    businessSummary.includes('consumer lending')
+    sector.includes('financial') &&
+    (industry.includes('lending') ||
+      industry.includes('mortgage') ||
+      businessSummary.includes('loan origination') ||
+      businessSummary.includes('consumer lending'))
   ) {
-    return 'lender';
+    const primaryArchetype: BusinessArchetype = 'lender';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Consumer Lending',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 7. REIT / Real Estate
+  // 8. General Financial Services Guard: Sector Financial Services must never fall through to general_operating
+  if (sector.includes('financial')) {
+    const primaryArchetype: BusinessArchetype = selectedModel === 'ddm' ? 'bank' : selectedModel === 'fintech_pe' ? 'fintech' : 'lender';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Financial Services',
+      subIndustry: rawIndustry,
+      confidence: 'MEDIUM',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'MEDIUM',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
+  }
+
+  // 9. REIT / Real Estate
   if (
-    detected.model_type === 'reit_affo' ||
     template === 'reit' ||
     sector.includes('real estate') ||
     industry.includes('reit') ||
     industry.includes('real estate investment trust') ||
-    businessSummary.includes('reit')
+    businessSummary.includes('real estate investment trust')
   ) {
-    return 'reit';
+    const primaryArchetype: BusinessArchetype = 'reit';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Real Estate',
+      industry: rawIndustry || 'REIT',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 8. Early-stage / Pre-profit / Heavy Cash Burn
+  // 9. Early-stage / Pre-profit / Heavy Cash Burn
   const inc = data.financial_statements?.income_statement;
   const cf = data.financial_statements?.cash_flow;
   const grossMarginArr = (inc?.gross_margin_pct || []).filter(v => typeof v === 'number');
@@ -228,18 +459,29 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
   const isSpaceOrHeavyTechGrowth =
     industry.includes('space') && !['aerospace & defense', 'defense'].includes(industry);
 
-  if (
-    detected.model_type === 'relative_only' ||
-    isNegativeGrossMargin ||
-    isConsecutiveNegativeFcf ||
-    isSpaceOrHeavyTechGrowth
-  ) {
-    return 'early_stage';
+  if (isNegativeGrossMargin || isConsecutiveNegativeFcf || isSpaceOrHeavyTechGrowth) {
+    const primaryArchetype: BusinessArchetype = 'early_stage';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Technology',
+      industry: rawIndustry || 'Early-Stage Growth',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 9. Cyclical / Energy / Commodity / Basic Materials
+  // 10. Cyclical / Energy / Commodity / Basic Materials
   if (
-    detected.model_type === 'dcf_cyclical' ||
     sector.includes('energy') ||
     sector.includes('basic materials') ||
     industry.includes('oil') ||
@@ -250,10 +492,27 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
     industry.includes('airline') ||
     industry.includes('chemicals')
   ) {
-    return 'energy_commodity';
+    const primaryArchetype: BusinessArchetype = 'energy_commodity';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Energy',
+      industry: rawIndustry || 'Commodity & Cyclical',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 10. Utilities (Regulated)
+  // 11. Utilities (Regulated)
   if (
     sector.includes('utilities') ||
     industry.includes('utility') ||
@@ -261,55 +520,163 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
     industry.includes('water') ||
     industry.includes('gas utility')
   ) {
-    return 'utility';
+    const primaryArchetype: BusinessArchetype = 'utility';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Utilities',
+      industry: rawIndustry || 'Regulated Utility',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 11. Telecom
+  // 12. Telecom
   if (
     sector.includes('telecommunication') ||
     industry.includes('telecom')
   ) {
-    return 'telecom';
+    const primaryArchetype: BusinessArchetype = 'telecom';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Communication Services',
+      industry: rawIndustry || 'Telecom',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 12. Semiconductor
+  // 13. Semiconductor
   if (
     industry.includes('semiconductor') ||
     industry.includes('chip') ||
     businessSummary.includes('semiconductor')
   ) {
-    return 'semiconductor';
+    const primaryArchetype: BusinessArchetype = 'semiconductor';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Technology',
+      industry: rawIndustry || 'Semiconductors',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 13. SaaS / Enterprise Software / Cloud
+  // 14. SaaS / Enterprise Software / Cloud
   if (
     industry.includes('software') ||
     industry.includes('cloud') ||
     (sector.includes('technology') && (businessSummary.includes('saas') || businessSummary.includes('subscription software')))
   ) {
-    return 'saas_software';
+    if (businessSummary.includes('payment') || businessSummary.includes('merchant')) {
+      secondaryBusinessLines.push('merchant_payments');
+    }
+    const primaryArchetype: BusinessArchetype = 'saas_software';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Technology',
+      industry: rawIndustry || 'Software',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 14. Hardware / Consumer Electronics
+  // 15. Hardware / Consumer Electronics
   if (
     industry.includes('consumer electronics') ||
     industry.includes('computer hardware') ||
     industry.includes('hardware')
   ) {
-    return 'hardware_device';
+    if (businessSummary.includes('payment') || businessSummary.includes('financial services')) {
+      secondaryBusinessLines.push('payments_services');
+    }
+    const primaryArchetype: BusinessArchetype = 'hardware_device';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Technology',
+      industry: rawIndustry || 'Consumer Electronics',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 15. Industrial / Manufacturing
+  // 16. Industrial / Manufacturing
   if (
     sector.includes('industrials') ||
     industry.includes('manufacturing') ||
     industry.includes('machinery') ||
     industry.includes('aerospace & defense')
   ) {
-    return 'industrial_manufacturing';
+    const primaryArchetype: BusinessArchetype = 'industrial_manufacturing';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Industrials',
+      industry: rawIndustry || 'Manufacturing',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 16. Retail / Consumer Omnichannel
+  // 17. Retail / Consumer Omnichannel
   if (
     industry.includes('retail') ||
     industry.includes('discount store') ||
@@ -321,19 +688,80 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
     industry.includes('grocery') ||
     industry.includes('specialty retail')
   ) {
-    return 'retail';
+    if (businessSummary.includes('credit card') || businessSummary.includes('financing')) {
+      secondaryBusinessLines.push('credit_card_program');
+    }
+    const primaryArchetype: BusinessArchetype = 'retail';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Consumer Cyclical',
+      industry: rawIndustry || 'Retail',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 17. Digital Marketplace / Asset-light Consumer Platform
+  // 18. Digital Marketplace / Asset-light Consumer Platform
   if (
     businessSummary.includes('marketplace') ||
     (sector.includes('consumer') && (businessSummary.includes('platform') || businessSummary.includes('digital')) && !industry.includes('retail'))
   ) {
-    return 'digital_marketplace';
+    const primaryArchetype: BusinessArchetype = 'digital_marketplace';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Consumer Discretionary',
+      industry: rawIndustry || 'Digital Platform',
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
   }
 
-  // 18. Default General Operating Company
-  return 'general_operating';
+  // 19. Default General Operating Company
+  const defaultArchetype: BusinessArchetype = 'general_operating';
+  return {
+    primaryArchetype: defaultArchetype,
+    secondaryBusinessLines,
+    sector: rawSector || 'General',
+    industry: rawIndustry || 'Commercial',
+    subIndustry: rawIndustry,
+    confidence: 'MEDIUM',
+    evidence: {
+      archetype: defaultArchetype,
+      confidence: 'MEDIUM',
+      strongSignals,
+      supportingSignals,
+      conflictingSignals,
+      primaryArchetype: defaultArchetype,
+      secondaryBusinessLines,
+    },
+  };
+}
+
+/**
+ * Deterministically resolves the authoritative Business Archetype for any stock.
+ */
+export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): BusinessArchetype {
+  return resolveBusinessClassification(reportOrData, ticker).primaryArchetype;
 }
 
 const ARCHETYPE_METADATA: Record<BusinessArchetype, { labelEn: string; labelTh: string; isFinancial: boolean }> = {

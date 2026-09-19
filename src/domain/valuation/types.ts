@@ -8,11 +8,15 @@ export interface PeerBusinessFingerprint {
   ticker: string;
   companyName: string;
   archetype: BusinessArchetype;
+  primaryArchetype?: BusinessArchetype;
   sector: string;
   industry: string;
   subIndustry?: string;
   revenueModels: string[];
   majorBusinessLines: string[];
+  businessLines?: string[];
+  productCategory?: string;
+  customerType?: string;
   geography?: string;
   lifecycle: 'early_stage' | 'growth' | 'mature' | 'cyclical';
   profitabilityState: 'pre_profit' | 'breakeven' | 'profitable';

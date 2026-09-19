@@ -3,34 +3,19 @@ import {
   ModelSelectorResult, 
   ReportData 
 } from '../../types';
+import { resolveBusinessArchetype } from '../../domain/financialMetricContext.js';
 
 /**
  * Intelligent Model Selector that routes any stock to the most appropriate
- * valuation methodology based on Sector, Industry, FCF health, and Lifecycle.
+ * valuation methodology based on authoritative Business Archetype, FCF health, and Lifecycle.
  */
 export function detectValuationModel(data?: Partial<ReportData>, ticker?: string): ModelSelectorResult {
   const symbol = (ticker || data?.ticker || 'STOCK').toUpperCase();
-  const profile = data?.company_profile;
-  const sector = (profile?.sector || profile?.overview?.country || '').toLowerCase();
-  const industry = (profile?.industry || profile?.overview?.description || '').toLowerCase();
-  const businessSummary = (profile?.description || profile?.overview?.description || data?.comprehensive_analysis?.business_overview || '').toLowerCase();
+  const archetype = resolveBusinessArchetype(data, symbol);
   const cf = data?.financial_statements?.cash_flow;
 
-  // 1. Check FinTech & Digital Banking (e.g., SOFI, NU, HOOD, COIN, AFRM, UPST, PYPL, SQ, XYZ)
-  const isFintechOrDigitalBank = 
-    ['SOFI', 'NU', 'HOOD', 'COIN', 'AFRM', 'UPST', 'PYPL', 'SQ', 'XYZ', 'LC'].includes(symbol) ||
-    industry.includes('financial technology') ||
-    industry.includes('fintech') ||
-    industry.includes('digital bank') ||
-    industry.includes('consumer finance') ||
-    industry.includes('credit services') ||
-    industry.includes('digital brokerage') ||
-    businessSummary.includes('fintech') ||
-    businessSummary.includes('digital banking') ||
-    businessSummary.includes('financial technology') ||
-    (sector.includes('financial') && (businessSummary.includes('platform') || businessSummary.includes('technology') || industry.includes('technology')));
-
-  if (isFintechOrDigitalBank) {
+  // 1. Check FinTech & Digital Banking (e.g., SOFI, NU, HOOD, COIN, AFRM, UPST, PYPL, SQ, LC)
+  if (archetype === 'fintech' || archetype === 'lender') {
     return {
       model_type: 'fintech_pe',
       model_name_th: 'FinTech Platform & Residual Income (Forward P/E & Platform DCF)',
@@ -44,17 +29,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     };
   }
 
-  // 2. Check Financial Institutions (Commercial Banks, Insurance, Asset Management)
-  const isBankOrInsurance = 
-    sector.includes('financial') || 
-    sector.includes('bank') || 
-    sector.includes('insurance') ||
-    industry.includes('bank') ||
-    industry.includes('insurance') ||
-    industry.includes('capital market') ||
-    ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BBL', 'KBANK', 'SCB', 'KTB', 'TTB', 'AIA', 'BAM', 'BRK.A', 'BRK.B', 'MET', 'PRU', 'PGR', 'TRV', 'ALL'].includes(symbol);
-
-  if (isBankOrInsurance) {
+  // 2. Check Financial Institutions (Commercial Banks, Insurance, Asset Management, Brokers)
+  if (archetype === 'bank' || archetype === 'insurer' || archetype === 'asset_manager' || archetype === 'broker_exchange') {
     return {
       model_type: 'ddm',
       model_name_th: 'Dividend Discount Model (DDM) & Residual Income',
@@ -68,15 +44,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     };
   }
 
-  // 2. Check Real Estate Investment Trusts (REITs) & Real Estate Operating Companies
-  const isReit = 
-    sector.includes('real estate') || 
-    industry.includes('reit') ||
-    industry.includes('real estate investment trust') ||
-    businessSummary.includes('reit') ||
-    ['PLD', 'AMT', 'EQIX', 'SPG', 'O', 'PSA', 'CCI', 'CPNREIT', 'WHART', 'FTREIT', 'TLGF'].includes(symbol);
-
-  if (isReit) {
+  // 3. Check Real Estate Investment Trusts (REITs)
+  if (archetype === 'reit') {
     return {
       model_type: 'reit_affo',
       model_name_th: 'FFO / AFFO Multiple & Cash Yield Valuation',
@@ -90,25 +59,9 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     };
   }
 
-  // 3. Check Negative Gross Margin / Negative FCF / Pre-Revenue / Early Stage Growth
-  const inc = data?.financial_statements?.income_statement;
-  const grossMarginArr = (inc?.gross_margin_pct || []).filter(v => typeof v === 'number');
-  const isNegativeGrossMargin = grossMarginArr.length > 0 && grossMarginArr[grossMarginArr.length - 1] < 0;
-
-  const fcfArr = (cf?.free_cash_flow || []).filter(v => v !== null && v !== undefined).map(Number);
-  const isConsecutiveNegativeFcf = fcfArr.length >= 2 && fcfArr.every(v => v < 0);
-  const isSpaceOrHeavyTechGrowth = 
-    ['RKLB', 'ASTS', 'LUNR', 'RDW', 'SPCE', 'PL'].includes(symbol) ||
-    (industry.includes('space') && !['LMT', 'BA', 'NOC', 'RTX', 'GD'].includes(symbol));
-
-  const isPreRevenueOrEarlyLoss = 
-    isNegativeGrossMargin ||
-    isConsecutiveNegativeFcf || 
-    isSpaceOrHeavyTechGrowth ||
-    ['RIVN', 'LCID', 'PLUG', 'QS', 'JOBY', 'ACHR', 'EOSE'].includes(symbol);
-
-  if (isPreRevenueOrEarlyLoss) {
-    const isSpace = isSpaceOrHeavyTechGrowth || symbol === 'RKLB';
+  // 4. Check Early Stage Growth / Heavy Cash Burn
+  if (archetype === 'early_stage') {
+    const isSpace = symbol === 'RKLB' || (data?.company_profile?.industry || '').toLowerCase().includes('space');
     return {
       model_type: 'relative_only',
       model_name_th: isSpace 
@@ -134,19 +87,8 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
     };
   }
 
-  // 4. Check Cyclical Industries (Energy, Mining, Shipping, Airlines, Commodity Chemicals)
-  const isCyclical = 
-    sector.includes('energy') || 
-    sector.includes('basic materials') ||
-    industry.includes('oil') ||
-    industry.includes('gas') ||
-    industry.includes('mining') ||
-    industry.includes('metal') ||
-    industry.includes('shipping') ||
-    industry.includes('airline') ||
-    ['XOM', 'CVX', 'PTT', 'PTTEP', 'VALE', 'BHP', 'RIO', 'DAL', 'UAL', 'ZIM', 'SCGP', 'IVL'].includes(symbol);
-
-  if (isCyclical) {
+  // 5. Check Cyclical Industries (Energy, Mining, Commodity)
+  if (archetype === 'energy_commodity') {
     return {
       model_type: 'dcf_cyclical',
       model_name_th: 'Through-Cycle Normalized DCF (โมเดลปรับค่าเฉลี่ยวัฏจักร)',
@@ -181,13 +123,9 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
   }
 
   // 6. Check Mature / Stable Cash Cow / Regulated Utilities & Telecoms
-  const isMatureValue = 
-    sector.includes('utilities') || 
-    sector.includes('telecommunication') || 
-    industry.includes('utility') ||
-    industry.includes('electric') ||
-    industry.includes('water') ||
-    industry.includes('telecom') ||
+  const isMatureValue =
+    archetype === 'utility' ||
+    archetype === 'telecom' ||
     ['KO', 'PG', 'SO', 'NEE', 'DUK', 'EGCO', 'RATCH', 'TTW', 'T', 'VZ', 'ADVANC', 'TRUE'].includes(symbol);
 
   if (isMatureValue) {

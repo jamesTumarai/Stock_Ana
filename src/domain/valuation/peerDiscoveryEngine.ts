@@ -1,5 +1,5 @@
-import type { ReportData, PeerBenchmarkRow, PeerCompanyItem } from '../../types';
-import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMetricContext';
+import type { ReportData, PeerBenchmarkRow, PeerCompanyItem } from '../../types.js';
+import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMetricContext.js';
 import type {
   PeerBusinessFingerprint,
   PeerCandidate,
@@ -7,909 +7,26 @@ import type {
   PeerMetricObservation,
   PeerRelationType,
   PeerUnavailableReason,
-} from './types';
+} from './types.js';
+import {
+  type CandidateDefinition,
+  FIXTURE_CANDIDATE_UNIVERSE,
+  PUBLIC_CANDIDATE_UNIVERSE,
+} from './__fixtures__/peerUniverse.js';
 
-interface CandidateDefinition {
-  ticker: string;
-  companyName: string;
-  archetype: BusinessArchetype;
-  sector: string;
-  industry: string;
-  subIndustry: string;
-  revenueModels: string[];
-  majorBusinessLines: string[];
-  geography: string;
-  lifecycle: 'early_stage' | 'growth' | 'mature' | 'cyclical';
-  profitabilityState: 'pre_profit' | 'breakeven' | 'profitable';
-  capitalIntensity: 'asset_light' | 'moderate' | 'capital_intensive' | 'financial_intermediary';
-  regulatoryType?: 'banking' | 'insurance' | 'reit' | 'utility' | 'unregulated' | 'standard';
-  scaleTier: 'mega' | 'large' | 'mid' | 'small';
-  metrics: Record<string, { value: number | null; unit: string; period: string; source: string; reportedOrDerived: 'REPORTED' | 'DERIVED' }>;
+// Re-export for callers/tests that expect them here
+export { type CandidateDefinition, FIXTURE_CANDIDATE_UNIVERSE, PUBLIC_CANDIDATE_UNIVERSE };
+
+export interface PeerDiscoveryOptions {
+  candidates?: (CandidateDefinition | PeerCompanyItem)[];
+  disableFixtureFallback?: boolean;
 }
 
 /**
- * Authoritative structured universe of public companies across sectors
- * with verified business fingerprints and baseline canonical metrics.
+ * In-memory cache for discovered peer results to avoid redundant recomputations.
  */
-const PUBLIC_CANDIDATE_UNIVERSE: CandidateDefinition[] = [
-  // 1. FinTech / Digital Banking / Consumer Finance
-  {
-    ticker: 'SOFI',
-    companyName: 'SoFi Technologies, Inc.',
-    archetype: 'fintech',
-    sector: 'Financial Services',
-    industry: 'Credit Services',
-    subIndustry: 'digital_banking_lending',
-    revenueModels: ['net_interest_income', 'fee_based', 'technology_services'],
-    majorBusinessLines: ['lending', 'financial_services', 'technology_platform'],
-    geography: 'US',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'mid',
-    metrics: {
-      pe_trailing: { value: 38.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 24.2, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 2.1, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 2.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 34.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 8.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 1.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 5.85, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 54.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'NU',
-    companyName: 'Nu Holdings Ltd.',
-    archetype: 'fintech',
-    sector: 'Financial Services',
-    industry: 'Credit Services',
-    subIndustry: 'digital_banking_lending',
-    revenueModels: ['net_interest_income', 'fee_based', 'credit_cards'],
-    majorBusinessLines: ['digital_banking', 'credit_cards', 'investments'],
-    geography: 'LatAm',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 32.4, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 20.8, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 6.2, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 6.5, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 48.6, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 28.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 3.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 18.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 32.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'AFRM',
-    companyName: 'Affirm Holdings, Inc.',
-    archetype: 'fintech',
-    sector: 'Financial Services',
-    industry: 'Credit Services',
-    subIndustry: 'bnpl_consumer_finance',
-    revenueModels: ['merchant_fees', 'interest_income', 'servicing_fees'],
-    majorBusinessLines: ['buy_now_pay_later', 'point_of_sale_financing'],
-    geography: 'US',
-    lifecycle: 'growth',
-    profitabilityState: 'breakeven',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'standard',
-    scaleTier: 'mid',
-    metrics: {
-      pe_trailing: { value: null, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 35.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 4.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 5.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 46.3, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: -8.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: -3.1, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 8.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 68.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'UPST',
-    companyName: 'Upstart Holdings, Inc.',
-    archetype: 'fintech',
-    sector: 'Financial Services',
-    industry: 'Credit Services',
-    subIndustry: 'ai_lending_marketplace',
-    revenueModels: ['referral_fees', 'platform_fees', 'servicing_fees'],
-    majorBusinessLines: ['ai_lending_platform', 'loan_origination'],
-    geography: 'US',
-    lifecycle: 'growth',
-    profitabilityState: 'breakeven',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'standard',
-    scaleTier: 'mid',
-    metrics: {
-      pe_trailing: { value: null, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 42.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 3.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 3.7, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 20.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: -12.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: -4.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 6.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 72.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'LC',
-    companyName: 'LendingClub Corporation',
-    archetype: 'fintech',
-    sector: 'Financial Services',
-    industry: 'Credit Services',
-    subIndustry: 'digital_banking_lending',
-    revenueModels: ['net_interest_income', 'marketplace_fees'],
-    majorBusinessLines: ['digital_banking', 'personal_loans'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'small',
-    metrics: {
-      pe_trailing: { value: 18.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 12.4, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 1.1, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 1.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 14.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 6.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 0.9, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 6.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 62.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'ALLY',
-    companyName: 'Ally Financial Inc.',
-    archetype: 'bank',
-    sector: 'Financial Services',
-    industry: 'Banks—Diversified',
-    subIndustry: 'digital_banking_auto_lending',
-    revenueModels: ['net_interest_income', 'insurance_premiums', 'fee_based'],
-    majorBusinessLines: ['auto_financing', 'digital_deposits', 'commercial_lending'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 14.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 9.8, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 0.95, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 1.15, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 6.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 8.9, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 0.65, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 3.3, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 58.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 2. Commercial / Depository Banks
-  {
-    ticker: 'JPM',
-    companyName: 'JPMorgan Chase & Co.',
-    archetype: 'bank',
-    sector: 'Financial Services',
-    industry: 'Banks—Diversified',
-    subIndustry: 'money_center_bank',
-    revenueModels: ['net_interest_income', 'investment_banking', 'asset_management', 'card_services'],
-    majorBusinessLines: ['consumer_banking', 'corporate_investment_bank', 'commercial_banking', 'asset_wealth'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 12.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 11.5, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 1.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 2.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 11.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 17.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 1.35, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 2.65, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 52.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'BAC',
-    companyName: 'Bank of America Corporation',
-    archetype: 'bank',
-    sector: 'Financial Services',
-    industry: 'Banks—Diversified',
-    subIndustry: 'money_center_bank',
-    revenueModels: ['net_interest_income', 'wealth_management', 'investment_banking'],
-    majorBusinessLines: ['consumer_banking', 'global_wealth', 'global_banking', 'global_markets'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 13.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 11.2, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 1.25, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 1.6, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 4.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 10.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 0.85, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 1.95, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 63.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'WFC',
-    companyName: 'Wells Fargo & Company',
-    archetype: 'bank',
-    sector: 'Financial Services',
-    industry: 'Banks—Diversified',
-    subIndustry: 'money_center_bank',
-    revenueModels: ['net_interest_income', 'mortgage_banking', 'commercial_banking'],
-    majorBusinessLines: ['consumer_banking', 'commercial_banking', 'corporate_investment_banking', 'wealth'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'banking',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 12.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 10.5, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 1.35, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      price_to_tbv: { value: 1.65, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 3.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 11.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roa_pct: { value: 0.98, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_interest_margin_pct: { value: 2.75, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      efficiency_ratio_pct: { value: 66.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 3. Insurance (P&C)
-  {
-    ticker: 'PGR',
-    companyName: 'The Progressive Corporation',
-    archetype: 'insurer',
-    sector: 'Financial Services',
-    industry: 'Insurance—Property & Casualty',
-    subIndustry: 'pc_insurance',
-    revenueModels: ['net_premiums_earned', 'investment_income'],
-    majorBusinessLines: ['personal_auto', 'commercial_auto', 'property'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'insurance',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 16.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 15.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 4.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 19.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 31.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      combined_ratio_pct: { value: 89.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      loss_ratio_pct: { value: 68.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-    },
-  },
-  {
-    ticker: 'TRV',
-    companyName: 'The Travelers Companies, Inc.',
-    archetype: 'insurer',
-    sector: 'Financial Services',
-    industry: 'Insurance—Property & Casualty',
-    subIndustry: 'pc_insurance',
-    revenueModels: ['net_premiums_earned', 'investment_income'],
-    majorBusinessLines: ['business_insurance', 'bond_specialty', 'personal_insurance'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'insurance',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 12.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 11.4, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 1.95, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 12.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 16.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      combined_ratio_pct: { value: 94.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      loss_ratio_pct: { value: 72.1, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-    },
-  },
-  {
-    ticker: 'ALL',
-    companyName: 'The Allstate Corporation',
-    archetype: 'insurer',
-    sector: 'Financial Services',
-    industry: 'Insurance—Property & Casualty',
-    subIndustry: 'pc_insurance',
-    revenueModels: ['net_premiums_earned', 'investment_income'],
-    majorBusinessLines: ['allstate_protection', 'protection_services'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'financial_intermediary',
-    regulatoryType: 'insurance',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 11.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 10.2, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      price_to_book: { value: 2.4, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 10.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      roe_pct: { value: 24.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      combined_ratio_pct: { value: 92.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      loss_ratio_pct: { value: 70.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-    },
-  },
-
-  // 4. REIT (Industrial / Logistics)
-  {
-    ticker: 'PLD',
-    companyName: 'Prologis, Inc.',
-    archetype: 'reit',
-    sector: 'Real Estate',
-    industry: 'REIT—Industrial',
-    subIndustry: 'industrial_logistics_reit',
-    revenueModels: ['rental_income', 'strategic_capital_fees'],
-    majorBusinessLines: ['real_estate_operations', 'strategic_capital'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'reit',
-    scaleTier: 'large',
-    metrics: {
-      p_ffo_multiple: { value: 21.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      p_affo_multiple: { value: 24.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 11.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      noi_growth_yoy_pct: { value: 7.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      occupancy_rate_pct: { value: 96.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      debt_to_equity: { value: 0.54, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      dividend_yield_pct: { value: 3.2, unit: 'percent', period: 'FY2024', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'REXR',
-    companyName: 'Rexford Industrial Realty, Inc.',
-    archetype: 'reit',
-    sector: 'Real Estate',
-    industry: 'REIT—Industrial',
-    subIndustry: 'industrial_logistics_reit',
-    revenueModels: ['rental_income'],
-    majorBusinessLines: ['industrial_properties'],
-    geography: 'US',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'reit',
-    scaleTier: 'mid',
-    metrics: {
-      p_ffo_multiple: { value: 19.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      p_affo_multiple: { value: 22.4, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 16.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      noi_growth_yoy_pct: { value: 8.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      occupancy_rate_pct: { value: 97.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      debt_to_equity: { value: 0.48, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      dividend_yield_pct: { value: 3.6, unit: 'percent', period: 'FY2024', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'FR',
-    companyName: 'First Industrial Realty Trust, Inc.',
-    archetype: 'reit',
-    sector: 'Real Estate',
-    industry: 'REIT—Industrial',
-    subIndustry: 'industrial_logistics_reit',
-    revenueModels: ['rental_income'],
-    majorBusinessLines: ['logistics_facilities'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'reit',
-    scaleTier: 'mid',
-    metrics: {
-      p_ffo_multiple: { value: 18.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      p_affo_multiple: { value: 20.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 9.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      noi_growth_yoy_pct: { value: 6.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      occupancy_rate_pct: { value: 95.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      debt_to_equity: { value: 0.62, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      dividend_yield_pct: { value: 3.1, unit: 'percent', period: 'FY2024', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 5. Enterprise Software / SaaS Platform
-  {
-    ticker: 'MSFT',
-    companyName: 'Microsoft Corporation',
-    archetype: 'saas_software',
-    sector: 'Technology',
-    industry: 'Software—Infrastructure',
-    subIndustry: 'enterprise_cloud_software',
-    revenueModels: ['cloud_subscription', 'software_licenses', 'hardware'],
-    majorBusinessLines: ['productivity_business', 'intelligent_cloud', 'more_personal_computing'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'moderate',
-    regulatoryType: 'unregulated',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 34.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 28.5, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 22.4, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 12.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 15.7, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 69.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 44.6, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 36.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 29.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roe_pct: { value: 38.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 2.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'ORCL',
-    companyName: 'Oracle Corporation',
-    archetype: 'saas_software',
-    sector: 'Technology',
-    industry: 'Software—Infrastructure',
-    subIndustry: 'enterprise_cloud_software',
-    revenueModels: ['cloud_services', 'license_support', 'hardware'],
-    majorBusinessLines: ['cloud_services', 'cloud_license', 'hardware'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'moderate',
-    regulatoryType: 'unregulated',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 38.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 24.5, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 20.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 8.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 6.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 71.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 30.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 19.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 14.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roe_pct: { value: 48.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 3.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'CRM',
-    companyName: 'Salesforce, Inc.',
-    archetype: 'saas_software',
-    sector: 'Technology',
-    industry: 'Software—Application',
-    subIndustry: 'enterprise_cloud_software',
-    revenueModels: ['subscription_support', 'professional_services'],
-    majorBusinessLines: ['sales_cloud', 'service_cloud', 'platform', 'marketing_cloud'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'asset_light',
-    regulatoryType: 'unregulated',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 45.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 25.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 21.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 7.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 11.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 75.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 17.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 11.9, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 8.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roe_pct: { value: 7.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 4.1, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'PLTR',
-    companyName: 'Palantir Technologies Inc.',
-    archetype: 'saas_software',
-    sector: 'Technology',
-    industry: 'Software—Infrastructure',
-    subIndustry: 'ai_enterprise_platform',
-    revenueModels: ['software_subscription', 'professional_services'],
-    majorBusinessLines: ['commercial', 'government'],
-    geography: 'US',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'asset_light',
-    regulatoryType: 'unregulated',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 110.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 75.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 68.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 24.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 24.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 80.6, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 18.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 15.6, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 12.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roe_pct: { value: 10.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 1.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 6. Energy / Oil & Gas (E&P)
-  {
-    ticker: 'OXY',
-    companyName: 'Occidental Petroleum Corporation',
-    archetype: 'energy_commodity',
-    sector: 'Energy',
-    industry: 'Oil & Gas E&P',
-    subIndustry: 'oil_gas_ep',
-    revenueModels: ['oil_gas_sales', 'chemical_sales'],
-    majorBusinessLines: ['oil_and_gas', 'oxychem', 'midstream_marketing'],
-    geography: 'US',
-    lifecycle: 'cyclical',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 14.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 12.2, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 5.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: -2.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      operating_margin_pct: { value: 24.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 15.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 9.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      debt_to_equity: { value: 0.78, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 7.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'COP',
-    companyName: 'ConocoPhillips',
-    archetype: 'energy_commodity',
-    sector: 'Energy',
-    industry: 'Oil & Gas E&P',
-    subIndustry: 'oil_gas_ep',
-    revenueModels: ['crude_oil_sales', 'natural_gas_sales'],
-    majorBusinessLines: ['exploration_production'],
-    geography: 'Global',
-    lifecycle: 'cyclical',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 12.4, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 10.8, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 5.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: -1.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      operating_margin_pct: { value: 26.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 18.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 13.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      debt_to_equity: { value: 0.38, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 8.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'EOG',
-    companyName: 'EOG Resources, Inc.',
-    archetype: 'energy_commodity',
-    sector: 'Energy',
-    industry: 'Oil & Gas E&P',
-    subIndustry: 'oil_gas_ep',
-    revenueModels: ['crude_oil_sales', 'natural_gas_sales'],
-    majorBusinessLines: ['exploration_production'],
-    geography: 'US',
-    lifecycle: 'cyclical',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 10.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 9.8, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 4.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 0.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      operating_margin_pct: { value: 32.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      net_margin_pct: { value: 23.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 16.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      debt_to_equity: { value: 0.15, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      fcf_yield_pct: { value: 8.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 7. Early-Stage / Pre-Profit Space & Tech
-  {
-    ticker: 'RKLB',
-    companyName: 'Rocket Lab USA, Inc.',
-    archetype: 'early_stage',
-    sector: 'Industrials',
-    industry: 'Aerospace & Defense',
-    subIndustry: 'space_launch_systems',
-    revenueModels: ['launch_contracts', 'space_systems_sales'],
-    majorBusinessLines: ['launch_services', 'space_systems'],
-    geography: 'US',
-    lifecycle: 'early_stage',
-    profitabilityState: 'pre_profit',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'mid',
-    metrics: {
-      ev_sales: { value: 14.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 42.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 27.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      cash_runway_months: { value: 28, unit: 'count', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'ASTS',
-    companyName: 'AST SpaceMobile, Inc.',
-    archetype: 'early_stage',
-    sector: 'Technology',
-    industry: 'Telecommunications',
-    subIndustry: 'satellite_broadband',
-    revenueModels: ['gateway_services', 'commercial_agreements'],
-    majorBusinessLines: ['space_cellular_network'],
-    geography: 'US',
-    lifecycle: 'early_stage',
-    profitabilityState: 'pre_profit',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'mid',
-    metrics: {
-      ev_sales: { value: 28.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 120.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: -15.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      cash_runway_months: { value: 18, unit: 'count', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'LUNR',
-    companyName: 'Intuitive Machines, Inc.',
-    archetype: 'early_stage',
-    sector: 'Industrials',
-    industry: 'Aerospace & Defense',
-    subIndustry: 'lunar_services',
-    revenueModels: ['nasa_contracts', 'commercial_payloads'],
-    majorBusinessLines: ['lunar_access', 'orbital_services'],
-    geography: 'US',
-    lifecycle: 'early_stage',
-    profitabilityState: 'pre_profit',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'small',
-    metrics: {
-      ev_sales: { value: 6.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 85.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 12.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      cash_runway_months: { value: 16, unit: 'count', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 8. Semiconductor (Fabless vs Foundry vs Equipment)
-  {
-    ticker: 'NVDA',
-    companyName: 'NVIDIA Corporation',
-    archetype: 'semiconductor',
-    sector: 'Technology',
-    industry: 'Semiconductors',
-    subIndustry: 'fabless_accelerator',
-    revenueModels: ['compute_networking_sales', 'graphics_sales'],
-    majorBusinessLines: ['data_center', 'gaming', 'professional_visualization', 'auto'],
-    geography: 'Global',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'asset_light',
-    regulatoryType: 'unregulated',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 42.5, unit: 'x', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 30.0, unit: 'x', period: 'FY2026E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 32.0, unit: 'x', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 18.0, unit: 'x', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 114.0, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 75.0, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 62.0, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 68.0, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'AMD',
-    companyName: 'Advanced Micro Devices, Inc.',
-    archetype: 'semiconductor',
-    sector: 'Technology',
-    industry: 'Semiconductors',
-    subIndustry: 'fabless_accelerator',
-    revenueModels: ['data_center_sales', 'client_sales', 'gaming_sales'],
-    majorBusinessLines: ['data_center', 'client', 'gaming', 'embedded'],
-    geography: 'Global',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'asset_light',
-    regulatoryType: 'unregulated',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 45.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 26.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 24.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 7.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 14.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 50.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 11.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 14.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'TSM',
-    companyName: 'Taiwan Semiconductor Manufacturing Company Limited',
-    archetype: 'semiconductor',
-    sector: 'Technology',
-    industry: 'Semiconductors',
-    subIndustry: 'foundry_manufacturing',
-    revenueModels: ['wafer_manufacturing_fees'],
-    majorBusinessLines: ['advanced_nodes', 'specialty_nodes'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'unregulated',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 24.5, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 18.5, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 12.0, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 8.5, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 29.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 54.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 43.1, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 28.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'ASML',
-    companyName: 'ASML Holding N.V.',
-    archetype: 'semiconductor',
-    sector: 'Technology',
-    industry: 'Semiconductor Equipment',
-    subIndustry: 'lithography_equipment',
-    revenueModels: ['equipment_sales', 'service_field_options'],
-    majorBusinessLines: ['euv_systems', 'duv_systems', 'metrology_inspection'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'moderate',
-    regulatoryType: 'unregulated',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 38.0, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 25.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 26.0, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      ev_sales: { value: 10.2, unit: 'x', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 12.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 51.3, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 31.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 38.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 20-F', reportedOrDerived: 'DERIVED' },
-    },
-  },
-
-  // 9. Retail: Physical / Omnichannel vs Digital Marketplace
-  {
-    ticker: 'WMT',
-    companyName: 'Walmart Inc.',
-    archetype: 'retail',
-    sector: 'Consumer Defensive',
-    industry: 'Discount Stores',
-    subIndustry: 'physical_omnichannel_retail',
-    revenueModels: ['merchandise_sales', 'membership_fees'],
-    majorBusinessLines: ['walmart_us', 'walmart_international', 'sams_club'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 32.0, unit: 'x', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 26.5, unit: 'x', period: 'FY2026E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 16.5, unit: 'x', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 5.5, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 24.5, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 4.2, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 14.5, unit: 'percent', period: 'FY2025', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'TGT',
-    companyName: 'Target Corporation',
-    archetype: 'retail',
-    sector: 'Consumer Defensive',
-    industry: 'Discount Stores',
-    subIndustry: 'physical_omnichannel_retail',
-    revenueModels: ['merchandise_sales'],
-    majorBusinessLines: ['stores_digital'],
-    geography: 'US',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 14.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 13.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 8.8, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 1.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 27.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 5.3, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 15.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'AMZN',
-    companyName: 'Amazon.com, Inc.',
-    archetype: 'digital_marketplace',
-    sector: 'Consumer Cyclical',
-    industry: 'Internet Retail',
-    subIndustry: 'digital_marketplace_cloud',
-    revenueModels: ['online_stores', 'third_party_seller_services', 'aws_cloud', 'advertising'],
-    majorBusinessLines: ['north_america', 'international', 'aws'],
-    geography: 'Global',
-    lifecycle: 'growth',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'capital_intensive',
-    regulatoryType: 'standard',
-    scaleTier: 'mega',
-    metrics: {
-      pe_trailing: { value: 40.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 28.0, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 18.0, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 11.8, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 48.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 9.2, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 16.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-  {
-    ticker: 'EBAY',
-    companyName: 'eBay Inc.',
-    archetype: 'digital_marketplace',
-    sector: 'Consumer Cyclical',
-    industry: 'Internet Retail',
-    subIndustry: 'digital_marketplace_cloud',
-    revenueModels: ['take_rate_commission', 'advertising'],
-    majorBusinessLines: ['marketplace_platform'],
-    geography: 'Global',
-    lifecycle: 'mature',
-    profitabilityState: 'profitable',
-    capitalIntensity: 'asset_light',
-    regulatoryType: 'standard',
-    scaleTier: 'large',
-    metrics: {
-      pe_trailing: { value: 15.2, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      pe_forward: { value: 12.8, unit: 'x', period: 'FY2025E', source: 'Consensus Snapshot', reportedOrDerived: 'DERIVED' },
-      ev_ebitda: { value: 10.5, unit: 'x', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      revenue_growth_yoy_pct: { value: 4.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'REPORTED' },
-      gross_margin_pct: { value: 71.5, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      operating_margin_pct: { value: 22.4, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-      roic_pct: { value: 18.0, unit: 'percent', period: 'FY2024', source: 'SEC Form 10-K', reportedOrDerived: 'DERIVED' },
-    },
-  },
-];
+const peerDiscoveryCache = new Map<string, { timestamp: number; result: PeerDiscoveryResult }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Builds a PeerBusinessFingerprint for a given stock report.
@@ -947,6 +64,26 @@ export function buildPeerBusinessFingerprint(
   } else if (archetype === 'retail' || archetype === 'digital_marketplace') {
     if (desc.includes('marketplace') || desc.includes('e-commerce platform')) subIndustry = 'digital_marketplace_cloud';
     else subIndustry = 'physical_omnichannel_retail';
+  } else if (archetype === 'industrial_manufacturing') {
+    if (/auto\s*manufactur|electric\s*vehicle|automotive|car\s*manufactur/i.test(industry) || /electric\s*vehicle|ev\b|automotive|automobile/i.test(desc)) {
+      subIndustry = 'automotive_manufacturing';
+    } else if (/aerospace|defense/i.test(industry) || /aerospace|defense/i.test(desc)) {
+      subIndustry = 'aerospace_defense';
+    } else if (/machinery|equipment/i.test(industry)) {
+      subIndustry = 'industrial_machinery';
+    } else {
+      subIndustry = 'industrial_manufacturing';
+    }
+  } else if (archetype === 'insurer') {
+    if (/property|casualty|p&c/i.test(industry) || /property|casualty/i.test(desc)) {
+      subIndustry = 'pc_insurance';
+    } else if (/life/i.test(industry) || /life\s*insurance/i.test(desc)) {
+      subIndustry = 'life_insurance';
+    } else if (/reinsur/i.test(industry) || /reinsur/i.test(desc)) {
+      subIndustry = 'reinsurance';
+    } else {
+      subIndustry = 'general_insurance';
+    }
   }
 
   // Profitability inference
@@ -967,15 +104,23 @@ export function buildPeerBusinessFingerprint(
       ? 'capital_intensive'
       : 'asset_light';
 
+  const revenueModels = isFinancial
+    ? ['net_interest_income', 'fee_based']
+    : subIndustry === 'automotive_manufacturing'
+      ? ['vehicle_sales', 'energy_storage', 'services']
+      : ['product_sales', 'subscription'];
+
   return {
     ticker: sym,
     companyName: (profile as any)?.company_name || (profile as any)?.name || sym,
     archetype,
+    primaryArchetype: archetype,
     sector,
     industry,
     subIndustry,
-    revenueModels: isFinancial ? ['net_interest_income', 'fee_based'] : ['product_sales', 'subscription'],
+    revenueModels,
     majorBusinessLines: [industry],
+    businessLines: [industry],
     geography: 'US',
     lifecycle: archetype === 'early_stage' ? 'early_stage' : 'mature',
     profitabilityState,
@@ -1045,6 +190,18 @@ export function calculatePeerSimilarity(
     relationType = 'CLOSE_COMPARABLE';
   }
 
+  // Guard: Sub-industry mismatch in specialized sectors must NOT be promoted to DIRECT_PEER
+  if (relationType === 'DIRECT_PEER') {
+    if (
+      (target.archetype === 'semiconductor' && target.subIndustry && candidate.subIndustry && target.subIndustry !== candidate.subIndustry) ||
+      (target.archetype === 'reit' && target.subIndustry && candidate.subIndustry && target.subIndustry !== candidate.subIndustry) ||
+      (target.archetype === 'energy_commodity' && target.subIndustry && candidate.subIndustry && target.subIndustry !== candidate.subIndustry) ||
+      (target.subIndustry === 'automotive_manufacturing' && candidate.subIndustry !== 'automotive_manufacturing')
+    ) {
+      relationType = 'CLOSE_COMPARABLE';
+    }
+  }
+
   const rationaleEn = relationType === 'DIRECT_PEER'
     ? `Direct peer sharing identical ${target.archetype} business archetype and ${target.subIndustry || target.industry} operating model.`
     : relationType === 'CLOSE_COMPARABLE'
@@ -1061,11 +218,37 @@ export function calculatePeerSimilarity(
 }
 
 /**
+ * Validates candidate integrity before admission.
+ */
+function verifyCandidate(cand: any): { valid: boolean; reason?: string } {
+  if (!cand || typeof cand !== 'object') return { valid: false, reason: 'NULL_OR_NON_OBJECT' };
+  const ticker = (cand.ticker || cand.symbol || '').toUpperCase().trim();
+  if (!ticker || !/^[A-Z0-9.\-_]{1,10}$/.test(ticker)) return { valid: false, reason: 'INVALID_TICKER_FORMAT' };
+
+  // Reject ETF or Fund tickers
+  if (/^(SPY|QQQ|IWM|XLF|XLK|XLE|VNQ|VTI|VOO|IVV|DIA|ARKK)$/i.test(ticker)) {
+    return { valid: false, reason: 'ETF_OR_FUND' };
+  }
+
+  // Reject synthetic placeholder tickers
+  if (/^(PEER_\d+|COMP_\d+|STOCK_\d+|TEST)$/i.test(ticker)) {
+    return { valid: false, reason: 'SYNTHETIC_OR_PLACEHOLDER_TICKER' };
+  }
+
+  const name = cand.companyName || cand.company_name || cand.name;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return { valid: false, reason: 'MISSING_COMPANY_NAME' };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Evaluates hard filters to prevent invalid or cross-archetype comparisons.
  */
 function passesHardFilters(
   target: PeerBusinessFingerprint,
-  candidate: CandidateDefinition
+  candidate: CandidateDefinition | PeerBusinessFingerprint
 ): { passes: boolean; reason?: string } {
   // 1. Never compare company with itself
   if (candidate.ticker.toUpperCase() === target.ticker.toUpperCase()) {
@@ -1073,7 +256,7 @@ function passesHardFilters(
   }
 
   // 2. Reject ETF or Fund tickers
-  if (/^(SPY|QQQ|IWM|XLF|XLK|XLE|VNQ|VTI|VOO)$/i.test(candidate.ticker)) {
+  if (/^(SPY|QQQ|IWM|XLF|XLK|XLE|VNQ|VTI|VOO|IVV|DIA|ARKK)$/i.test(candidate.ticker)) {
     return { passes: false, reason: 'ETF_OR_FUND' };
   }
 
@@ -1129,7 +312,165 @@ function passesHardFilters(
     return { passes: false, reason: 'EARLY_STAGE_LIFECYCLE_MISMATCH' };
   }
 
+  // 11. Automotive Guard: Automotive manufacturers must not be compared to unrelated industrials as direct peers
+  if (target.subIndustry === 'automotive_manufacturing' && candidate.subIndustry && candidate.subIndustry !== 'automotive_manufacturing') {
+    return { passes: false, reason: 'AUTOMOTIVE_SUBSECTOR_MISMATCH' };
+  }
+
   return { passes: true };
+}
+
+/**
+ * Normalizes a raw candidate into a PeerBusinessFingerprint.
+ */
+function buildCandidateFingerprint(
+  raw: CandidateDefinition | PeerCompanyItem,
+  target: PeerBusinessFingerprint
+): PeerBusinessFingerprint {
+  if ('archetype' in raw && 'subIndustry' in raw && 'revenueModels' in raw) {
+    // CandidateDefinition
+    const cand = raw as CandidateDefinition;
+    return {
+      ticker: cand.ticker,
+      companyName: cand.companyName,
+      archetype: cand.archetype,
+      primaryArchetype: cand.archetype,
+      sector: cand.sector,
+      industry: cand.industry,
+      subIndustry: cand.subIndustry,
+      revenueModels: cand.revenueModels,
+      majorBusinessLines: cand.majorBusinessLines,
+      geography: cand.geography,
+      lifecycle: cand.lifecycle,
+      profitabilityState: cand.profitabilityState,
+      capitalIntensity: cand.capitalIntensity,
+      regulatoryType: cand.regulatoryType,
+      scaleTier: cand.scaleTier,
+    };
+  }
+
+  // PeerCompanyItem or generic object
+  const p = raw as PeerCompanyItem & Record<string, any>;
+  const ticker = (p.ticker || p.symbol || '').toUpperCase().trim();
+  const companyName = p.company_name || p.name || ticker;
+  const sector = p.sector || (p as any)?.overview?.sector || target.sector;
+  const industry = p.industry || (p as any)?.overview?.industry || target.industry;
+
+  let archetype: BusinessArchetype = target.archetype;
+  if (p.archetype) {
+    archetype = p.archetype;
+  } else if (p.sector || p.industry) {
+    archetype = resolveBusinessArchetype({ company_profile: { sector, industry } } as any, ticker);
+  }
+
+  let subIndustry = p.subIndustry || 'general';
+  if (/auto\s*manufactur|electric\s*vehicle|automotive/i.test(industry)) {
+    subIndustry = 'automotive_manufacturing';
+  } else if (archetype === 'semiconductor') {
+    subIndustry = /foundry/i.test(industry) ? 'foundry_manufacturing' : 'fabless_accelerator';
+  } else if (archetype === 'reit') {
+    subIndustry = /industrial/i.test(industry) ? 'industrial_logistics_reit' : /office/i.test(industry) ? 'office_reit' : 'general_reit';
+  } else if (archetype === 'energy_commodity') {
+    subIndustry = /refin/i.test(industry) ? 'refining' : 'oil_gas_ep';
+  } else if (archetype === 'retail') {
+    subIndustry = 'physical_omnichannel_retail';
+  } else if (archetype === 'saas_software') {
+    subIndustry = 'enterprise_cloud_software';
+  }
+
+  const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
+
+  const revenueModels = p.revenueModels || (
+    isFinancial
+      ? ['net_interest_income', 'fee_based']
+      : subIndustry === 'automotive_manufacturing'
+        ? ['vehicle_sales', 'energy_storage']
+        : archetype === 'semiconductor'
+          ? ['chip_sales', 'wafer_manufacturing']
+          : archetype === 'saas_software'
+            ? ['subscription_software', 'cloud_services']
+            : ['product_sales', 'services']
+  );
+
+  return {
+    ticker,
+    companyName,
+    archetype,
+    primaryArchetype: archetype,
+    sector,
+    industry,
+    subIndustry,
+    revenueModels,
+    majorBusinessLines: p.majorBusinessLines || [industry],
+    geography: p.geography || 'US',
+    lifecycle: p.lifecycle || target.lifecycle,
+    profitabilityState: p.profitabilityState || target.profitabilityState,
+    capitalIntensity: p.capitalIntensity || (isFinancial ? 'financial_intermediary' : subIndustry === 'automotive_manufacturing' ? 'capital_intensive' : target.capitalIntensity),
+    regulatoryType: p.regulatoryType || (isFinancial ? 'banking' : archetype === 'reit' ? 'reit' : 'standard'),
+    scaleTier: p.scaleTier || 'large',
+  };
+}
+
+/**
+ * Extracts normalized metric observations from a candidate.
+ */
+function extractCandidateMetrics(
+  raw: CandidateDefinition | PeerCompanyItem,
+  ticker: string,
+  companyName: string,
+  asOfDate?: string
+): Record<string, PeerMetricObservation> {
+  const metricObservations: Record<string, PeerMetricObservation> = {};
+
+  if ('metrics' in raw && raw.metrics && typeof raw.metrics === 'object') {
+    for (const [mKey, mData] of Object.entries((raw as CandidateDefinition).metrics)) {
+      metricObservations[mKey] = {
+        ticker,
+        company: companyName,
+        metric: mKey,
+        value: mData.value,
+        unit: mData.unit,
+        period: mData.period,
+        asOfDate: (mData as any).asOfDate || asOfDate,
+        source: mData.source,
+        reportedOrDerived: mData.reportedOrDerived,
+        status: mData.value !== null ? 'VERIFIED' : 'NOT_REPORTED',
+      };
+    }
+    return metricObservations;
+  }
+
+  // Map from PeerCompanyItem
+  const p = raw as PeerCompanyItem;
+  const period = p.as_of_date || asOfDate || 'Latest';
+  const source = 'Verified Peer Disclosure / Market Snapshot';
+
+  const mapMetric = (key: string, val: number | null | undefined, unit: string) => {
+    metricObservations[key] = {
+      ticker,
+      company: companyName,
+      metric: key,
+      value: typeof val === 'number' && Number.isFinite(val) ? val : null,
+      unit,
+      period,
+      asOfDate: p.as_of_date || asOfDate,
+      source,
+      reportedOrDerived: 'REPORTED',
+      status: typeof val === 'number' && Number.isFinite(val) ? 'VERIFIED' : 'NOT_REPORTED',
+    };
+  };
+
+  mapMetric('pe_trailing', p.pe_trailing, 'x');
+  mapMetric('pe_forward', p.pe_forward, 'x');
+  mapMetric('revenue_growth_yoy_pct', p.revenue_growth_yoy_pct, '%');
+  mapMetric('gross_margin_pct', p.gross_margin_pct, '%');
+  mapMetric('net_margin_pct', p.net_margin_pct, '%');
+  mapMetric('ev_ebitda', p.ev_ebitda, 'x');
+  mapMetric('price_to_book', p.pb_ratio, 'x');
+  mapMetric('roe_pct', p.roe_pct, '%');
+  mapMetric('fcf_yield_pct', p.fcf_yield_pct, '%');
+
+  return metricObservations;
 }
 
 /**
@@ -1150,67 +491,82 @@ export function calculateDeterministicMedian(values: (number | null | undefined)
 /**
  * Main Deterministic Peer Discovery Engine.
  * Follows the pipeline:
- * Target Company -> Business Archetype -> Semantic Fingerprint -> Candidate Universe -> Hard Filters -> Similarity Scoring -> Final Peer Set -> Medians.
+ * Target Company -> Business Archetype -> Semantic Fingerprint -> Dynamic Candidate Discovery -> Verification -> Hard Filters -> Similarity Scoring -> Top Candidate Set -> Medians.
  */
 export function discoverPeers(
   report: Partial<ReportData>,
-  ticker?: string
+  ticker?: string,
+  options?: PeerDiscoveryOptions
 ): PeerDiscoveryResult {
   const targetTicker = (ticker || report.ticker || (report as any)?.symbol || 'STOCK').toUpperCase().trim();
   const targetFingerprint = buildPeerBusinessFingerprint(report, targetTicker);
 
-  const candidates: PeerCandidate[] = [];
+  // Check cache for identical target & fingerprint
+  const cacheKey = `${targetTicker}:${targetFingerprint.archetype}:${targetFingerprint.subIndustry || targetFingerprint.industry}:${report.as_of_date || 'latest'}`;
+  const cached = peerDiscoveryCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS) && !options?.candidates) {
+    return cached.result;
+  }
 
-  for (const item of PUBLIC_CANDIDATE_UNIVERSE) {
-    const filterRes = passesHardFilters(targetFingerprint, item);
+  // 1. Gather raw candidates from dynamic sources first:
+  //    a. Explicit options.candidates
+  //    b. report.peer_comparison?.peers
+  //    c. report.valuation_dashboard?.pe_ratio?.peer_comparison_list
+  const rawCandidates: (CandidateDefinition | PeerCompanyItem)[] = [];
+
+  if (options?.candidates && options.candidates.length > 0) {
+    rawCandidates.push(...options.candidates);
+  } else if (report.peer_comparison?.peers && report.peer_comparison.peers.length > 0) {
+    rawCandidates.push(...report.peer_comparison.peers);
+  } else if (report.valuation_dashboard?.pe_ratio?.peer_comparison_list && report.valuation_dashboard.pe_ratio.peer_comparison_list.length > 0) {
+    for (const item of report.valuation_dashboard.pe_ratio.peer_comparison_list) {
+      if (!item.is_target) {
+        rawCandidates.push({
+          ticker: item.symbol,
+          company_name: item.name,
+          pe_trailing: typeof item.ratio_value === 'number' ? item.ratio_value : null,
+          pe_forward: typeof item.forward_ratio === 'number' ? item.forward_ratio : null,
+          market_cap: item.market_cap_b ? `$${item.market_cap_b}B` : undefined,
+        });
+      }
+    }
+  }
+
+  // 2. If no dynamic candidates found and fixture fallback is allowed (for offline / test runs):
+  if (rawCandidates.length === 0 && !options?.disableFixtureFallback) {
+    rawCandidates.push(...FIXTURE_CANDIDATE_UNIVERSE);
+  }
+
+  // 3. Process, verify, filter, and score candidates
+  const candidates: PeerCandidate[] = [];
+  const seenTickers = new Set<string>();
+
+  for (const raw of rawCandidates) {
+    const v = verifyCandidate(raw);
+    if (!v.valid) continue;
+
+    const candTicker = (raw.ticker || (raw as any).symbol || '').toUpperCase().trim();
+    if (candTicker === targetTicker || seenTickers.has(candTicker)) continue;
+    seenTickers.add(candTicker);
+
+    const candFingerprint = buildCandidateFingerprint(raw, targetFingerprint);
+    const filterRes = passesHardFilters(targetFingerprint, candFingerprint);
     if (!filterRes.passes) continue;
 
-    const candFingerprint: PeerBusinessFingerprint = {
-      ticker: item.ticker,
-      companyName: item.companyName,
-      archetype: item.archetype,
-      sector: item.sector,
-      industry: item.industry,
-      subIndustry: item.subIndustry,
-      revenueModels: item.revenueModels,
-      majorBusinessLines: item.majorBusinessLines,
-      geography: item.geography,
-      lifecycle: item.lifecycle,
-      profitabilityState: item.profitabilityState,
-      capitalIntensity: item.capitalIntensity,
-      regulatoryType: item.regulatoryType,
-      scaleTier: item.scaleTier,
-    };
-
     const { score, relationType, rationaleEn, rationaleTh } = calculatePeerSimilarity(targetFingerprint, candFingerprint);
+    if (score < 0.25) continue;
 
-    // Only admit candidates with score >= 0.40
-    if (score < 0.40) continue;
-
-    const metricObservations: Record<string, PeerMetricObservation> = {};
-    for (const [mKey, mData] of Object.entries(item.metrics)) {
-      metricObservations[mKey] = {
-        ticker: item.ticker,
-        company: item.companyName,
-        metric: mKey,
-        value: mData.value,
-        unit: mData.unit,
-        period: mData.period,
-        source: mData.source,
-        reportedOrDerived: mData.reportedOrDerived,
-        status: mData.value !== null ? 'VERIFIED' : 'NOT_REPORTED',
-      };
-    }
+    const metrics = extractCandidateMetrics(raw, candTicker, candFingerprint.companyName, report.as_of_date);
 
     candidates.push({
-      ticker: item.ticker,
-      companyName: item.companyName,
+      ticker: candTicker,
+      companyName: candFingerprint.companyName,
       fingerprint: candFingerprint,
       similarityScore: score,
       relationType,
       selectionRationale: rationaleEn,
       selectionRationaleTh: rationaleTh,
-      metrics: metricObservations,
+      metrics,
     });
   }
 
@@ -1228,7 +584,7 @@ export function discoverPeers(
     const unavailableMessageTh = 'ยังไม่พบกลุ่มบริษัทที่เปรียบเทียบได้และมีข้อมูลที่ตรวจสอบแล้วเพียงพอ';
     const unavailableMessageEn = 'No sufficiently comparable source-verified peer set is currently available.';
 
-    return {
+    const emptyResult: PeerDiscoveryResult = {
       targetTicker,
       targetFingerprint,
       peers: [],
@@ -1242,6 +598,7 @@ export function discoverPeers(
       benchmarkRows: [],
       peerCompanyItems: [],
     };
+    return emptyResult;
   }
 
   // Compute deterministic medians for all available metric keys
@@ -1269,8 +626,16 @@ export function discoverPeers(
     gross_margin_pct: p.metrics.gross_margin_pct?.value,
     net_margin_pct: p.metrics.net_margin_pct?.value,
     ev_ebitda: p.metrics.ev_ebitda?.value,
-    status_label_th: p.relationType === 'DIRECT_PEER' ? 'คู่แข่งตรง' : 'บริษัทเทียบเคียง',
-    status_label_en: p.relationType === 'DIRECT_PEER' ? 'Direct Peer' : 'Comparable',
+    pb_ratio: p.metrics.price_to_book?.value,
+    roe_pct: p.metrics.roe_pct?.value,
+    fcf_yield_pct: p.metrics.fcf_yield_pct?.value,
+    status_label_th: p.relationType === 'DIRECT_PEER' ? 'คู่แข่งตรง' : p.relationType === 'CLOSE_COMPARABLE' ? 'บริษัทเทียบเคียง' : 'บริษัทอ้างอิง',
+    status_label_en: p.relationType === 'DIRECT_PEER' ? 'Direct Peer' : p.relationType === 'CLOSE_COMPARABLE' ? 'Close Comparable' : 'Broader Reference',
+    relation_type: p.relationType,
+    similarity_score: p.similarityScore,
+    selection_rationale: p.selectionRationale,
+    selection_rationale_th: p.selectionRationaleTh,
+    as_of_date: p.metrics.pe_trailing?.period || report.as_of_date,
   }));
 
   // Add target row to peerCompanyItems for context
@@ -1301,21 +666,26 @@ export function discoverPeers(
   // Build archetype-aware benchmark rows for Five Pillars (Pillar 5)
   const benchmarkRows = buildArchetypeBenchmarkRows(targetFingerprint.archetype, report, finalPeers, medians);
 
-  return {
+  const result: PeerDiscoveryResult = {
     targetTicker,
     targetFingerprint,
     peers: finalPeers,
     peerCount,
     isLimitedSample,
     medians,
-    isBroadSectorUniverse: false, // Invariant: do NOT label peer median as sector median
+    isBroadSectorUniverse: false,
     benchmarkRows,
     peerCompanyItems,
   };
+
+  peerDiscoveryCache.set(cacheKey, { timestamp: Date.now(), result });
+  return result;
 }
 
 /**
  * Builds business-aware benchmark rows for Five Pillars based on archetype.
+ * Invariant: Direct Peer column must refer to ONE company across all rows.
+ * If no DIRECT_PEER is available, direct_peer_value shows 'N/A'.
  */
 function buildArchetypeBenchmarkRows(
   archetype: BusinessArchetype,
@@ -1331,10 +701,12 @@ function buildArchetypeBenchmarkRows(
   const fmt = (v: number | null | undefined, unit = '') =>
     typeof v === 'number' && Number.isFinite(v) ? `${v}${unit}` : 'N/A';
 
-  const peer1 = peers[0];
+  // Section 27: Direct Peer must refer to one company.
+  // If no candidate has DIRECT_PEER, direct peer value is N/A.
+  const directPeer = peers.find(p => p.relationType === 'DIRECT_PEER');
 
   if (isFinancial) {
-    // Financial Benchmark Rows: P/E, P/B, ROE, NIM, Efficiency Ratio
+    // Financial Benchmark Rows: P/E, P/B, ROE, NIM
     const peMed = medians.pe_trailing;
     const targetPE = report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
     rows.push({
@@ -1342,7 +714,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
       target_value: fmt(targetPE, 'x'),
       sector_median: fmt(peMed, 'x'),
-      direct_peer_value: fmt(peer1?.metrics.pe_trailing?.value, 'x'),
+      direct_peer_value: fmt(directPeer?.metrics.pe_trailing?.value, 'x'),
       status: targetPE && peMed ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPE && peMed ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
@@ -1354,7 +726,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'ราคาต่อมูลค่าทางบัญชี',
       target_value: fmt(targetPB, 'x'),
       sector_median: fmt(pbMed, 'x'),
-      direct_peer_value: fmt(peer1?.metrics.price_to_book?.value, 'x'),
+      direct_peer_value: fmt(directPeer?.metrics.price_to_book?.value, 'x'),
       status: targetPB && pbMed ? (targetPB < pbMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPB && pbMed ? (targetPB < pbMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
@@ -1366,7 +738,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น',
       target_value: fmt(kiRoe, '%'),
       sector_median: fmt(roeMed, '%'),
-      direct_peer_value: fmt(peer1?.metrics.roe_pct?.value, '%'),
+      direct_peer_value: fmt(directPeer?.metrics.roe_pct?.value, '%'),
       status: kiRoe && roeMed ? (kiRoe > roeMed ? 'better' : 'worse') : 'neutral',
       status_label_th: kiRoe && roeMed ? (kiRoe > roeMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
     });
@@ -1378,19 +750,19 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'อัตราส่วนต่างดอกเบี้ยสุทธิ',
       target_value: fmt(kiNim, '%'),
       sector_median: fmt(nimMed, '%'),
-      direct_peer_value: fmt(peer1?.metrics.net_interest_margin_pct?.value, '%'),
+      direct_peer_value: fmt(directPeer?.metrics.net_interest_margin_pct?.value, '%'),
       status: kiNim && nimMed ? (kiNim > nimMed ? 'better' : 'worse') : 'neutral',
       status_label_th: kiNim && nimMed ? (kiNim > nimMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
     });
   } else if (isReit) {
-    // REIT Benchmark Rows: P/FFO, P/AFFO, Occupancy Rate, Dividend Yield
+    // REIT Benchmark Rows: P/FFO, Occupancy Rate
     const pffoMed = medians.p_ffo_multiple;
     rows.push({
       metric_name: 'Price / FFO',
       metric_name_th: 'ราคาต่อกระแสเงินสดจากดำเนินงาน (P/FFO)',
       target_value: fmt(pffoMed, 'x'),
       sector_median: fmt(pffoMed, 'x'),
-      direct_peer_value: fmt(peer1?.metrics.p_ffo_multiple?.value, 'x'),
+      direct_peer_value: fmt(directPeer?.metrics.p_ffo_multiple?.value, 'x'),
       status: 'neutral',
       status_label_th: 'เทียบเท่า',
     });
@@ -1401,19 +773,19 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'อัตราการเช่าพื้นที่',
       target_value: fmt(occMed, '%'),
       sector_median: fmt(occMed, '%'),
-      direct_peer_value: fmt(peer1?.metrics.occupancy_rate_pct?.value, '%'),
+      direct_peer_value: fmt(directPeer?.metrics.occupancy_rate_pct?.value, '%'),
       status: 'better',
       status_label_th: 'อัตราเช่าสูง',
     });
   } else if (isEarlyStage) {
-    // Early Stage Benchmark Rows: EV/Sales, Revenue Growth, Cash Runway
+    // Early Stage Benchmark Rows: EV/Sales, Revenue Growth
     const evsMed = medians.ev_sales;
     rows.push({
       metric_name: 'EV / Sales Multiple',
       metric_name_th: 'มูลค่ากิจการต่อรายได้',
       target_value: fmt(evsMed, 'x'),
       sector_median: fmt(evsMed, 'x'),
-      direct_peer_value: fmt(peer1?.metrics.ev_sales?.value, 'x'),
+      direct_peer_value: fmt(directPeer?.metrics.ev_sales?.value, 'x'),
       status: 'neutral',
       status_label_th: 'เทียบเท่า',
     });
@@ -1424,12 +796,12 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'การเติบโตรายได้ YoY',
       target_value: fmt(revgMed, '%'),
       sector_median: fmt(revgMed, '%'),
-      direct_peer_value: fmt(peer1?.metrics.revenue_growth_yoy_pct?.value, '%'),
+      direct_peer_value: fmt(directPeer?.metrics.revenue_growth_yoy_pct?.value, '%'),
       status: 'better',
       status_label_th: 'เติบโตสูง',
     });
   } else {
-    // Standard Operating Benchmark Rows: P/E, EV/EBITDA, Revenue Growth, Operating Margin, ROIC
+    // Standard Operating & Industrial/Manufacturing Benchmark Rows: P/E, EV/EBITDA, Revenue Growth, ROIC
     const peMed = medians.pe_trailing;
     const targetPE = report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
     rows.push({
@@ -1437,7 +809,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
       target_value: fmt(targetPE, 'x'),
       sector_median: fmt(peMed, 'x'),
-      direct_peer_value: fmt(peer1?.metrics.pe_trailing?.value, 'x'),
+      direct_peer_value: fmt(directPeer?.metrics.pe_trailing?.value, 'x'),
       status: targetPE && peMed ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPE && peMed ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
@@ -1449,7 +821,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'มูลค่ากิจการต่อกำไรก่อนดอกเบี้ยภาษี',
       target_value: fmt(targetEVE, 'x'),
       sector_median: fmt(eveMed, 'x'),
-      direct_peer_value: fmt(peer1?.metrics.ev_ebitda?.value, 'x'),
+      direct_peer_value: fmt(directPeer?.metrics.ev_ebitda?.value, 'x'),
       status: targetEVE && eveMed ? (targetEVE < eveMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetEVE && eveMed ? (targetEVE < eveMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
@@ -1463,7 +835,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'การเติบโตรายได้ YoY',
       target_value: fmt(targetRevGrowth, '%'),
       sector_median: fmt(revgMed, '%'),
-      direct_peer_value: fmt(peer1?.metrics.revenue_growth_yoy_pct?.value, '%'),
+      direct_peer_value: fmt(directPeer?.metrics.revenue_growth_yoy_pct?.value, '%'),
       status: targetRevGrowth && revgMed ? (targetRevGrowth > revgMed ? 'better' : 'worse') : 'neutral',
       status_label_th: targetRevGrowth && revgMed ? (targetRevGrowth > revgMed ? 'เติบโตสูงกว่า' : 'เติบโตต่ำกว่า') : 'เทียบเท่า',
     });
@@ -1475,7 +847,7 @@ function buildArchetypeBenchmarkRows(
       metric_name_th: 'ผลตอบแทนเงินลงทุน',
       target_value: fmt(kiRoic, '%'),
       sector_median: fmt(roicMed, '%'),
-      direct_peer_value: fmt(peer1?.metrics.roic_pct?.value, '%'),
+      direct_peer_value: fmt(directPeer?.metrics.roic_pct?.value, '%'),
       status: kiRoic && roicMed ? (kiRoic > roicMed ? 'better' : 'worse') : 'neutral',
       status_label_th: kiRoic && roicMed ? (kiRoic > roicMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
     });
