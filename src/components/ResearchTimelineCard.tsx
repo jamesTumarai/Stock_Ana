@@ -474,7 +474,7 @@ export function ResearchTimelineCard({
                   >
                     <div className="flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-stone-500" />
-                      <span>{isThai ? `3. ความแตกต่างจากการครอบคลุมงานวิจัย (${researchCoverageItems.length} รายการ)` : `3. Research Coverage Differences (${researchCoverageItems.length})`}</span>
+                      <span>{isThai ? `3. ความแตกต่างจากงานวิจัยและการวิเคราะห์ (${researchCoverageItems.length} รายการ)` : `3. Research & Analysis Drift (${researchCoverageItems.length})`}</span>
                     </div>
                     <div className="flex items-center gap-1 text-[11px] text-stone-500 font-sans">
                       <span>{isResearchCoverageExpanded ? (isThai ? 'ย่อ' : 'Collapse') : (isThai ? 'ดูรายละเอียด' : 'Show Details')}</span>
@@ -489,6 +489,15 @@ export function ResearchTimelineCard({
                           <div className="flex items-center justify-between gap-1 flex-wrap">
                             <span className="font-semibold text-stone-800">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
                             <div className="flex items-center gap-1">
+                              {ch.driftSubtype === 'ANALYSIS_MODEL_DRIFT' ? (
+                                <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                                  {isThai ? 'ความผันผวนจากการวิเคราะห์' : 'Analysis Drift'}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                                  {isThai ? 'ความแตกต่างด้านเนื้อหา' : 'Research Coverage'}
+                                </span>
+                              )}
                               <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
                                 {ch.materiality}
                               </span>
