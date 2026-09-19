@@ -5,6 +5,10 @@ import {
   matchRiskCatalystTransitions,
   TrackedItemTransition
 } from './thesisExpectations';
+import {
+  reconcileSubjectLifecycles,
+  ReconciledSubjectTransition
+} from './semanticSubjectMatcher';
 
 export type ChangeCategory =
   | 'VALUATION'
@@ -28,6 +32,8 @@ export type ChangeConfirmation =
   | 'UNCONFIRMED'
   | 'RESEARCH_ONLY';
 
+export type DriftSubtype = 'PROSE_COVERAGE' | 'ANALYSIS_MODEL_DRIFT';
+
 export type ChangeMateriality = 'HIGH' | 'MEDIUM' | 'LOW' | 'INFORMATIONAL';
 
 export interface ChangeItem {
@@ -35,6 +41,7 @@ export interface ChangeItem {
   category: ChangeCategory;
   domain: ChangeDomain;
   confirmation: ChangeConfirmation;
+  driftSubtype?: DriftSubtype;
   metricLabel: string;
   metricLabelTh: string;
   previousValue: string | number | null;
@@ -189,17 +196,18 @@ export function computeWhatChanged(
         category: 'CONVICTION',
         domain: 'RESEARCH_COVERAGE_CHANGE',
         confirmation: 'RESEARCH_ONLY',
+        driftSubtype: 'ANALYSIS_MODEL_DRIFT',
         metricLabel: 'Conviction Score (Analysis Drift)',
-        metricLabelTh: 'คะแนนความเชื่อมั่น (ความแปรผันจากการวิเคราะห์)',
+        metricLabelTh: 'คะแนนความเชื่อมั่น (ความผันผวนจากการวิเคราะห์)',
         previousValue: `${prevScore}/100`,
         currentValue: `${curScore}/100`,
         deltaDisplay: `${pts >= 0 ? '+' : ''}${pts} pts`,
         materiality: 'LOW',
-        explanation: `Conviction shifted by ${pts >= 0 ? '+' : ''}${pts} points (${prevScore} → ${curScore}), but the delta is not attributable to new verified evidence (analysis variation / model-output drift).`,
-        explanationTh: `คะแนนความเชื่อมั่นเปลี่ยนไป ${pts >= 0 ? '+' : ''}${pts} จุด (${prevScore} → ${curScore}) แต่สาเหตุของการเปลี่ยนแปลงคะแนนยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ได้ (ความแปรผันจากการวิเคราะห์ / Analysis Drift)`,
+        explanation: `Conviction changed by ${pts >= 0 ? '+' : ''}${pts} points (${prevScore} → ${curScore}), but the delta is not attributable to new verified evidence (analysis variation / model-output drift).`,
+        explanationTh: `คะแนนความเชื่อมั่นเปลี่ยนแปลง ${pts >= 0 ? '+' : ''}${pts} จุด (${prevScore} → ${curScore}) แต่ยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ที่ยืนยันแล้ว โดยสาเหตุของการเปลี่ยนแปลงคะแนนยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ได้ (ความผันผวนจากการวิเคราะห์ / Analysis Drift)`,
         provenance: 'MODEL_OUTPUT_VARIATION',
         reviewReason: 'Conviction delta is not attributable to new verified evidence.',
-        reviewReasonTh: 'สาเหตุของการเปลี่ยนแปลงคะแนนยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ได้'
+        reviewReasonTh: 'คะแนนความเชื่อมั่นเปลี่ยนแปลง แต่ยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ที่ยืนยันแล้ว'
       });
     }
   }
@@ -338,7 +346,7 @@ export function computeWhatChanged(
         deltaDisplay: 'MISSED',
         materiality: 'HIGH',
         explanation: `Prior expectation for ${exp.targetPeriod} was missed: actual ${exp.actualValue} vs target ${exp.targetValue}.`,
-        explanationTh: `ผลลัพธ์รอบ ${exp.targetPeriod} พลาดเป้าที่คาดไว้: ตัวเลขจริง ${exp.actualValue} เทียบกับเป้าหมาย ${exp.targetValue}`,
+        explanationTh: `ผลลัพธ์รอบ ${exp.targetPeriod} ไม่เป็นไปตามเป้าหมาย: ตัวเลขจริง ${exp.actualValue} พลาดจากเป้าหมาย ${exp.targetValue}`,
         provenance: 'USER_EXPECTATION_EVALUATION'
       });
     } else if (exp.status === 'EXCEEDED' || exp.status === 'MET') {
@@ -360,201 +368,243 @@ export function computeWhatChanged(
     }
   }
 
-  // 8. Risks and Catalysts Transitions (Research Coverage Drift vs Verified Evolution)
-  const itemTransitions = matchRiskCatalystTransitions(
+  // 8. Risks and Catalysts Transitions (Semantic Deduplication & Lifecycle Reconciliation)
+  const riskTransitions = reconcileSubjectLifecycles(
     previous.thesis.keyRisks,
     current.thesis.keyRisks,
+    'risk'
+  );
+  const catalystTransitions = reconcileSubjectLifecycles(
     previous.thesis.catalysts,
-    current.thesis.catalysts
+    current.thesis.catalysts,
+    'catalyst'
   );
 
-  for (const trans of itemTransitions) {
-    if (trans.category === 'risk') {
-      if (trans.currentState === 'NEW') {
-        if (trans.isCertain) {
-          items.push({
-            id: `change_risk_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'EVIDENCE_CHANGE',
-            confirmation: 'CONFIRMED',
-            metricLabel: 'New Risk Identified',
-            metricLabelTh: 'พบปัจจัยความเสี่ยงใหม่',
-            previousValue: 'Not tracked',
-            currentValue: trans.itemText,
-            deltaDisplay: 'NEW RISK',
-            materiality: 'HIGH',
-            explanation: `A new material risk emerged: "${trans.itemText}".`,
-            explanationTh: `ปรากฏปัจจัยความเสี่ยงใหม่: "${trans.itemText}"`,
-            provenance: 'AI_AND_STATEMENT_EVIDENCE'
-          });
-        } else {
-          // Unconfirmed newly mentioned risk -> RESEARCH_COVERAGE_CHANGE, UNCONFIRMED, Needs Review
-          items.push({
-            id: `change_risk_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'RESEARCH_COVERAGE_CHANGE',
-            confirmation: 'UNCONFIRMED',
-            metricLabel: 'Possible Risk Change — Review Needed',
-            metricLabelTh: 'ความเสี่ยงที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
-            previousValue: 'Not tracked',
-            currentValue: trans.itemText,
-            deltaDisplay: 'POSSIBLE RISK CHANGE',
-            materiality: 'MEDIUM',
-            explanation: `Unconfirmed risk statement identified in report prose: "${trans.itemText}". Review needed to verify if a new material threat emerged.`,
-            explanationTh: `พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์: "${trans.itemText}" ยังไม่ยืนยันการเปลี่ยนแปลง ควรตรวจสอบเพิ่มเติม`,
-            provenance: 'AI_AND_STATEMENT_EVIDENCE',
-            reviewReason: 'Unconfirmed risk mentioned in recent report; verify if a real threat emerged.',
-            reviewReasonTh: 'พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์ ควรตรวจสอบว่าเป็นข้อเท็จจริงใหม่จริงหรือไม่'
-          });
-        }
-      } else if (trans.currentState === 'RESOLVED') {
-        if (trans.isCertain) {
-          items.push({
-            id: `change_risk_res_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'EVIDENCE_CHANGE',
-            confirmation: 'CONFIRMED',
-            metricLabel: 'Prior Risk Resolved',
-            metricLabelTh: 'ความเสี่ยงเดิมคลี่คลาย',
-            previousValue: trans.itemText,
-            currentValue: 'Resolved / Deprioritized',
-            deltaDisplay: 'RESOLVED',
-            materiality: 'MEDIUM',
-            explanation: `Prior risk no longer cited as primary threat: "${trans.itemText}".`,
-            explanationTh: `ความเสี่ยงเดิมไม่ได้ถูกระบุเป็นความเสี่ยงหลักอีกต่อไป: "${trans.itemText}"`,
-            provenance: 'AI_AND_STATEMENT_EVIDENCE'
-          });
-        } else {
-          // Omitted from prose -> RESEARCH_COVERAGE_CHANGE, RESEARCH_ONLY, LOW
-          items.push({
-            id: `change_risk_res_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'RESEARCH_COVERAGE_CHANGE',
-            confirmation: 'RESEARCH_ONLY',
-            metricLabel: 'Risk Wording Omitted From Prose',
-            metricLabelTh: 'ถ้อยคำความเสี่ยงไม่ได้ถูกระบุซ้ำในบทวิเคราะห์',
-            previousValue: trans.itemText,
-            currentValue: 'Omitted from prose',
-            deltaDisplay: 'UNCONFIRMED LIFECYCLE CHANGE',
-            materiality: 'LOW',
-            explanation: `Prior risk "${trans.itemText}" was not explicitly restated in recent report prose. This reflects research coverage difference, not confirmed real-world resolution.`,
-            explanationTh: `ความเสี่ยงเดิม "${trans.itemText}" ไม่ได้ถูกระบุซ้ำในบทวิเคราะห์ล่าสุด เป็นความแตกต่างของการครอบคลุมเนื้อหา ไม่ใช่การยืนยันว่าปัญหาคลี่คลายในโลกจริง`,
-            provenance: 'AI_AND_STATEMENT_EVIDENCE'
-          });
-        }
-      } else if (trans.currentState === 'UNKNOWN' && !trans.isCertain) {
-        // Ambiguous rephrasing or semantic evolution across reports -> UNCONFIRMED, Needs Review
+  const itemTransitions: TrackedItemTransition[] = [];
+
+  // Process Risks
+  for (const trans of riskTransitions) {
+    if (trans.lifecycleState === 'CONTINUED_UNCHANGED') {
+      itemTransitions.push({
+        itemText: trans.currentText || '',
+        category: 'risk',
+        previousState: 'ACTIVE',
+        currentState: 'ACTIVE',
+        isCertain: true
+      });
+      // Exact identical wording continued: no change item emitted
+    } else if (trans.lifecycleState === 'CONTINUED_PARAPHRASED') {
+      itemTransitions.push({
+        itemText: `${trans.currentText} (evolving from: ${trans.previousText})`,
+        category: 'risk',
+        previousState: 'ACTIVE',
+        currentState: 'ACTIVE',
+        isCertain: false,
+        evidence: 'Ambiguous rephrasing or semantic evolution across reports; review needed'
+      });
+      items.push({
+        id: `change_risk_evolve_${items.length}`,
+        category: 'RISKS_AND_CATALYSTS',
+        domain: 'RESEARCH_COVERAGE_CHANGE',
+        confirmation: 'UNCONFIRMED',
+        driftSubtype: 'PROSE_COVERAGE',
+        metricLabel: 'Risk Wording Changed — Review Needed',
+        metricLabelTh: 'ความเสี่ยงที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
+        previousValue: trans.previousText,
+        currentValue: trans.currentText,
+        deltaDisplay: 'POSSIBLE RISK CHANGE',
+        materiality: 'MEDIUM',
+        explanation: `Risk wording evolved: "${trans.currentText}" (prior: "${trans.previousText}"). Review needed to determine if the underlying threat changed.`,
+        explanationTh: `ถ้อยคำของความเสี่ยงปรับเปลี่ยน: "${trans.currentText}" (เดิม: "${trans.previousText}") ควรตรวจสอบว่าสาระสำคัญของความเสี่ยงเปลี่ยนไปหรือไม่`,
+        provenance: 'AI_AND_STATEMENT_EVIDENCE',
+        reviewReason: 'Ambiguous risk rewording across reports; review needed.',
+        reviewReasonTh: 'ถ้อยคำความเสี่ยงมีการปรับเปลี่ยน ควรตรวจสอบว่าสาระสำคัญของความเสี่ยงเปลี่ยนไปหรือไม่'
+      });
+    } else if (trans.lifecycleState === 'NEWLY_TRACKED') {
+      itemTransitions.push({
+        itemText: trans.currentText || '',
+        category: 'risk',
+        previousState: 'UNKNOWN',
+        currentState: 'NEW',
+        isCertain: trans.isCertain,
+        evidence: trans.isCertain ? 'Confirmed new risk' : 'Newly introduced in report prose; identity unconfirmed'
+      });
+      if (trans.isCertain) {
         items.push({
-          id: `change_risk_evolve_${items.length}`,
+          id: `change_risk_${items.length}`,
+          category: 'RISKS_AND_CATALYSTS',
+          domain: 'EVIDENCE_CHANGE',
+          confirmation: 'CONFIRMED',
+          metricLabel: 'New Risk Identified',
+          metricLabelTh: 'พบปัจจัยความเสี่ยงใหม่',
+          previousValue: 'Not tracked',
+          currentValue: trans.currentText,
+          deltaDisplay: 'NEW RISK',
+          materiality: 'HIGH',
+          explanation: `A new material risk emerged: "${trans.currentText}".`,
+          explanationTh: `ปรากฏปัจจัยความเสี่ยงใหม่: "${trans.currentText}"`,
+          provenance: 'AI_AND_STATEMENT_EVIDENCE'
+        });
+      } else {
+        // Unconfirmed newly mentioned risk -> RESEARCH_COVERAGE_CHANGE, UNCONFIRMED, Needs Review
+        items.push({
+          id: `change_risk_${items.length}`,
           category: 'RISKS_AND_CATALYSTS',
           domain: 'RESEARCH_COVERAGE_CHANGE',
           confirmation: 'UNCONFIRMED',
-          metricLabel: 'Risk Wording Changed — Review Needed',
+          driftSubtype: 'PROSE_COVERAGE',
+          metricLabel: 'Possible Risk Change — Review Needed',
           metricLabelTh: 'ความเสี่ยงที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
-          previousValue: 'Prior wording',
-          currentValue: trans.itemText,
+          previousValue: 'Not tracked',
+          currentValue: trans.currentText,
           deltaDisplay: 'POSSIBLE RISK CHANGE',
           materiality: 'MEDIUM',
-          explanation: `Risk wording evolved: "${trans.itemText}". Review needed to determine if the underlying threat changed.`,
-          explanationTh: `ถ้อยคำของความเสี่ยงปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบว่าสาระสำคัญของความเสี่ยงเปลี่ยนไปหรือไม่`,
+          explanation: `Unconfirmed risk statement identified in report prose: "${trans.currentText}". Review needed to verify if a new material threat emerged.`,
+          explanationTh: `พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์: "${trans.currentText}" ยังไม่ยืนยันการเปลี่ยนแปลง ควรตรวจสอบเพิ่มเติม`,
           provenance: 'AI_AND_STATEMENT_EVIDENCE',
-          reviewReason: 'Ambiguous risk rewording across reports; review needed.',
-          reviewReasonTh: 'ถ้อยคำความเสี่ยงมีการปรับเปลี่ยน ควรตรวจสอบว่าสาระสำคัญของความเสี่ยงเปลี่ยนไปหรือไม่'
+          reviewReason: 'Unconfirmed risk mentioned in recent report; verify if a real threat emerged.',
+          reviewReasonTh: 'พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์ ควรตรวจสอบว่าเป็นข้อเท็จจริงใหม่จริงหรือไม่'
         });
       }
-    } else if (trans.category === 'catalyst') {
-      if (trans.currentState === 'NEW') {
-        if (trans.isCertain) {
-          items.push({
-            id: `change_cat_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'EVIDENCE_CHANGE',
-            confirmation: 'CONFIRMED',
-            metricLabel: 'New Catalyst Tracked',
-            metricLabelTh: 'พบปัจจัยเร่งใหม่ (Catalyst)',
-            previousValue: 'Not tracked',
-            currentValue: trans.itemText,
-            deltaDisplay: 'NEW CATALYST',
-            materiality: 'MEDIUM',
-            explanation: `New upcoming catalyst detected: "${trans.itemText}".`,
-            explanationTh: `พบปัจจัยบวกเร่งตัวใหม่: "${trans.itemText}"`,
-            provenance: 'AI_AND_MARKET_EVIDENCE'
-          });
-        } else {
-          // Unconfirmed newly mentioned catalyst -> RESEARCH_COVERAGE_CHANGE, UNCONFIRMED, Needs Review
-          items.push({
-            id: `change_cat_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'RESEARCH_COVERAGE_CHANGE',
-            confirmation: 'UNCONFIRMED',
-            metricLabel: 'Possible Catalyst Change',
-            metricLabelTh: 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง (ยังไม่ยืนยัน)',
-            previousValue: 'Not tracked',
-            currentValue: trans.itemText,
-            deltaDisplay: 'POSSIBLE CATALYST CHANGE',
-            materiality: 'LOW',
-            explanation: `New catalyst mentioned in report prose: "${trans.itemText}". Unconfirmed lifecycle change.`,
-            explanationTh: `พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์: "${trans.itemText}" ยังไม่ยืนยัน`,
-            provenance: 'AI_AND_MARKET_EVIDENCE',
-            reviewReason: 'Unconfirmed catalyst mentioned in recent report prose.',
-            reviewReasonTh: 'พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์ ยังไม่ยืนยัน'
-          });
-        }
-      } else if (trans.currentState === 'RESOLVED') {
-        if (trans.isCertain) {
-          items.push({
-            id: `change_cat_res_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'EVIDENCE_CHANGE',
-            confirmation: 'CONFIRMED',
-            metricLabel: 'Prior Catalyst Concluded',
-            metricLabelTh: 'ปัจจัยเร่งเดิมสิ้นสุดลง',
-            previousValue: trans.itemText,
-            currentValue: 'Concluded / Past',
-            deltaDisplay: 'CATALYST CONCLUDED',
-            materiality: 'LOW',
-            explanation: `Prior tracked catalyst has passed or concluded: "${trans.itemText}".`,
-            explanationTh: `ปัจจัยเร่งเดิมผ่านพ้นหรือเสร็จสิ้นแล้ว: "${trans.itemText}"`,
-            provenance: 'AI_AND_MARKET_EVIDENCE'
-          });
-        } else {
-          // Omitted from prose -> RESEARCH_COVERAGE_CHANGE, RESEARCH_ONLY, LOW
-          items.push({
-            id: `change_cat_res_${items.length}`,
-            category: 'RISKS_AND_CATALYSTS',
-            domain: 'RESEARCH_COVERAGE_CHANGE',
-            confirmation: 'RESEARCH_ONLY',
-            metricLabel: 'Catalyst Wording Omitted From Prose',
-            metricLabelTh: 'ถ้อยคำปัจจัยเร่งไม่ได้ถูกระบุซ้ำในบทวิเคราะห์',
-            previousValue: trans.itemText,
-            currentValue: 'Omitted from prose',
-            deltaDisplay: 'UNCONFIRMED LIFECYCLE CHANGE',
-            materiality: 'LOW',
-            explanation: `Prior catalyst "${trans.itemText}" was not explicitly listed in recent report prose. This reflects research coverage difference, not confirmed real-world conclusion.`,
-            explanationTh: `ปัจจัยเร่งเดิม "${trans.itemText}" ไม่ได้ถูกระบุในบทวิเคราะห์ล่าสุด เป็นความแตกต่างของการครอบคลุมเนื้อหา`,
-            provenance: 'AI_AND_MARKET_EVIDENCE'
-          });
-        }
-      } else if (trans.currentState === 'UNKNOWN' && !trans.isCertain) {
-        // Ambiguous catalyst rephrasing -> UNCONFIRMED, Needs Review
+    } else if (trans.lifecycleState === 'OMITTED_FROM_CURRENT_RESEARCH') {
+      itemTransitions.push({
+        itemText: trans.previousText || '',
+        category: 'risk',
+        previousState: 'ACTIVE',
+        currentState: 'RESOLVED',
+        isCertain: false,
+        evidence: 'Not mentioned in latest report; resolution unconfirmed'
+      });
+      // Omitted from prose -> RESEARCH_COVERAGE_CHANGE, RESEARCH_ONLY, LOW
+      items.push({
+        id: `change_risk_res_${items.length}`,
+        category: 'RISKS_AND_CATALYSTS',
+        domain: 'RESEARCH_COVERAGE_CHANGE',
+        confirmation: 'RESEARCH_ONLY',
+        driftSubtype: 'PROSE_COVERAGE',
+        metricLabel: 'Risk Wording Omitted From Prose',
+        metricLabelTh: 'ถ้อยคำความเสี่ยงไม่ได้ถูกระบุซ้ำในบทวิเคราะห์',
+        previousValue: trans.previousText,
+        currentValue: 'Omitted from prose',
+        deltaDisplay: 'OMITTED FROM PROSE',
+        materiality: 'LOW',
+        explanation: `Prior risk "${trans.previousText}" was not explicitly restated in recent report prose. This reflects research coverage difference, not confirmed real-world resolution.`,
+        explanationTh: `ความเสี่ยงเดิม "${trans.previousText}" ไม่ได้ถูกระบุซ้ำในบทวิเคราะห์ล่าสุด เป็นความแตกต่างของการครอบคลุมเนื้อหา ไม่ใช่การยืนยันว่าปัญหาคลี่คลายในโลกจริง`,
+        provenance: 'AI_AND_STATEMENT_EVIDENCE'
+      });
+    }
+  }
+
+  // Process Catalysts
+  for (const trans of catalystTransitions) {
+    if (trans.lifecycleState === 'CONTINUED_UNCHANGED') {
+      itemTransitions.push({
+        itemText: trans.currentText || '',
+        category: 'catalyst',
+        previousState: 'ACTIVE',
+        currentState: 'ACTIVE',
+        isCertain: true
+      });
+      // Exact identical wording continued: no change item emitted
+    } else if (trans.lifecycleState === 'CONTINUED_PARAPHRASED') {
+      itemTransitions.push({
+        itemText: `${trans.currentText} (evolving from: ${trans.previousText})`,
+        category: 'catalyst',
+        previousState: 'ACTIVE',
+        currentState: 'ACTIVE',
+        isCertain: false,
+        evidence: 'Ambiguous rephrasing or semantic evolution across reports; review needed'
+      });
+      items.push({
+        id: `change_cat_evolve_${items.length}`,
+        category: 'RISKS_AND_CATALYSTS',
+        domain: 'RESEARCH_COVERAGE_CHANGE',
+        confirmation: 'UNCONFIRMED',
+        driftSubtype: 'PROSE_COVERAGE',
+        metricLabel: 'Catalyst Wording Changed — Review Needed',
+        metricLabelTh: 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
+        previousValue: trans.previousText,
+        currentValue: trans.currentText,
+        deltaDisplay: 'POSSIBLE CATALYST CHANGE',
+        materiality: 'LOW',
+        explanation: `Catalyst description shifted: "${trans.currentText}" (prior: "${trans.previousText}"). Review needed to determine if the underlying catalyst changed.`,
+        explanationTh: `คำอธิบายปัจจัยเร่งปรับเปลี่ยน: "${trans.currentText}" (เดิม: "${trans.previousText}") ควรตรวจสอบว่าสาระสำคัญของปัจจัยเร่งเปลี่ยนไปหรือไม่`,
+        provenance: 'AI_AND_MARKET_EVIDENCE',
+        reviewReason: 'Ambiguous catalyst rewording across reports; review needed.',
+        reviewReasonTh: 'ถ้อยคำปัจจัยเร่งมีการปรับเปลี่ยน ควรตรวจสอบว่าสาระสำคัญของปัจจัยเร่งเปลี่ยนไปหรือไม่'
+      });
+    } else if (trans.lifecycleState === 'NEWLY_TRACKED') {
+      itemTransitions.push({
+        itemText: trans.currentText || '',
+        category: 'catalyst',
+        previousState: 'UNKNOWN',
+        currentState: 'NEW',
+        isCertain: trans.isCertain,
+        evidence: trans.isCertain ? 'Confirmed new catalyst' : 'Newly introduced in report prose; identity unconfirmed'
+      });
+      if (trans.isCertain) {
         items.push({
-          id: `change_cat_evolve_${items.length}`,
+          id: `change_cat_${items.length}`,
+          category: 'RISKS_AND_CATALYSTS',
+          domain: 'EVIDENCE_CHANGE',
+          confirmation: 'CONFIRMED',
+          metricLabel: 'New Catalyst Tracked',
+          metricLabelTh: 'พบปัจจัยเร่งใหม่ (Catalyst)',
+          previousValue: 'Not tracked',
+          currentValue: trans.currentText,
+          deltaDisplay: 'NEW CATALYST',
+          materiality: 'MEDIUM',
+          explanation: `New upcoming catalyst detected: "${trans.currentText}".`,
+          explanationTh: `พบปัจจัยบวกเร่งตัวใหม่: "${trans.currentText}"`,
+          provenance: 'AI_AND_MARKET_EVIDENCE'
+        });
+      } else {
+        // Unconfirmed newly mentioned catalyst -> RESEARCH_COVERAGE_CHANGE, UNCONFIRMED, Needs Review
+        items.push({
+          id: `change_cat_${items.length}`,
           category: 'RISKS_AND_CATALYSTS',
           domain: 'RESEARCH_COVERAGE_CHANGE',
           confirmation: 'UNCONFIRMED',
-          metricLabel: 'Catalyst Wording Changed — Review Needed',
-          metricLabelTh: 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
-          previousValue: 'Prior wording',
-          currentValue: trans.itemText,
+          driftSubtype: 'PROSE_COVERAGE',
+          metricLabel: 'Possible Catalyst Change',
+          metricLabelTh: 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง (ยังไม่ยืนยัน)',
+          previousValue: 'Not tracked',
+          currentValue: trans.currentText,
           deltaDisplay: 'POSSIBLE CATALYST CHANGE',
           materiality: 'LOW',
-          explanation: `Catalyst description shifted: "${trans.itemText}". Review needed to determine if the underlying catalyst changed.`,
-          explanationTh: `คำอธิบายปัจจัยเร่งปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบว่าสาระสำคัญของปัจจัยเร่งเปลี่ยนไปหรือไม่`,
+          explanation: `New catalyst mentioned in report prose: "${trans.currentText}". Unconfirmed lifecycle change.`,
+          explanationTh: `พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์: "${trans.currentText}" ยังไม่ยืนยัน`,
           provenance: 'AI_AND_MARKET_EVIDENCE',
-          reviewReason: 'Ambiguous catalyst rewording across reports; review needed.',
-          reviewReasonTh: 'ถ้อยคำปัจจัยเร่งมีการปรับเปลี่ยน ควรตรวจสอบว่าสาระสำคัญของปัจจัยเร่งเปลี่ยนไปหรือไม่'
+          reviewReason: 'Unconfirmed catalyst mentioned in recent report prose.',
+          reviewReasonTh: 'พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์ ยังไม่ยืนยัน'
         });
       }
+    } else if (trans.lifecycleState === 'OMITTED_FROM_CURRENT_RESEARCH') {
+      itemTransitions.push({
+        itemText: trans.previousText || '',
+        category: 'catalyst',
+        previousState: 'ACTIVE',
+        currentState: 'RESOLVED',
+        isCertain: false,
+        evidence: 'Not mentioned in latest report; resolution unconfirmed'
+      });
+      // Omitted from prose -> RESEARCH_COVERAGE_CHANGE, RESEARCH_ONLY, LOW
+      items.push({
+        id: `change_cat_res_${items.length}`,
+        category: 'RISKS_AND_CATALYSTS',
+        domain: 'RESEARCH_COVERAGE_CHANGE',
+        confirmation: 'RESEARCH_ONLY',
+        driftSubtype: 'PROSE_COVERAGE',
+        metricLabel: 'Catalyst Wording Omitted From Prose',
+        metricLabelTh: 'ถ้อยคำปัจจัยเร่งไม่ได้ถูกระบุซ้ำในบทวิเคราะห์',
+        previousValue: trans.previousText,
+        currentValue: 'Omitted from prose',
+        deltaDisplay: 'OMITTED FROM PROSE',
+        materiality: 'LOW',
+        explanation: `Prior catalyst "${trans.previousText}" was not explicitly listed in recent report prose. This reflects research coverage difference, not confirmed real-world conclusion.`,
+        explanationTh: `ปัจจัยเร่งเดิม "${trans.previousText}" ไม่ได้ถูกระบุในบทวิเคราะห์ล่าสุด เป็นความแตกต่างของการครอบคลุมเนื้อหา`,
+        provenance: 'AI_AND_MARKET_EVIDENCE'
+      });
     }
   }
 
@@ -643,8 +693,8 @@ export function computeWhatChanged(
     summaryNarrative = `No material changes detected for ${current.ticker} compared to prior distinct research snapshot.`;
     summaryNarrativeTh = `ไม่พบการเปลี่ยนแปลงที่มีนัยสำคัญจากการวิเคราะห์ก่อนหน้าสำหรับ ${current.ticker}`;
   } else if (confirmedMaterial === 0) {
-    summaryNarrative = `Identified ${summary.totalDetected} total differences since prior research: 0 confirmed material changes, ${summary.needsReview} items need review, and ${summary.researchCoverage} research coverage differences.`;
-    summaryNarrativeTh = `ตรวจพบความแตกต่าง ${summary.totalDetected} รายการจากการวิเคราะห์ก่อนหน้า: ยังไม่มีการเปลี่ยนแปลงที่ยืนยันแล้วและมีนัยสำคัญ, มี ${summary.needsReview} ประเด็นที่ควรตรวจสอบเพิ่มเติม และ ${summary.researchCoverage} รายการเป็นความแตกต่างจากการครอบคลุมงานวิจัย`;
+    summaryNarrative = `Identified ${summary.totalDetected} total differences since prior research: 0 confirmed material changes, ${summary.needsReview} items need review, and ${summary.researchCoverage} research & analysis drift differences.`;
+    summaryNarrativeTh = `ตรวจพบความแตกต่าง ${summary.totalDetected} รายการจากการวิเคราะห์ก่อนหน้า: ยังไม่มีการเปลี่ยนแปลงที่ยืนยันแล้วและมีนัยสำคัญ, มี ${summary.needsReview} ประเด็นที่ควรตรวจสอบเพิ่มเติม และ ${summary.researchCoverage} รายการเป็นความแตกต่างจากงานวิจัยและการวิเคราะห์`;
   } else {
     summaryNarrative = `Identified ${summary.confirmedMaterial} confirmed material changes (${summary.high} high priority) since prior research on ${previous.asOfDate}.`;
     summaryNarrativeTh = `ตรวจพบการเปลี่ยนแปลงที่ยืนยันแล้ว ${summary.confirmedMaterial} รายการ (${summary.high} ระดับสำคัญสูง) นับจากการวิเคราะห์ครั้งก่อนเมื่อ ${previous.asOfDate}`;

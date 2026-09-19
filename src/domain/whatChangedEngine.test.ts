@@ -779,5 +779,379 @@ describe('whatChangedEngine', () => {
         assert.equal(fcfItem?.deltaDisplay, '+33.3%');
       });
     });
+
+    describe('Semantic Deduplication & Lifecycle Reconciliation (Tests 34-42)', () => {
+      it('Test 34: Paraphrase of same risk resolves to single TRACKED -> TRACKED without duplicate new + omitted', () => {
+        const prevReport = {
+          ticker: 'SOFI',
+          id: 'rep_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          comprehensive_analysis: {
+            beginner_summary: {
+              top_3_risks: ['Macroeconomic recession could weaken borrower quality.']
+            }
+          }
+        };
+
+        const currReport = {
+          ticker: 'SOFI',
+          id: 'rep_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          comprehensive_analysis: {
+            beginner_summary: {
+              top_3_risks: ['Economic slowdown may increase borrower stress.']
+            }
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+
+        // Exactly 1 risk transition: ACTIVE -> ACTIVE (TRACKED -> TRACKED)
+        const riskTransitions = result.itemTransitions.filter(t => t.category === 'risk');
+        assert.equal(riskTransitions.length, 1);
+        assert.equal(riskTransitions[0].previousState, 'ACTIVE');
+        assert.equal(riskTransitions[0].currentState, 'ACTIVE');
+
+        // Must NOT output both NEW and OMITTED
+        assert.equal(result.items.some(i => i.deltaDisplay === 'NEW RISK'), false);
+        assert.equal(result.items.some(i => i.deltaDisplay === 'OMITTED FROM PROSE'), false);
+        assert.equal(result.items.some(i => i.deltaDisplay === 'POSSIBLE RISK CHANGE'), true);
+        assert.equal(result.summary.totalDetected, 1);
+        assert.equal(result.summary.needsReview, 1);
+      });
+
+      it('Test 35: Genuinely new subject emits single NEWLY_TRACKED item', () => {
+        const prevReport = {
+          ticker: 'SOFI',
+          id: 'rep_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          comprehensive_analysis: {
+            beginner_summary: { top_3_risks: [] }
+          }
+        };
+
+        const currReport = {
+          ticker: 'SOFI',
+          id: 'rep_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          comprehensive_analysis: {
+            beginner_summary: { top_3_risks: ['Cybersecurity data breach risk'] }
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+
+        assert.equal(result.summary.totalDetected, 1);
+        assert.equal(result.summary.needsReview, 1);
+        assert.equal(result.items[0].deltaDisplay, 'POSSIBLE RISK CHANGE');
+        assert.equal(result.items[0].driftSubtype, 'PROSE_COVERAGE');
+      });
+
+      it('Test 36: Omitted subject emits single OMITTED_FROM_CURRENT_RESEARCH item under Research Coverage', () => {
+        const prevReport = {
+          ticker: 'O',
+          id: 'rep_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 50.0, summary: { base_case_fair_value: 55.0 } },
+          comprehensive_analysis: {
+            beginner_summary: { top_3_risks: ['Debt maturity refinancing risk'] }
+          }
+        };
+
+        const currReport = {
+          ticker: 'O',
+          id: 'rep_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 50.0, summary: { base_case_fair_value: 55.0 } },
+          comprehensive_analysis: {
+            beginner_summary: { top_3_risks: [] }
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+
+        assert.equal(result.summary.totalDetected, 1);
+        assert.equal(result.summary.researchCoverage, 1);
+        assert.equal(result.items[0].deltaDisplay, 'OMITTED FROM PROSE');
+        assert.equal(result.items[0].confirmation, 'RESEARCH_ONLY');
+        assert.equal(result.items[0].driftSubtype, 'PROSE_COVERAGE');
+      });
+
+      it('Test 37: Same entity with different topics remain distinct without over-merging', () => {
+        const prevReport = {
+          ticker: 'SOFI',
+          id: 'rep_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          catalysts_and_events: {
+            items: [{ title: 'Citizens Bank partnership supports distribution' }]
+          }
+        };
+
+        const currReport = {
+          ticker: 'SOFI',
+          id: 'rep_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          catalysts_and_events: {
+            items: [{ title: 'Citizens Bank competition pressures lending economics' }]
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+
+        // Different topics (partnership vs competition) MUST NOT be merged!
+        // 1 omitted partnership catalyst + 1 new competition catalyst = 2 distinct items
+        assert.equal(result.items.length, 2);
+        assert.ok(result.items.some(i => i.deltaDisplay === 'OMITTED FROM PROSE'));
+        assert.ok(result.items.some(i => i.deltaDisplay === 'POSSIBLE CATALYST CHANGE'));
+      });
+
+      it('Test 38: Duplicate paraphrases within same report normalize to single canonical subject', () => {
+        const prevReport = {
+          ticker: 'SOFI',
+          id: 'rep_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: [] } }
+        };
+
+        const currReport = {
+          ticker: 'SOFI',
+          id: 'rep_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 15.0, summary: { base_case_fair_value: 18.0 } },
+          comprehensive_analysis: {
+            beginner_summary: {
+              top_3_risks: [
+                'Macro slowdown risk could hurt lending volume',
+                'Economic recession risk may reduce borrower demand'
+              ]
+            }
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+
+        // Both refer to macroeconomy:recession -> deduplicated to 1 canonical item
+        assert.equal(result.summary.totalDetected, 1);
+        assert.equal(result.items.length, 1);
+      });
+
+      it('Test 39: Conviction drift without verified evidence is classified as ANALYSIS_MODEL_DRIFT', () => {
+        const prevReport = {
+          ticker: 'SOFI',
+          id: 'sofi_1',
+          schema_version: 2,
+          generated_at: '2026-09-19T05:22:00Z',
+          intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+          verdict: { conviction_score: 76 }
+        };
+
+        const currReport = {
+          ticker: 'SOFI',
+          id: 'sofi_2',
+          schema_version: 2,
+          generated_at: '2026-09-19T05:30:00Z',
+          intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+          verdict: { conviction_score: 75 } // -1 pt drift
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+        const convItem = result.items.find(i => i.id === 'change_conviction');
+
+        assert.ok(convItem);
+        assert.equal(convItem?.domain, 'RESEARCH_COVERAGE_CHANGE');
+        assert.equal(convItem?.confirmation, 'RESEARCH_ONLY');
+        assert.equal(convItem?.driftSubtype, 'ANALYSIS_MODEL_DRIFT');
+        assert.equal(convItem?.materiality, 'LOW');
+        assert.equal(result.hasMaterialChanges, false);
+      });
+
+      it('Test 40: Evidence-driven conviction change is THESIS_MODEL_CHANGE', () => {
+        const prevReport = {
+          ticker: 'SOFI',
+          id: 'sofi_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 10.0, summary: { base_case_fair_value: 12.0 } },
+          verdict: { conviction_score: 76 },
+          financial_statements: { periods: ['Q1 2026'], income_statement: { revenue: [500], net_income: [100] } }
+        };
+
+        const currReport = {
+          ticker: 'SOFI',
+          id: 'sofi_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 12.0, summary: { base_case_fair_value: 14.0 } },
+          verdict: { conviction_score: 79 }, // +3 pts backed by verified net income + revenue
+          financial_statements: { periods: ['Q2 2026'], income_statement: { revenue: [600], net_income: [150] } }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+        const convItem = result.items.find(i => i.id === 'change_conviction');
+
+        assert.ok(convItem);
+        assert.equal(convItem?.domain, 'THESIS_MODEL_CHANGE');
+        assert.equal(convItem?.confirmation, 'CONFIRMED');
+      });
+
+      it('Test 41: Canonical counts strictly reflect deduped items without double-counting', () => {
+        const prevReport = {
+          ticker: 'MSFT',
+          id: 'rep_1',
+          schema_version: 2,
+          generated_at: '2026-01-15T00:00:00Z',
+          intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+          comprehensive_analysis: {
+            beginner_summary: {
+              top_3_risks: [
+                'Macroeconomic recession could weaken demand',
+                'Cloud slowdown risk',
+                'Regulatory antitrust investigation'
+              ]
+            }
+          }
+        };
+
+        const currReport = {
+          ticker: 'MSFT',
+          id: 'rep_2',
+          schema_version: 2,
+          generated_at: '2026-04-15T00:00:00Z',
+          intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+          comprehensive_analysis: {
+            beginner_summary: {
+              top_3_risks: [
+                'Economic slowdown may reduce customer spend', // Paraphrase of recession
+                'Cloud slowdown risk', // Exact match
+                'Cybersecurity threat' // New risk
+              ]
+            }
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReport)!;
+        const currSnap = extractMemorySnapshot(currReport)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+
+        // Items:
+        // 1. Cloud slowdown: CONTINUED_UNCHANGED -> no item
+        // 2. Recession / slowdown: CONTINUED_PARAPHRASED -> 1 item (UNCONFIRMED / Needs Review)
+        // 3. Antitrust: OMITTED_FROM_CURRENT_RESEARCH -> 1 item (RESEARCH_ONLY / Research Coverage)
+        // 4. Cybersecurity: NEWLY_TRACKED -> 1 item (UNCONFIRMED / Needs Review)
+        // Total = 3 items
+        assert.equal(result.items.length, 3);
+        assert.equal(result.summary.totalDetected, 3);
+        assert.equal(result.summary.needsReview, 2);
+        assert.equal(result.summary.researchCoverage, 1);
+        assert.equal(result.summary.confirmedMaterial, 0);
+      });
+
+      it('Test 42: Semantic dedupe works across sectors without ticker-specific branches', () => {
+        // Tech
+        const techPrev = extractMemorySnapshot({
+          ticker: 'MSFT', id: '1', schema_version: 2,
+          intrinsic_value: { current_price: 400, summary: { base_case_fair_value: 400 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['AI competition from hyperscalers'] } }
+        })!;
+        const techCurr = extractMemorySnapshot({
+          ticker: 'MSFT', id: '2', schema_version: 2,
+          intrinsic_value: { current_price: 400, summary: { base_case_fair_value: 400 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Competitive pressure from cloud AI platforms'] } }
+        })!;
+        const techRes = computeWhatChanged(techCurr, techPrev, []);
+        assert.equal(techRes.items.length, 1);
+        assert.equal(techRes.items[0].deltaDisplay, 'POSSIBLE RISK CHANGE');
+
+        // Financial
+        const finPrev = extractMemorySnapshot({
+          ticker: 'JPM', id: '1', schema_version: 2,
+          company_profile: { sector: 'Financial Services' },
+          intrinsic_value: { current_price: 200, summary: { base_case_fair_value: 200 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Credit deterioration risk'] } }
+        })!;
+        const finCurr = extractMemorySnapshot({
+          ticker: 'JPM', id: '2', schema_version: 2,
+          company_profile: { sector: 'Financial Services' },
+          intrinsic_value: { current_price: 200, summary: { base_case_fair_value: 200 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Higher delinquencies may pressure credit quality'] } }
+        })!;
+        const finRes = computeWhatChanged(finCurr, finPrev, []);
+        assert.equal(finRes.items.length, 1);
+        assert.equal(finRes.items[0].deltaDisplay, 'POSSIBLE RISK CHANGE');
+
+        // REIT
+        const reitPrev = extractMemorySnapshot({
+          ticker: 'PLD', id: '1', schema_version: 2,
+          company_profile: { sector: 'Real Estate' },
+          intrinsic_value: { current_price: 120, summary: { base_case_fair_value: 120 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Refinancing risk'] } }
+        })!;
+        const reitCurr = extractMemorySnapshot({
+          ticker: 'PLD', id: '2', schema_version: 2,
+          company_profile: { sector: 'Real Estate' },
+          intrinsic_value: { current_price: 120, summary: { base_case_fair_value: 120 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Higher debt refinancing costs'] } }
+        })!;
+        const reitRes = computeWhatChanged(reitCurr, reitPrev, []);
+        assert.equal(reitRes.items.length, 1);
+        assert.equal(reitRes.items[0].deltaDisplay, 'POSSIBLE RISK CHANGE');
+
+        // Energy
+        const energyPrev = extractMemorySnapshot({
+          ticker: 'CVX', id: '1', schema_version: 2,
+          company_profile: { sector: 'Energy' },
+          intrinsic_value: { current_price: 150, summary: { base_case_fair_value: 150 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Oil price downside risk'] } }
+        })!;
+        const energyCurr = extractMemorySnapshot({
+          ticker: 'CVX', id: '2', schema_version: 2,
+          company_profile: { sector: 'Energy' },
+          intrinsic_value: { current_price: 150, summary: { base_case_fair_value: 150 } },
+          comprehensive_analysis: { beginner_summary: { top_3_risks: ['Lower crude prices could pressure earnings'] } }
+        })!;
+        const energyRes = computeWhatChanged(energyCurr, energyPrev, []);
+        assert.equal(energyRes.items.length, 1);
+        assert.equal(energyRes.items[0].deltaDisplay, 'POSSIBLE RISK CHANGE');
+      });
+    });
   });
 });
