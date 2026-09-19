@@ -72,6 +72,13 @@ export const DATA_GAP_EXPLANATIONS: Record<DataGapState, UserFacingExplanation> 
     badgeLabelEn: 'Partial Data',
     badgeLabelTh: 'ข้อมูลไม่ครบงวด',
   },
+  GUARDED_FOR_BUSINESS_MODEL: {
+    state: 'GUARDED_FOR_BUSINESS_MODEL',
+    textEn: 'Metric deliberately guarded/excluded because it is economically inappropriate for this business model.',
+    textTh: 'ไม่เหมาะกับธุรกิจประเภทนี้ (Financial Sector Guard)',
+    badgeLabelEn: 'Sector Guard',
+    badgeLabelTh: 'Sector Guard',
+  },
 };
 
 /**

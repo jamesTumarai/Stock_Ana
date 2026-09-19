@@ -312,6 +312,10 @@ export function resolveBusinessArchetype(reportOrData?: any, ticker?: string): B
   // 16. Retail / Consumer Omnichannel
   if (
     industry.includes('retail') ||
+    industry.includes('discount store') ||
+    industry.includes('store') ||
+    industry.includes('supermarket') ||
+    industry.includes('hypermarket') ||
     industry.includes('restaurant') ||
     industry.includes('apparel') ||
     industry.includes('grocery') ||

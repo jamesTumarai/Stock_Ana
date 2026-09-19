@@ -147,6 +147,98 @@ export const METRIC_ALIASES: Record<string, string[]> = {
     'debttoequity',
     'de_ratio',
     'deratio'
+  ],
+  roe: [
+    'roe',
+    'return_on_equity',
+    'returnonequity',
+    'roe_pct',
+    'ผลตอบแทนต่อส่วนผู้ถือหุ้น'
+  ],
+  roic: [
+    'roic',
+    'return_on_invested_capital',
+    'returnoninvestedcapital',
+    'roic_pct',
+    'ผลตอบแทนจากเงินลงทุน'
+  ],
+  roa: [
+    'roa',
+    'return_on_assets',
+    'returnonassets',
+    'roa_pct',
+    'ผลตอบแทนจากสินทรัพย์รวม'
+  ],
+  nim: [
+    'nim',
+    'net_interest_margin',
+    'net_interest_margin_pct',
+    'อัตราส่วนต่างดอกเบี้ยสุทธิ'
+  ],
+  efficiency_ratio: [
+    'efficiency_ratio',
+    'efficiency_ratio_pct',
+    'cost_to_income',
+    'cost_to_income_ratio',
+    'อัตราส่วนค่าใช้จ่ายต่อรายได้'
+  ],
+  tier1_capital_ratio: [
+    'tier1_capital_ratio',
+    'tier1_ratio',
+    'cet1_ratio',
+    'common_equity_tier_1',
+    'อัตราส่วนเงินกองทุนชั้นที่1'
+  ],
+  combined_ratio: [
+    'combined_ratio',
+    'combined_ratio_pct',
+    'อัตราส่วนรวม'
+  ],
+  loss_ratio: [
+    'loss_ratio',
+    'loss_ratio_pct',
+    'อัตราส่วนค่าสินไหมทดแทน'
+  ],
+  interest_coverage: [
+    'interest_coverage',
+    'interest_coverage_ratio',
+    'times_interest_earned',
+    'ความสามารถในการชำระดอกเบี้ย'
+  ],
+  occupancy_rate: [
+    'occupancy_rate',
+    'occupancy_rate_pct',
+    'occupancy',
+    'อัตราการเช่าพื้นที่'
+  ],
+  cash_runway_months: [
+    'cash_runway_months',
+    'cash_runway',
+    'runway_months',
+    'ระยะเวลากระแสเงินสดคงเหลือ'
+  ],
+  deposits: [
+    'deposits',
+    'total_deposits',
+    'เงินฝากรวม'
+  ],
+  loans: [
+    'loans',
+    'loans_held_for_investment',
+    'total_loans',
+    'สินเชื่อรวม'
+  ],
+  ffo: [
+    'ffo',
+    'funds_from_operations'
+  ],
+  affo: [
+    'affo',
+    'adjusted_funds_from_operations'
+  ],
+  noi: [
+    'noi',
+    'net_operating_income'
   ]
 };
 

@@ -4,6 +4,8 @@ import { buildCanonicalFinancialDataset, type CanonicalFinancialDataset } from '
 import { buildDataGapInventory } from '../domain/dataCompleteness/gapInventory';
 import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
 import { calculateDeterministicConvictionScore } from './valuation/convictionScorer';
+import { resolveAdaptiveFivePillars } from '../domain/valuation/fivePillarsResolver';
+import { discoverPeers } from '../domain/valuation/peerDiscoveryEngine';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * 100) / 100;
@@ -47,38 +49,6 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   const totalCash = cash !== undefined && investments !== undefined ? cash + investments : undefined;
   const net = totalCash !== undefined && debt !== undefined ? rounded((totalCash - debt) / 1000) : undefined;
   const equity = at(bs?.total_equity);
-  const ratio = (a: number | undefined, b: number | undefined) => a !== undefined && b !== undefined && b > 0 ? rounded(a / b * 100) : undefined;
-  const inc = fs?.income_statement;
-  const revenue = at(inc?.revenue);
-  result.five_pillars ||= {growth:{},profitability:{},balance_sheet:{},yields:{},peer_matrix:[]};
-  result.five_pillars.growth = { revenue_growth_yoy_pct: at(inc?.yoy_revenue_growth_pct) };
-  result.five_pillars.profitability = {
-    gross_margin_pct: ratio(at(inc?.gross_profit), revenue),
-    operating_margin_pct: ratio(at(inc?.operating_income), revenue),
-    net_margin_pct: ratio(at(inc?.net_income), revenue),
-  };
-  const pe = result.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward|PEG/i.test(r.name))?.value;
-  const pfcf = result.valuation_ratios?.find(r => /P\/FCF/i.test(r.name))?.value;
-  result.five_pillars.yields = {
-    pe_multiple: finite(pe) ? pe : undefined,
-    earnings_yield_pct: finite(pe) && pe > 0 ? rounded(100 / pe) : undefined,
-    pfcf_multiple: finite(pfcf) ? pfcf : undefined,
-    fcf_yield_pct: finite(pfcf) && pfcf > 0 ? rounded(100 / pfcf) : undefined,
-  };
-  if (result.five_pillars) {
-    // Remove synthetic benchmark fields produced by older versions. A source-aware benchmark feed is required.
-    result.five_pillars.peer_matrix = [];
-    result.five_pillars.balance_sheet = {
-      total_cash_and_investments_b: totalCash === undefined ? undefined : rounded(totalCash / 1000),
-      total_debt_b: debt === undefined ? undefined : rounded(debt / 1000),
-      net_cash_or_debt_b: net === undefined ? undefined : Math.abs(net),
-      is_net_cash: net === undefined ? undefined : net >= 0,
-      debt_to_equity: debt !== undefined && equity !== undefined && equity > 0 ? rounded(debt / equity) : undefined,
-      solvency_score_label: 'เงินสดสุทธิใช้เงินสด + เงินลงทุนระยะสั้น − หนี้มีดอกเบี้ย ในงวดเดียวกัน (ไม่รวมเงินลงทุนระยะยาว)'
-    };
-    result.five_pillars.analyst_takeaway = 'ข้อมูลจากรายงานที่บันทึกไว้ ไม่ใช่การรับรองจาก SEC; ควรตรวจงวดบัญชีและเอกสารต้นทางก่อนใช้ประเมินมูลค่า';
-  }
-
   // Build a non-destructive provenance view over the statement arrays. This does not
   // rewrite financial values and does not promote linked sources to independently verified data.
   const canonicalFinancials = buildCanonicalFinancialDataset(result);
@@ -87,6 +57,27 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
 
   const gapInventory = buildDataGapInventory(result);
   result.data_completeness = gapInventory.summary;
+
+  if (result.financial_statements || result.five_pillars) {
+    const adaptivePillars = resolveAdaptiveFivePillars(result, ticker || result.ticker);
+    result.five_pillars = adaptivePillars.fivePillarsData;
+  }
+
+  if (result.financial_statements || result.peer_comparison) {
+    if (!result.peer_comparison || !result.peer_comparison.peers || result.peer_comparison.peers.length === 0) {
+      const peerDiscovery = discoverPeers(result, ticker || result.ticker);
+      if (peerDiscovery.peerCompanyItems.length > 0) {
+        result.peer_comparison = {
+          as_of_date: result.as_of_date || new Date().toISOString().split('T')[0],
+          industry_name: result.company_profile?.industry || 'Peer Universe',
+          peers: peerDiscovery.peerCompanyItems,
+          key_takeaway: peerDiscovery.isLimitedSample
+            ? 'กลุ่มเปรียบเทียบคู่แข่งมีจำนวนจำกัด (2 บริษัท) ตามเกณฑ์ความน่าเชื่อถือของข้อมูล'
+            : undefined,
+        };
+      }
+    }
+  }
 
   // Keep dated research intact. Explicit quote refresh updates only current market fields.
   // All current-price consumers use the same canonical snapshot so DCF cannot remain on a stale AI-supplied price.
