@@ -707,8 +707,16 @@ export interface PeerCompanyItem {
   gross_margin_pct?: number | null;
   net_margin_pct?: number | null;
   ev_ebitda?: number | null;
+  pb_ratio?: number | null;
+  roe_pct?: number | null;
+  fcf_yield_pct?: number | null;
   status_label_th?: string;
   status_label_en?: string;
+  relation_type?: 'DIRECT_PEER' | 'CLOSE_COMPARABLE' | 'BROADER_SECTOR_REFERENCE';
+  similarity_score?: number;
+  selection_rationale?: string;
+  selection_rationale_th?: string;
+  as_of_date?: string;
 }
 
 export interface PeerComparisonData {
@@ -716,6 +724,11 @@ export interface PeerComparisonData {
   industry_name?: string;
   peers: PeerCompanyItem[];
   key_takeaway?: string;
+  is_limited_sample?: boolean;
+  unavailable_reason?: string;
+  unavailable_message_en?: string;
+  unavailable_message_th?: string;
+  peer_median?: Record<string, number | null>;
 }
 
 export interface CatalystItem {
@@ -962,8 +975,11 @@ export interface FivePillarsBalanceSheetData {
 export interface FivePillarsYieldsData {
   pe_multiple?: number;
   earnings_yield_pct?: number;
+  earnings_yield_basis?: 'TTM' | 'FORWARD' | string;
   pfcf_multiple?: number;
   fcf_yield_pct?: number;
+  is_fcf_guarded?: boolean;
+  fcf_guard_reason?: string;
   dividend_yield_pct?: number;
   treasury_10yr_yield_pct?: number;
   yield_spread_vs_treasury?: number;
@@ -983,12 +999,22 @@ export interface PeerBenchmarkRow {
 
 export interface FivePillarsData {
   as_of_date?: string;
+  archetype?: string;
+  pillar_titles?: {
+    growth?: string;
+    profitability?: string;
+    balance_sheet?: string;
+    yields?: string;
+    peer_matrix?: string;
+  };
   growth: FivePillarsGrowthData;
   profitability: FivePillarsProfitabilityData;
   balance_sheet: FivePillarsBalanceSheetData;
   yields: FivePillarsYieldsData;
   peer_matrix: PeerBenchmarkRow[];
   analyst_takeaway?: string;
+  unavailable_reasons?: Record<string, string>;
+  metric_states?: Record<string, string>;
 }
 
 export interface BusinessAnalysisData {

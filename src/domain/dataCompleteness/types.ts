@@ -11,6 +11,7 @@ export const DataGapState = {
   FOUND_UNVERIFIED: 'FOUND_UNVERIFIED',
   SOURCE_CONFLICT: 'SOURCE_CONFLICT',
   INSUFFICIENT_PERIOD_DATA: 'INSUFFICIENT_PERIOD_DATA',
+  GUARDED_FOR_BUSINESS_MODEL: 'GUARDED_FOR_BUSINESS_MODEL',
 } as const;
 
 export type DataGapState = (typeof DataGapState)[keyof typeof DataGapState];
