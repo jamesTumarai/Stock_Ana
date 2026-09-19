@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FinancialStatementsTable } from '../FinancialStatementsTable';
-import { getBusinessAwareLocalFallback } from '../../domain/financialMetricContext';
+import { getBusinessAwareLocalFallback, getMetricInterpretationContext } from '../../domain/financialMetricContext';
 import { FinancialStatementsData } from '../../types';
 
 describe('FinancialStatementsTable — Key Indicator Component Integration (Section 58)', () => {
@@ -104,41 +104,20 @@ describe('FinancialStatementsTable — Key Indicator Component Integration (Sect
     // Operating Margin has values [25.0, 24.4, 24.0, 23.6]
     // Gross Margin has values [null, null, null, null]
     // Verify that getBusinessAwareLocalFallback produces empty text for Gross Margin
-    const gmCtx = {
+    const gmCtx = getMetricInterpretationContext({
       metricKey: 'gross_margin',
       metricName: 'Gross Margin',
       metricNameTh: 'อัตรากำไรขั้นต้น',
-      businessArchetype: 'fintech' as const,
-      archetypeLabelEn: 'FinTech / Digital Banking',
-      archetypeLabelTh: 'สถาบันการเงินดิจิทัล / FinTech',
-      sector: 'Financial Services',
-      industry: 'Credit Services',
-      applicability: 'CONTEXT_ONLY' as const,
-      applicabilityLabelEn: 'Context Metric',
-      applicabilityLabelTh: 'ข้อมูลบริบท',
-      industryStandardStatus: 'LUMINA_DERIVED_METRIC' as const,
-      statusLabelEn: 'Lumina Derived',
-      statusLabelTh: 'อัตราส่วนคำนวณ Lumina',
-      formula: '(Revenue - Direct Cost of Sales) / Revenue',
-      formulaTh: '(รายได้รวม - ต้นทุนขายโดยตรง) / รายได้รวม',
-      periodType: 'DERIVED_RATIO' as const,
-      provenance: 'DERIVED' as const,
-      isFinancialSectorGuardActive: false,
-      interpretationCaveats: [],
-      interpretationCaveatsTh: [],
-      relatedMetrics: [],
-      denominatorCaveats: [],
-      denominatorCaveatsTh: [],
-      aiUsagePolicy: '',
-      isCalculableButLimited: true,
-      isUnavailable: true,
-      isNegative: false,
-      isPeriodMismatch: false,
-      valueState: 'NOT_AVAILABLE' as const,
-      interpretationRole: 'CONTEXT_ONLY' as const,
-      isSourceReconciled: false,
-      provenanceStatus: 'Source reconciliation not verified'
-    };
+      reportData: {
+        company_profile: {
+          sector: 'Financial Services',
+          industry: 'Credit Services'
+        } as any
+      },
+      ticker: 'SOFI',
+      periods: ['Q1 2026'],
+      historyValues: [null]
+    });
 
     const emptyFallback = getBusinessAwareLocalFallback(gmCtx, null, true);
     assert.equal(emptyFallback.status_label_th, 'ไม่มีข้อมูล');
