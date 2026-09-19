@@ -1,6 +1,6 @@
 /**
  * Semantic Subject Normalization & Lifecycle Reconciliation Engine
- * 
+ *
  * Provides stable semantic identity for tracked risks, catalysts, lifecycle items,
  * and research subjects across paraphrases, preventing contradictory lifecycle states
  * and duplicate count inflation across all sectors.
