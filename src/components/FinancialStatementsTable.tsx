@@ -152,12 +152,26 @@ export function FinancialStatementsTable({
   const balance = effectiveData.balance_sheet;
   const cashflow = effectiveData.cash_flow;
 
+  // Find key indicators from effectiveData.key_indicators if present
+  const findExistingKeyIndicator = (nameOrKey: string): (number | null)[] | undefined => {
+    const list = effectiveData.key_indicators;
+    if (!Array.isArray(list)) return undefined;
+    const target = nameOrKey.toLowerCase().replace(/[\s_-]+/g, '');
+    const found = list.find((item: any) => {
+      const k = (item.key || item.name || item.name_en || '').toLowerCase().replace(/[\s_-]+/g, '');
+      return k === target;
+    });
+    return found?.values;
+  };
+
   // Dynamic Key Indicators derived deterministically from company's actual statements
   const grossMarginVals = rawPeriods.map((_, i) => {
     const rev = income?.revenue?.[i];
-    const gp = income?.gross_profit?.[i];
+    const gp = income?.gross_profit?.[i] ?? (rev !== null && rev !== undefined && income?.cogs?.[i] !== null && income?.cogs?.[i] !== undefined ? rev - income.cogs[i] : null);
     if (rev && gp !== undefined && gp !== null && rev > 0) return Number(((gp / rev) * 100).toFixed(2));
     if (income?.gross_margin_pct?.[i] !== undefined && income?.gross_margin_pct?.[i] !== null) return income.gross_margin_pct[i];
+    const existing = findExistingKeyIndicator('gross_margin')?.[i] ?? findExistingKeyIndicator('gross_profit_margin')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -166,6 +180,17 @@ export function FinancialStatementsTable({
     const op = income?.operating_income?.[i];
     if (rev && op !== undefined && op !== null && rev > 0) return Number(((op / rev) * 100).toFixed(2));
     if (income?.operating_margin_pct?.[i] !== undefined && income?.operating_margin_pct?.[i] !== null) return income.operating_margin_pct[i];
+    const existing = findExistingKeyIndicator('operating_margin')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
+    return null;
+  });
+
+  const ebitMarginVals = rawPeriods.map((_, i) => {
+    const rev = income?.revenue?.[i];
+    const op = income?.operating_income?.[i];
+    const existing = findExistingKeyIndicator('ebit_margin')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
+    if (rev && op !== undefined && op !== null && rev > 0) return Number(((op / rev) * 100).toFixed(2));
     return null;
   });
 
@@ -174,6 +199,8 @@ export function FinancialStatementsTable({
     const ni = income?.net_income?.[i];
     if (rev && ni !== undefined && ni !== null && rev > 0) return Number(((ni / rev) * 100).toFixed(2));
     if (income?.net_margin_pct?.[i] !== undefined && income?.net_margin_pct?.[i] !== null) return income.net_margin_pct[i];
+    const existing = findExistingKeyIndicator('net_margin')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -182,7 +209,9 @@ export function FinancialStatementsTable({
     const op = income?.operating_income?.[i];
     const dep = cashflow?.depreciation?.[i];
     if (rev && op !== undefined && op !== null && dep !== undefined && dep !== null && rev > 0) return Number((((op + dep) / rev) * 100).toFixed(2));
-    return opMarginVals[i];
+    const existing = findExistingKeyIndicator('ebitda_margin')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
+    return null;
   });
 
   const taxRateVals = rawPeriods.map((_, i) => {
@@ -194,31 +223,39 @@ export function FinancialStatementsTable({
     if (preTax !== undefined && preTax !== null && preTax > 0 && taxExpense !== undefined && taxExpense !== null) {
       return Number(((taxExpense / preTax) * 100).toFixed(2));
     }
+    const existing = findExistingKeyIndicator('tax_rate')?.[i] ?? findExistingKeyIndicator('effective_tax_rate')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
   const currentRatioVals = rawPeriods.map((_, i) => {
     const ca = balance?.total_current_assets?.[i];
     const cl = balance?.total_current_liabilities?.[i];
-    if (ca && cl && cl > 0) return Number((ca / cl).toFixed(2));
+    if (ca !== undefined && ca !== null && cl !== undefined && cl !== null && cl > 0) return Number((ca / cl).toFixed(2));
     if (balance?.current_ratio?.[i] !== undefined && balance?.current_ratio?.[i] !== null) return balance.current_ratio[i];
+    const existing = findExistingKeyIndicator('current_ratio')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
   const quickRatioVals = rawPeriods.map((_, i) => {
     const ca = balance?.total_current_assets?.[i];
     const cl = balance?.total_current_liabilities?.[i];
-    const inv = balance?.inventory?.[i];
-    if (ca && cl && inv !== undefined && inv !== null && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
+    const inv = balance?.inventory?.[i] ?? 0;
+    if (ca !== undefined && ca !== null && cl !== undefined && cl !== null && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
     if (balance?.quick_ratio?.[i] !== undefined && balance?.quick_ratio?.[i] !== null) return balance.quick_ratio[i];
+    const existing = findExistingKeyIndicator('quick_ratio')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
   const debtToEquityVals = rawPeriods.map((_, i) => {
     const debt = balance?.total_debt?.[i];
     const eq = balance?.total_equity?.[i];
-    if (debt !== undefined && debt !== null && eq && eq > 0) return Number((debt / eq).toFixed(2));
+    if (debt !== undefined && debt !== null && eq !== undefined && eq !== null && eq !== 0) return Number((debt / eq).toFixed(2));
     if (balance?.debt_to_equity?.[i] !== undefined && balance?.debt_to_equity?.[i] !== null) return balance.debt_to_equity[i];
+    const existing = findExistingKeyIndicator('debt_to_equity')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -226,6 +263,8 @@ export function FinancialStatementsTable({
     const eq = balance?.total_equity?.[i];
     const ta = balance?.total_assets?.[i];
     if (eq !== undefined && eq !== null && ta && ta > 0) return Number(((eq / ta) * 100).toFixed(2));
+    const existing = findExistingKeyIndicator('equity_ratio')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -233,21 +272,29 @@ export function FinancialStatementsTable({
     const debt = balance?.total_debt?.[i];
     const ta = balance?.total_assets?.[i];
     if (debt !== undefined && debt !== null && ta && ta > 0) return Number(((debt / ta) * 100).toFixed(2));
+    const existing = findExistingKeyIndicator('debt_to_asset')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
-  // These are annualized from the reported quarter; they are not management-reported annual ratios.
+  // Factor for annualizing quarter flows vs maintaining 1x for full annual/LTM periods
+  const annualFactor = isAnnualActive ? 1 : 4;
+
   const roeVals = rawPeriods.map((_, i) => {
     const ni = income?.net_income?.[i];
     const eq = balance?.total_equity?.[i];
-    if (ni !== undefined && ni !== null && eq && eq > 0) return Number(((ni * 4 / eq) * 100).toFixed(2));
+    if (ni !== undefined && ni !== null && eq !== undefined && eq !== null && eq !== 0) return Number(((ni * annualFactor / eq) * 100).toFixed(2));
+    const existing = findExistingKeyIndicator('roe')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
   const roaVals = rawPeriods.map((_, i) => {
     const ni = income?.net_income?.[i];
     const ta = balance?.total_assets?.[i];
-    if (ni !== undefined && ni !== null && ta && ta > 0) return Number(((ni * 4 / ta) * 100).toFixed(2));
+    if (ni !== undefined && ni !== null && ta && ta > 0) return Number(((ni * annualFactor / ta) * 100).toFixed(2));
+    const existing = findExistingKeyIndicator('roa')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -260,9 +307,11 @@ export function FinancialStatementsTable({
     if (op !== undefined && op !== null && debt !== undefined && debt !== null && eq !== undefined && eq !== null && cash !== undefined && cash !== null && taxRate !== null && taxRate !== undefined) {
       const investedCap = debt + eq - cash;
       if (investedCap <= 0) return null;
-      const nopat = (op * 4) * (1 - taxRate / 100);
+      const nopat = (op * annualFactor) * (1 - taxRate / 100);
       return Number(((nopat / investedCap) * 100).toFixed(2));
     }
+    const existing = findExistingKeyIndicator('roic')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -271,6 +320,8 @@ export function FinancialStatementsTable({
     const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
     if (rev && fcf !== null && fcf !== undefined && rev > 0) return Number(((fcf / rev) * 100).toFixed(2));
     if (cashflow?.fcf_margin_pct?.[i] !== undefined && cashflow?.fcf_margin_pct?.[i] !== null) return cashflow.fcf_margin_pct[i];
+    const existing = findExistingKeyIndicator('fcf_margin')?.[i] ?? findExistingKeyIndicator('fcf_to_sales')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -279,6 +330,8 @@ export function FinancialStatementsTable({
     const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
     if (ni && fcf !== null && fcf !== undefined && ni !== 0) return Number(((fcf / ni) * 100).toFixed(2));
     if (cashflow?.fcf_vs_net_income_ratio?.[i] !== undefined && cashflow?.fcf_vs_net_income_ratio?.[i] !== null) return Number((cashflow.fcf_vs_net_income_ratio[i] * 100).toFixed(2));
+    const existing = findExistingKeyIndicator('fcf_to_net_income')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -286,14 +339,18 @@ export function FinancialStatementsTable({
   const assetTurnoverVals = rawPeriods.map((_, i) => {
     const rev = income?.revenue?.[i];
     const ta = balance?.total_assets?.[i];
-    if (rev && ta && ta > 0) return Number(((rev * 4) / ta).toFixed(2));
+    if (rev && ta && ta > 0) return Number(((rev * annualFactor) / ta).toFixed(2));
+    const existing = findExistingKeyIndicator('asset_turnover')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
   const invTurnoverVals = rawPeriods.map((_, i) => {
     const cogs = income?.cogs?.[i];
     const inv = balance?.inventory?.[i];
-    if (cogs && inv && inv > 0) return Number(((cogs * 4) / inv).toFixed(2));
+    if (cogs && inv && inv > 0) return Number(((cogs * annualFactor) / inv).toFixed(2));
+    const existing = findExistingKeyIndicator('inventory_turnover')?.[i];
+    if (existing !== undefined && existing !== null) return existing;
     return null;
   });
 
@@ -336,7 +393,7 @@ export function FinancialStatementsTable({
         metrics: [
           { key: 'gross_margin', name: 'Gross Margin', name_th: 'อัตรากำไรขั้นต้น', category: 'profitability', unit: '%', values: grossMarginVals },
           { key: 'operating_margin', name: 'Operating Margin', name_th: 'อัตรากำไรจากการดำเนินงาน', category: 'profitability', unit: '%', values: opMarginVals },
-          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', category: 'profitability', unit: '%', values: opMarginVals },
+          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', category: 'profitability', unit: '%', values: ebitMarginVals },
           { key: 'net_margin', name: 'Net Margin', name_th: 'อัตรากำไรสุทธิ', category: 'profitability', unit: '%', values: netMarginVals },
           { key: 'ebitda_margin', name: 'EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', category: 'profitability', unit: '%', values: ebitdaMarginVals },
           { key: 'tax_rate', name: 'Effective Tax Rate', name_th: 'อัตราภาษีเงินได้ที่แท้จริง', category: 'profitability', unit: '%', values: taxRateVals }
@@ -665,6 +722,7 @@ export function FinancialStatementsTable({
   useEffect(() => {
     if (!ticker.trim()) return;
     const activeCfg = getActiveChartConfig();
+    const isSourceReconciled = Boolean(validation?.is_reconciled);
     const metricContext = getMetricInterpretationContext({
       metricKey: selectedRowKey,
       metricName: activeCfg.title,
@@ -676,7 +734,9 @@ export function FinancialStatementsTable({
       yoyPcts: activeCfg.yoy_pcts,
       unit: activeCfg.unit || (activeCfg.isCurrency ? 'M' : ''),
       isCurrency: activeCfg.isCurrency,
-      isThai
+      isThai,
+      isSourceReconciled,
+      provenanceStatus: isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified'
     });
 
     const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;
@@ -990,7 +1050,7 @@ export function FinancialStatementsTable({
 
           <div className="flex items-center gap-2 text-stone-500 text-[11px] font-mono">
             <Shield className="w-3.5 h-3.5 text-[#0b5a4b]" />
-            <span>Source reconciliation not verified</span>
+            <span>{isThai ? 'ยังไม่ได้ตรวจสอบการกระทบยอดแหล่งข้อมูล (Source reconciliation not verified)' : 'Source reconciliation not verified'}</span>
           </div>
         </div>
 
@@ -2081,6 +2141,7 @@ export function FinancialStatementsTable({
             ? activeCfg.yoy_pcts[activeCfg.yoy_pcts.length - 1]
             : null;
 
+          const isSourceReconciled = Boolean(validation?.is_reconciled);
           const metricContext = getMetricInterpretationContext({
             metricKey: selectedRowKey,
             metricName: activeCfg.title,
@@ -2092,7 +2153,9 @@ export function FinancialStatementsTable({
             yoyPcts: activeCfg.yoy_pcts,
             unit: uStr,
             isCurrency: activeCfg.isCurrency,
-            isThai
+            isThai,
+            isSourceReconciled,
+            provenanceStatus: isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified'
           });
 
           const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;

@@ -192,6 +192,7 @@ export interface StatementValidationSummary {
   ratio_reliability_warning?: boolean; // When true, alerts that derived ratios might be deceptively normal
   filing_source?: string;
   filing_date?: string;
+  is_reconciled?: boolean;
 }
 
 export interface FinancialStatementsData {
