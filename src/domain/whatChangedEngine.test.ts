@@ -262,4 +262,522 @@ describe('whatChangedEngine', () => {
       }
     });
   });
+
+  describe('What Changed Intelligence Semantics — Tests 31 to 41 & Cross-Sector', () => {
+    it('Test 31: Canonical change counts eliminate contradictory counts across UI surfaces', () => {
+      const prevReport = {
+        ticker: 'SOFI',
+        id: 'sofi_prev',
+        schema_version: 2,
+        generated_at: '2026-09-19T05:22:00Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 74 },
+        comprehensive_analysis: {
+          beginner_summary: {
+            top_3_risks: ['Risk A', 'Risk B', 'Risk C', 'Risk D', 'Risk E', 'Risk F', 'Risk G', 'Risk H']
+          }
+        },
+        catalysts_and_events: {
+          items: [{ title: 'Cat A' }, { title: 'Cat B' }]
+        },
+        financial_statements: {
+          periods: ['Q2 2026'],
+          income_statement: { revenue: [500], net_income: [156.59] }
+        }
+      };
+
+      // Current report with 3 review items (ambiguous rewording) and 10 research coverage items (omissions + conviction drift)
+      const currReport = {
+        ticker: 'SOFI',
+        id: 'sofi_curr',
+        schema_version: 2,
+        generated_at: '2026-09-19T05:30:00Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 76 }, // +2 pts drift without evidence
+        comprehensive_analysis: {
+          beginner_summary: {
+            top_3_risks: [
+              'Risk A evolved slightly in wording', // Needs Review 1
+              'Risk B evolved slightly in wording'  // Needs Review 2
+            ]
+            // Risks C-H omitted -> Research coverage omissions
+          }
+        },
+        catalysts_and_events: {
+          items: [
+            { title: 'Cat A evolved in prose' } // Needs Review 3
+            // Cat B omitted -> Research coverage omission
+          ]
+        },
+        financial_statements: {
+          periods: ['Q2 2026'],
+          income_statement: { revenue: [500], net_income: [156.59] }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+
+      // 1. Canonical summary must have 0 confirmed material
+      assert.equal(result.summary.confirmedMaterial, 0);
+      assert.equal(result.hasMaterialChanges, false);
+      assert.equal(result.materialChangesCount, 0);
+
+      // 2. Needs Review count matches ambiguous items
+      assert.ok(result.summary.needsReview >= 3);
+
+      // 3. Research coverage count matches omissions + conviction drift
+      assert.ok(result.summary.researchCoverage >= 5);
+
+      // 4. Summary narrative does NOT claim "significant changes" when confirmedMaterial is 0
+      assert.doesNotMatch(result.summaryNarrative, /Identified [1-9]\d* confirmed material/);
+      assert.match(result.summaryNarrative, /0 confirmed material changes/);
+      assert.match(result.summaryNarrativeTh, /ยังไม่มีการเปลี่ยนแปลงที่ยืนยันแล้วและมีนัยสำคัญ/);
+      assert.match(result.summaryNarrativeTh, /ประเด็นที่ควรตรวจสอบเพิ่มเติม/);
+    });
+
+    it('Test 32: "Omitted from prose" defaults to RESEARCH_COVERAGE_CHANGE / RESEARCH_ONLY and never triggers re-evaluation', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 450.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Macroeconomic recession risk'] }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 450.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: [] } // Omitted
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const omittedItem = result.items.find(i => i.currentValue === 'Omitted from prose');
+
+      assert.ok(omittedItem, 'Should produce an omitted item');
+      assert.equal(omittedItem?.domain, 'RESEARCH_COVERAGE_CHANGE');
+      assert.equal(omittedItem?.confirmation, 'RESEARCH_ONLY');
+      assert.equal(omittedItem?.materiality, 'LOW');
+      assert.notEqual(omittedItem?.deltaDisplay, 'RESOLVED');
+      assert.equal(result.summary.confirmedMaterial, 0);
+    });
+
+    it('Test 33: "Not tracked -> mentioned" risk without evidence is UNCONFIRMED Needs Review, never confirmed company change', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 450.0 } },
+        comprehensive_analysis: { beginner_summary: { top_3_risks: [] } }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 450.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Competition with banks may cause slowdown'] }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const newItem = result.items.find(i => i.currentValue === 'Competition with banks may cause slowdown');
+
+      assert.ok(newItem);
+      assert.equal(newItem?.domain, 'RESEARCH_COVERAGE_CHANGE');
+      assert.equal(newItem?.confirmation, 'UNCONFIRMED');
+      assert.equal(newItem?.deltaDisplay, 'POSSIBLE RISK CHANGE');
+      assert.equal(result.summary.confirmedMaterial, 0);
+      assert.equal(result.summary.needsReview, 1);
+    });
+
+    it('Test 34: Real fundamental change produces CONFIRMED EVIDENCE_CHANGE with calculated severity', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        financial_statements: {
+          periods: ['Q1 2026'],
+          income_statement: { revenue: [50000], yoy_revenue_growth_pct: [10.0] }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        financial_statements: {
+          periods: ['Q2 2026'],
+          income_statement: { revenue: [58000], yoy_revenue_growth_pct: [16.0] } // +6.0% pts -> HIGH
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const revItem = result.items.find(i => i.id === 'change_revenue_yoy');
+
+      assert.ok(revItem);
+      assert.equal(revItem?.domain, 'EVIDENCE_CHANGE');
+      assert.equal(revItem?.confirmation, 'CONFIRMED');
+      assert.equal(revItem?.materiality, 'HIGH');
+      assert.equal(result.summary.confirmedMaterial, 1);
+    });
+
+    it('Test 35: Material SEC filing update is CONFIRMED EVIDENCE_CHANGE eligible for re-evaluation', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        evidence: { secAccession: '0000950170-26-000100', secFilingDate: '2026-01-20' }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        evidence: { secAccession: '0000950170-26-000200', secFilingDate: '2026-04-20' }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const secItem = result.items.find(i => i.id === 'change_sec_filing');
+
+      assert.ok(secItem);
+      assert.equal(secItem?.domain, 'EVIDENCE_CHANGE');
+      assert.equal(secItem?.confirmation, 'CONFIRMED');
+      assert.equal(secItem?.evidenceRef, '0000950170-26-000200');
+    });
+
+    it('Test 36: Conviction drift (74 -> 76 in 8 min without evidence) is classified as ANALYSIS_DRIFT / RESEARCH_ONLY', () => {
+      const prevReport = {
+        ticker: 'SOFI',
+        id: 'sofi_1',
+        schema_version: 2,
+        generated_at: '2026-09-19T05:22:00Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 74 },
+        financial_statements: { periods: ['Q2 2026'], income_statement: { revenue: [500], net_income: [156.59] } }
+      };
+
+      const currReport = {
+        ticker: 'SOFI',
+        id: 'sofi_2',
+        schema_version: 2,
+        generated_at: '2026-09-19T05:30:00Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 76 }, // +2 pts
+        financial_statements: { periods: ['Q2 2026'], income_statement: { revenue: [500], net_income: [156.59] } }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const convItem = result.items.find(i => i.id === 'change_conviction');
+
+      assert.ok(convItem);
+      assert.equal(convItem?.domain, 'RESEARCH_COVERAGE_CHANGE');
+      assert.equal(convItem?.confirmation, 'RESEARCH_ONLY');
+      assert.equal(convItem?.materiality, 'LOW');
+      assert.equal(result.summary.confirmedMaterial, 0);
+    });
+
+    it('Test 37: Evidence-driven conviction change is CONFIRMED THESIS_MODEL_CHANGE', () => {
+      const prevReport = {
+        ticker: 'SOFI',
+        id: 'sofi_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 10.0, summary: { base_case_fair_value: 12.0 } },
+        verdict: { conviction_score: 74 },
+        financial_statements: { periods: ['Q1 2026'], income_statement: { revenue: [500], net_income: [100] } }
+      };
+
+      const currReport = {
+        ticker: 'SOFI',
+        id: 'sofi_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 12.0, summary: { base_case_fair_value: 14.0 } },
+        verdict: { conviction_score: 82 }, // +8 pts backed by net income + revenue growth
+        financial_statements: { periods: ['Q2 2026'], income_statement: { revenue: [600], net_income: [150] } }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const convItem = result.items.find(i => i.id === 'change_conviction');
+
+      assert.ok(convItem);
+      assert.equal(convItem?.domain, 'THESIS_MODEL_CHANGE');
+      assert.equal(convItem?.confirmation, 'CONFIRMED');
+      assert.equal(convItem?.materiality, 'MEDIUM');
+    });
+
+    it('Test 38: Unattributable score change states truthful explanation without inventing facts', () => {
+      const prevReport = {
+        ticker: 'SOFI',
+        id: 'sofi_1',
+        schema_version: 2,
+        generated_at: '2026-09-19T05:22:00Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 74 }
+      };
+
+      const currReport = {
+        ticker: 'SOFI',
+        id: 'sofi_2',
+        schema_version: 2,
+        generated_at: '2026-09-19T05:30:00Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 76 }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      const convItem = result.items.find(i => i.id === 'change_conviction');
+
+      assert.ok(convItem);
+      assert.match(convItem?.explanationTh || '', /สาเหตุของการเปลี่ยนแปลงคะแนนยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ได้/);
+      assert.match(convItem?.explanation || '', /delta is not attributable to new verified evidence/);
+    });
+
+    it('Test 39: Multiple low research changes are grouped under researchCoverage', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: {
+            top_3_risks: ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']
+          }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: {
+            top_3_risks: [] // 9 omissions
+          }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+
+      assert.equal(result.summary.researchCoverage, 9);
+      assert.equal(result.summary.confirmedMaterial, 0);
+    });
+
+    it('Test 40: Needs Review triggers REVIEW_SUGGESTED, never RE_EVALUATION_WARRANTED without confirmed material change', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Risk 1', 'Risk 2', 'Risk 3'] }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        comprehensive_analysis: {
+          beginner_summary: {
+            top_3_risks: [
+              'Risk 1 rephrased slightly',
+              'Risk 2 rephrased slightly',
+              'Risk 3 rephrased slightly'
+            ]
+          }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      assert.equal(result.summary.confirmedMaterial, 0);
+      assert.equal(result.summary.needsReview, 3);
+    });
+
+    it('Test 41: Confirmed material change triggers RE_EVALUATION_WARRANTED', () => {
+      const prevReport = {
+        ticker: 'MSFT',
+        id: 'rep_1',
+        schema_version: 2,
+        generated_at: '2026-01-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 400.0 } },
+        financial_statements: {
+          periods: ['Q1 2026'],
+          income_statement: { revenue: [50000], operating_margin_pct: [40.0] }
+        }
+      };
+
+      const currReport = {
+        ticker: 'MSFT',
+        id: 'rep_2',
+        schema_version: 2,
+        generated_at: '2026-04-15T00:00:00Z',
+        intrinsic_value: { current_price: 400.0, summary: { base_case_fair_value: 460.0 } }, // +15% FV -> HIGH
+        financial_statements: {
+          periods: ['Q2 2026'],
+          income_statement: { revenue: [50000], operating_margin_pct: [40.0] }
+        }
+      };
+
+      const prevSnap = extractMemorySnapshot(prevReport)!;
+      const currSnap = extractMemorySnapshot(currReport)!;
+
+      const result = computeWhatChanged(currSnap, prevSnap, []);
+      assert.equal(result.summary.confirmedMaterial, 1);
+      assert.equal(result.hasMaterialChanges, true);
+    });
+
+    describe('Cross-Sector Generic Validation (no ticker-specific hacks)', () => {
+      it('evaluates REIT fixture safely without generic FCFF', () => {
+        const prevReit = {
+          ticker: 'O',
+          id: 'reit_1',
+          schema_version: 2,
+          company_profile: { sector: 'Real Estate', industry: 'REIT - Retail' },
+          intrinsic_value: { current_price: 52.0, summary: { base_case_fair_value: 58.0 } },
+          financial_statements: { periods: ['Q1 2026'], income_statement: { revenue: [1200] } }
+        };
+        const currReit = {
+          ticker: 'O',
+          id: 'reit_2',
+          schema_version: 2,
+          company_profile: { sector: 'Real Estate', industry: 'REIT - Retail' },
+          intrinsic_value: { current_price: 53.0, summary: { base_case_fair_value: 58.0 } },
+          financial_statements: { periods: ['Q2 2026'], income_statement: { revenue: [1250] } }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevReit)!;
+        const currSnap = extractMemorySnapshot(currReit)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+        assert.equal(result.ticker, 'O');
+        assert.equal(result.items.some(i => i.id === 'change_fcf'), false);
+      });
+
+      it('evaluates cyclical company fixture with margin and revenue fluctuations', () => {
+        const prevCyclical = {
+          ticker: 'XOM',
+          id: 'xom_1',
+          schema_version: 2,
+          company_profile: { sector: 'Energy', industry: 'Oil & Gas Integrated' },
+          intrinsic_value: { current_price: 110.0, summary: { base_case_fair_value: 120.0 } },
+          financial_statements: {
+            periods: ['Q1 2026'],
+            income_statement: { revenue: [85000], operating_margin_pct: [15.0] }
+          }
+        };
+        const currCyclical = {
+          ticker: 'XOM',
+          id: 'xom_2',
+          schema_version: 2,
+          company_profile: { sector: 'Energy', industry: 'Oil & Gas Integrated' },
+          intrinsic_value: { current_price: 115.0, summary: { base_case_fair_value: 120.0 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            income_statement: { revenue: [92000], operating_margin_pct: [19.0] } // Margin +4.0% pts -> HIGH
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevCyclical)!;
+        const currSnap = extractMemorySnapshot(currCyclical)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+        assert.equal(result.ticker, 'XOM');
+        const opm = result.items.find(i => i.id === 'change_op_margin');
+        assert.ok(opm);
+        assert.equal(opm?.materiality, 'HIGH');
+        assert.equal(opm?.domain, 'EVIDENCE_CHANGE');
+        assert.equal(opm?.confirmation, 'CONFIRMED');
+      });
+
+      it('evaluates negative-FCF early-stage company without crashing or false zero', () => {
+        const prevEarly = {
+          ticker: 'RIVN',
+          id: 'rivn_1',
+          schema_version: 2,
+          company_profile: { sector: 'Consumer Cyclical', industry: 'Auto Manufacturers' },
+          intrinsic_value: { current_price: 12.0, summary: { base_case_fair_value: 15.0 } },
+          financial_statements: {
+            periods: ['Q1 2026'],
+            income_statement: { revenue: [1200] },
+            cash_flow: { free_cash_flow: [-1500] }
+          }
+        };
+        const currEarly = {
+          ticker: 'RIVN',
+          id: 'rivn_2',
+          schema_version: 2,
+          company_profile: { sector: 'Consumer Cyclical', industry: 'Auto Manufacturers' },
+          intrinsic_value: { current_price: 13.0, summary: { base_case_fair_value: 15.0 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            income_statement: { revenue: [1400] },
+            cash_flow: { free_cash_flow: [-1000] } // Cash burn improved by 33.3%
+          }
+        };
+
+        const prevSnap = extractMemorySnapshot(prevEarly)!;
+        const currSnap = extractMemorySnapshot(currEarly)!;
+
+        const result = computeWhatChanged(currSnap, prevSnap, []);
+        assert.equal(result.ticker, 'RIVN');
+        const fcfItem = result.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfItem);
+        assert.equal(fcfItem?.domain, 'EVIDENCE_CHANGE');
+        assert.equal(fcfItem?.confirmation, 'CONFIRMED');
+        assert.equal(fcfItem?.deltaDisplay, '+33.3%');
+      });
+    });
+  });
 });

@@ -516,4 +516,52 @@ describe('researchTimeline', () => {
     assert.match(deltaEn.elapsedTimeDisplay || '', /4h 51m/);
     assert.match(deltaEn.comparisonWindowLabel || '', /Compared with prior analysis/);
   });
+
+  it('Test 42: same-minute runs are distinguishable and ordered by full timestamp', () => {
+    const t1 = Date.parse('2026-09-19T05:30:12Z');
+    const t2 = Date.parse('2026-09-19T05:30:47Z');
+
+    const run1 = {
+      id: 'run_530_12',
+      ticker: 'SOFI',
+      createdAt: { seconds: t1 / 1000 },
+      data: {
+        id: 'run_530_12',
+        ticker: 'SOFI',
+        generated_at: '2026-09-19T05:30:12Z',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 74 }
+      }
+    };
+
+    const run2: any = {
+      id: 'run_530_47',
+      ticker: 'SOFI',
+      createdAt: { seconds: t2 / 1000 },
+      generated_at: '2026-09-19T05:30:47Z',
+      intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+      verdict: { conviction_score: 76 }
+    };
+
+    const timeline = buildResearchTimeline('SOFI', [run1], run2);
+    assert.equal(timeline.length, 2);
+
+    // Full timestamp ordering: run2 (05:30:47) is newest, run1 (05:30:12) is next
+    assert.equal(timeline[0].id, 'run_530_47');
+    assert.equal(timeline[1].id, 'run_530_12');
+    assert.ok((timeline[0].timestamp || 0) > (timeline[1].timestamp || 0));
+
+    // Formatted date times must be distinguishable (either with seconds or run index)
+    assert.notEqual(
+      timeline[0].formattedDateTime,
+      timeline[1].formattedDateTime,
+      'Same-minute runs must have distinguishable formattedDateTime labels'
+    );
+
+    // Baseline selection uses full timestamp to select run1 (74)
+    const baseline = selectPreviousDistinctSnapshot('SOFI', [run1], run2);
+    assert.ok(baseline !== null);
+    assert.equal((baseline as any)?.id, 'run_530_12');
+    assert.equal(baseline?.verdict?.conviction_score, 74);
+  });
 });

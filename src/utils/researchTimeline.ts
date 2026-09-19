@@ -307,7 +307,48 @@ export function buildResearchTimeline(
   }
 
   // 4. Sort descending strictly by timestamp
-  return Array.from(timelineMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  const sorted = Array.from(timelineMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+  // 5. Disambiguate same-minute runs
+  const dtCount = new Map<string, number>();
+  for (const entry of sorted) {
+    const dt = entry.formattedDateTime;
+    dtCount.set(dt, (dtCount.get(dt) || 0) + 1);
+  }
+
+  const seenDt = new Map<string, number>();
+  for (const entry of sorted) {
+    const dt = entry.formattedDateTime;
+    if ((dtCount.get(dt) || 0) > 1) {
+      if (entry.timestamp && entry.timestamp > 0) {
+        const d = new Date(entry.timestamp);
+        const secs = String(d.getUTCSeconds()).padStart(2, '0');
+        entry.formattedDateTime = `${dt}:${secs}`;
+      } else {
+        const runNum = (seenDt.get(dt) || 0) + 1;
+        seenDt.set(dt, runNum);
+        entry.formattedDateTime = `${dt} · Run ${runNum}`;
+      }
+    }
+  }
+
+  // Secondary check if any duplicate still remains (e.g. identical seconds)
+  const finalCount = new Map<string, number>();
+  for (const entry of sorted) {
+    const dt = entry.formattedDateTime;
+    finalCount.set(dt, (finalCount.get(dt) || 0) + 1);
+  }
+  const finalSeen = new Map<string, number>();
+  for (const entry of sorted) {
+    const dt = entry.formattedDateTime;
+    if ((finalCount.get(dt) || 0) > 1) {
+      const runNum = (finalSeen.get(dt) || 0) + 1;
+      finalSeen.set(dt, runNum);
+      entry.formattedDateTime = `${dt} · Run ${runNum}`;
+    }
+  }
+
+  return sorted;
 }
 
 /**
