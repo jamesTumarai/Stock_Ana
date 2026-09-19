@@ -16,6 +16,11 @@ import {
 } from 'recharts';
 import { FinancialStatementsData, KeyIndicatorsData, KeyIndicatorMetric, KeyIndicatorsCategory } from '../types';
 import { getFinancialAiInsight, FinancialAiInsight } from '../utils/financialAiInsights';
+import {
+  getMetricInterpretationContext,
+  getBusinessAwareLocalFallback,
+  MetricInterpretationContext
+} from '../domain/financialMetricContext';
 import { authenticatedFetch } from '../services/authenticatedFetch';
 
 interface Props {
@@ -656,11 +661,25 @@ export function FinancialStatementsTable({
     yoy_pct: chartConfig.yoy_pcts && chartConfig.yoy_pcts[idx] !== undefined ? chartConfig.yoy_pcts[idx] : null
   }));
 
-  // Seamless Background Live AI Financial Analyst Fetching via Gemini 3.6 Flash
+  // Seamless Background Live AI Financial Analyst Fetching via Gemini 3.8 Flash
   useEffect(() => {
     if (!ticker.trim()) return;
     const activeCfg = getActiveChartConfig();
-    const cacheKey = `${ticker}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${isThai ? 'th' : 'en'}`;
+    const metricContext = getMetricInterpretationContext({
+      metricKey: selectedRowKey,
+      metricName: activeCfg.title,
+      metricNameTh: activeCfg.title_th || activeCfg.title,
+      reportData: data,
+      ticker,
+      periods: activeCfg.periods,
+      historyValues: activeCfg.values,
+      yoyPcts: activeCfg.yoy_pcts,
+      unit: activeCfg.unit || (activeCfg.isCurrency ? 'M' : ''),
+      isCurrency: activeCfg.isCurrency,
+      isThai
+    });
+
+    const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;
     if (liveAiInsights[cacheKey]) return;
 
     let isSubscribed = true;
@@ -675,11 +694,14 @@ export function FinancialStatementsTable({
             companyName: companyName,
             metricKey: selectedRowKey,
             metricName: isThai ? (activeCfg.title_th || activeCfg.title) : activeCfg.title,
+            metricNameTh: activeCfg.title_th || activeCfg.title,
             periods: activeCfg.periods,
             historyValues: activeCfg.values,
             yoyPcts: activeCfg.yoy_pcts,
             unit: activeCfg.unit || (activeCfg.isCurrency ? 'M' : ''),
             isCurrency: activeCfg.isCurrency,
+            metricContext,
+            reportData: data,
             context: {
               revenue: income?.revenue,
               operatingIncome: income?.operating_income,
@@ -696,16 +718,10 @@ export function FinancialStatementsTable({
         if (res.ok) {
           const json = await res.json();
           if (json.success && json.insight && isSubscribed) {
-            const localFallback = getFinancialAiInsight(
-              selectedRowKey,
+            const localFallback = getBusinessAwareLocalFallback(
+              metricContext,
               activeCfg.values[activeCfg.values.length - 1],
-              activeCfg.unit || (activeCfg.isCurrency ? 'M' : ''),
-              isThai,
-              activeCfg.values,
-              activeCfg.yoy_pcts,
-              activeCfg.periods,
-              activeCfg.title,
-              activeCfg.isCurrency
+              isThai
             );
             setLiveAiInsights(prev => ({
               ...prev,
@@ -2065,18 +2081,26 @@ export function FinancialStatementsTable({
             ? activeCfg.yoy_pcts[activeCfg.yoy_pcts.length - 1]
             : null;
 
-          const cacheKey = `${ticker}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${isThai ? 'th' : 'en'}`;
+          const metricContext = getMetricInterpretationContext({
+            metricKey: selectedRowKey,
+            metricName: activeCfg.title,
+            metricNameTh: activeCfg.title_th || activeCfg.title,
+            reportData: data,
+            ticker,
+            periods: activeCfg.periods,
+            historyValues: activeCfg.values,
+            yoyPcts: activeCfg.yoy_pcts,
+            unit: uStr,
+            isCurrency: activeCfg.isCurrency,
+            isThai
+          });
+
+          const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;
           const liveInsight = liveAiInsights[cacheKey];
-          const localInsight = getFinancialAiInsight(
-            selectedRowKey,
+          const localInsight = getBusinessAwareLocalFallback(
+            metricContext,
             latestVal,
-            uStr,
-            isThai,
-            activeCfg.values,
-            activeCfg.yoy_pcts,
-            activeCfg.periods,
-            activeCfg.title,
-            activeCfg.isCurrency
+            isThai
           );
           const aiInsight: FinancialAiInsight = liveInsight ? {
             ...localInsight,
@@ -2135,6 +2159,25 @@ export function FinancialStatementsTable({
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/90 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
                         <span>{isFromGemini ? 'Gemini AI · Live Financial Analyst' : 'AI Financial Analyst'}</span>
+                      </span>
+
+                      {/* Applicability & Business Archetype Chip */}
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium font-sans border shadow-2xs ${
+                        metricContext.isFinancialSectorGuardActive
+                          ? 'bg-amber-50 text-amber-900 border-amber-300'
+                          : metricContext.applicability === 'PRIMARY'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : metricContext.applicability === 'RELEVANT'
+                          ? 'bg-blue-50 text-blue-800 border-blue-200'
+                          : metricContext.applicability === 'CONTEXT_ONLY'
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-stone-100 text-stone-700 border-stone-200'
+                      }`}>
+                        <span>
+                          {metricContext.isFinancialSectorGuardActive
+                            ? 'Financial Sector Guard'
+                            : (isThai ? metricContext.applicabilityLabelTh : metricContext.applicabilityLabelEn)}
+                        </span>
                       </span>
 
                       {activeCfg.categoryLabel && (
