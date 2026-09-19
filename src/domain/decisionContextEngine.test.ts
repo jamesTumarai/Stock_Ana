@@ -124,7 +124,7 @@ describe('decisionContextEngine', () => {
     assert.match(context.headline, /Expectations Missed/);
   });
 
-  it('sets MONITORING_CONTINUES_UNCHANGED when thesis intact and no triggers fired', () => {
+  it('sets NO_NEW_EVIDENCE when thesis is intact and no new evidence exists', () => {
     const prevSnap = extractMemorySnapshot(prevReport)!;
     const intactReport = {
       ...prevReport,
@@ -136,10 +136,35 @@ describe('decisionContextEngine', () => {
 
     const context = buildDecisionContext(currSnap, prevSnap, sampleThesis, whatChanged, []);
 
-    assert.equal(context.stance, 'MONITORING_CONTINUES_UNCHANGED');
+    assert.equal(context.stance, 'NO_NEW_EVIDENCE');
     assert.equal(context.requiresAttention, false);
-    assert.match(context.summaryNarrative, /Prior investment thesis and key drivers remain intact/);
-    assert.match(context.summaryNarrativeTh, /สมมติฐานการลงทุนและปัจจัยขับเคลื่อนหลักยังคงสมบูรณ์/);
+    assert.match(context.headlineTh, /ยังไม่พบหลักฐานใหม่ที่เปลี่ยนสถานะสมมติฐาน/);
+    assert.match(context.summaryNarrativeTh, /ยังไม่พบหลักฐานใหม่หรือรายงานทางการเงินเพิ่มเติม/);
+  });
+
+  it('sets THESIS_STABLE when verified new evidence exists and is consistent with thesis', () => {
+    const prevSnap = extractMemorySnapshot(prevReport)!;
+    const newFilingReport = {
+      ...prevReport,
+      id: 'rep_new_filing',
+      generated_at: '2026-03-01T00:00:00Z',
+      evidence: {
+        secAccession: '0001234567-26-000002',
+        secFilingDate: '2026-03-01',
+        hasVerifiedSecStatements: true,
+        citationsCount: 5,
+        provenance: 'VERIFIED_FACT'
+      }
+    };
+    const currSnap = extractMemorySnapshot(newFilingReport)!;
+    const whatChanged = computeWhatChanged(currSnap, prevSnap, []);
+
+    const context = buildDecisionContext(currSnap, prevSnap, sampleThesis, whatChanged, []);
+
+    assert.equal(context.stance, 'THESIS_STABLE');
+    assert.equal(context.requiresAttention, false);
+    assert.match(context.headlineTh, /หลักฐานใหม่สอดคล้องกับสมมติฐาน/);
+    assert.match(context.summaryNarrativeTh, /ตรวจสอบหลักฐานและผลการดำเนินงานใหม่แล้วพบว่ายังสอดคล้อง/);
   });
 
   it('proves zero automated Buy/Sell commands in output', () => {
@@ -387,7 +412,7 @@ describe('decisionContextEngine', () => {
 
       // Stance must NOT become THESIS_CONDITION_TRIGGERED
       assert.notEqual(context.stance, 'THESIS_CONDITION_TRIGGERED');
-      assert.equal(context.stance, 'MONITORING_CONTINUES_UNCHANGED');
+      assert.ok(context.stance === 'NO_NEW_EVIDENCE' || context.stance === 'MONITORING_CONTINUES_UNCHANGED');
     });
   });
 

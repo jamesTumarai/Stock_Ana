@@ -1381,6 +1381,12 @@ export interface PortfolioSummary {
 export interface HistoricalReportDelta {
   previousReportDate: string;
   currentReportDate: string;
+  previousTimestamp?: number;
+  currentTimestamp?: number;
+  previousDisplayDate?: string;
+  currentDisplayDate?: string;
+  comparisonWindowLabel?: string;
+  elapsedTimeDisplay?: string;
   daysBetween: number;
   priceDelta?: { previous: number; current: number; deltaPct: number } | null;
   fairValueDelta?: { previous: number; current: number; deltaPct: number } | null;
@@ -1388,6 +1394,8 @@ export interface HistoricalReportDelta {
   revenueYoYDelta?: { previous: number; current: number; deltaPctPoints: number } | null;
   operatingMarginDelta?: { previous: number; current: number; deltaPctPoints: number } | null;
   freeCashFlowDelta?: { previous: number; current: number; deltaPct: number } | null;
+  netIncomeDelta?: { previous: number; current: number; deltaPct: number } | null;
+  epsDelta?: { previous: number; current: number; delta: number } | null;
 }
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';

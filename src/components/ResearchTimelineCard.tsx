@@ -9,7 +9,8 @@ import {
   buildResearchTimeline,
   computeHistoricalDelta,
   extractReportDate,
-  getPreviousReport
+  getPreviousReport,
+  selectPreviousDistinctSnapshot
 } from '../utils/researchTimeline';
 import { extractMemorySnapshot } from '../domain/investmentMemory';
 import { computeWhatChanged } from '../domain/whatChangedEngine';
@@ -18,7 +19,8 @@ import {
   InvestmentThesisRecord,
   TrackedExpectation,
   evaluateExpectations,
-  resolveActiveThesisForReport
+  resolveActiveThesisForReport,
+  resolveBusinessCategory
 } from '../domain/thesisExpectations';
 import {
   loadUserThesis,
@@ -74,13 +76,17 @@ export function ResearchTimelineCard({
   }, [ticker, historyReports, currentReport]);
 
   const previousReport = useMemo(() => {
-    return getPreviousReport(ticker, historyReports, currentReport);
+    return selectPreviousDistinctSnapshot(ticker, historyReports, currentReport);
   }, [ticker, historyReports, currentReport]);
 
   const delta = useMemo(() => {
     if (!previousReport) return null;
-    return computeHistoricalDelta(currentReport, previousReport);
-  }, [currentReport, previousReport]);
+    return computeHistoricalDelta(currentReport, previousReport, isThai);
+  }, [currentReport, previousReport, isThai]);
+
+  const businessCategory = useMemo(() => {
+    return resolveBusinessCategory(currentReport, ticker);
+  }, [currentReport, ticker]);
 
   const currentSnapshot = useMemo(() => {
     return extractMemorySnapshot(currentReport);
@@ -172,9 +178,9 @@ export function ResearchTimelineCard({
         <div className={`p-4 rounded-2xl border flex flex-col gap-2.5 ${
           decisionContext.stance === 'THESIS_CONDITION_TRIGGERED'
             ? 'bg-rose-50/80 border-rose-200 text-rose-950'
-            : decisionContext.stance === 'RE_EVALUATION_WARRANTED'
+            : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED'
             ? 'bg-amber-50/80 border-amber-200 text-amber-950'
-            : decisionContext.stance === 'MONITORING_CONTINUES_UNCHANGED'
+            : decisionContext.stance === 'THESIS_STABLE'
             ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
             : 'bg-stone-50 border-stone-200 text-stone-900'
         }`}>
@@ -182,9 +188,9 @@ export function ResearchTimelineCard({
             <div className="flex items-center gap-2">
               {decisionContext.stance === 'THESIS_CONDITION_TRIGGERED' ? (
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              ) : decisionContext.stance === 'RE_EVALUATION_WARRANTED' ? (
+              ) : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED' ? (
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              ) : decisionContext.stance === 'MONITORING_CONTINUES_UNCHANGED' ? (
+              ) : decisionContext.stance === 'THESIS_STABLE' ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               ) : (
                 <Clock className="w-4 h-4 text-stone-500 shrink-0" />
@@ -197,9 +203,9 @@ export function ResearchTimelineCard({
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
               decisionContext.stance === 'THESIS_CONDITION_TRIGGERED'
                 ? 'bg-rose-100 text-rose-800 border-rose-300'
-                : decisionContext.stance === 'RE_EVALUATION_WARRANTED'
+                : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED'
                 ? 'bg-amber-100 text-amber-800 border-amber-300'
-                : decisionContext.stance === 'MONITORING_CONTINUES_UNCHANGED'
+                : decisionContext.stance === 'THESIS_STABLE'
                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                 : 'bg-stone-200 text-stone-700 border-stone-300'
             }`}>
@@ -260,7 +266,7 @@ export function ResearchTimelineCard({
       )}
 
       {/* WHAT CHANGED INTELLIGENCE */}
-      {whatChanged && (
+      {whatChanged ? (
         <div className="bg-stone-50/70 p-4 rounded-2xl border border-stone-200/80 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -276,12 +282,17 @@ export function ResearchTimelineCard({
             }`}>
               {whatChanged.hasMaterialChanges
                 ? (isThai ? `พบ ${whatChanged.materialChangesCount} การเปลี่ยนแปลงสำคัญ` : `${whatChanged.materialChangesCount} Material Changes`)
-                : (isThai ? 'ไม่มีการเปลี่ยนแปลงสำคัญ' : 'No Material Changes')}
+                : (isThai ? 'ไม่พบการเปลี่ยนแปลงสำคัญ' : 'No Material Changes')}
             </span>
           </div>
 
           <p className="text-xs text-stone-600 leading-relaxed font-sans">
             {isThai ? whatChanged.summaryNarrativeTh : whatChanged.summaryNarrative}
+            {!whatChanged.hasMaterialChanges && (
+              <span className="block text-[11px] text-stone-400 mt-0.5">
+                {isThai ? '(เปรียบเทียบกับ snapshot ก่อนหน้าที่มีสถานะต่างกัน)' : '(Compared with prior distinct snapshot)'}
+              </span>
+            )}
           </p>
 
           {/* Material Changes List */}
@@ -328,41 +339,109 @@ export function ResearchTimelineCard({
             </div>
           )}
         </div>
+      ) : (
+        /* Empty state when no materially distinct prior snapshot exists */
+        <div className="bg-stone-50/70 p-4 rounded-2xl border border-stone-200/80 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-stone-400" />
+            <span className="text-xs font-bold text-stone-700 uppercase font-mono tracking-wider">
+              {isThai ? 'การเปลี่ยนแปลงที่ตรวจพบ (What Changed Intelligence)' : 'What Changed Intelligence'}
+            </span>
+          </div>
+          <p className="text-xs text-stone-500 font-sans">
+            {isThai
+              ? 'ยังไม่มีข้อมูลย้อนหลังที่เพียงพอสำหรับการเปรียบเทียบ'
+              : 'Not enough prior research history for a meaningful comparison.'}
+          </p>
+        </div>
       )}
 
       {/* Primary What Changed Empirical Delta Box */}
       {delta && (
         <div className="bg-stone-50/90 rounded-2xl p-4 border border-stone-200/90 flex flex-col gap-3">
-          <div className="flex items-center justify-between text-xs text-stone-500 font-mono">
-            <span>
-              {isThai ? 'ช่วงห่างจากบทวิเคราะห์ก่อนหน้า:' : 'Elapsed Since Prior Report:'} <strong>{delta.daysBetween} {isThai ? 'วัน' : 'days'}</strong> ({delta.previousReportDate} → {delta.currentReportDate})
-            </span>
-            <span className="text-[10px] uppercase font-bold text-stone-400">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-stone-500 font-mono">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span>
+                {isThai ? 'ปัจจุบัน:' : 'Current:'} <strong className="text-stone-900">{delta.currentDisplayDate || delta.currentReportDate}</strong>
+              </span>
+              <span className="text-stone-400">vs</span>
+              <span>
+                {isThai ? 'เปรียบเทียบกับ:' : 'Compared with:'} <strong className="text-stone-900">{delta.previousDisplayDate || delta.previousReportDate}</strong>
+              </span>
+              {delta.elapsedTimeDisplay && (
+                <span className="px-2 py-0.5 rounded-md bg-stone-200/80 text-stone-700 text-[10px] font-bold">
+                  {delta.elapsedTimeDisplay}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] uppercase font-bold text-stone-400 shrink-0">
               {isThai ? 'ตัวเลขจริง ไม่ใช่คำบรรยายแต่งเติม' : 'Empirical Deltas Only'}
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* Market Price Change */}
-            {delta.priceDelta && (
+            {/* 1. Company/Business-Relevant Verified Metric (Priority 1) */}
+            {businessCategory !== 'financial' && delta.operatingMarginDelta && (
               <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
-                  {isThai ? 'ราคาตลาด' : 'Market Price'}
+                  {isThai ? 'Operating Margin' : 'Operating Margin'}
                 </span>
                 <span className="text-sm font-mono font-bold text-stone-900 mt-0.5">
-                  ${delta.priceDelta.previous.toFixed(2)} → ${delta.priceDelta.current.toFixed(2)}
+                  {delta.operatingMarginDelta.previous}% → {delta.operatingMarginDelta.current}%
                 </span>
-                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.priceDelta.deltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {delta.priceDelta.deltaPct >= 0 ? '+' : ''}{delta.priceDelta.deltaPct.toFixed(2)}%
+                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.operatingMarginDelta.deltaPctPoints >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {delta.operatingMarginDelta.deltaPctPoints >= 0 ? '+' : ''}{delta.operatingMarginDelta.deltaPctPoints.toFixed(2)}% pts
                 </span>
               </div>
             )}
 
-            {/* Base Fair Value Change */}
+            {businessCategory === 'financial' && delta.netIncomeDelta && (
+              <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
+                <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
+                  {isThai ? 'กำไรสุทธิ (Net Income)' : 'Net Income'}
+                </span>
+                <span className="text-sm font-mono font-bold text-stone-900 mt-0.5">
+                  ${delta.netIncomeDelta.previous.toLocaleString()}M → ${delta.netIncomeDelta.current.toLocaleString()}M
+                </span>
+                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.netIncomeDelta.deltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {delta.netIncomeDelta.deltaPct >= 0 ? '+' : ''}{delta.netIncomeDelta.deltaPct.toFixed(1)}%
+                </span>
+              </div>
+            )}
+
+            {businessCategory === 'financial' && !delta.netIncomeDelta && delta.epsDelta && (
+              <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
+                <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
+                  {isThai ? 'กำไรต่อหุ้น (Diluted EPS)' : 'Diluted EPS'}
+                </span>
+                <span className="text-sm font-mono font-bold text-stone-900 mt-0.5">
+                  ${delta.epsDelta.previous.toFixed(2)} → ${delta.epsDelta.current.toFixed(2)}
+                </span>
+                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.epsDelta.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {delta.epsDelta.delta >= 0 ? '+' : ''}{delta.epsDelta.delta.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {businessCategory === 'financial' && !delta.netIncomeDelta && !delta.epsDelta && delta.revenueYoYDelta && (
+              <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
+                <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
+                  {isThai ? 'รายได้ YoY' : 'Revenue YoY'}
+                </span>
+                <span className="text-sm font-mono font-bold text-stone-900 mt-0.5">
+                  {delta.revenueYoYDelta.previous.toFixed(1)}% → {delta.revenueYoYDelta.current.toFixed(1)}%
+                </span>
+                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.revenueYoYDelta.deltaPctPoints >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {delta.revenueYoYDelta.deltaPctPoints >= 0 ? '+' : ''}{delta.revenueYoYDelta.deltaPctPoints.toFixed(2)}% pts
+                </span>
+              </div>
+            )}
+
+            {/* 2. Base Fair Value Change (Valuation) */}
             {delta.fairValueDelta && (
               <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
-                  {isThai ? 'มูลค่าแท้จริง DCF' : 'Base Fair Value'}
+                  {isThai ? 'มูลค่าแท้จริง' : 'Base Fair Value'}
                 </span>
                 <span className="text-sm font-mono font-bold text-[#0b5a4b] mt-0.5">
                   ${delta.fairValueDelta.previous.toFixed(2)} → ${delta.fairValueDelta.current.toFixed(2)}
@@ -373,7 +452,7 @@ export function ResearchTimelineCard({
               </div>
             )}
 
-            {/* Conviction Score Delta */}
+            {/* 3. Conviction Score Delta */}
             {delta.convictionScoreDelta && (
               <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
@@ -388,17 +467,17 @@ export function ResearchTimelineCard({
               </div>
             )}
 
-            {/* Operating Margin Delta */}
-            {delta.operatingMarginDelta && (
+            {/* 4. Market Price Change (Context) */}
+            {delta.priceDelta && (
               <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
-                  {isThai ? 'Operating Margin' : 'Operating Margin'}
+                  {isThai ? 'ราคาตลาด (บริบท)' : 'Market Price (Context)'}
                 </span>
                 <span className="text-sm font-mono font-bold text-stone-900 mt-0.5">
-                  {delta.operatingMarginDelta.previous}% → {delta.operatingMarginDelta.current}%
+                  ${delta.priceDelta.previous.toFixed(2)} → ${delta.priceDelta.current.toFixed(2)}
                 </span>
-                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.operatingMarginDelta.deltaPctPoints >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {delta.operatingMarginDelta.deltaPctPoints >= 0 ? '+' : ''}{delta.operatingMarginDelta.deltaPctPoints.toFixed(2)}% pts
+                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.priceDelta.deltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {delta.priceDelta.deltaPct >= 0 ? '+' : ''}{delta.priceDelta.deltaPct.toFixed(2)}%
                 </span>
               </div>
             )}
@@ -415,6 +494,11 @@ export function ResearchTimelineCard({
           <div className="relative pl-6 border-l-2 border-stone-200 space-y-4 my-2">
             {timeline.map((entry, idx) => {
               const isCurrent = idx === 0;
+              const nextEntry = timeline[idx + 1];
+              const hasConvictionChange = typeof entry.convictionScore === 'number' &&
+                typeof nextEntry?.convictionScore === 'number' &&
+                entry.convictionScore !== nextEntry.convictionScore;
+
               return (
                 <div key={entry.id || idx} className="relative group">
                   {/* Timeline dot */}
@@ -424,8 +508,10 @@ export function ResearchTimelineCard({
 
                   <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-xs text-stone-900">{entry.reportDate}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-xs text-stone-900">
+                          {entry.formattedDateTime || entry.reportDate}
+                        </span>
                         {isCurrent && (
                           <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-[#0b5a4b] uppercase font-mono">
                             {isThai ? 'ปัจจุบัน' : 'Current'}
@@ -434,6 +520,13 @@ export function ResearchTimelineCard({
                         <span className="text-[10px] text-stone-500 font-sans">
                           {entry.analysisType}
                         </span>
+                        {hasConvictionChange && (
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
+                            {isThai
+                              ? `เปลี่ยนจาก ${nextEntry.convictionScore} → ${entry.convictionScore}`
+                              : `${nextEntry.convictionScore} → ${entry.convictionScore}`}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs font-mono text-stone-700 mt-1">
                         {entry.marketPrice && (
