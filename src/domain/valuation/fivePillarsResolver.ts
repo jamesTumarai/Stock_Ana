@@ -10,6 +10,7 @@ import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMe
 import { DataGapState } from '../dataCompleteness/types';
 import { findKeyIndicatorInSource } from '../metricLineage';
 import { discoverPeers } from './peerDiscoveryEngine';
+import { resolveFundamentalMetrics } from './metricRegistry';
 import type { AdaptiveFivePillarsResult, AdaptivePillarMetric, AdaptivePillarSection } from './types';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -83,154 +84,55 @@ export function resolveAdaptiveFivePillars(
     ? rounded((totalCash - totalDebt) / 1000)
     : undefined;
 
-  // 3. Resolve Pillar 1: Growth
-  const revGrowth = at(inc?.yoy_revenue_growth_pct) ?? getKi('revenue_growth_yoy_pct');
-  let epsGrowth = at((inc as any)?.yoy_eps_growth_pct) ?? getKi('yoy_eps_growth_pct') ?? getKi('eps_growth') ?? getKi('eps_growth_yoy_pct');
-  let epsGrowthBasis: string | undefined;
-
-  if (epsGrowth === undefined && inc?.eps_diluted && inc.eps_diluted.length >= 2) {
-    const epsArr = inc.eps_diluted;
-    const curEps = epsArr[epsArr.length - 1];
-    // Prior year same period: if >= 5 quarters, compare with 4 quarters ago; if 4 quarters, compare with index 0
-    const priorIndex = epsArr.length >= 5 ? epsArr.length - 5 : (epsArr.length === 4 ? 0 : epsArr.length - 2);
-    const priorEps = epsArr[priorIndex];
-
-    if (finite(curEps) && finite(priorEps)) {
-      if (priorEps > 0) {
-        epsGrowth = rounded(((curEps / priorEps) - 1) * 100);
-        epsGrowthBasis = `SEC Diluted EPS YoY (${periods[epsArr.length - 1] || 'Latest'} vs ${periods[priorIndex] || 'Prior Year'})`;
-      } else if (priorEps < 0 && curEps > 0) {
-        epsGrowthBasis = 'Turnaround: Loss to Profit';
-      } else if (priorEps < 0 && curEps < 0) {
-        epsGrowthBasis = 'Both periods negative (EPS Growth not meaningful)';
-      }
-    }
-  }
-
-  const fcfGrowth = at((cf as any)?.yoy_fcf_growth_pct) ?? getKi('fcf_growth');
-  const revCagr3Yr = getKi('revenue_cagr_3yr_pct');
-
-  const peRatio = report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward|PEG/i.test(r.name))?.value;
-  const forwardPe = report.valuation_ratios?.find(r => /forward.*P\/E|P\/E.*forward/i.test(r.name))?.value;
-  const pbRatio = report.valuation_ratios?.find(r => /P\/B/i.test(r.name))?.value ?? getKi('price_to_book');
-  const pfcfRatio = report.valuation_ratios?.find(r => /P\/FCF/i.test(r.name))?.value;
-
-  // PEG ratio computation (relates P/E to EPS/earnings growth, NEVER revenue growth)
-  let pegRatio: number | undefined;
-  let pegInterpretation = 'N/A';
+  // 3. Resolve canonical fundamental metrics from single domain registry
+  const resolvedMetrics = resolveFundamentalMetrics(report, sym);
   const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
-  const isPreProfit = archetype === 'early_stage' || (netInc !== undefined && netInc <= 0);
-
-  if (isFinancial) {
-    pegInterpretation = 'PEG ไม่เหมาะกับสถาบันการเงินเนื่องจากโครงสร้างกำไรและเงินทุนอิง Net Interest Spread';
-  } else if (archetype === 'reit') {
-    pegInterpretation = 'PEG ไม่เหมาะกับกองทรัสต์อสังหาริมทรัพย์ (REIT) เนื่องจากกำไรสุทธิทางบัญชีถูกบิดเบือนจากค่าเสื่อมราคา';
-  } else if (isPreProfit) {
-    pegInterpretation = 'PEG ไม่เหมาะกับบริษัทที่ยังไม่มีกำไรสุทธิสม่ำเสมอ';
-  } else if (finite(peRatio) && peRatio > 0 && finite(epsGrowth) && epsGrowth > 0) {
-    pegRatio = rounded(peRatio / epsGrowth);
-    pegInterpretation = pegRatio < 1.0
-      ? `PEG ${pegRatio}x สะท้อนราคาที่เติบโตสมเหตุสมผลเมื่อเทียบกับการเติบโตของกำไร EPS (+${epsGrowth}%)`
-      : pegRatio <= 2.0
-        ? `PEG ${pegRatio}x อยู่ในเกณฑ์มาตรฐานของกลุ่มอุตสาหกรรม`
-        : `PEG ${pegRatio}x สะท้อนความคาดหวังการเติบโตในราคาสูง (Premium Valuation)`;
-  } else if (finite(peRatio) && peRatio > 0) {
-    if (epsGrowth === undefined || epsGrowth === null) {
-      pegInterpretation = epsGrowthBasis || 'ข้อมูลการเติบโตของกำไรต่อหุ้น (EPS Growth) ไม่พร้อมใช้งาน จึงไม่สามารถคำนวณ PEG Ratio ได้';
-    } else if (epsGrowth <= 0) {
-      pegInterpretation = 'PEG ไม่สามารถคำนวณได้เนื่องจากอัตราเติบโตของกำไร (EPS Growth) ติดลบหรือเท่ากับศูนย์';
-    }
-  }
 
   const growthData: FivePillarsGrowthData = {
-    revenue_growth_yoy_pct: revGrowth,
-    eps_growth_yoy_pct: epsGrowth,
-    eps_growth_basis: epsGrowthBasis,
-    fcf_growth_yoy_pct: isFinancial ? undefined : fcfGrowth,
-    revenue_cagr_3yr_pct: revCagr3Yr,
-    peg_ratio: pegRatio,
-    peg_interpretation: pegInterpretation,
+    revenue_growth_yoy_pct: typeof resolvedMetrics.revenueGrowthYoY.value === 'number' ? resolvedMetrics.revenueGrowthYoY.value : undefined,
+    eps_growth_yoy_pct: typeof resolvedMetrics.epsGrowthYoY.value === 'number' ? resolvedMetrics.epsGrowthYoY.value : undefined,
+    eps_growth_basis: resolvedMetrics.epsGrowthYoY.reason || (typeof resolvedMetrics.epsGrowthYoY.value === 'number' ? `SEC Diluted EPS YoY (${resolvedMetrics.epsGrowthYoY.basis || 'TTM'})` : undefined),
+    fcf_growth_yoy_pct: isFinancial ? undefined : (typeof resolvedMetrics.fcfGrowthYoY.value === 'number' ? resolvedMetrics.fcfGrowthYoY.value : undefined),
+    fcf_growth_status: resolvedMetrics.fcfGrowthYoY.status,
+    fcf_growth_basis: resolvedMetrics.fcfGrowthYoY.reason || resolvedMetrics.fcfGrowthYoY.reasonTh,
+    revenue_cagr_3yr_pct: typeof resolvedMetrics.revenueCagr3Y.value === 'number' ? resolvedMetrics.revenueCagr3Y.value : undefined,
+    revenue_cagr_status: resolvedMetrics.revenueCagr3Y.status,
+    revenue_cagr_basis: resolvedMetrics.revenueCagr3Y.reason || resolvedMetrics.revenueCagr3Y.reasonTh,
+    peg_ratio: typeof resolvedMetrics.peg.value === 'number' ? resolvedMetrics.peg.value : undefined,
+    peg_interpretation: resolvedMetrics.peg.reasonTh || resolvedMetrics.peg.reason || 'N/A',
+    peg_status: resolvedMetrics.peg.status,
+    peg_basis: resolvedMetrics.peg.basis,
   };
 
   // 4. Resolve Pillar 2: Profitability & Returns
-  const roe = getKi('roe') ?? getKi('roe_pct') ?? (netInc !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded((netInc / totalEquity) * 100) : undefined);
-  let roic = getKi('roic') ?? getKi('roic_pct');
-  let roicBasis: string | undefined;
-  let roicFormula: string | undefined;
-
-  const totalAssets = at(bs?.total_assets);
-  const roa = getKi('roa') ?? getKi('roa_pct') ?? (netInc !== undefined && totalAssets !== undefined && totalAssets > 0 ? rounded((netInc / totalAssets) * 100) : undefined);
-
-  if (roic === undefined && !isFinancial) {
-    // Deterministic ROIC derivation: NOPAT / Average Invested Capital
-    if (opInc !== undefined && totalEquity !== undefined && totalDebt !== undefined && totalCash !== undefined) {
-      const taxExp = at(inc?.income_tax_expense);
-      const ebt = at(inc?.income_before_tax);
-      const effTaxRate = (taxExp !== undefined && ebt !== undefined && ebt > 0 && taxExp >= 0 && taxExp <= ebt)
-        ? taxExp / ebt
-        : 0.21;
-      const nopat = opInc * (1 - effTaxRate);
-
-      const endingIC = totalEquity + totalDebt - totalCash;
-      const eqArr = bs?.total_equity || [];
-      const debtArr = bs?.total_debt || [];
-      const cashArr = bs?.cash_and_equivalents || [];
-      const stArr = bs?.short_term_investments || [];
-      let avgIC = endingIC;
-
-      if (eqArr.length >= 2) {
-        const beginEq = eqArr[0];
-        const beginDebt = debtArr[0] ?? 0;
-        const beginCash = (cashArr[0] ?? 0) + (stArr[0] ?? 0);
-        if (finite(beginEq) && finite(beginDebt)) {
-          const beginIC = beginEq + beginDebt - beginCash;
-          if (beginIC > 0) {
-            avgIC = (beginIC + endingIC) / 2;
-            roicBasis = 'NOPAT / Average Invested Capital (Beginning & Ending Period)';
-          }
-        }
-      }
-      if (!roicBasis) {
-        roicBasis = 'NOPAT / Ending Invested Capital';
-      }
-
-      if (avgIC > 0) {
-        roic = rounded((nopat / avgIC) * 100);
-        roicFormula = 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash)';
-      }
-    }
-  }
-
   const nim = getKi('nim') ?? getKi('net_interest_margin_pct');
   const efficiencyRatio = getKi('efficiency_ratio') ?? getKi('efficiency_ratio_pct');
-  const netMargin = at(inc?.net_margin_pct) ?? (rev !== undefined && netInc !== undefined && rev > 0 ? rounded((netInc / rev) * 100) : undefined);
-  const opMargin = at(inc?.operating_margin_pct) ?? (rev !== undefined && opInc !== undefined && rev > 0 ? rounded((opInc / rev) * 100) : undefined);
-  const grossMargin = at(inc?.gross_margin_pct) ?? (rev !== undefined && grossProfit !== undefined && rev > 0 ? rounded((grossProfit / rev) * 100) : undefined);
 
   let capitalEfficiencyVerdict = 'N/A';
   if (isFinancial) {
-    capitalEfficiencyVerdict = roe !== undefined
-      ? `ROE ${roe}% สะท้อนอัตราผลตอบแทนต่อส่วนผู้ถือหุ้นของสถาบันการเงิน${nim !== undefined ? ` พร้อม NIM ${nim}%` : ''}`
+    capitalEfficiencyVerdict = typeof resolvedMetrics.roe.value === 'number'
+      ? `ROE ${resolvedMetrics.roe.value}% สะท้อนอัตราผลตอบแทนต่อส่วนผู้ถือหุ้นของสถาบันการเงิน${nim !== undefined ? ` พร้อม NIM ${nim}%` : ''}`
       : 'วิเคราะห์ผลตอบแทนสถาบันการเงินผ่าน ROE, ROA และ NIM';
-  } else if (roic !== undefined) {
-    capitalEfficiencyVerdict = roic > 15
-      ? `ROIC ${roic}% สะท้อนความสามารถในการจัดสรรเงินทุนที่ยอดเยี่ยม (High Capital Efficiency)`
-      : roic > 8
-        ? `ROIC ${roic}% สร้างผลตอบแทนเงินลงทุนในระดับมาตรฐานอุตสาหกรรม`
-        : `ROIC ${roic}% อัตราผลตอบแทนเงินลงทุนต่ำกว่าเกณฑ์เฉลี่ย`;
-  } else if (roe !== undefined) {
-    capitalEfficiencyVerdict = `ROE ${roe}% สะท้อนผลตอบแทนต่อส่วนของผู้ถือหุ้น`;
+  } else if (typeof resolvedMetrics.roic.value === 'number') {
+    const roicVal = resolvedMetrics.roic.value;
+    capitalEfficiencyVerdict = roicVal > 15
+      ? `ROIC ${roicVal}% สะท้อนความสามารถในการจัดสรรเงินทุนที่ยอดเยี่ยม (High Capital Efficiency)`
+      : roicVal > 8
+        ? `ROIC ${roicVal}% สร้างผลตอบแทนเงินลงทุนในระดับมาตรฐานอุตสาหกรรม`
+        : `ROIC ${roicVal}% อัตราผลตอบแทนเงินลงทุนต่ำกว่าเกณฑ์เฉลี่ย`;
+  } else if (typeof resolvedMetrics.roe.value === 'number') {
+    capitalEfficiencyVerdict = `ROE ${resolvedMetrics.roe.value}% สะท้อนผลตอบแทนต่อส่วนของผู้ถือหุ้น`;
   }
 
   const profitabilityData: FivePillarsProfitabilityData = {
-    net_margin_pct: netMargin,
-    operating_margin_pct: opMargin,
-    gross_margin_pct: isFinancial ? undefined : grossMargin,
-    roe_pct: roe,
-    roic_pct: isFinancial ? undefined : roic,
-    roic_basis: roicBasis,
-    roic_formula: roicFormula,
-    roa_pct: roa,
+    net_margin_pct: typeof resolvedMetrics.netMargin.value === 'number' ? resolvedMetrics.netMargin.value : undefined,
+    operating_margin_pct: typeof resolvedMetrics.operatingMargin.value === 'number' ? resolvedMetrics.operatingMargin.value : undefined,
+    gross_margin_pct: isFinancial ? undefined : (typeof resolvedMetrics.grossMargin.value === 'number' ? resolvedMetrics.grossMargin.value : undefined),
+    roe_pct: typeof resolvedMetrics.roe.value === 'number' ? resolvedMetrics.roe.value : undefined,
+    roic_pct: isFinancial ? undefined : (typeof resolvedMetrics.roic.value === 'number' ? resolvedMetrics.roic.value : undefined),
+    roic_basis: resolvedMetrics.roic.basis,
+    roic_formula: resolvedMetrics.roic.formula,
+    roa_pct: typeof resolvedMetrics.roa.value === 'number' ? resolvedMetrics.roa.value : undefined,
     net_interest_margin_pct: isFinancial ? nim : undefined,
     efficiency_ratio_pct: isFinancial ? efficiencyRatio : undefined,
     capital_efficiency_verdict: capitalEfficiencyVerdict,
@@ -283,31 +185,16 @@ export function resolveAdaptiveFivePillars(
   const treasuryAsOf = report.five_pillars?.yields?.treasury_as_of_date;
   const treasurySource = report.five_pillars?.yields?.treasury_source;
 
-  // Earnings Yield Basis: Prefer Trailing P/E if available, else Forward P/E
-  let earningsYield: number | undefined;
-  let earningsYieldBasis: 'TTM' | 'FORWARD' | undefined;
-  if (finite(peRatio) && peRatio > 0) {
-    earningsYield = rounded(100 / peRatio);
-    earningsYieldBasis = 'TTM';
-  } else if (finite(forwardPe) && forwardPe > 0) {
-    earningsYield = rounded(100 / forwardPe);
-    earningsYieldBasis = 'FORWARD';
-  }
-
-  // FCF Yield (Guarded for Financials)
-  let fcfYield: number | undefined;
+  const pfcfRatio = report.valuation_ratios?.find(r => /P\/FCF/i.test(r.name))?.value;
+  const earningsYield = resolvedMetrics.earningsYield.value;
+  const earningsYieldBasis = resolvedMetrics.earningsYield.basis;
+  const fcfYield = resolvedMetrics.fcfYield.value;
   let isFcfGuarded = false;
   let fcfGuardReason: string | undefined;
 
   if (isFinancial) {
     isFcfGuarded = true;
     fcfGuardReason = 'Not used — Financial Sector Guard';
-  } else if (finite(pfcfRatio) && pfcfRatio > 0) {
-    fcfYield = rounded(100 / pfcfRatio);
-  } else if (finite(report.five_pillars?.yields?.fcf_yield_pct)) {
-    fcfYield = report.five_pillars!.yields.fcf_yield_pct;
-  } else if (finite(getKi('fcf_yield_pct'))) {
-    fcfYield = getKi('fcf_yield_pct');
   }
 
   let yieldInterpretation = 'N/A';
@@ -347,7 +234,7 @@ export function resolveAdaptiveFivePillars(
   }
 
   const yieldsData: FivePillarsYieldsData = {
-    pe_multiple: peRatio,
+    pe_multiple: resolvedMetrics.peTrailing.value,
     earnings_yield_pct: earningsYield,
     earnings_yield_basis: earningsYieldBasis,
     pfcf_multiple: isFinancial ? undefined : pfcfRatio,
@@ -362,16 +249,16 @@ export function resolveAdaptiveFivePillars(
   };
 
   // 7. Resolve Pillar 5: Peer Discovery & Benchmark Matrix
-  const peerDiscovery = discoverPeers(report, sym);
+  const peerDiscovery = discoverPeers(report, sym, { targetMetrics: resolvedMetrics });
   const peerMatrix = peerDiscovery.benchmarkRows;
 
   // Build missing reason mapping for user-facing precision
   const unavailableReasons: Record<string, string> = {};
   if (growthData.eps_growth_yoy_pct === undefined) {
-    unavailableReasons.eps_growth = epsGrowthBasis || 'Insufficient comparable EPS history';
+    unavailableReasons.eps_growth = resolvedMetrics.epsGrowthYoY.reason || 'Insufficient comparable EPS history';
   }
   if (profitabilityData.roic_pct === undefined && !isFinancial) {
-    unavailableReasons.roic = 'Insufficient verified invested-capital inputs';
+    unavailableReasons.roic = resolvedMetrics.roic.reason || 'Insufficient verified invested-capital inputs';
   }
   if (peerMatrix.length === 0) {
     unavailableReasons.peer = 'No verified comparable candidates';

@@ -1,5 +1,6 @@
 import type { ReportData, PeerBenchmarkRow, PeerCompanyItem } from '../../types.js';
 import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMetricContext.js';
+import { resolveFundamentalMetrics, type ResolvedFundamentalMetrics } from './metricRegistry.js';
 import type {
   PeerBusinessFingerprint,
   PeerCandidate,
@@ -21,26 +22,40 @@ export interface PeerDiscoveryOptions {
   candidates?: (CandidateDefinition | PeerCompanyItem)[];
   disableFixtureFallback?: boolean;
   allowFixtureFallback?: boolean;
+  targetMetrics?: ResolvedFundamentalMetrics;
+  candidateDiscoverer?: (target: PeerBusinessFingerprint | PeerCandidateDiscoveryInput) => CandidateDefinition[];
+}
+
+export type PeerCandidateDiscoverer = (
+  target: PeerBusinessFingerprint | PeerCandidateDiscoveryInput
+) => CandidateDefinition[];
+
+let globalRuntimeDiscoverer: PeerCandidateDiscoverer | null = null;
+
+export function setRuntimePeerDiscoverer(discoverer: PeerCandidateDiscoverer | null) {
+  globalRuntimeDiscoverer = discoverer;
+}
+
+export function getRuntimePeerDiscoverer(): PeerCandidateDiscoverer | null {
+  return globalRuntimeDiscoverer;
 }
 
 export interface PeerCandidateDiscoveryInput {
   ticker: string;
+  companyName?: string;
   primaryArchetype: BusinessArchetype;
   sector?: string;
   industry?: string;
   subIndustry?: string;
+  businessDescription?: string;
   businessLines?: string[];
   geography?: string;
   scaleTier?: string;
   lifecycle?: string;
 }
 
-/**
- * Bounded source-backed runtime peer candidate discovery service.
- * Discovers candidate public companies based on target's verified business fingerprint.
- * Enables peer discovery for unknown tickers without code deployment.
- */
-export function discoverPeerCandidates(
+export function filterCandidateUniverse(
+  universe: CandidateDefinition[],
   target: PeerBusinessFingerprint | PeerCandidateDiscoveryInput
 ): CandidateDefinition[] {
   const targetArchetype = 'archetype' in target ? target.archetype : target.primaryArchetype;
@@ -49,7 +64,7 @@ export function discoverPeerCandidates(
   const targetSector = (target.sector || '').toLowerCase().trim();
   const targetTicker = (target.ticker || '').toUpperCase().trim();
 
-  return PUBLIC_CANDIDATE_UNIVERSE.filter(cand => {
+  return universe.filter(cand => {
     if (cand.ticker.toUpperCase() === targetTicker) return false;
 
     // Archetype compatibility
@@ -87,6 +102,28 @@ export function discoverPeerCandidates(
 
     return false;
   });
+}
+
+/**
+ * Bounded source-backed runtime peer candidate discovery service.
+ * Discovers candidate public companies based on target's verified business fingerprint.
+ * Enables peer discovery for unknown tickers without code deployment.
+ */
+export function discoverPeerCandidates(
+  target: PeerBusinessFingerprint | PeerCandidateDiscoveryInput,
+  options?: PeerDiscoveryOptions
+): CandidateDefinition[] {
+  if (options?.candidateDiscoverer) {
+    return options.candidateDiscoverer(target);
+  }
+  if (globalRuntimeDiscoverer) {
+    return globalRuntimeDiscoverer(target);
+  }
+  const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+  if (isProduction || options?.disableFixtureFallback) {
+    return [];
+  }
+  return filterCandidateUniverse(PUBLIC_CANDIDATE_UNIVERSE, target);
 }
 
 /**
@@ -347,25 +384,6 @@ function passesHardFilters(
     return { passes: false, reason: 'REIT_GUARD' };
   }
 
-  // 6. REIT Sub-sector Guard: Sub-sector mismatch should not pass as direct peer
-  if (target.archetype === 'reit' && target.subIndustry && candidate.subIndustry && target.subIndustry !== candidate.subIndustry) {
-    return { passes: false, reason: 'REIT_SUBSECTOR_MISMATCH' };
-  }
-
-  // 7. Energy Guard: E&P must not be compared to refiners or oilfield services as direct peers
-  if (target.archetype === 'energy_commodity') {
-    if (target.subIndustry === 'oil_gas_ep' && candidate.subIndustry !== 'oil_gas_ep') {
-      return { passes: false, reason: 'ENERGY_SUBSECTOR_MISMATCH' };
-    }
-  }
-
-  // 8. Semiconductor Guard: Fabless must not be compared to foundries or equipment makers as direct peers
-  if (target.archetype === 'semiconductor') {
-    if (target.subIndustry && candidate.subIndustry && target.subIndustry !== candidate.subIndustry) {
-      return { passes: false, reason: 'SEMICONDUCTOR_SUBSECTOR_MISMATCH' };
-    }
-  }
-
   // 9. Retail Guard: Traditional physical retail must not be compared to digital marketplaces indiscriminately
   if (target.archetype === 'retail' && candidate.archetype === 'digital_marketplace') {
     return { passes: false, reason: 'RETAIL_VS_MARKETPLACE_MISMATCH' };
@@ -431,18 +449,21 @@ function buildCandidateFingerprint(
   }
 
   let subIndustry = p.subIndustry || 'general';
-  if (/auto\s*manufactur|electric\s*vehicle|automotive/i.test(industry)) {
-    subIndustry = 'automotive_manufacturing';
-  } else if (archetype === 'semiconductor') {
-    subIndustry = /foundry/i.test(industry) ? 'foundry_manufacturing' : 'fabless_accelerator';
-  } else if (archetype === 'reit') {
-    subIndustry = /industrial/i.test(industry) ? 'industrial_logistics_reit' : /office/i.test(industry) ? 'office_reit' : 'general_reit';
-  } else if (archetype === 'energy_commodity') {
-    subIndustry = /refin/i.test(industry) ? 'refining' : 'oil_gas_ep';
-  } else if (archetype === 'retail') {
-    subIndustry = 'physical_omnichannel_retail';
-  } else if (archetype === 'saas_software') {
-    subIndustry = 'enterprise_cloud_software';
+  if (!p.subIndustry) {
+    if (/auto\s*manufactur|electric\s*vehicle|automotive/i.test(industry)) {
+      subIndustry = 'automotive_manufacturing';
+    } else if (archetype === 'semiconductor') {
+      const text = `${industry} ${companyName} ${(p as any).description || ''}`;
+      subIndustry = /foundry|wafer\s*fab/i.test(text) ? 'foundry_manufacturing' : 'fabless_accelerator';
+    } else if (archetype === 'reit') {
+      subIndustry = /industrial/i.test(industry) ? 'industrial_logistics_reit' : /office/i.test(industry) ? 'office_reit' : 'general_reit';
+    } else if (archetype === 'energy_commodity') {
+      subIndustry = /refin/i.test(industry) ? 'refining' : 'oil_gas_ep';
+    } else if (archetype === 'retail') {
+      subIndustry = 'physical_omnichannel_retail';
+    } else if (archetype === 'saas_software') {
+      subIndustry = 'enterprise_cloud_software';
+    }
   }
 
   const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
@@ -570,7 +591,8 @@ export function discoverPeers(
   const targetFingerprint = buildPeerBusinessFingerprint(report, targetTicker);
 
   // Check cache for identical target & fingerprint
-  const cacheKey = `${targetTicker}:${targetFingerprint.archetype}:${targetFingerprint.subIndustry || targetFingerprint.industry}:${report.as_of_date || 'latest'}`;
+  const peerListSig = (report.peer_comparison?.peers || []).map(p => p.ticker).sort().join(',');
+  const cacheKey = `${targetTicker}:${targetFingerprint.archetype}:${targetFingerprint.subIndustry || targetFingerprint.industry}:${report.as_of_date || 'latest'}:${peerListSig}`;
   const cached = peerDiscoveryCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS) && !options?.candidates) {
     return cached.result;
@@ -602,7 +624,7 @@ export function discoverPeers(
 
   // 1d. If no dynamic candidates found from report, run runtime candidate discovery service:
   if (rawCandidates.length === 0) {
-    const discovered = discoverPeerCandidates(targetFingerprint);
+    const discovered = discoverPeerCandidates(targetFingerprint, options);
     if (discovered.length > 0) {
       rawCandidates.push(...discovered);
     }
@@ -641,7 +663,7 @@ export function discoverPeers(
       companyName: candFingerprint.companyName,
       fingerprint: candFingerprint,
       similarityScore: score,
-      relationType,
+      relationType: (raw as any).relation_type || (raw as any).relationType || relationType,
       selectionRationale: rationaleEn,
       selectionRationaleTh: rationaleTh,
       metrics,
@@ -717,18 +739,15 @@ export function discoverPeers(
     as_of_date: p.metrics.pe_trailing?.period || report.as_of_date,
   }));
 
+  // Resolve target metrics from canonical resolver if not provided in options
+  const targetResolvedMetrics = options?.targetMetrics || resolveFundamentalMetrics(report, targetTicker);
+
   // Add target row to peerCompanyItems for context
-  const targetPE = report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
-  const targetFwdPE = report.valuation_ratios?.find(r => /forward.*P\/E|P\/E.*forward/i.test(r.name))?.value;
-  const targetRevGrowth = report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
-    (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
-  ];
-  const targetGM = report.financial_statements?.income_statement?.gross_margin_pct?.[
-    (report.financial_statements?.income_statement?.gross_margin_pct?.length || 0) - 1
-  ];
-  const targetNM = report.financial_statements?.income_statement?.net_margin_pct?.[
-    (report.financial_statements?.income_statement?.net_margin_pct?.length || 0) - 1
-  ];
+  const targetPE = targetResolvedMetrics.peTrailing.value;
+  const targetFwdPE = targetResolvedMetrics.peForward.value;
+  const targetRevGrowth = targetResolvedMetrics.revenueGrowthYoY.value;
+  const targetGM = targetResolvedMetrics.grossMargin.value;
+  const targetNM = targetResolvedMetrics.netMargin.value;
 
   peerCompanyItems.unshift({
     ticker: targetTicker,
@@ -743,7 +762,7 @@ export function discoverPeers(
   });
 
   // Build archetype-aware benchmark rows for Five Pillars (Pillar 5)
-  const benchmarkRows = buildArchetypeBenchmarkRows(targetFingerprint.archetype, report, finalPeers, medians);
+  const benchmarkRows = buildArchetypeBenchmarkRows(targetFingerprint.archetype, report, finalPeers, medians, targetResolvedMetrics);
 
   const result: PeerDiscoveryResult = {
     targetTicker,
@@ -770,7 +789,8 @@ function buildArchetypeBenchmarkRows(
   archetype: BusinessArchetype,
   report: Partial<ReportData>,
   peers: PeerCandidate[],
-  medians: Record<string, number | null>
+  medians: Record<string, number | null>,
+  targetMetrics?: ResolvedFundamentalMetrics
 ): PeerBenchmarkRow[] {
   const rows: PeerBenchmarkRow[] = [];
   const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
@@ -789,11 +809,18 @@ function buildArchetypeBenchmarkRows(
   // Section 27: Direct Peer must refer to one company.
   // Prefer DIRECT_PEER, or fall back to closest comparable if no DIRECT_PEER meets threshold
   const directPeer = peers.find(p => p.relationType === 'DIRECT_PEER') || peers.find(p => p.relationType === 'CLOSE_COMPARABLE');
+  const isDirect = directPeer?.relationType === 'DIRECT_PEER';
+  const directHeaderTh = directPeer
+    ? (isDirect ? `คู่แข่งตรง: ${directPeer.ticker} — ${directPeer.companyName}` : `บริษัทเทียบเคียงที่ใกล้ที่สุด: ${directPeer.ticker} — ${directPeer.companyName}`)
+    : 'คู่แข่งตรง (Direct Peer)';
+  const directHeaderEn = directPeer
+    ? (isDirect ? `Direct Peer: ${directPeer.ticker} — ${directPeer.companyName}` : `Closest Comparable: ${directPeer.ticker} — ${directPeer.companyName}`)
+    : 'Direct Peer';
 
   if (isFinancial) {
     // Financial Benchmark Rows: P/E, P/B, ROE, NIM
     const peMed = medians.pe_trailing;
-    const targetPE = report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
+    const targetPE = targetMetrics?.peTrailing.value ?? report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
     rows.push({
       metric_name: 'P/E (Trailing)',
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
@@ -802,6 +829,11 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmtMultiple(directPeer?.metrics.pe_trailing?.value, 'x'),
       status: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const pbMed = medians.price_to_book;
@@ -814,18 +846,28 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmt(directPeer?.metrics.price_to_book?.value, 'x'),
       status: targetPB && pbMed ? (targetPB < pbMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPB && pbMed ? (targetPB < pbMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const roeMed = medians.roe_pct;
-    const kiRoe = (report.key_indicators as any)?.profitability?.roe_pct ?? (report.financial_statements?.key_indicators as any)?.roe_pct;
+    const targetROE = targetMetrics?.roe.value ?? (report.key_indicators as any)?.profitability?.roe_pct ?? (report.financial_statements?.key_indicators as any)?.roe_pct;
     rows.push({
       metric_name: 'Return on Equity (ROE)',
       metric_name_th: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น',
-      target_value: fmt(kiRoe, '%'),
+      target_value: fmt(targetROE, '%'),
       sector_median: fmt(roeMed, '%'),
       direct_peer_value: fmt(directPeer?.metrics.roe_pct?.value, '%'),
-      status: kiRoe && roeMed ? (kiRoe > roeMed ? 'better' : 'worse') : 'neutral',
-      status_label_th: kiRoe && roeMed ? (kiRoe > roeMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
+      status: targetROE && roeMed ? (targetROE > roeMed ? 'better' : 'worse') : 'neutral',
+      status_label_th: targetROE && roeMed ? (targetROE > roeMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const nimMed = medians.net_interest_margin_pct;
@@ -838,6 +880,11 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmt(directPeer?.metrics.net_interest_margin_pct?.value, '%'),
       status: kiNim && nimMed ? (kiNim > nimMed ? 'better' : 'worse') : 'neutral',
       status_label_th: kiNim && nimMed ? (kiNim > nimMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
   } else if (isReit) {
     // REIT Benchmark Rows: P/FFO, Occupancy Rate
@@ -850,6 +897,11 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmt(directPeer?.metrics.p_ffo_multiple?.value, 'x'),
       status: 'neutral',
       status_label_th: 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const occMed = medians.occupancy_rate_pct;
@@ -861,6 +913,11 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmt(directPeer?.metrics.occupancy_rate_pct?.value, '%'),
       status: 'better',
       status_label_th: 'อัตราเช่าสูง',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
   } else if (isEarlyStage) {
     // Early Stage Benchmark Rows: EV/Sales, Revenue Growth
@@ -873,22 +930,35 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmt(directPeer?.metrics.ev_sales?.value, 'x'),
       status: 'neutral',
       status_label_th: 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const revgMed = medians.revenue_growth_yoy_pct;
+    const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value ?? report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
+      (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
+    ];
     rows.push({
       metric_name: 'YoY Revenue Growth',
       metric_name_th: 'การเติบโตรายได้ YoY',
-      target_value: fmt(revgMed, '%'),
+      target_value: fmt(targetRevGrowth ?? revgMed, '%'),
       sector_median: fmt(revgMed, '%'),
       direct_peer_value: fmt(directPeer?.metrics.revenue_growth_yoy_pct?.value, '%'),
       status: 'better',
       status_label_th: 'เติบโตสูง',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
   } else {
     // Standard Operating & Industrial/Manufacturing Benchmark Rows: P/E, EV/EBITDA, Revenue Growth, ROIC
     const peMed = medians.pe_trailing;
-    const targetPE = report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
+    const targetPE = targetMetrics?.peTrailing.value ?? report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
     rows.push({
       metric_name: 'P/E (Trailing)',
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
@@ -897,6 +967,11 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmtMultiple(directPeer?.metrics.pe_trailing?.value, 'x'),
       status: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const eveMed = medians.ev_ebitda;
@@ -909,10 +984,15 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmtMultiple(directPeer?.metrics.ev_ebitda?.value, 'x'),
       status: targetEVE && eveMed && targetEVE > 0 && eveMed > 0 ? (targetEVE < eveMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetEVE && eveMed && targetEVE > 0 && eveMed > 0 ? (targetEVE < eveMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const revgMed = medians.revenue_growth_yoy_pct;
-    const targetRevGrowth = report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
+    const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value ?? report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
       (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
     ];
     rows.push({
@@ -923,18 +1003,28 @@ function buildArchetypeBenchmarkRows(
       direct_peer_value: fmt(directPeer?.metrics.revenue_growth_yoy_pct?.value, '%'),
       status: targetRevGrowth && revgMed ? (targetRevGrowth > revgMed ? 'better' : 'worse') : 'neutral',
       status_label_th: targetRevGrowth && revgMed ? (targetRevGrowth > revgMed ? 'เติบโตสูงกว่า' : 'เติบโตต่ำกว่า') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
 
     const roicMed = medians.roic_pct;
-    const kiRoic = (report.key_indicators as any)?.profitability?.roic_pct;
+    const targetROIC = targetMetrics?.roic.value ?? (report.key_indicators as any)?.profitability?.roic_pct;
     rows.push({
       metric_name: 'ROIC',
       metric_name_th: 'ผลตอบแทนเงินลงทุน',
-      target_value: fmt(kiRoic, '%'),
+      target_value: fmt(targetROIC, '%'),
       sector_median: fmt(roicMed, '%'),
       direct_peer_value: fmt(directPeer?.metrics.roic_pct?.value, '%'),
-      status: kiRoic && roicMed ? (kiRoic > roicMed ? 'better' : 'worse') : 'neutral',
-      status_label_th: kiRoic && roicMed ? (kiRoic > roicMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
+      status: targetROIC && roicMed ? (targetROIC > roicMed ? 'better' : 'worse') : 'neutral',
+      status_label_th: targetROIC && roicMed ? (targetROIC > roicMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
+      direct_peer_ticker: directPeer?.ticker,
+      direct_peer_name: directPeer?.companyName,
+      direct_peer_relation: directPeer?.relationType,
+      direct_peer_header_th: directHeaderTh,
+      direct_peer_header_en: directHeaderEn,
     });
   }
 
