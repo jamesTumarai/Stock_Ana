@@ -1,11 +1,11 @@
 /**
  * Deterministic Quarterly Flow Normalization Utility
- * 
+ *
  * In SEC Form 10-Q filings:
  * - Q1 reports 3-month standalone figures.
  * - Q2 reports 3-month standalone figures AND 6-month YTD (H1) figures.
  * - Q3 reports 3-month standalone figures AND 9-month YTD (9M) figures.
- * 
+ *
  * This module ensures flow metrics (Revenue, Net Income, Operating Income, Cash Flow)
  * are accurately converted to standalone 3-month quarters without double-subtraction
  * or period-type conflation.
