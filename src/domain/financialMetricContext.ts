@@ -155,8 +155,14 @@ export function resolveBusinessClassification(
   const sym = (ticker || data.ticker || (data as any)?.symbol || '').toUpperCase().trim();
 
   const profile = data.company_profile;
+  const peerComp = data.peer_comparison;
   const rawSector = (profile?.sector || (profile as any)?.overview?.sector || '').trim();
-  const rawIndustry = (profile?.industry || (profile as any)?.overview?.industry || '').trim();
+  const rawIndustry = (
+    profile?.industry ||
+    (profile as any)?.overview?.industry ||
+    peerComp?.industry_name ||
+    ''
+  ).trim();
   const sector = rawSector.toLowerCase();
   const industry = rawIndustry.toLowerCase();
 
@@ -185,8 +191,13 @@ export function resolveBusinessClassification(
     industry.includes('automotive') ||
     industry.includes('automobile') ||
     industry.includes('motor vehicle') ||
+    industry.includes('electric vehicle') ||
     industry.includes('trucks') ||
-    ((sector.includes('consumer cyclical') || sector.includes('consumer discretionary') || sector.includes('industrials')) &&
+    businessSummary.includes('electric vehicles') ||
+    businessSummary.includes('electric vehicle') ||
+    businessSummary.includes('auto manufacturer') ||
+    businessSummary.includes('manufactures electric') ||
+    ((sector.includes('consumer cyclical') || sector.includes('consumer discretionary') || sector.includes('industrials') || !sector) &&
       (industry.includes('auto') || industry.includes('vehicle') || businessSummary.includes('electric vehicles')));
 
   if (isAutomotive) {
@@ -202,6 +213,10 @@ export function resolveBusinessClassification(
     if (businessSummary.includes('insurance')) {
       secondaryBusinessLines.push('insurance');
       conflictingSignals.push('Secondary vehicle insurance activity noted; does not override primary manufacturing archetype');
+    }
+
+    if (template === 'banking') {
+      conflictingSignals.push(`CLASSIFICATION_CONFLICT: Conflicting statement_template 'banking' rejected: verified business identity is automotive manufacturing`);
     }
 
     const primaryArchetype: BusinessArchetype = 'industrial_manufacturing';
@@ -346,11 +361,12 @@ export function resolveBusinessClassification(
   }
 
   // 6. Commercial / Retail Banks
-  if (
-    template === 'banking' ||
+  const isBank =
     (industry.includes('bank') && !industry.includes('investment bank') && !industry.includes('food bank')) ||
-    sector.includes('bank')
-  ) {
+    sector.includes('bank') ||
+    (template === 'banking' && (sector.includes('financial') || industry.includes('credit') || industry.includes('financial') || (!sector && !industry)));
+
+  if (isBank) {
     const primaryArchetype: BusinessArchetype = 'bank';
     return {
       primaryArchetype,

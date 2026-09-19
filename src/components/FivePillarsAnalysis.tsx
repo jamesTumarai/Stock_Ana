@@ -31,7 +31,7 @@ export function FivePillarsAnalysis({
 
   const isFinancial = data?.archetype
     ? ['bank', 'lender', 'fintech', 'insurer'].includes(data.archetype)
-    : (yields.is_fcf_guarded || (profit.roic_pct === undefined && profit.roe_pct !== undefined));
+    : Boolean(yields.is_fcf_guarded);
   const isReit = data?.archetype === 'reit';
 
   // Adaptive titles
@@ -217,7 +217,7 @@ export function FivePillarsAnalysis({
                     : (isThai ? 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):' : 'Return on Equity (ROE):')}
                 </span>
                 <span className="font-bold text-stone-900 text-base sm:text-lg">
-                  {isFinancial ? (profit.roe_pct !== undefined ? `${profit.roe_pct}%` : 'N/A') : metric(profit.roe_pct, '%', '')}
+                  {isFinancial ? (profit.roa_pct !== undefined ? `${profit.roa_pct}%` : 'N/A') : metric(profit.roe_pct, '%', '')}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">

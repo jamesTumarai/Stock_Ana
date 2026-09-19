@@ -885,6 +885,8 @@ export interface CompanyOverviewData {
   phone?: string;
   website_url?: string;
   description?: string;
+  sector?: string;
+  industry?: string;
 }
 
 export interface ExecutiveMember {
@@ -947,6 +949,7 @@ export interface FivePillarsGrowthData {
   revenue_cagr_3yr_pct?: number;
   revenue_cagr_5yr_pct?: number;
   eps_growth_yoy_pct?: number;
+  eps_growth_basis?: string;
   eps_cagr_3yr_pct?: number;
   fcf_growth_yoy_pct?: number;
   peg_ratio?: number;
@@ -955,6 +958,8 @@ export interface FivePillarsGrowthData {
 
 export interface FivePillarsProfitabilityData {
   roic_pct?: number;
+  roic_basis?: string;
+  roic_formula?: string;
   roe_pct?: number;
   roa_pct?: number;
   gross_margin_pct?: number;
@@ -989,6 +994,7 @@ export interface FivePillarsYieldsData {
   treasury_10yr_yield_pct?: number;
   treasury_as_of_date?: string;
   treasury_source?: string;
+  treasury_fetch_status?: 'available' | 'unavailable' | 'error';
   yield_spread_vs_treasury?: number;
   yield_interpretation?: string;
 }

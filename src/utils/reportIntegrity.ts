@@ -58,6 +58,21 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   const gapInventory = buildDataGapInventory(result);
   result.data_completeness = gapInventory.summary;
 
+  // Integrate live Treasury quote if available from market provider
+  const treasuryQuote = live?.['^TNX'] || live?.['TNX'];
+  if (treasuryQuote && typeof treasuryQuote.price === 'number' && Number.isFinite(treasuryQuote.price) && treasuryQuote.price > 0) {
+    if (!result.five_pillars) {
+      result.five_pillars = {} as any;
+    }
+    if (!result.five_pillars.yields) {
+      result.five_pillars.yields = {} as any;
+    }
+    result.five_pillars.yields.treasury_10yr_yield_pct = treasuryQuote.price;
+    result.five_pillars.yields.treasury_as_of_date = treasuryQuote.asOf || new Date().toISOString().split('T')[0];
+    result.five_pillars.yields.treasury_source = treasuryQuote.provider || 'CBOE 10-Year Treasury Note Yield (^TNX) via Yahoo Finance';
+    result.five_pillars.yields.treasury_fetch_status = 'available';
+  }
+
   if (result.financial_statements || result.five_pillars) {
     const adaptivePillars = resolveAdaptiveFivePillars(result, ticker || result.ticker);
     result.five_pillars = adaptivePillars.fivePillarsData;

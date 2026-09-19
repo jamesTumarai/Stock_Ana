@@ -20,6 +20,73 @@ export { type CandidateDefinition, FIXTURE_CANDIDATE_UNIVERSE, PUBLIC_CANDIDATE_
 export interface PeerDiscoveryOptions {
   candidates?: (CandidateDefinition | PeerCompanyItem)[];
   disableFixtureFallback?: boolean;
+  allowFixtureFallback?: boolean;
+}
+
+export interface PeerCandidateDiscoveryInput {
+  ticker: string;
+  primaryArchetype: BusinessArchetype;
+  sector?: string;
+  industry?: string;
+  subIndustry?: string;
+  businessLines?: string[];
+  geography?: string;
+  scaleTier?: string;
+  lifecycle?: string;
+}
+
+/**
+ * Bounded source-backed runtime peer candidate discovery service.
+ * Discovers candidate public companies based on target's verified business fingerprint.
+ * Enables peer discovery for unknown tickers without code deployment.
+ */
+export function discoverPeerCandidates(
+  target: PeerBusinessFingerprint | PeerCandidateDiscoveryInput
+): CandidateDefinition[] {
+  const targetArchetype = 'archetype' in target ? target.archetype : target.primaryArchetype;
+  const targetIndustry = (target.industry || '').toLowerCase().trim();
+  const targetSubIndustry = (target.subIndustry || '').toLowerCase().trim();
+  const targetSector = (target.sector || '').toLowerCase().trim();
+  const targetTicker = (target.ticker || '').toUpperCase().trim();
+
+  return PUBLIC_CANDIDATE_UNIVERSE.filter(cand => {
+    if (cand.ticker.toUpperCase() === targetTicker) return false;
+
+    // Archetype compatibility
+    if (cand.archetype !== targetArchetype) {
+      const financialArchetypes = new Set(['bank', 'lender', 'fintech']);
+      if (!financialArchetypes.has(targetArchetype) || !financialArchetypes.has(cand.archetype)) {
+        return false;
+      }
+    }
+
+    const candIndustry = (cand.industry || '').toLowerCase().trim();
+    const candSubIndustry = (cand.subIndustry || '').toLowerCase().trim();
+    const candSector = (cand.sector || '').toLowerCase().trim();
+
+    // High confidence: Sub-industry match
+    if (targetSubIndustry && candSubIndustry === targetSubIndustry) return true;
+
+    // Medium confidence: Industry match (exact or substring)
+    if (targetIndustry && candIndustry && (candIndustry.includes(targetIndustry) || targetIndustry.includes(candIndustry))) {
+      return true;
+    }
+
+    // Automotive sub-industry / keyword match
+    if (
+      (/auto|electric vehicle|car\b|vehicle/i.test(targetIndustry) || targetSubIndustry === 'automotive_manufacturing') &&
+      (/auto|electric vehicle|car\b|vehicle/i.test(candIndustry) || candSubIndustry === 'automotive_manufacturing')
+    ) {
+      return true;
+    }
+
+    // Sector match when archetype aligns
+    if (targetSector && candSector === targetSector && cand.archetype === targetArchetype) {
+      return true;
+    }
+
+    return false;
+  });
 }
 
 /**
@@ -38,8 +105,8 @@ export function buildPeerBusinessFingerprint(
   const sym = (ticker || report.ticker || (report as any)?.symbol || 'STOCK').toUpperCase().trim();
   const archetype = resolveBusinessArchetype(report, sym);
   const profile = report.company_profile;
-  const sector = profile?.sector || 'Unknown';
-  const industry = profile?.industry || 'Unknown';
+  const sector = profile?.sector || profile?.overview?.sector || (report as any)?.sector || 'Unknown';
+  const industry = profile?.industry || profile?.overview?.industry || (report as any)?.industry || report.peer_comparison?.industry_name || 'Unknown';
   const desc = (profile?.description || profile?.overview?.description || '').toLowerCase();
 
   // Sub-industry inference
@@ -223,7 +290,7 @@ export function calculatePeerSimilarity(
 function verifyCandidate(cand: any): { valid: boolean; reason?: string } {
   if (!cand || typeof cand !== 'object') return { valid: false, reason: 'NULL_OR_NON_OBJECT' };
   const ticker = (cand.ticker || cand.symbol || '').toUpperCase().trim();
-  if (!ticker || !/^[A-Z0-9.\-_]{1,10}$/.test(ticker)) return { valid: false, reason: 'INVALID_TICKER_FORMAT' };
+  if (!ticker || !/^[A-Z0-9.\-_]{1,12}$/.test(ticker)) return { valid: false, reason: 'INVALID_TICKER_FORMAT' };
 
   // Reject ETF or Fund tickers
   if (/^(SPY|QQQ|IWM|XLF|XLK|XLE|VNQ|VTI|VOO|IVV|DIA|ARKK)$/i.test(ticker)) {
@@ -476,9 +543,10 @@ function extractCandidateMetrics(
 /**
  * Deterministically computes median from an array of valid numbers.
  * Invariant: Missing values are excluded, NEVER converted to 0 (missing != 0).
+ * For multiples (e.g. EV/EBITDA, P/E), non-positive values (<= 0) are excluded when excludeNonPositive is true.
  */
-export function calculateDeterministicMedian(values: (number | null | undefined)[]): number | null {
-  const clean = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+export function calculateDeterministicMedian(values: (number | null | undefined)[], excludeNonPositive = false): number | null {
+  const clean = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && (!excludeNonPositive || v > 0));
   if (clean.length === 0) return null;
   clean.sort((a, b) => a - b);
   const mid = Math.floor(clean.length / 2);
@@ -532,8 +600,18 @@ export function discoverPeers(
     }
   }
 
-  // 2. If no dynamic candidates found and fixture fallback is allowed (for offline / test runs):
-  if (rawCandidates.length === 0 && !options?.disableFixtureFallback) {
+  // 1d. If no dynamic candidates found from report, run runtime candidate discovery service:
+  if (rawCandidates.length === 0) {
+    const discovered = discoverPeerCandidates(targetFingerprint);
+    if (discovered.length > 0) {
+      rawCandidates.push(...discovered);
+    }
+  }
+
+  // 2. Fixture fallback: strictly test-only or when explicitly allowed, NEVER in production
+  const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
+  const allowFixture = options?.allowFixtureFallback ?? (!isProduction && !options?.disableFixtureFallback);
+  if (rawCandidates.length === 0 && allowFixture && !options?.disableFixtureFallback && !isProduction) {
     rawCandidates.push(...FIXTURE_CANDIDATE_UNIVERSE);
   }
 
@@ -612,7 +690,8 @@ export function discoverPeers(
   const medians: Record<string, number | null> = {};
   for (const k of allMetricKeys) {
     const vals = finalPeers.map(p => p.metrics[k]?.value);
-    medians[k] = calculateDeterministicMedian(vals);
+    const isMultiple = ['pe_trailing', 'pe_forward', 'ev_ebitda', 'ev_sales', 'p_ffo_multiple'].includes(k);
+    medians[k] = calculateDeterministicMedian(vals, isMultiple);
   }
 
   // Map to PeerCompanyItem for PeerComparisonTable
@@ -701,9 +780,15 @@ function buildArchetypeBenchmarkRows(
   const fmt = (v: number | null | undefined, unit = '') =>
     typeof v === 'number' && Number.isFinite(v) ? `${v}${unit}` : 'N/A';
 
+  const fmtMultiple = (v: number | null | undefined, unit = 'x') => {
+    if (v === null || v === undefined || !Number.isFinite(v)) return 'N/A';
+    if (v <= 0) return 'N/M';
+    return `${v}${unit}`;
+  };
+
   // Section 27: Direct Peer must refer to one company.
-  // If no candidate has DIRECT_PEER, direct peer value is N/A.
-  const directPeer = peers.find(p => p.relationType === 'DIRECT_PEER');
+  // Prefer DIRECT_PEER, or fall back to closest comparable if no DIRECT_PEER meets threshold
+  const directPeer = peers.find(p => p.relationType === 'DIRECT_PEER') || peers.find(p => p.relationType === 'CLOSE_COMPARABLE');
 
   if (isFinancial) {
     // Financial Benchmark Rows: P/E, P/B, ROE, NIM
@@ -712,11 +797,11 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'P/E (Trailing)',
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
-      target_value: fmt(targetPE, 'x'),
-      sector_median: fmt(peMed, 'x'),
-      direct_peer_value: fmt(directPeer?.metrics.pe_trailing?.value, 'x'),
-      status: targetPE && peMed ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
-      status_label_th: targetPE && peMed ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      target_value: fmtMultiple(targetPE, 'x'),
+      sector_median: fmtMultiple(peMed, 'x'),
+      direct_peer_value: fmtMultiple(directPeer?.metrics.pe_trailing?.value, 'x'),
+      status: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
+      status_label_th: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
 
     const pbMed = medians.price_to_book;
@@ -807,11 +892,11 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'P/E (Trailing)',
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
-      target_value: fmt(targetPE, 'x'),
-      sector_median: fmt(peMed, 'x'),
-      direct_peer_value: fmt(directPeer?.metrics.pe_trailing?.value, 'x'),
-      status: targetPE && peMed ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
-      status_label_th: targetPE && peMed ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      target_value: fmtMultiple(targetPE, 'x'),
+      sector_median: fmtMultiple(peMed, 'x'),
+      direct_peer_value: fmtMultiple(directPeer?.metrics.pe_trailing?.value, 'x'),
+      status: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
+      status_label_th: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
 
     const eveMed = medians.ev_ebitda;
@@ -819,11 +904,11 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'EV / EBITDA',
       metric_name_th: 'มูลค่ากิจการต่อกำไรก่อนดอกเบี้ยภาษี',
-      target_value: fmt(targetEVE, 'x'),
-      sector_median: fmt(eveMed, 'x'),
-      direct_peer_value: fmt(directPeer?.metrics.ev_ebitda?.value, 'x'),
-      status: targetEVE && eveMed ? (targetEVE < eveMed ? 'better' : 'premium') : 'neutral',
-      status_label_th: targetEVE && eveMed ? (targetEVE < eveMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
+      target_value: fmtMultiple(targetEVE, 'x'),
+      sector_median: fmtMultiple(eveMed, 'x'),
+      direct_peer_value: fmtMultiple(directPeer?.metrics.ev_ebitda?.value, 'x'),
+      status: targetEVE && eveMed && targetEVE > 0 && eveMed > 0 ? (targetEVE < eveMed ? 'better' : 'premium') : 'neutral',
+      status_label_th: targetEVE && eveMed && targetEVE > 0 && eveMed > 0 ? (targetEVE < eveMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
     });
 
     const revgMed = medians.revenue_growth_yoy_pct;
