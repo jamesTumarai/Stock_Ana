@@ -26,6 +26,7 @@ import {
   findKeyIndicatorInSource,
   alignMetricValuesByPeriod
 } from '../domain/metricLineage';
+import { getDataGapExplanation } from '../domain/dataCompleteness/userFacingExplanation';
 import { authenticatedFetch } from '../services/authenticatedFetch';
 
 interface Props {
@@ -707,6 +708,20 @@ export function FinancialStatementsTable({
 
   const chartConfig = getActiveChartConfig();
   const hasValidPoints = chartConfig.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
+
+  const getMetricGapExplanation = (metricKey: string): string => {
+    if (statementTemplate === 'banking' && (metricKey === 'gross_margin' || metricKey === 'cogs')) {
+      return getDataGapExplanation('NOT_REPORTED', isThai).text;
+    }
+    if (statementTemplate === 'banking' && metricKey === 'inventory_turnover') {
+      return getDataGapExplanation('NOT_APPLICABLE', isThai).text;
+    }
+    const gap = (data as any)?.data_completeness?.gaps?.find((g: any) => g.fieldKey === metricKey);
+    if (gap?.currentStatus) {
+      return getDataGapExplanation(gap.currentStatus, isThai).text;
+    }
+    return getDataGapExplanation('NOT_FOUND_YET', isThai).text;
+  };
   const chartData = chartConfig.periods.map((p, idx) => ({
     period: p,
     value: chartConfig.values[idx] !== undefined ? chartConfig.values[idx] : null,
@@ -1310,7 +1325,7 @@ export function FinancialStatementsTable({
                 <div className="h-full w-full flex flex-col items-center justify-center gap-2 p-6 text-center bg-stone-50/60 rounded-2xl border border-dashed border-stone-200">
                   <Info className="w-5 h-5 text-stone-400" />
                   <p className="text-xs font-semibold text-stone-700">
-                    {isThai ? 'ยังไม่มีข้อมูลที่ตรวจสอบได้เพียงพอสำหรับตัวชี้วัดนี้ในช่วงเวลาที่เลือก' : 'Insufficient verified data for this metric in the selected period.'}
+                    {getMetricGapExplanation(selectedRowKey)}
                   </p>
                   {periods.length > 0 && (
                     <span className="text-[11px] font-mono text-stone-400">
@@ -1432,8 +1447,11 @@ export function FinancialStatementsTable({
                             const comp = comparisonList[pIdx];
                             return (
                               <td key={pIdx} className="py-2.5 px-3 text-right">
-                                <div className="font-mono text-stone-900 font-bold">
-                                  {val !== null && val !== undefined ? `${val}${metric.unit}` : '-'}
+                                <div
+                                  className="font-mono text-stone-900 font-bold"
+                                  title={val === null || val === undefined ? getMetricGapExplanation(metric.key) : undefined}
+                                >
+                                  {val !== null && val !== undefined ? `${val}${metric.unit}` : '—'}
                                 </div>
                                 {compareMode !== 'hide' && comp !== null && (
                                   <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp > 0 ? 'text-emerald-600' : comp < 0 ? 'text-rose-600' : 'text-stone-400'

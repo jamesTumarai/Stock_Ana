@@ -1,6 +1,7 @@
 import type { ReportData } from '../types';
 import { buildMarketSnapshot, type MarketSnapshot } from '../domain/marketSnapshot';
 import { buildCanonicalFinancialDataset, type CanonicalFinancialDataset } from '../domain/financialValue';
+import { buildDataGapInventory } from '../domain/dataCompleteness/gapInventory';
 import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
 import { calculateDeterministicConvictionScore } from './valuation/convictionScorer';
 
@@ -83,6 +84,9 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   const canonicalFinancials = buildCanonicalFinancialDataset(result);
   if (canonicalFinancials) result.canonical_financials = canonicalFinancials;
   else delete result.canonical_financials;
+
+  const gapInventory = buildDataGapInventory(result);
+  result.data_completeness = gapInventory.summary;
 
   // Keep dated research intact. Explicit quote refresh updates only current market fields.
   // All current-price consumers use the same canonical snapshot so DCF cannot remain on a stale AI-supplied price.

@@ -70,6 +70,15 @@ export function adaptSecCanonicalToFinancialStatements(dataset: CanonicalFinanci
   assignSeries(income as unknown as Record<string, unknown>, 'income_before_tax', seriesValues(dataset, 'income_statement.income_before_tax'));
   assignSeries(income as unknown as Record<string, unknown>, 'income_tax_expense', seriesValues(dataset, 'income_statement.income_tax_expense'));
   assignSeries(income as unknown as Record<string, unknown>, 'eps_diluted', seriesValues(dataset, 'income_statement.eps_diluted'));
+  assignSeries(income as unknown as Record<string, unknown>, 'net_interest_income', seriesValues(dataset, 'income_statement.net_interest_income'));
+  assignSeries(income as unknown as Record<string, unknown>, 'non_interest_income', seriesValues(dataset, 'income_statement.non_interest_income'));
+  assignSeries(income as unknown as Record<string, unknown>, 'provision_for_credit_losses', seriesValues(dataset, 'income_statement.provision_for_credit_losses'));
+  assignSeries(income as unknown as Record<string, unknown>, 'net_interest_margin_pct', seriesValues(dataset, 'income_statement.net_interest_margin_pct'));
+  assignSeries(income as unknown as Record<string, unknown>, 'ffo', seriesValues(dataset, 'income_statement.ffo'));
+  assignSeries(income as unknown as Record<string, unknown>, 'noi', seriesValues(dataset, 'income_statement.noi'));
+  assignSeries(income as unknown as Record<string, unknown>, 'rental_revenue', seriesValues(dataset, 'income_statement.rental_revenue'));
+  assignSeries(income as unknown as Record<string, unknown>, 'combined_ratio_pct', seriesValues(dataset, 'income_statement.combined_ratio_pct'));
+  assignSeries(income as unknown as Record<string, unknown>, 'net_premiums_earned', seriesValues(dataset, 'income_statement.net_premiums_earned'));
 
   const balance: BalanceSheetData = {};
   const balanceKeys: Array<[keyof BalanceSheetData, string]> = [
@@ -86,6 +95,10 @@ export function adaptSecCanonicalToFinancialStatements(dataset: CanonicalFinanci
     ['total_liabilities', 'balance_sheet.total_liabilities'],
     ['total_equity', 'balance_sheet.total_equity'],
     ['total_debt', 'balance_sheet.total_debt'],
+    ['deposits', 'balance_sheet.deposits'],
+    ['loans_held_for_investment', 'balance_sheet.loans_held_for_investment'],
+    ['tier1_capital_ratio', 'balance_sheet.tier1_capital_ratio'],
+    ['loss_reserve', 'balance_sheet.loss_reserve'],
   ];
   for (const [legacyKey, canonicalKey] of balanceKeys) {
     const values = seriesValues(dataset, canonicalKey);
