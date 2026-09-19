@@ -717,6 +717,8 @@ export interface PeerCompanyItem {
   selection_rationale?: string;
   selection_rationale_th?: string;
   as_of_date?: string;
+  sector?: string;
+  industry?: string;
 }
 
 export interface PeerComparisonData {
@@ -954,10 +956,13 @@ export interface FivePillarsGrowthData {
 export interface FivePillarsProfitabilityData {
   roic_pct?: number;
   roe_pct?: number;
+  roa_pct?: number;
   gross_margin_pct?: number;
   operating_margin_pct?: number;
   net_margin_pct?: number;
   fcf_margin_pct?: number;
+  net_interest_margin_pct?: number;
+  efficiency_ratio_pct?: number;
   capital_efficiency_verdict?: string;
 }
 
@@ -982,6 +987,8 @@ export interface FivePillarsYieldsData {
   fcf_guard_reason?: string;
   dividend_yield_pct?: number;
   treasury_10yr_yield_pct?: number;
+  treasury_as_of_date?: string;
+  treasury_source?: string;
   yield_spread_vs_treasury?: number;
   yield_interpretation?: string;
 }
