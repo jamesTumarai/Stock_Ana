@@ -4,6 +4,8 @@ export interface TimelineEntry {
   id?: string;
   reportDate: string;
   timestamp?: number;
+  timeStr?: string;
+  formattedDateTime?: string;
   ticker: string;
   analysisType?: string;
   marketPrice?: number | null;
@@ -23,6 +25,49 @@ export interface UnwrappedHistoryRecord {
   schemaVersion?: string;
   validationStatus?: string;
   isLegacy?: boolean;
+}
+
+/**
+ * Formats a snapshot timestamp into date and time strings deterministically.
+ * Preserves date and time (e.g. 19 Sep 2026 · 14:12) to distinguish same-day runs.
+ */
+export function formatSnapshotDateTime(
+  timestamp: number | undefined,
+  dateFallback: string,
+  isThai = false
+): {
+  dateStr: string;
+  timeStr: string;
+  fullDisplay: string;
+} {
+  if (timestamp && Number.isFinite(timestamp) && timestamp > 0) {
+    const d = new Date(timestamp);
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const hours = String(d.getUTCHours()).padStart(2, '0');
+    const mins = String(d.getUTCMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${mins}`;
+
+    const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthsTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const month = d.getUTCMonth();
+    const day = d.getUTCDate();
+    const year = yyyy;
+
+    const fullDisplay = isThai
+      ? `${day} ${monthsTh[month]} ${year} · ${timeStr}`
+      : `${day} ${monthsEn[month]} ${year} · ${timeStr}`;
+
+    return { dateStr, timeStr, fullDisplay };
+  }
+
+  return {
+    dateStr: dateFallback || 'Unknown Date',
+    timeStr: '',
+    fullDisplay: dateFallback || 'Unknown Date'
+  };
 }
 
 /**
@@ -190,6 +235,8 @@ export function buildResearchTimeline(
       drivers.push(String(r.comprehensive_analysis.business_strengths).slice(0, 120));
     }
 
+    const dtInfo = formatSnapshotDateTime(item.createdTimestamp, dateStr, false);
+
     // Unique key avoids overwriting reports on the same day
     const uniqueKey = item.reportId
       ? `id_${item.reportId}`
@@ -199,6 +246,8 @@ export function buildResearchTimeline(
       id: item.reportId || undefined,
       reportDate: dateStr,
       timestamp: item.createdTimestamp,
+      timeStr: dtInfo.timeStr,
+      formattedDateTime: dtInfo.fullDisplay,
       ticker: cleanTicker,
       analysisType: r.analysis_type || 'comprehensive',
       marketPrice: price,
@@ -230,6 +279,8 @@ export function buildResearchTimeline(
     const activeId = activeUnwrapped?.reportId || 'active';
     const activeKey = activeId !== 'active' ? `id_${activeId}` : `active_${cleanTicker}_${timestamp}`;
 
+    const activeDtInfo = formatSnapshotDateTime(timestamp, activeDate, false);
+
     // Check if duplicate of an existing record
     const alreadyExists = Array.from(timelineMap.values()).some(e =>
       (activeId !== 'active' && e.id && e.id === activeId) ||
@@ -241,6 +292,8 @@ export function buildResearchTimeline(
         id: activeId !== 'active' ? activeId : undefined,
         reportDate: activeDate,
         timestamp,
+        timeStr: activeDtInfo.timeStr,
+        formattedDateTime: activeDtInfo.fullDisplay,
         ticker: cleanTicker,
         analysisType: r.analysis_type || 'comprehensive',
         marketPrice: price,
@@ -258,18 +311,107 @@ export function buildResearchTimeline(
 }
 
 /**
- * Returns the latest historical report strictly prior to currentReport for the specified ticker.
- * Handles Firestore wrappers, same-day multiple analyses, and arbitrary input sort order.
+ * Evaluates whether two research snapshots are materially equivalent for What Changed baseline purposes.
+ * If two snapshots share identical conviction, valuation, key fundamentals, and thesis status,
+ * the earlier duplicate is skipped so that What Changed compares against the nearest distinct state.
  */
-export function getPreviousReport(
-  ticker: string,
+export function isMateriallyEquivalentSnapshot(
+  a: ReportData | any,
+  b: ReportData | any
+): boolean {
+  if (!a || !b) return false;
+  const reportA = unwrapHistoryRecord(a)?.data || a;
+  const reportB = unwrapHistoryRecord(b)?.data || b;
+
+  // 1. Conviction score
+  const convA = extractReportConviction(reportA);
+  const convB = extractReportConviction(reportB);
+  if (convA !== convB) return false;
+
+  // 2. Base fair value (within 0.5% or identical)
+  const fvA = extractReportFairValue(reportA);
+  const fvB = extractReportFairValue(reportB);
+  if (fvA !== fvB) {
+    if (fvA === null || fvB === null) return false;
+    if (Math.abs(fvA - fvB) / Math.max(fvA, fvB) >= 0.005) return false;
+  }
+
+  // 3. Key financial metrics (Revenue, Operating Income / Net Income, FCF)
+  const stmtsA = reportA.financial_statements;
+  const stmtsB = reportB.financial_statements;
+  const periodsA = stmtsA?.periods || [];
+  const periodsB = stmtsB?.periods || [];
+  const idxA = periodsA.length - 1;
+  const idxB = periodsB.length - 1;
+
+  if (periodsA[idxA] !== periodsB[idxB]) return false;
+
+  const revA = stmtsA?.income_statement?.revenue?.[idxA];
+  const revB = stmtsB?.income_statement?.revenue?.[idxB];
+  if (revA !== revB && (revA !== undefined || revB !== undefined)) return false;
+
+  const opIncA = stmtsA?.income_statement?.operating_income?.[idxA];
+  const opIncB = stmtsB?.income_statement?.operating_income?.[idxB];
+  if (opIncA !== opIncB && (opIncA !== undefined || opIncB !== undefined)) return false;
+
+  const netIncA = stmtsA?.income_statement?.net_income?.[idxA];
+  const netIncB = stmtsB?.income_statement?.net_income?.[idxB];
+  if (netIncA !== netIncB && (netIncA !== undefined || netIncB !== undefined)) return false;
+
+  const fcfA = stmtsA?.cash_flow?.free_cash_flow?.[idxA];
+  const fcfB = stmtsB?.cash_flow?.free_cash_flow?.[idxB];
+  if (fcfA !== fcfB && (fcfA !== undefined || fcfB !== undefined)) return false;
+
+  // 4. Material evidence / SEC filing
+  const accA = reportA.comprehensive_analysis?.sec_filing_evidence?.accession_number
+    || reportA.evidence?.secAccession;
+  const accB = reportB.comprehensive_analysis?.sec_filing_evidence?.accession_number
+    || reportB.evidence?.secAccession;
+  if (accA !== accB) return false;
+
+  // 5. Thesis status
+  const thesisA = reportA.thesis_record || reportA.investment_thesis;
+  const thesisB = reportB.thesis_record || reportB.investment_thesis;
+  if (thesisA?.status !== thesisB?.status) return false;
+
+  // 6. Market price (intraday price noise < 2% with identical conviction/fundamentals is equivalent)
+  const priceA = extractReportPrice(reportA);
+  const priceB = extractReportPrice(reportB);
+  if (priceA !== priceB) {
+    if (priceA === null || priceB === null) return false;
+    if (Math.abs(priceA - priceB) / Math.max(priceA, priceB) >= 0.02) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Selects the nearest prior distinct research snapshot for change detection.
+ * Walks backward in time from current report, skipping duplicate or materially equivalent runs.
+ * Returns null if no materially distinct prior snapshot exists.
+ */
+export function selectPreviousDistinctSnapshot(
+  tickerOrReport: string | ReportData,
   allReports: any[] = [],
   currentReport?: ReportData | null
 ): ReportData | null {
-  const cleanTicker = ticker.toUpperCase().trim();
-  if (!cleanTicker || !Array.isArray(allReports) || allReports.length === 0) return null;
+  let cleanTicker = '';
+  let curReport: ReportData | null = null;
 
-  const currentUnwrapped = currentReport ? unwrapHistoryRecord(currentReport) : null;
+  if (typeof tickerOrReport === 'string') {
+    cleanTicker = tickerOrReport.toUpperCase().trim();
+    curReport = currentReport || null;
+  } else if (tickerOrReport && typeof tickerOrReport === 'object') {
+    curReport = tickerOrReport;
+    const unwrappedCur = unwrapHistoryRecord(curReport);
+    cleanTicker = (unwrappedCur?.ticker || (curReport as any).ticker || '').toUpperCase().trim();
+  }
+
+  if (!cleanTicker || !Array.isArray(allReports) || allReports.length === 0) {
+    return null;
+  }
+
+  const currentUnwrapped = curReport ? unwrapHistoryRecord(curReport) : null;
   const currentTimestamp = currentUnwrapped?.createdTimestamp || 0;
   const currentId = currentUnwrapped?.reportId;
 
@@ -284,13 +426,13 @@ export function getPreviousReport(
       continue;
     }
 
-    // If current report has a timestamp, candidate must be strictly earlier
+    // Candidate must be strictly earlier if timestamps exist
     if (currentTimestamp > 0 && unwrapped.createdTimestamp >= currentTimestamp) {
       continue;
     }
 
     // Skip if identical object reference
-    if (currentReport && (unwrapped.data === currentReport || (r === currentReport))) {
+    if (curReport && (unwrapped.data === curReport || r === curReport)) {
       continue;
     }
 
@@ -299,27 +441,94 @@ export function getPreviousReport(
 
   if (candidates.length === 0) return null;
 
-  // Sort candidates strictly descending by createdTimestamp
+  // Sort strictly descending by createdTimestamp (newest first)
   candidates.sort((a, b) => b.createdTimestamp - a.createdTimestamp);
 
-  return candidates[0].data;
+  // Walk backward: find the first snapshot that is materially distinct from curReport
+  for (const candidate of candidates) {
+    if (!curReport || !isMateriallyEquivalentSnapshot(curReport, candidate.data)) {
+      return candidate.data;
+    }
+  }
+
+  // All prior snapshots were materially equivalent
+  return null;
+}
+
+/**
+ * Returns the nearest prior distinct historical report strictly prior to currentReport for the specified ticker.
+ * Handles Firestore wrappers, same-day multiple analyses, and skips materially equivalent duplicates.
+ */
+export function getPreviousReport(
+  ticker: string,
+  allReports: any[] = [],
+  currentReport?: ReportData | null
+): ReportData | null {
+  return selectPreviousDistinctSnapshot(ticker, allReports, currentReport);
+}
+
+export function extractReportTimestamp(report: any): number {
+  if (!report) return 0;
+  const unwrapped = unwrapHistoryRecord(report);
+  if (unwrapped && unwrapped.createdTimestamp > 0) {
+    return unwrapped.createdTimestamp;
+  }
+  const r = report.data || report;
+  const raw = report.createdAt || report.created_at || report.generated_at || r.createdAt || r.created_at || r.generated_at;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (raw?.seconds) return raw.seconds * 1000;
+  if (typeof raw?.toMillis === 'function') return raw.toMillis();
+  if (typeof raw?.toDate === 'function') return raw.toDate().getTime();
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const dateStr = extractReportDate(report);
+  const parsedDate = Date.parse(dateStr);
+  return Number.isFinite(parsedDate) ? parsedDate : 0;
 }
 
 export function computeHistoricalDelta(
   currentReport: ReportData | any,
-  previousReport: ReportData | any
+  previousReport: ReportData | any,
+  isThai = false
 ): HistoricalReportDelta | null {
   if (!currentReport || !previousReport) return null;
 
   const cur = unwrapHistoryRecord(currentReport)?.data || currentReport;
   const prev = unwrapHistoryRecord(previousReport)?.data || previousReport;
 
+  const curTimestamp = extractReportTimestamp(currentReport);
+  const prevTimestamp = extractReportTimestamp(previousReport);
+
   const currentDate = extractReportDate(currentReport);
   const prevDate = extractReportDate(previousReport);
 
-  const curTimestamp = Date.parse(currentDate) || Date.now();
-  const prevTimestamp = Date.parse(prevDate) || 0;
-  const daysBetween = Math.max(0, Math.round(Math.abs(curTimestamp - prevTimestamp) / (1000 * 60 * 60 * 24)));
+  const curDt = formatSnapshotDateTime(curTimestamp, currentDate, isThai);
+  const prevDt = formatSnapshotDateTime(prevTimestamp, prevDate, isThai);
+
+  const diffMs = Math.abs(curTimestamp - prevTimestamp);
+  const daysBetween = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+  let elapsedTimeDisplay = '';
+  if (diffMs < 1000 * 60 * 60 * 24 && diffMs > 0) {
+    const totalMinutes = Math.round(diffMs / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours > 0) {
+      elapsedTimeDisplay = isThai
+        ? `${hours} ชม.${mins > 0 ? ` ${mins} นาที` : ''}`
+        : `${hours}h${mins > 0 ? ` ${mins}m` : ''}`;
+    } else {
+      elapsedTimeDisplay = isThai ? `${mins} นาที` : `${mins}m`;
+    }
+  } else {
+    elapsedTimeDisplay = isThai ? `${daysBetween} วัน` : `${daysBetween} days`;
+  }
+
+  const comparisonWindowLabel = isThai
+    ? `เปรียบเทียบกับการวิเคราะห์ก่อนหน้า ${prevDt.fullDisplay} → ${curDt.fullDisplay}`
+    : `Compared with prior analysis ${prevDt.fullDisplay} → ${curDt.fullDisplay}`;
 
   // 1. Price delta
   const curPrice = extractReportPrice(cur);
@@ -354,7 +563,7 @@ export function computeHistoricalDelta(
       }
     : null;
 
-  // 4. Fundamental metrics delta (Revenue YoY, Opm, FCF from latest quarter in statements)
+  // 4. Fundamental metrics delta (Revenue YoY, Opm, FCF, Net Income, EPS)
   const curStmt = cur.financial_statements;
   const prevStmt = prev.financial_statements;
 
@@ -401,15 +610,45 @@ export function computeHistoricalDelta(
     };
   }
 
+  let netIncomeDelta = null;
+  const curNetInc = curStmt?.income_statement?.net_income?.[curLatestIdx];
+  const prevNetInc = prevStmt?.income_statement?.net_income?.[prevLatestIdx];
+  if (typeof curNetInc === 'number' && typeof prevNetInc === 'number' && prevNetInc !== 0) {
+    netIncomeDelta = {
+      previous: prevNetInc,
+      current: curNetInc,
+      deltaPct: Number((((curNetInc - prevNetInc) / Math.abs(prevNetInc)) * 100).toFixed(2))
+    };
+  }
+
+  let epsDelta = null;
+  const curEps = curStmt?.income_statement?.eps_diluted?.[curLatestIdx] ?? curStmt?.income_statement?.eps?.[curLatestIdx];
+  const prevEps = prevStmt?.income_statement?.eps_diluted?.[prevLatestIdx] ?? prevStmt?.income_statement?.eps?.[prevLatestIdx];
+  if (typeof curEps === 'number' && typeof prevEps === 'number') {
+    epsDelta = {
+      previous: prevEps,
+      current: curEps,
+      delta: Number((curEps - prevEps).toFixed(2))
+    };
+  }
+
   return {
     previousReportDate: prevDate,
     currentReportDate: currentDate,
+    previousTimestamp: prevTimestamp > 0 ? prevTimestamp : undefined,
+    currentTimestamp: curTimestamp > 0 ? curTimestamp : undefined,
+    previousDisplayDate: prevDt.fullDisplay,
+    currentDisplayDate: curDt.fullDisplay,
+    comparisonWindowLabel,
+    elapsedTimeDisplay,
     daysBetween,
     priceDelta,
     fairValueDelta,
     convictionScoreDelta,
     revenueYoYDelta,
     operatingMarginDelta,
-    freeCashFlowDelta
+    freeCashFlowDelta,
+    netIncomeDelta,
+    epsDelta
   };
 }

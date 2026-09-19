@@ -479,8 +479,15 @@ export function extractMemorySnapshot(
 
   // Evidence
   const latestSecStatement = secStatements.length > 0 ? secStatements[secStatements.length - 1] : secEnvelope?.sec_period_statements?.[secEnvelope.sec_period_statements.length - 1];
-  const secAccession = latestSecStatement?.accession || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.accessionNumber || null;
-  const secFilingDate = secEnvelope?.latest_statements_source?.filing_date || latestSecStatement?.filed_date || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.filingDate || null;
+  const secAccession = latestSecStatement?.accession
+    || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.accessionNumber
+    || (data as any)?.evidence?.secAccession
+    || null;
+  const secFilingDate = secEnvelope?.latest_statements_source?.filing_date
+    || latestSecStatement?.filed_date
+    || (secEnvelope as any)?.submissions?.recentFilings?.[0]?.filingDate
+    || (data as any)?.evidence?.secFilingDate
+    || null;
   const findings = data.findings || [];
 
   const evidence: ResearchMemoryEvidence = {

@@ -480,8 +480,8 @@ export function computeWhatChanged(
   let summaryNarrativeTh = '';
 
   if (!hasMaterialChanges) {
-    summaryNarrative = `No material changes detected for ${current.ticker} over the ${baseDelta.daysBetween}-day interval.`;
-    summaryNarrativeTh = `ไม่พบการเปลี่ยนแปลงที่มีนัยสำคัญสำหรับ ${current.ticker} ในช่วงระยะเวลา ${baseDelta.daysBetween} วันที่ผ่านมา`;
+    summaryNarrative = `No material changes detected for ${current.ticker} compared to prior distinct research snapshot.`;
+    summaryNarrativeTh = `ไม่พบการเปลี่ยนแปลงที่มีนัยสำคัญจากการวิเคราะห์ก่อนหน้าสำหรับ ${current.ticker}`;
   } else {
     const highItems = items.filter(i => i.materiality === 'HIGH');
     summaryNarrative = `Identified ${items.length} total changes (${highItems.length} high priority) since prior research on ${previous.asOfDate}.`;

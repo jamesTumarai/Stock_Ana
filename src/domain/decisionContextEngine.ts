@@ -12,6 +12,8 @@ export type ReEvaluationStance =
   | 'THESIS_CONDITION_TRIGGERED'
   | 'VALUATION_REVISION_NOTED'
   | 'EXPECTATIONS_REVIEW_NEEDED'
+  | 'THESIS_STABLE'
+  | 'NO_NEW_EVIDENCE'
   | 'MONITORING_CONTINUES_UNCHANGED'
   | 'NO_PRIOR_RESEARCH_FOUND';
 
@@ -261,9 +263,9 @@ export function buildDecisionContext(
   }
 
   // Determine Stance & Headline
-  let stance: ReEvaluationStance = 'MONITORING_CONTINUES_UNCHANGED';
-  let headline = `Thesis Intact — Monitoring Continues for ${ticker}`;
-  let headlineTh = `สมมติฐานการลงทุนยังคงสมบูรณ์ — ติดตามต่อเนื่องสำหรับ ${ticker}`;
+  let stance: ReEvaluationStance = 'NO_NEW_EVIDENCE';
+  let headline = `No New Evidence Currently Changes Thesis Status — Monitoring Continues for ${ticker}`;
+  let headlineTh = `ยังไม่พบหลักฐานใหม่ที่เปลี่ยนสถานะสมมติฐาน — ติดตามต่อเนื่องสำหรับ ${ticker}`;
 
   if (invalidationTriggersFound.length > 0) {
     stance = 'THESIS_CONDITION_TRIGGERED';
@@ -281,17 +283,43 @@ export function buildDecisionContext(
     stance = 'VALUATION_REVISION_NOTED';
     headline = `Material Valuation Adjustment — Review Assumptions for ${ticker}`;
     headlineTh = `มูลค่ายุติธรรมเปลี่ยนแปลงอย่างมีนัยสำคัญ — ควรทบทวนสมมติฐานสำหรับ ${ticker}`;
+  } else {
+    // Check if new evidence was verified and consistent (THESIS_STABLE) vs no new evidence (NO_NEW_EVIDENCE)
+    const hasVerifiedNewFiling = Boolean(
+      currentSnapshot.evidence.secAccession &&
+      currentSnapshot.evidence.secAccession !== previousSnapshot.evidence.secAccession
+    );
+    const hasNewExpectationResults = evaluatedExpectations.some(
+      e => (e.status === 'MET' || e.status === 'EXCEEDED') && e.actualValue !== null
+    );
+    const hasNewStatementsPeriod = Boolean(
+      currentSnapshot.financials.latestPeriod &&
+      currentSnapshot.financials.latestPeriod !== previousSnapshot.financials.latestPeriod
+    );
+
+    if (hasVerifiedNewFiling || hasNewExpectationResults || hasNewStatementsPeriod) {
+      stance = 'THESIS_STABLE';
+      headline = `New Evidence Reviewed & Consistent with Thesis — Monitoring Continues for ${ticker}`;
+      headlineTh = `หลักฐานใหม่สอดคล้องกับสมมติฐาน — ติดตามต่อเนื่องสำหรับ ${ticker}`;
+    } else {
+      stance = 'NO_NEW_EVIDENCE';
+      headline = `No New Evidence Currently Changes Thesis Status — Monitoring Continues for ${ticker}`;
+      headlineTh = `ยังไม่พบหลักฐานใหม่ที่เปลี่ยนสถานะสมมติฐาน — ติดตามต่อเนื่องสำหรับ ${ticker}`;
+    }
   }
 
-  const requiresAttention = stance !== 'MONITORING_CONTINUES_UNCHANGED';
+  const requiresAttention = stance !== 'NO_NEW_EVIDENCE' && stance !== 'THESIS_STABLE';
 
   // Build Summaries
   let summaryNarrative = '';
   let summaryNarrativeTh = '';
 
-  if (!requiresAttention) {
-    summaryNarrative = `Prior investment thesis and key drivers remain intact across the latest research interval. No invalidation triggers or material expectation misses detected.`;
-    summaryNarrativeTh = `สมมติฐานการลงทุนและปัจจัยขับเคลื่อนหลักยังคงสมบูรณ์ตามการวิจัยล่าสุด ไม่พบเงื่อนไขการหักล้างหรือผลประกอบการที่พลาดเป้าหมายอย่างมีนัยสำคัญ`;
+  if (stance === 'THESIS_STABLE') {
+    summaryNarrative = `New evidence (official filings or verified operational outcomes) was reviewed and remains consistent with the current investment thesis. Monitoring continues.`;
+    summaryNarrativeTh = `ตรวจสอบหลักฐานและผลการดำเนินงานใหม่แล้วพบว่ายังสอดคล้องกับสมมติฐานการลงทุน ติดตามต่อเนื่อง`;
+  } else if (stance === 'NO_NEW_EVIDENCE') {
+    summaryNarrative = `No new material evidence or filings detected since the previous distinct research snapshot. Monitoring continues without altering thesis stance.`;
+    summaryNarrativeTh = `ยังไม่พบหลักฐานใหม่หรือรายงานทางการเงินเพิ่มเติมที่มีผลต่อสถานะสมมติฐาน ติดตามต่อเนื่อง`;
   } else {
     summaryNarrative = `Identified ${reasons.length} key decision factor(s) warranting closer re-evaluation. Review the specific drivers and expectation variances below before updating thesis conviction.`;
     summaryNarrativeTh = `พบ ${reasons.length} ปัจจัยสำคัญที่ควรนำมาพิจารณาประเมินซ้ำ กรุณาตรวจสอบรายละเอียดความแปรผันของผลการดำเนินงานและสมมติฐานด้านล่างก่อนปรับระดับความเชื่อมั่น`;

@@ -8,7 +8,8 @@ import {
   buildResearchTimeline,
   computeHistoricalDelta,
   unwrapHistoryRecord,
-  getPreviousReport
+  getPreviousReport,
+  selectPreviousDistinctSnapshot
 } from '../researchTimeline';
 import { ReportData } from '../../types';
 
@@ -253,5 +254,266 @@ describe('researchTimeline', () => {
     const prev = getPreviousReport('MSFT', history, activeReport);
     assert.ok(prev !== null);
     assert.equal(prev?.intrinsic_value?.current_price, 410);
+  });
+
+  it('Test 20: same-day duplicate skips equivalent rerun and compares against nearest distinct state (74 -> 76)', () => {
+    const t1 = Date.parse('2026-09-19T10:00:00Z');
+    const t2 = Date.parse('2026-09-19T14:00:00Z');
+    const t3 = Date.parse('2026-09-19T18:00:00Z');
+
+    const runA = {
+      id: 'run_a',
+      ticker: 'SOFI',
+      createdAt: { seconds: t1 / 1000 },
+      data: {
+        ticker: 'SOFI',
+        intrinsic_value: { current_price: 16.5, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 74 }
+      }
+    };
+
+    const runB = {
+      id: 'run_b',
+      ticker: 'SOFI',
+      createdAt: { seconds: t2 / 1000 },
+      data: {
+        ticker: 'SOFI',
+        intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+        verdict: { conviction_score: 76 }
+      }
+    };
+
+    const runC: any = {
+      id: 'run_c',
+      ticker: 'SOFI',
+      createdAt: { seconds: t3 / 1000 },
+      generated_at: '2026-09-19T18:00:00Z',
+      intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+      verdict: { conviction_score: 76 }
+    };
+
+    const history = [runA, runB];
+
+    // Current is Run C (conviction 76). Run B is also conviction 76 with same metrics.
+    // The baseline should skip Run B and select Run A (conviction 74).
+    const baseline = selectPreviousDistinctSnapshot('SOFI', history, runC);
+    assert.ok(baseline !== null);
+    assert.equal(baseline?.verdict?.conviction_score, 74);
+
+    const delta = computeHistoricalDelta(runC, baseline);
+    assert.ok(delta !== null);
+    assert.equal(delta.convictionScoreDelta?.previous, 74);
+    assert.equal(delta.convictionScoreDelta?.current, 76);
+    assert.equal(delta.convictionScoreDelta?.deltaPoints, 2);
+  });
+
+  it('Test 21: same-day real change compares against nearest distinct state (76 -> 78)', () => {
+    const t1 = Date.parse('2026-09-19T10:00:00Z');
+    const t2 = Date.parse('2026-09-19T14:00:00Z');
+    const t3 = Date.parse('2026-09-19T18:00:00Z');
+
+    const history = [
+      {
+        id: 'run_a',
+        ticker: 'SOFI',
+        createdAt: { seconds: t1 / 1000 },
+        data: {
+          ticker: 'SOFI',
+          intrinsic_value: { current_price: 16.5, summary: { base_case_fair_value: 20.0 } },
+          verdict: { conviction_score: 74 }
+        }
+      },
+      {
+        id: 'run_b',
+        ticker: 'SOFI',
+        createdAt: { seconds: t2 / 1000 },
+        data: {
+          ticker: 'SOFI',
+          intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+          verdict: { conviction_score: 76 }
+        }
+      }
+    ];
+
+    const runC: any = {
+      id: 'run_c',
+      ticker: 'SOFI',
+      createdAt: { seconds: t3 / 1000 },
+      generated_at: '2026-09-19T18:00:00Z',
+      intrinsic_value: { current_price: 17.5, summary: { base_case_fair_value: 21.0 } },
+      verdict: { conviction_score: 78 }
+    };
+
+    // Current is Run C (78). Run B is 76 (distinct from 78).
+    // Baseline should be Run B (76), not skipped!
+    const baseline = selectPreviousDistinctSnapshot('SOFI', history, runC);
+    assert.ok(baseline !== null);
+    assert.equal(baseline?.verdict?.conviction_score, 76);
+
+    const delta = computeHistoricalDelta(runC, baseline);
+    assert.ok(delta !== null);
+    assert.equal(delta.convictionScoreDelta?.previous, 76);
+    assert.equal(delta.convictionScoreDelta?.current, 78);
+    assert.equal(delta.convictionScoreDelta?.deltaPoints, 2);
+  });
+
+  it('Test 22 & 23: duplicate snapshot retained in timeline but baseline is null when no distinct state exists', () => {
+    const t1 = Date.parse('2026-09-19T10:00:00Z');
+    const t2 = Date.parse('2026-09-19T14:00:00Z');
+
+    const history = [
+      {
+        id: 'run_1',
+        ticker: 'SOFI',
+        createdAt: { seconds: t1 / 1000 },
+        data: {
+          ticker: 'SOFI',
+          intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+          verdict: { conviction_score: 76 }
+        }
+      }
+    ];
+
+    const run2: any = {
+      id: 'run_2',
+      ticker: 'SOFI',
+      createdAt: { seconds: t2 / 1000 },
+      generated_at: '2026-09-19T14:00:00Z',
+      intrinsic_value: { current_price: 16.96, summary: { base_case_fair_value: 20.0 } },
+      verdict: { conviction_score: 76 }
+    };
+
+    // Timeline retains both records!
+    const timeline = buildResearchTimeline('SOFI', history, run2);
+    assert.equal(timeline.length, 2);
+
+    // Baseline should be null because run_1 is materially equivalent to run_2
+    const baseline = selectPreviousDistinctSnapshot('SOFI', history, run2);
+    assert.equal(baseline, null);
+  });
+
+  it('Test 27: missing data invariant (missing != zero)', () => {
+    const prevReport: any = {
+      report_date: '2026-01-01',
+      financial_statements: {
+        periods: ['2025-Q3'],
+        income_statement: {
+          revenue: [1000]
+        }
+      }
+    };
+
+    const curReport: any = {
+      report_date: '2026-02-01',
+      financial_statements: {
+        periods: ['2025-Q4'],
+        income_statement: {
+          revenue: [1200],
+          operating_income: [120] // 10%
+        }
+      }
+    };
+
+    const delta = computeHistoricalDelta(curReport, prevReport);
+    assert.ok(delta !== null);
+    // operatingMarginDelta must be null, NOT 0 -> 10%
+    assert.equal(delta.operatingMarginDelta, null);
+  });
+
+  it('Test 28: negative value invariant (negative != missing)', () => {
+    const prevReport: any = {
+      report_date: '2026-01-01',
+      financial_statements: {
+        periods: ['2025-Q3'],
+        cash_flow: {
+          free_cash_flow: [-100]
+        }
+      }
+    };
+
+    const curReport: any = {
+      report_date: '2026-02-01',
+      financial_statements: {
+        periods: ['2025-Q4'],
+        cash_flow: {
+          free_cash_flow: [-50]
+        }
+      }
+    };
+
+    const delta = computeHistoricalDelta(curReport, prevReport);
+    assert.ok(delta !== null);
+    assert.ok(delta.freeCashFlowDelta !== null);
+    assert.equal(delta.freeCashFlowDelta.previous, -100);
+    assert.equal(delta.freeCashFlowDelta.current, -50);
+    assert.equal(delta.freeCashFlowDelta.deltaPct, 50.0);
+  });
+
+  it('Test 29: timeline sorts by full timestamp descending (newest first)', () => {
+    const t1 = Date.parse('2026-09-19T10:00:00Z');
+    const t2 = Date.parse('2026-09-19T14:12:00Z');
+    const t3 = Date.parse('2026-09-19T19:03:00Z');
+
+    const history = [
+      {
+        id: 'run_10',
+        ticker: 'SOFI',
+        createdAt: { seconds: t1 / 1000 },
+        data: { ticker: 'SOFI', verdict: { conviction_score: 74 } }
+      },
+      {
+        id: 'run_19',
+        ticker: 'SOFI',
+        createdAt: { seconds: t3 / 1000 },
+        data: { ticker: 'SOFI', verdict: { conviction_score: 76 } }
+      },
+      {
+        id: 'run_14',
+        ticker: 'SOFI',
+        createdAt: { seconds: t2 / 1000 },
+        data: { ticker: 'SOFI', verdict: { conviction_score: 76 } }
+      }
+    ];
+
+    const timeline = buildResearchTimeline('SOFI', history);
+    assert.equal(timeline.length, 3);
+    assert.equal(timeline[0].id, 'run_19');
+    assert.equal(timeline[1].id, 'run_14');
+    assert.equal(timeline[2].id, 'run_10');
+
+    // Formatted datetime should include date and time
+    assert.match(timeline[0].formattedDateTime || '', /19 Sep 2026 · 19:03/);
+    assert.match(timeline[1].formattedDateTime || '', /19 Sep 2026 · 14:12/);
+    assert.match(timeline[2].formattedDateTime || '', /19 Sep 2026 · 10:00/);
+  });
+
+  it('Test 7 & 17: elapsed time display and comparison window label for same-day and multi-day', () => {
+    const t1 = Date.parse('2026-09-19T14:12:00Z');
+    const t2 = Date.parse('2026-09-19T19:03:00Z');
+
+    const r1: any = {
+      ticker: 'SOFI',
+      report_date: '2026-09-19',
+      generated_at: '2026-09-19T14:12:00Z',
+      intrinsic_value: { current_price: 16.5 }
+    };
+
+    const r2: any = {
+      ticker: 'SOFI',
+      report_date: '2026-09-19',
+      generated_at: '2026-09-19T19:03:00Z',
+      intrinsic_value: { current_price: 16.96 }
+    };
+
+    const deltaTh = computeHistoricalDelta(r2, r1, true);
+    assert.ok(deltaTh !== null);
+    // 4h 51m
+    assert.match(deltaTh.elapsedTimeDisplay || '', /4 ชม\. 51 นาที/);
+    assert.match(deltaTh.comparisonWindowLabel || '', /เปรียบเทียบกับการวิเคราะห์ก่อนหน้า/);
+
+    const deltaEn = computeHistoricalDelta(r2, r1, false);
+    assert.ok(deltaEn !== null);
+    assert.match(deltaEn.elapsedTimeDisplay || '', /4h 51m/);
+    assert.match(deltaEn.comparisonWindowLabel || '', /Compared with prior analysis/);
   });
 });
