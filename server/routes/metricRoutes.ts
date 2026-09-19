@@ -1,5 +1,10 @@
 import type { Express, RequestHandler } from 'express';
 import { GoogleGenAI } from '@google/genai';
+import {
+  getMetricInterpretationContext,
+  buildFinancialMetricAnalysisPrompt,
+  MetricInterpretationContext
+} from '../../src/domain/financialMetricContext';
 
 export function registerMetricRoutes(
   app: Express,
@@ -16,12 +21,15 @@ export function registerMetricRoutes(
         companyName,
         metricKey,
         metricName,
+        metricNameTh,
         periods = [],
         historyValues = [],
         yoyPcts = [],
         unit = '',
         isCurrency = false,
         context = {},
+        metricContext: incomingMetricContext,
+        reportData,
         redFlags = [],
         isThai = true,
         model = 'gemini-3.8-flash'
@@ -38,14 +46,29 @@ export function registerMetricRoutes(
         ? companyName.trim()
         : normalizedTicker;
 
-      // Cache lookup key
-      const cacheKey = `${normalizedTicker}_${metricKey}_${(historyValues || []).join(',')}_${isThai ? 'th' : 'en'}_${model}`;
+      // Deterministically resolve business-aware interpretation context
+      const metricContext: MetricInterpretationContext = incomingMetricContext || getMetricInterpretationContext({
+        metricKey,
+        metricName,
+        metricNameTh,
+        reportData,
+        ticker: normalizedTicker,
+        periods,
+        historyValues,
+        yoyPcts,
+        unit,
+        isCurrency,
+        isThai
+      });
+
+      // Cache lookup key includes business archetype and period sequence to prevent stale cache
+      const cacheKey = `${normalizedTicker}_${metricContext.businessArchetype}_${metricKey}_${(historyValues || []).join(',')}_${(periods || []).join(',')}_${isThai ? 'th' : 'en'}_${model}`;
       if (metricInsightCache.has(cacheKey)) {
         const cached = metricInsightCache.get(cacheKey);
         if (cached && (!cached.what_is_it_th || cached.what_is_it_th.trim() === '')) {
           metricInsightCache.delete(cacheKey);
         } else {
-          return res.json({ success: true, cached: true, insight: cached });
+          return res.json({ success: true, cached: true, insight: cached, metricContext });
         }
       }
 
@@ -53,63 +76,18 @@ export function registerMetricRoutes(
         return res.status(500).json({ error: "GEMINI_API_KEY not configured on server" });
       }
 
-      // Format periods and history values
-      const historySummary = (periods || []).map((p: string, idx: number) => {
-        const val = historyValues[idx];
-        const yoy = yoyPcts[idx];
-        if (val === null || val === undefined) return `${p}: -`;
-        let valStr = '';
-        if (isCurrency || unit === '$' || unit === 'M') {
-          const abs = Math.abs(val);
-          const sign = val < 0 ? '-' : '';
-          valStr = abs >= 1000 ? `${sign}$${(abs / 1000).toFixed(2)}B` : `${sign}$${abs.toFixed(2)}M`;
-        } else if (unit === '%') {
-          valStr = `${val.toFixed(1)}%`;
-        } else {
-          valStr = `${val}${unit ? ' ' + unit : ''}`;
-        }
-        const yoyStr = yoy !== null && yoy !== undefined ? ` (${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% YoY)` : '';
-        return `${p}: ${valStr}${yoyStr}`;
-      }).join(', ');
-
-      const contextSummary = Object.entries(context || {})
-        .filter(([_, v]) => Array.isArray(v) && v.length > 0)
-        .map(([k, v]) => `${k}: ${(v as any[]).slice(-4).join(', ')}`)
-        .join('\n');
-
-      const redFlagsSummary = (redFlags || []).slice(0, 3).join('; ');
-
-      const prompt = `You are an elite Senior Wall Street Equity Research Analyst (CFA Charterholder) known for rigorous, quantitative financial statement dissection.
-Analyze the following financial statement metric for **${normalizedCompanyName} (${normalizedTicker})**:
-
-- Metric: ${metricName} (Key: ${metricKey})
-- Historical Sequence across recent periods: ${historySummary}
-${contextSummary ? `- Wider Financial Statement Context (recent 4 quarters in $M):\n${contextSummary}` : ''}
-${redFlagsSummary ? `- Related Red Flags from 10-K/10-Q filings: ${redFlagsSummary}` : ''}
-
-CRITICAL INSTITUTIONAL ANALYSIS RULES:
-1. STRICT DATA FIDELITY: Never produce generic canned praise. Tie every conclusion to retrieved, dated figures from this report and explain when deterioration in revenue, margins, or cash flow changes the conclusion.
-2. CROSS-STATEMENT SYNTHESIS: Connect this line item directly to the other retrieved financial statements. Compare CapEx with operating cash flow, explain the resulting free cash flow, and connect operating expenses with operating leverage without importing numerical examples from this prompt.
-3. CAUSALITY & DRIVERS: Ground the explanation only in ${normalizedCompanyName}'s actual retrieved business operations and sourced context. Do not import examples from unrelated companies.
-4. PROFESSIONAL TONE: ${isThai ? 'ตอบเป็นภาษาไทยระดับนักวิเคราะห์การเงินสถาบัน (IB/Equity Research) ชัดเจน กระชับ ตรงประเด็น' : 'Respond in professional Wall Street Equity Research English.'}
-
-OUTPUT FORMAT:
-Respond STRICTLY with a raw JSON object wrapped in \`\`\`json ... \`\`\` matching this schema:
-{
-  "status": "warning" | "neutral" | "good" | "excellent",
-  "status_label_th": "สรุปสถานะสั้นๆ 3-7 คำ (เช่น 'CapEx เร่งตัวฉุด FCF ติดลบ' หรือ 'Operating De-leverage')",
-  "status_label_en": "Short status label 3-7 words (e.g. 'CapEx Surge Drives FCF Negative')",
-  "what_is_it_th": "คำจำกัดความ/ความหมายของบรรทัดนี้ในงบการเงิน 1 ประโยคชัดเจนและเข้าใจง่าย (เช่น 'มูลค่ายอดขายรวมสุทธิจากการส่งมอบสินค้าและบริการทั้งหมดของบริษัทในรอบระยะเวลา')",
-  "what_is_it_en": "Clear 1-sentence definition of this financial statement line item",
-  "interpretation_th": "วิเคราะห์เชิงลึก 2-4 ประโยค ระบุตัวเลขจริง ชี้สาเหตุต้นตอ และผลกระทบข้ามงบการเงิน (เช่น OCF, FCF, Margin)",
-  "interpretation_en": "In-depth 2-4 sentence analysis citing actual figures and cross-statement impact",
-  "pros_th": ["ข้อดีหรือผลเชิงบวกที่เป็นจริง 2 ข้อ"],
-  "pros_en": ["Realistic positive aspects 2 bullets"],
-  "benchmark_th": "เกณฑ์มาตรฐานหรือมุมมองเปรียบเทียบในอุตสาหกรรม/กลุ่มคู่แข่ง",
-  "benchmark_en": "Industry benchmark context",
-  "watchouts_th": "จุดเฝ้าระวังและความเสี่ยงทางการเงินที่ต้องจับตาอย่างใกล้ชิด",
-  "watchouts_en": "Key financial risks and watch items"
-}`;
+      const prompt = buildFinancialMetricAnalysisPrompt(metricContext, {
+        normalizedCompanyName,
+        normalizedTicker,
+        periods,
+        historyValues,
+        yoyPcts,
+        unit,
+        isCurrency,
+        widerContext: context,
+        redFlags,
+        isThai
+      });
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const candidateModels = [
