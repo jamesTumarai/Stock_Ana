@@ -111,6 +111,7 @@ export interface MemoryComparisonDelta {
   convictionScoreDelta: { previous: number; current: number; deltaPoints: number } | null;
   revenueYoYDelta: { previous: number; current: number; deltaPctPoints: number } | null;
   operatingMarginDelta: { previous: number; current: number; deltaPctPoints: number } | null;
+  netIncomeDelta: { previous: number; current: number; deltaPct: number } | null;
   freeCashFlowDelta: { previous: number; current: number; deltaPct: number } | null;
   valuationAssumptionsDelta: {
     waccDeltaPoints: number | null;
@@ -661,6 +662,17 @@ export function compareMemorySnapshots(
       }
     : null;
 
+  // Net Income Delta
+  const curNetInc = current.financials.netIncome;
+  const prevNetInc = previous.financials.netIncome;
+  const netIncomeDelta = (typeof curNetInc === 'number' && typeof prevNetInc === 'number' && prevNetInc !== 0)
+    ? {
+        previous: prevNetInc,
+        current: curNetInc,
+        deltaPct: Number((((curNetInc - prevNetInc) / Math.abs(prevNetInc)) * 100).toFixed(2))
+      }
+    : null;
+
   // FCF Delta - strictly comparable period bases only (e.g. QUARTER vs QUARTER, ANNUAL vs ANNUAL, LTM vs LTM)
   const curFcf = current.financials.freeCashFlow;
   const prevFcf = previous.financials.freeCashFlow;
@@ -730,6 +742,7 @@ export function compareMemorySnapshots(
     convictionScoreDelta,
     revenueYoYDelta,
     operatingMarginDelta,
+    netIncomeDelta,
     freeCashFlowDelta,
     valuationAssumptionsDelta: {
       waccDeltaPoints: waccDelta,

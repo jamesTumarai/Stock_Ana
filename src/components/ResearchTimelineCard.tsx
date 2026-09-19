@@ -39,6 +39,30 @@ interface Props {
   externalExpectations?: TrackedExpectation[];
 }
 
+function formatConfirmationLabel(c: string, isThai: boolean): string {
+  switch (c) {
+    case 'CONFIRMED': return isThai ? 'ยืนยันแล้ว' : 'Confirmed';
+    case 'SUPPORTED': return isThai ? 'มีข้อมูลสนับสนุน' : 'Supported';
+    case 'UNCONFIRMED': return isThai ? 'ควรตรวจสอบ' : 'Needs Review';
+    case 'RESEARCH_ONLY': return isThai ? 'ความแตกต่างจากงานวิจัย' : 'Research Only';
+    default: return c;
+  }
+}
+
+function formatDeltaDisplay(d: string, isThai: boolean): string {
+  switch (d) {
+    case 'POSSIBLE RISK CHANGE': return isThai ? 'ความเสี่ยงที่อาจเปลี่ยนแปลง' : 'Possible Risk Change';
+    case 'POSSIBLE CATALYST CHANGE': return isThai ? 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง' : 'Possible Catalyst Change';
+    case 'UNCONFIRMED LIFECYCLE CHANGE': return isThai ? 'ถ้อยคำตกหล่นจากบทวิเคราะห์' : 'Omitted From Prose';
+    case 'PHRASING DIFFERENCE': return isThai ? 'สำนวนปรับเปลี่ยน' : 'Phrasing Difference';
+    case 'NEW RISK': return isThai ? 'ความเสี่ยงใหม่' : 'New Risk';
+    case 'NEW CATALYST': return isThai ? 'ปัจจัยเร่งใหม่' : 'New Catalyst';
+    case 'RESOLVED': return isThai ? 'คลี่คลายแล้ว' : 'Resolved';
+    case 'CATALYST CONCLUDED': return isThai ? 'เสร็จสิ้นแล้ว' : 'Concluded';
+    default: return d;
+  }
+}
+
 export function ResearchTimelineCard({
   ticker,
   currentReport,
@@ -49,6 +73,8 @@ export function ResearchTimelineCard({
   externalExpectations
 }: Props) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isWhatChangedExpanded, setIsWhatChangedExpanded] = useState(true);
+  const [isResearchCoverageExpanded, setIsResearchCoverageExpanded] = useState(false);
   const [internalThesis, setInternalThesis] = useState<InvestmentThesisRecord | null>(null);
   const [internalExpectations, setInternalExpectations] = useState<TrackedExpectation[]>([]);
   const [thesisRevisions, setThesisRevisions] = useState<InvestmentThesisRecord[]>([]);
@@ -134,6 +160,30 @@ export function ResearchTimelineCard({
       previousThesis
     );
   }, [currentSnapshot, previousSnapshot, currentThesis, whatChanged, expectations, previousThesis]);
+
+  const confirmedItems = useMemo(() => {
+    if (!whatChanged) return [];
+    return whatChanged.items.filter(
+      i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'THESIS_MODEL_CHANGE') &&
+        (i.confirmation === 'CONFIRMED' || i.confirmation === 'SUPPORTED')
+    ).sort((a, b) => {
+      const score = (m: string) => m === 'HIGH' ? 3 : m === 'MEDIUM' ? 2 : 1;
+      return score(b.materiality) - score(a.materiality);
+    });
+  }, [whatChanged]);
+
+  const needsReviewItems = useMemo(() => {
+    if (!whatChanged) return [];
+    return whatChanged.items.filter(i => i.confirmation === 'UNCONFIRMED');
+  }, [whatChanged]);
+
+  const researchCoverageItems = useMemo(() => {
+    if (!whatChanged) return [];
+    return whatChanged.items.filter(
+      i => i.confirmation === 'RESEARCH_ONLY' ||
+        (i.domain === 'RESEARCH_COVERAGE_CHANGE' && i.confirmation !== 'UNCONFIRMED')
+    );
+  }, [whatChanged]);
 
   // If there is only 1 report and no previous history, show an initial baseline badge
   if (timeline.length <= 1 && !delta) {
@@ -268,75 +318,216 @@ export function ResearchTimelineCard({
       {/* WHAT CHANGED INTELLIGENCE */}
       {whatChanged ? (
         <div className="bg-stone-50/70 p-4 rounded-2xl border border-stone-200/80 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
+          <div
+            className="flex items-center justify-between gap-2 cursor-pointer select-none"
+            onClick={() => setIsWhatChangedExpanded(prev => !prev)}
+          >
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#0b5a4b]" />
               <span className="text-xs font-bold text-stone-900 uppercase font-mono tracking-wider">
                 {isThai ? 'การเปลี่ยนแปลงที่ตรวจพบ (What Changed Intelligence)' : 'What Changed Intelligence'}
               </span>
             </div>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-              whatChanged.hasMaterialChanges
-                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-            }`}>
-              {whatChanged.hasMaterialChanges
-                ? (isThai ? `พบ ${whatChanged.materialChangesCount} การเปลี่ยนแปลงสำคัญ` : `${whatChanged.materialChangesCount} Material Changes`)
-                : (isThai ? 'ไม่พบการเปลี่ยนแปลงสำคัญ' : 'No Material Changes')}
-            </span>
+            <div className="flex items-center gap-2">
+              {whatChanged.summary.confirmedMaterial > 0 ? (
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+                  {isThai ? `พบ ${whatChanged.summary.confirmedMaterial} การเปลี่ยนแปลงสำคัญที่ยืนยันแล้ว` : `${whatChanged.summary.confirmedMaterial} Confirmed Material Changes`}
+                </span>
+              ) : whatChanged.summary.needsReview > 0 ? (
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-blue-50 text-blue-800 border-blue-200">
+                  {isThai ? `มี ${whatChanged.summary.needsReview} ประเด็นควรตรวจสอบ` : `${whatChanged.summary.needsReview} Items Need Review`}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                  {isThai ? 'ไม่พบการเปลี่ยนแปลงสำคัญ' : 'No Material Changes'}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsWhatChangedExpanded(prev => !prev);
+                }}
+                className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-white/80 hover:bg-white border border-stone-200/80 text-stone-700 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                aria-expanded={isWhatChangedExpanded}
+                aria-label={isWhatChangedExpanded ? (isThai ? 'ย่อการเปลี่ยนแปลง' : 'Collapse What Changed') : (isThai ? 'ขยายการเปลี่ยนแปลง' : 'Expand What Changed')}
+              >
+                <span>{isWhatChangedExpanded ? (isThai ? 'ย่อ' : 'Collapse') : (isThai ? 'ดูรายละเอียด' : 'Details')}</span>
+                {isWhatChangedExpanded ? <ChevronUp className="w-3.5 h-3.5 text-stone-500" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-500" />}
+              </button>
+            </div>
           </div>
 
-          <p className="text-xs text-stone-600 leading-relaxed font-sans">
-            {isThai ? whatChanged.summaryNarrativeTh : whatChanged.summaryNarrative}
-            {!whatChanged.hasMaterialChanges && (
-              <span className="block text-[11px] text-stone-400 mt-0.5">
-                {isThai ? '(เปรียบเทียบกับ snapshot ก่อนหน้าที่มีสถานะต่างกัน)' : '(Compared with prior distinct snapshot)'}
-              </span>
-            )}
-          </p>
-
-          {/* Material Changes List */}
-          {whatChanged.hasMaterialChanges && whatChanged.items.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              {whatChanged.items.map(ch => (
-                <div key={ch.id} className="p-2.5 bg-white rounded-xl border border-stone-200/80 text-xs flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-stone-900">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
-                    <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
-                      ch.materiality === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                      ch.materiality === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                      'bg-stone-100 text-stone-600'
-                    }`}>
-                      {ch.materiality}
-                    </span>
-                  </div>
-                  <div className="font-mono text-stone-700 text-[11px] mb-1">
-                    {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
-                    <span className="ml-1.5 font-bold text-stone-900">
-                      ({ch.deltaDisplay})
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-stone-500">{isThai ? ch.explanationTh : ch.explanation}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Valuation Change Attribution */}
-          {whatChanged.valuationAttribution && (
-            <div className="p-3 bg-white rounded-xl border border-stone-200 flex flex-col gap-1.5 mt-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-stone-900 font-mono">
-                  {isThai ? 'การแจกแจงสาเหตุมูลค่า DCF ที่เปลี่ยนไป (Valuation Attribution)' : 'Valuation Change Attribution'}
-                </span>
-                <span className="font-mono font-bold text-[#0b5a4b] text-[11px]">
-                  {whatChanged.valuationAttribution.primaryDriver}
-                </span>
-              </div>
-              <p className="text-xs text-stone-700 leading-relaxed font-sans">
-                {isThai ? whatChanged.valuationAttribution.impactDescriptionTh : whatChanged.valuationAttribution.impactDescription}
+          {isWhatChangedExpanded && (
+            <>
+              <p className="text-xs text-stone-600 leading-relaxed font-sans">
+                {isThai ? whatChanged.summaryNarrativeTh : whatChanged.summaryNarrative}
+                {whatChanged.summary.confirmedMaterial === 0 && (
+                  <span className="block text-[11px] text-stone-400 mt-0.5">
+                    {isThai ? '(เปรียบเทียบกับ snapshot ก่อนหน้าที่มีสถานะต่างกัน)' : '(Compared with prior distinct snapshot)'}
+                  </span>
+                )}
               </p>
-            </div>
+
+              {/* GROUP 1: Confirmed Changes */}
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 font-mono">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#0b5a4b]" />
+                  <span>{isThai ? '1. การเปลี่ยนแปลงที่ยืนยันแล้ว (Confirmed Changes)' : '1. Confirmed Changes'}</span>
+                  <span className="text-[10px] text-stone-400">({confirmedItems.length})</span>
+                </div>
+
+                {confirmedItems.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {confirmedItems.map(ch => (
+                      <div key={ch.id} className="p-2.5 bg-white rounded-xl border border-stone-200/80 text-xs flex flex-col gap-1 shadow-2xs">
+                        <div className="flex items-center justify-between gap-1 flex-wrap">
+                          <span className="font-bold text-stone-900">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
+                          <div className="flex items-center gap-1">
+                            <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                              ch.materiality === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                              ch.materiality === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                              'bg-stone-100 text-stone-600'
+                            }`}>
+                              {ch.materiality}
+                            </span>
+                            <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {formatConfirmationLabel(ch.confirmation, isThai)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="font-mono text-stone-700 text-[11px]">
+                          {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
+                          <span className="ml-1.5 font-bold text-stone-900">
+                            ({formatDeltaDisplay(ch.deltaDisplay, isThai)})
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-stone-600 leading-relaxed font-sans">{isThai ? ch.explanationTh : ch.explanation}</span>
+                        {ch.provenance && (
+                          <span className="text-[9px] font-mono text-stone-400 mt-0.5">{ch.provenance}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white/70 rounded-xl border border-stone-200/60 text-xs text-stone-500 font-sans italic">
+                    {isThai ? 'ยังไม่มีการเปลี่ยนแปลงเชิงหลักฐานหรือแบบจำลองที่ยืนยันแล้วในรอบนี้' : 'No confirmed material company or model changes detected in this period.'}
+                  </div>
+                )}
+              </div>
+
+              {/* GROUP 2: Needs Review (Unconfirmed risks, catalysts, or attribution ambiguity) */}
+              {needsReviewItems.length > 0 && (
+                <div className="flex flex-col gap-2 pt-2 border-t border-stone-200/60">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 font-mono">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{isThai ? '2. ประเด็นที่ควรตรวจสอบ (Needs Review)' : '2. Needs Review'}</span>
+                    <span className="text-[10px] px-2 py-0.2 rounded-full bg-amber-100 text-amber-800 font-sans font-semibold">
+                      {isThai ? 'ต้องตรวจสอบ' : 'Needs Review'} ({needsReviewItems.length})
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {needsReviewItems.map(ch => (
+                      <div key={ch.id} className="p-2.5 bg-amber-50/40 rounded-xl border border-amber-200/70 text-xs flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-1 flex-wrap">
+                          <span className="font-bold text-amber-950">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
+                          <div className="flex items-center gap-1">
+                            <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                              ch.materiality === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                              ch.materiality === 'MEDIUM' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                              'bg-stone-100 text-stone-600'
+                            }`}>
+                              {ch.materiality}
+                            </span>
+                            <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              {formatConfirmationLabel(ch.confirmation, isThai)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="font-mono text-stone-700 text-[11px]">
+                          {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
+                          <span className="ml-1.5 font-bold text-amber-900">
+                            ({formatDeltaDisplay(ch.deltaDisplay, isThai)})
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-stone-600 leading-relaxed font-sans">{isThai ? ch.explanationTh : ch.explanation}</span>
+                        {ch.reviewReason && (
+                          <div className="text-[10px] text-amber-800/90 font-sans mt-0.5 bg-amber-100/50 p-1.5 rounded-md border border-amber-200/50">
+                            <strong>{isThai ? 'เหตุผลที่ควรตรวจ: ' : 'Review reason: '}</strong>
+                            {isThai ? (ch.reviewReasonTh || ch.reviewReason) : ch.reviewReason}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* GROUP 3: Research Coverage Differences (Prose drift, omitted from prose, phrasing - collapsed by default) */}
+              {researchCoverageItems.length > 0 && (
+                <div className="pt-2 border-t border-stone-200/60 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsResearchCoverageExpanded(!isResearchCoverageExpanded)}
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-stone-100/80 hover:bg-stone-200/70 text-stone-700 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-stone-500" />
+                      <span>{isThai ? `3. ความแตกต่างจากการครอบคลุมงานวิจัย (${researchCoverageItems.length} รายการ)` : `3. Research Coverage Differences (${researchCoverageItems.length})`}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-stone-500 font-sans">
+                      <span>{isResearchCoverageExpanded ? (isThai ? 'ย่อ' : 'Collapse') : (isThai ? 'ดูรายละเอียด' : 'Show Details')}</span>
+                      {isResearchCoverageExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </div>
+                  </button>
+
+                  {isResearchCoverageExpanded && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      {researchCoverageItems.map(ch => (
+                        <div key={ch.id} className="p-2.5 bg-white/80 rounded-xl border border-stone-200/70 text-xs flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <span className="font-semibold text-stone-800">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
+                                {ch.materiality}
+                              </span>
+                              <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                                {formatConfirmationLabel(ch.confirmation, isThai)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="font-mono text-stone-600 text-[11px]">
+                            {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
+                            <span className="ml-1.5 text-stone-500">
+                              ({formatDeltaDisplay(ch.deltaDisplay, isThai)})
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-stone-500 leading-relaxed font-sans">{isThai ? ch.explanationTh : ch.explanation}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Valuation Change Attribution */}
+              {whatChanged.valuationAttribution && (
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex flex-col gap-1.5 mt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-900 font-mono">
+                      {isThai ? 'การแจกแจงสาเหตุมูลค่า DCF ที่เปลี่ยนไป (Valuation Attribution)' : 'Valuation Change Attribution'}
+                    </span>
+                    <span className="font-mono font-bold text-[#0b5a4b] text-[11px]">
+                      {whatChanged.valuationAttribution.primaryDriver}
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-700 leading-relaxed font-sans">
+                    {isThai ? whatChanged.valuationAttribution.impactDescriptionTh : whatChanged.valuationAttribution.impactDescription}
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -454,16 +645,23 @@ export function ResearchTimelineCard({
 
             {/* 3. Conviction Score Delta */}
             {delta.convictionScoreDelta && (
-              <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col">
-                <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
-                  {isThai ? 'คะแนน Conviction' : 'Conviction Score'}
-                </span>
-                <span className="text-sm font-mono font-bold text-stone-900 mt-0.5">
-                  {delta.convictionScoreDelta.previous} → {delta.convictionScoreDelta.current}
-                </span>
-                <span className={`text-[10px] font-mono font-bold mt-0.5 ${delta.convictionScoreDelta.deltaPoints >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {delta.convictionScoreDelta.deltaPoints >= 0 ? '+' : ''}{delta.convictionScoreDelta.deltaPoints} pts
-                </span>
+              <div className="p-3 bg-white rounded-xl border border-stone-200/80 flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] font-mono uppercase font-bold text-stone-400">
+                    {isThai ? 'คะแนน Conviction' : 'Conviction Score'}
+                  </span>
+                  <div className="text-sm font-mono font-bold text-stone-900 mt-0.5">
+                    {delta.convictionScoreDelta.previous} → {delta.convictionScoreDelta.current}
+                  </div>
+                  <div className={`text-[10px] font-mono font-bold mt-0.5 ${delta.convictionScoreDelta.deltaPoints >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {delta.convictionScoreDelta.deltaPoints >= 0 ? '+' : ''}{delta.convictionScoreDelta.deltaPoints} pts
+                  </div>
+                </div>
+                {whatChanged?.items.find(i => i.id === 'change_conviction') && (
+                  <span className="text-[9px] text-stone-500 font-sans mt-1 line-clamp-2" title={isThai ? whatChanged.items.find(i => i.id === 'change_conviction')?.explanationTh : whatChanged.items.find(i => i.id === 'change_conviction')?.explanation}>
+                    {isThai ? whatChanged.items.find(i => i.id === 'change_conviction')?.explanationTh : whatChanged.items.find(i => i.id === 'change_conviction')?.explanation}
+                  </span>
+                )}
               </div>
             )}
 

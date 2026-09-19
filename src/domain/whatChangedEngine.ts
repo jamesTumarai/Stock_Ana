@@ -16,11 +16,25 @@ export type ChangeCategory =
   | 'RISKS_AND_CATALYSTS'
   | 'SEC_FILING';
 
+export type ChangeDomain =
+  | 'EVIDENCE_CHANGE'
+  | 'THESIS_MODEL_CHANGE'
+  | 'RESEARCH_COVERAGE_CHANGE'
+  | 'MARKET_CONTEXT_CHANGE';
+
+export type ChangeConfirmation =
+  | 'CONFIRMED'
+  | 'SUPPORTED'
+  | 'UNCONFIRMED'
+  | 'RESEARCH_ONLY';
+
 export type ChangeMateriality = 'HIGH' | 'MEDIUM' | 'LOW' | 'INFORMATIONAL';
 
 export interface ChangeItem {
   id: string;
   category: ChangeCategory;
+  domain: ChangeDomain;
+  confirmation: ChangeConfirmation;
   metricLabel: string;
   metricLabelTh: string;
   previousValue: string | number | null;
@@ -31,6 +45,8 @@ export interface ChangeItem {
   explanationTh: string;
   provenance: string;
   evidenceRef?: string | null;
+  reviewReason?: string;
+  reviewReasonTh?: string;
 }
 
 export interface ValuationAttribution {
@@ -47,6 +63,16 @@ export interface ValuationAttribution {
   isDeterministic: boolean;
 }
 
+export interface WhatChangedSummary {
+  totalDetected: number;
+  confirmedMaterial: number;
+  needsReview: number;
+  researchCoverage: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
 export interface WhatChangedResult {
   ticker: string;
   previousReportId: string;
@@ -56,6 +82,7 @@ export interface WhatChangedResult {
   daysBetween: number;
   hasMaterialChanges: boolean;
   materialChangesCount: number;
+  summary: WhatChangedSummary;
   items: ChangeItem[];
   valuationAttribution: ValuationAttribution | null;
   evaluatedExpectations: TrackedExpectation[];
@@ -66,7 +93,7 @@ export interface WhatChangedResult {
 
 /**
  * Deterministically analyzes the delta between two research memory snapshots,
- * integrating expectations and risk/catalyst evolutions into a unified ChangeSet.
+ * separating real company/evidence changes from research coverage drift.
  */
 export function computeWhatChanged(
   current: ResearchMemorySnapshot,
@@ -76,8 +103,8 @@ export function computeWhatChanged(
   const baseDelta = compareMemorySnapshots(current, previous);
   const items: ChangeItem[] = [];
 
-  // 1. Valuation Changes
-  if (baseDelta.fairValueDelta) {
+  // 1. Valuation Changes (Model / Thesis)
+  if (baseDelta.fairValueDelta && Math.abs(baseDelta.fairValueDelta.deltaPct) >= 0.1) {
     const deltaPct = baseDelta.fairValueDelta.deltaPct;
     const absDelta = Math.abs(deltaPct);
     const materiality: ChangeMateriality = absDelta >= 10 ? 'HIGH' : absDelta >= 5 ? 'MEDIUM' : 'LOW';
@@ -85,6 +112,8 @@ export function computeWhatChanged(
     items.push({
       id: 'change_fair_value',
       category: 'VALUATION',
+      domain: 'THESIS_MODEL_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'Base Fair Value',
       metricLabelTh: 'มูลค่ายุติธรรมพื้นฐาน',
       previousValue: `$${baseDelta.fairValueDelta.previous.toFixed(2)}`,
@@ -97,8 +126,8 @@ export function computeWhatChanged(
     });
   }
 
-  // 2. Market Price Changes
-  if (baseDelta.priceDelta) {
+  // 2. Market Price Changes (Market Context)
+  if (baseDelta.priceDelta && Math.abs(baseDelta.priceDelta.deltaPct) >= 0.1) {
     const deltaPct = baseDelta.priceDelta.deltaPct;
     const absDelta = Math.abs(deltaPct);
     const materiality: ChangeMateriality = absDelta >= 15 ? 'HIGH' : absDelta >= 8 ? 'MEDIUM' : 'LOW';
@@ -106,6 +135,8 @@ export function computeWhatChanged(
     items.push({
       id: 'change_price',
       category: 'MARKET_PRICE',
+      domain: 'MARKET_CONTEXT_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'Market Price',
       metricLabelTh: 'ราคาตลาด',
       previousValue: `$${baseDelta.priceDelta.previous.toFixed(2)}`,
@@ -118,30 +149,69 @@ export function computeWhatChanged(
     });
   }
 
-  // 3. Conviction Score Shift
-  if (baseDelta.convictionScoreDelta && Math.abs(baseDelta.convictionScoreDelta.deltaPoints) >= 5) {
+  // 3. Conviction Score Shift (Evidence-driven vs Analysis Drift)
+  if (baseDelta.convictionScoreDelta && Math.abs(baseDelta.convictionScoreDelta.deltaPoints) >= 1) {
     const pts = baseDelta.convictionScoreDelta.deltaPoints;
-    items.push({
-      id: 'change_conviction',
-      category: 'CONVICTION',
-      metricLabel: 'Conviction Score',
-      metricLabelTh: 'คะแนนความเชื่อมั่น',
-      previousValue: `${baseDelta.convictionScoreDelta.previous}/100`,
-      currentValue: `${baseDelta.convictionScoreDelta.current}/100`,
-      deltaDisplay: `${pts >= 0 ? '+' : ''}${pts} pts`,
-      materiality: Math.abs(pts) >= 10 ? 'HIGH' : 'MEDIUM',
-      explanation: `Conviction shifted by ${pts >= 0 ? '+' : ''}${pts} points.`,
-      explanationTh: `คะแนนความเชื่อมั่นเปลี่ยนไป ${pts >= 0 ? '+' : ''}${pts} จุด`,
-      provenance: 'DETERMINISTIC_DERIVATION'
-    });
+    const prevScore = baseDelta.convictionScoreDelta.previous;
+    const curScore = baseDelta.convictionScoreDelta.current;
+
+    const hasVerifiedEvidenceChange = Boolean(
+      (baseDelta.revenueYoYDelta && Math.abs(baseDelta.revenueYoYDelta.deltaPctPoints) >= 1.0) ||
+      (baseDelta.operatingMarginDelta && Math.abs(baseDelta.operatingMarginDelta.deltaPctPoints) >= 1.0) ||
+      (baseDelta.freeCashFlowDelta && Math.abs(baseDelta.freeCashFlowDelta.deltaPct) >= 5.0) ||
+      (baseDelta.netIncomeDelta && Math.abs(baseDelta.netIncomeDelta.deltaPct) >= 5.0) ||
+      (current.evidence.secAccession && current.evidence.secAccession !== previous.evidence.secAccession)
+    );
+    const hasDeterministicModelChange = Boolean(
+      baseDelta.fairValueDelta && Math.abs(baseDelta.fairValueDelta.deltaPct) >= 3.0
+    );
+
+    if (hasVerifiedEvidenceChange || hasDeterministicModelChange) {
+      items.push({
+        id: 'change_conviction',
+        category: 'CONVICTION',
+        domain: 'THESIS_MODEL_CHANGE',
+        confirmation: 'CONFIRMED',
+        metricLabel: 'Conviction Score',
+        metricLabelTh: 'คะแนนความเชื่อมั่น',
+        previousValue: `${prevScore}/100`,
+        currentValue: `${curScore}/100`,
+        deltaDisplay: `${pts >= 0 ? '+' : ''}${pts} pts`,
+        materiality: Math.abs(pts) >= 10 ? 'HIGH' : Math.abs(pts) >= 5 ? 'MEDIUM' : 'LOW',
+        explanation: `Conviction shifted by ${pts >= 0 ? '+' : ''}${pts} points (${prevScore} → ${curScore}), supported by verified fundamental/model adjustments.`,
+        explanationTh: `คะแนนความเชื่อมั่นเปลี่ยนไป ${pts >= 0 ? '+' : ''}${pts} จุด (${prevScore} → ${curScore}) โดยสอดคล้องกับการเปลี่ยนแปลงข้อมูลจริงหรือแบบจำลองที่ยืนยันแล้ว`,
+        provenance: 'DETERMINISTIC_DERIVATION'
+      });
+    } else {
+      // Score shifted without verified evidence or model changes -> Analysis Drift / Unattributed
+      items.push({
+        id: 'change_conviction',
+        category: 'CONVICTION',
+        domain: 'RESEARCH_COVERAGE_CHANGE',
+        confirmation: 'RESEARCH_ONLY',
+        metricLabel: 'Conviction Score (Analysis Drift)',
+        metricLabelTh: 'คะแนนความเชื่อมั่น (ความแปรผันจากการวิเคราะห์)',
+        previousValue: `${prevScore}/100`,
+        currentValue: `${curScore}/100`,
+        deltaDisplay: `${pts >= 0 ? '+' : ''}${pts} pts`,
+        materiality: 'LOW',
+        explanation: `Conviction shifted by ${pts >= 0 ? '+' : ''}${pts} points (${prevScore} → ${curScore}), but the delta is not attributable to new verified evidence (analysis variation / model-output drift).`,
+        explanationTh: `คะแนนความเชื่อมั่นเปลี่ยนไป ${pts >= 0 ? '+' : ''}${pts} จุด (${prevScore} → ${curScore}) แต่สาเหตุของการเปลี่ยนแปลงคะแนนยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ได้ (ความแปรผันจากการวิเคราะห์ / Analysis Drift)`,
+        provenance: 'MODEL_OUTPUT_VARIATION',
+        reviewReason: 'Conviction delta is not attributable to new verified evidence.',
+        reviewReasonTh: 'สาเหตุของการเปลี่ยนแปลงคะแนนยังไม่สามารถเชื่อมโยงกับหลักฐานใหม่ได้'
+      });
+    }
   }
 
-  // 4. Financial Facts (Revenue YoY, Margin, FCF)
+  // 4. Financial Facts (Revenue YoY, Margin, Net Income, FCF)
   if (baseDelta.revenueYoYDelta && Math.abs(baseDelta.revenueYoYDelta.deltaPctPoints) >= 2.0) {
     const pts = baseDelta.revenueYoYDelta.deltaPctPoints;
     items.push({
       id: 'change_revenue_yoy',
       category: 'FINANCIAL_FACTS',
+      domain: 'EVIDENCE_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'Revenue YoY Growth',
       metricLabelTh: 'การเติบโตรายได้ YoY',
       previousValue: `${baseDelta.revenueYoYDelta.previous.toFixed(1)}%`,
@@ -159,6 +229,8 @@ export function computeWhatChanged(
     items.push({
       id: 'change_op_margin',
       category: 'FINANCIAL_FACTS',
+      domain: 'EVIDENCE_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'Operating Margin',
       metricLabelTh: 'อัตรากำไรจากการดำเนินงาน',
       previousValue: `${baseDelta.operatingMarginDelta.previous.toFixed(1)}%`,
@@ -171,11 +243,32 @@ export function computeWhatChanged(
     });
   }
 
+  if (baseDelta.netIncomeDelta && Math.abs(baseDelta.netIncomeDelta.deltaPct) >= 5.0) {
+    const pct = baseDelta.netIncomeDelta.deltaPct;
+    items.push({
+      id: 'change_net_income',
+      category: 'FINANCIAL_FACTS',
+      domain: 'EVIDENCE_CHANGE',
+      confirmation: 'CONFIRMED',
+      metricLabel: 'Net Income',
+      metricLabelTh: 'กำไรสุทธิ (Net Income)',
+      previousValue: `$${baseDelta.netIncomeDelta.previous.toLocaleString()}M`,
+      currentValue: `$${baseDelta.netIncomeDelta.current.toLocaleString()}M`,
+      deltaDisplay: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,
+      materiality: Math.abs(pct) >= 15.0 ? 'HIGH' : 'MEDIUM',
+      explanation: `Net Income moved by ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%.`,
+      explanationTh: `กำไรสุทธิเปลี่ยนแปลง ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,
+      provenance: current.financials.provenance
+    });
+  }
+
   if (baseDelta.freeCashFlowDelta && Math.abs(baseDelta.freeCashFlowDelta.deltaPct) >= 10.0) {
     const pct = baseDelta.freeCashFlowDelta.deltaPct;
     items.push({
       id: 'change_fcf',
       category: 'FINANCIAL_FACTS',
+      domain: 'EVIDENCE_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'Free Cash Flow',
       metricLabelTh: 'กระแสเงินสดอิสระ (FCF)',
       previousValue: `$${baseDelta.freeCashFlowDelta.previous.toLocaleString()}M`,
@@ -194,6 +287,8 @@ export function computeWhatChanged(
     items.push({
       id: 'change_wacc',
       category: 'VALUATION',
+      domain: 'THESIS_MODEL_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'Discount Rate (WACC)',
       metricLabelTh: 'อัตราคิดลด (WACC)',
       previousValue: `${previous.valuation.assumptions.waccPct}%`,
@@ -206,11 +301,13 @@ export function computeWhatChanged(
     });
   }
 
-  // 6. SEC Filing Update
+  // 6. SEC Filing Update (Verified Evidence)
   if (current.evidence.secAccession && current.evidence.secAccession !== previous.evidence.secAccession) {
     items.push({
       id: 'change_sec_filing',
       category: 'SEC_FILING',
+      domain: 'EVIDENCE_CHANGE',
+      confirmation: 'CONFIRMED',
       metricLabel: 'New SEC Filing',
       metricLabelTh: 'แบบรายงานใหม่ต่อ ก.ล.ต. สหรัฐฯ (SEC)',
       previousValue: previous.evidence.secFilingDate || 'Prior filing',
@@ -232,6 +329,8 @@ export function computeWhatChanged(
       items.push({
         id: `change_exp_${exp.expectationId}`,
         category: 'EXPECTATIONS',
+        domain: 'EVIDENCE_CHANGE',
+        confirmation: 'CONFIRMED',
         metricLabel: `Expectation: ${exp.metricLabel}`,
         metricLabelTh: `ความคาดหวัง: ${exp.metricLabel}`,
         previousValue: `Target ${exp.targetValue} (${exp.condition})`,
@@ -246,6 +345,8 @@ export function computeWhatChanged(
       items.push({
         id: `change_exp_${exp.expectationId}`,
         category: 'EXPECTATIONS',
+        domain: 'EVIDENCE_CHANGE',
+        confirmation: 'CONFIRMED',
         metricLabel: `Expectation: ${exp.metricLabel}`,
         metricLabelTh: `ความคาดหวัง: ${exp.metricLabel}`,
         previousValue: `Target ${exp.targetValue} (${exp.condition})`,
@@ -259,7 +360,7 @@ export function computeWhatChanged(
     }
   }
 
-  // 8. Risks and Catalysts Transitions
+  // 8. Risks and Catalysts Transitions (Research Coverage Drift vs Verified Evolution)
   const itemTransitions = matchRiskCatalystTransitions(
     previous.thesis.keyRisks,
     current.thesis.keyRisks,
@@ -274,6 +375,8 @@ export function computeWhatChanged(
           items.push({
             id: `change_risk_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
+            domain: 'EVIDENCE_CHANGE',
+            confirmation: 'CONFIRMED',
             metricLabel: 'New Risk Identified',
             metricLabelTh: 'พบปัจจัยความเสี่ยงใหม่',
             previousValue: 'Not tracked',
@@ -285,19 +388,23 @@ export function computeWhatChanged(
             provenance: 'AI_AND_STATEMENT_EVIDENCE'
           });
         } else {
-          // Blocker 11: isCertain === false must NOT state NEW/RESOLVED/MATERIALIZED as fact, nor generate HIGH risk event
+          // Unconfirmed newly mentioned risk -> RESEARCH_COVERAGE_CHANGE, UNCONFIRMED, Needs Review
           items.push({
             id: `change_risk_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
+            domain: 'RESEARCH_COVERAGE_CHANGE',
+            confirmation: 'UNCONFIRMED',
             metricLabel: 'Possible Risk Change — Review Needed',
-            metricLabelTh: 'อาจมีการเปลี่ยนแปลงความเสี่ยง — ควรตรวจสอบ',
+            metricLabelTh: 'ความเสี่ยงที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
             previousValue: 'Not tracked',
             currentValue: trans.itemText,
             deltaDisplay: 'POSSIBLE RISK CHANGE',
             materiality: 'MEDIUM',
             explanation: `Unconfirmed risk statement identified in report prose: "${trans.itemText}". Review needed to verify if a new material threat emerged.`,
             explanationTh: `พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์: "${trans.itemText}" ยังไม่ยืนยันการเปลี่ยนแปลง ควรตรวจสอบเพิ่มเติม`,
-            provenance: 'AI_AND_STATEMENT_EVIDENCE'
+            provenance: 'AI_AND_STATEMENT_EVIDENCE',
+            reviewReason: 'Unconfirmed risk mentioned in recent report; verify if a real threat emerged.',
+            reviewReasonTh: 'พบข้อความความเสี่ยงใหม่ในบทวิเคราะห์ ควรตรวจสอบว่าเป็นข้อเท็จจริงใหม่จริงหรือไม่'
           });
         }
       } else if (trans.currentState === 'RESOLVED') {
@@ -305,6 +412,8 @@ export function computeWhatChanged(
           items.push({
             id: `change_risk_res_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
+            domain: 'EVIDENCE_CHANGE',
+            confirmation: 'CONFIRMED',
             metricLabel: 'Prior Risk Resolved',
             metricLabelTh: 'ความเสี่ยงเดิมคลี่คลาย',
             previousValue: trans.itemText,
@@ -316,36 +425,41 @@ export function computeWhatChanged(
             provenance: 'AI_AND_STATEMENT_EVIDENCE'
           });
         } else {
-          // Blocker 11: isCertain === false must NOT state RESOLVED as fact
+          // Omitted from prose -> RESEARCH_COVERAGE_CHANGE, RESEARCH_ONLY, LOW
           items.push({
             id: `change_risk_res_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
-            metricLabel: 'Risk Wording Changed — Review Needed',
-            metricLabelTh: 'ถ้อยคำความเสี่ยงเปลี่ยนแปลง — ควรตรวจสอบ',
+            domain: 'RESEARCH_COVERAGE_CHANGE',
+            confirmation: 'RESEARCH_ONLY',
+            metricLabel: 'Risk Wording Omitted From Prose',
+            metricLabelTh: 'ถ้อยคำความเสี่ยงไม่ได้ถูกระบุซ้ำในบทวิเคราะห์',
             previousValue: trans.itemText,
             currentValue: 'Omitted from prose',
             deltaDisplay: 'UNCONFIRMED LIFECYCLE CHANGE',
             materiality: 'LOW',
-            explanation: `Prior risk "${trans.itemText}" was not explicitly restated in recent report prose. Resolution is unconfirmed; review needed.`,
-            explanationTh: `ความเสี่ยงเดิม "${trans.itemText}" ไม่ได้ถูกระบุซ้ำในบทวิเคราะห์ล่าสุด ยังไม่ยืนยันว่าคลี่คลายแล้ว ควรตรวจสอบเพิ่มเติม`,
+            explanation: `Prior risk "${trans.itemText}" was not explicitly restated in recent report prose. This reflects research coverage difference, not confirmed real-world resolution.`,
+            explanationTh: `ความเสี่ยงเดิม "${trans.itemText}" ไม่ได้ถูกระบุซ้ำในบทวิเคราะห์ล่าสุด เป็นความแตกต่างของการครอบคลุมเนื้อหา ไม่ใช่การยืนยันว่าปัญหาคลี่คลายในโลกจริง`,
             provenance: 'AI_AND_STATEMENT_EVIDENCE'
           });
         }
       } else if (trans.currentState === 'UNKNOWN' && !trans.isCertain) {
-        // Ambiguous rephrasing or semantic evolution across reports (e.g. "Cloud demand slowdown" vs "Slower enterprise cloud spending")
-        // Produces at most one uncertain/review-needed change!
+        // Ambiguous rephrasing or semantic evolution across reports -> UNCONFIRMED, Needs Review
         items.push({
           id: `change_risk_evolve_${items.length}`,
           category: 'RISKS_AND_CATALYSTS',
+          domain: 'RESEARCH_COVERAGE_CHANGE',
+          confirmation: 'UNCONFIRMED',
           metricLabel: 'Risk Wording Changed — Review Needed',
-          metricLabelTh: 'ถ้อยคำความเสี่ยงเปลี่ยนแปลง — ควรตรวจสอบ',
+          metricLabelTh: 'ความเสี่ยงที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
           previousValue: 'Prior wording',
           currentValue: trans.itemText,
           deltaDisplay: 'POSSIBLE RISK CHANGE',
-          materiality: 'LOW',
-          explanation: `Risk wording evolved: "${trans.itemText}". Review needed to evaluate whether this represents a true material change or stylistic rephrasing.`,
-          explanationTh: `ถ้อยคำของความเสี่ยงปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบว่าเป็นความเสี่ยงใหม่จริงหรือเพียงการปรับสำนวน`,
-          provenance: 'AI_AND_STATEMENT_EVIDENCE'
+          materiality: 'MEDIUM',
+          explanation: `Risk wording evolved: "${trans.itemText}". Review needed to determine if the underlying threat changed.`,
+          explanationTh: `ถ้อยคำของความเสี่ยงปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบว่าสาระสำคัญของความเสี่ยงเปลี่ยนไปหรือไม่`,
+          provenance: 'AI_AND_STATEMENT_EVIDENCE',
+          reviewReason: 'Ambiguous risk rewording across reports; review needed.',
+          reviewReasonTh: 'ถ้อยคำความเสี่ยงมีการปรับเปลี่ยน ควรตรวจสอบว่าสาระสำคัญของความเสี่ยงเปลี่ยนไปหรือไม่'
         });
       }
     } else if (trans.category === 'catalyst') {
@@ -354,6 +468,8 @@ export function computeWhatChanged(
           items.push({
             id: `change_cat_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
+            domain: 'EVIDENCE_CHANGE',
+            confirmation: 'CONFIRMED',
             metricLabel: 'New Catalyst Tracked',
             metricLabelTh: 'พบปัจจัยเร่งใหม่ (Catalyst)',
             previousValue: 'Not tracked',
@@ -365,18 +481,23 @@ export function computeWhatChanged(
             provenance: 'AI_AND_MARKET_EVIDENCE'
           });
         } else {
+          // Unconfirmed newly mentioned catalyst -> RESEARCH_COVERAGE_CHANGE, UNCONFIRMED, Needs Review
           items.push({
             id: `change_cat_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
+            domain: 'RESEARCH_COVERAGE_CHANGE',
+            confirmation: 'UNCONFIRMED',
             metricLabel: 'Possible Catalyst Change',
-            metricLabelTh: 'อาจมีปัจจัยเร่งใหม่ (ยังไม่ยืนยัน)',
+            metricLabelTh: 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง (ยังไม่ยืนยัน)',
             previousValue: 'Not tracked',
             currentValue: trans.itemText,
             deltaDisplay: 'POSSIBLE CATALYST CHANGE',
             materiality: 'LOW',
             explanation: `New catalyst mentioned in report prose: "${trans.itemText}". Unconfirmed lifecycle change.`,
             explanationTh: `พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์: "${trans.itemText}" ยังไม่ยืนยัน`,
-            provenance: 'AI_AND_MARKET_EVIDENCE'
+            provenance: 'AI_AND_MARKET_EVIDENCE',
+            reviewReason: 'Unconfirmed catalyst mentioned in recent report prose.',
+            reviewReasonTh: 'พบการกล่าวถึงปัจจัยเร่งใหม่ในบทวิเคราะห์ ยังไม่ยืนยัน'
           });
         }
       } else if (trans.currentState === 'RESOLVED') {
@@ -384,6 +505,8 @@ export function computeWhatChanged(
           items.push({
             id: `change_cat_res_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
+            domain: 'EVIDENCE_CHANGE',
+            confirmation: 'CONFIRMED',
             metricLabel: 'Prior Catalyst Concluded',
             metricLabelTh: 'ปัจจัยเร่งเดิมสิ้นสุดลง',
             previousValue: trans.itemText,
@@ -395,33 +518,41 @@ export function computeWhatChanged(
             provenance: 'AI_AND_MARKET_EVIDENCE'
           });
         } else {
+          // Omitted from prose -> RESEARCH_COVERAGE_CHANGE, RESEARCH_ONLY, LOW
           items.push({
             id: `change_cat_res_${items.length}`,
             category: 'RISKS_AND_CATALYSTS',
-            metricLabel: 'Catalyst Wording Changed — Review Needed',
-            metricLabelTh: 'ถ้อยคำปัจจัยเร่งเปลี่ยนแปลง — ควรตรวจสอบ',
+            domain: 'RESEARCH_COVERAGE_CHANGE',
+            confirmation: 'RESEARCH_ONLY',
+            metricLabel: 'Catalyst Wording Omitted From Prose',
+            metricLabelTh: 'ถ้อยคำปัจจัยเร่งไม่ได้ถูกระบุซ้ำในบทวิเคราะห์',
             previousValue: trans.itemText,
             currentValue: 'Omitted from prose',
             deltaDisplay: 'UNCONFIRMED LIFECYCLE CHANGE',
             materiality: 'LOW',
-            explanation: `Prior catalyst "${trans.itemText}" was not explicitly listed in recent report prose; status unconfirmed.`,
-            explanationTh: `ปัจจัยเร่งเดิม "${trans.itemText}" ไม่ได้ถูกระบุในบทวิเคราะห์ล่าสุด สถานะยังไม่ยืนยัน`,
+            explanation: `Prior catalyst "${trans.itemText}" was not explicitly listed in recent report prose. This reflects research coverage difference, not confirmed real-world conclusion.`,
+            explanationTh: `ปัจจัยเร่งเดิม "${trans.itemText}" ไม่ได้ถูกระบุในบทวิเคราะห์ล่าสุด เป็นความแตกต่างของการครอบคลุมเนื้อหา`,
             provenance: 'AI_AND_MARKET_EVIDENCE'
           });
         }
       } else if (trans.currentState === 'UNKNOWN' && !trans.isCertain) {
+        // Ambiguous catalyst rephrasing -> UNCONFIRMED, Needs Review
         items.push({
           id: `change_cat_evolve_${items.length}`,
           category: 'RISKS_AND_CATALYSTS',
+          domain: 'RESEARCH_COVERAGE_CHANGE',
+          confirmation: 'UNCONFIRMED',
           metricLabel: 'Catalyst Wording Changed — Review Needed',
-          metricLabelTh: 'ถ้อยคำปัจจัยเร่งเปลี่ยนแปลง — ควรตรวจสอบ',
+          metricLabelTh: 'ปัจจัยเร่งที่อาจเปลี่ยนแปลง — ควรตรวจสอบ',
           previousValue: 'Prior wording',
           currentValue: trans.itemText,
           deltaDisplay: 'POSSIBLE CATALYST CHANGE',
           materiality: 'LOW',
-          explanation: `Catalyst description shifted: "${trans.itemText}". Review needed.`,
-          explanationTh: `คำอธิบายปัจจัยเร่งปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบเพิ่มเติม`,
-          provenance: 'AI_AND_MARKET_EVIDENCE'
+          explanation: `Catalyst description shifted: "${trans.itemText}". Review needed to determine if the underlying catalyst changed.`,
+          explanationTh: `คำอธิบายปัจจัยเร่งปรับเปลี่ยน: "${trans.itemText}" ควรตรวจสอบว่าสาระสำคัญของปัจจัยเร่งเปลี่ยนไปหรือไม่`,
+          provenance: 'AI_AND_MARKET_EVIDENCE',
+          reviewReason: 'Ambiguous catalyst rewording across reports; review needed.',
+          reviewReasonTh: 'ถ้อยคำปัจจัยเร่งมีการปรับเปลี่ยน ควรตรวจสอบว่าสาระสำคัญของปัจจัยเร่งเปลี่ยนไปหรือไม่'
         });
       }
     }
@@ -472,20 +603,51 @@ export function computeWhatChanged(
     }
   }
 
-  const materialChangesCount = items.filter(i => i.materiality === 'HIGH' || i.materiality === 'MEDIUM').length;
-  const hasMaterialChanges = materialChangesCount > 0;
+  // 10. Compute Canonical Summary
+  const confirmedMaterial = items.filter(
+    i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'THESIS_MODEL_CHANGE') &&
+      i.confirmation === 'CONFIRMED' &&
+      (i.materiality === 'HIGH' || i.materiality === 'MEDIUM')
+  ).length;
 
-  // Build Summary Narratives
+  const needsReview = items.filter(
+    i => i.confirmation === 'UNCONFIRMED'
+  ).length;
+
+  const researchCoverage = items.filter(
+    i => i.domain === 'RESEARCH_COVERAGE_CHANGE' && i.confirmation === 'RESEARCH_ONLY'
+  ).length;
+
+  const high = items.filter(i => i.materiality === 'HIGH').length;
+  const medium = items.filter(i => i.materiality === 'MEDIUM').length;
+  const low = items.filter(i => i.materiality === 'LOW' || i.materiality === 'INFORMATIONAL').length;
+
+  const summary: WhatChangedSummary = {
+    totalDetected: items.length,
+    confirmedMaterial,
+    needsReview,
+    researchCoverage,
+    high,
+    medium,
+    low
+  };
+
+  const hasMaterialChanges = confirmedMaterial > 0;
+  const materialChangesCount = confirmedMaterial;
+
+  // Build Summary Narratives using Canonical Summary
   let summaryNarrative = '';
   let summaryNarrativeTh = '';
 
-  if (!hasMaterialChanges) {
+  if (items.length === 0) {
     summaryNarrative = `No material changes detected for ${current.ticker} compared to prior distinct research snapshot.`;
     summaryNarrativeTh = `ไม่พบการเปลี่ยนแปลงที่มีนัยสำคัญจากการวิเคราะห์ก่อนหน้าสำหรับ ${current.ticker}`;
+  } else if (confirmedMaterial === 0) {
+    summaryNarrative = `Identified ${summary.totalDetected} total differences since prior research: 0 confirmed material changes, ${summary.needsReview} items need review, and ${summary.researchCoverage} research coverage differences.`;
+    summaryNarrativeTh = `ตรวจพบความแตกต่าง ${summary.totalDetected} รายการจากการวิเคราะห์ก่อนหน้า: ยังไม่มีการเปลี่ยนแปลงที่ยืนยันแล้วและมีนัยสำคัญ, มี ${summary.needsReview} ประเด็นที่ควรตรวจสอบเพิ่มเติม และ ${summary.researchCoverage} รายการเป็นความแตกต่างจากการครอบคลุมงานวิจัย`;
   } else {
-    const highItems = items.filter(i => i.materiality === 'HIGH');
-    summaryNarrative = `Identified ${items.length} total changes (${highItems.length} high priority) since prior research on ${previous.asOfDate}.`;
-    summaryNarrativeTh = `ตรวจพบการเปลี่ยนแปลง ${items.length} รายการ (ระดับสำคัญสูง ${highItems.length} รายการ) นับจากการวิเคราะห์ครั้งก่อนเมื่อ ${previous.asOfDate}`;
+    summaryNarrative = `Identified ${summary.confirmedMaterial} confirmed material changes (${summary.high} high priority) since prior research on ${previous.asOfDate}.`;
+    summaryNarrativeTh = `ตรวจพบการเปลี่ยนแปลงที่ยืนยันแล้ว ${summary.confirmedMaterial} รายการ (${summary.high} ระดับสำคัญสูง) นับจากการวิเคราะห์ครั้งก่อนเมื่อ ${previous.asOfDate}`;
   }
 
   return {
@@ -497,6 +659,7 @@ export function computeWhatChanged(
     daysBetween: baseDelta.daysBetween,
     hasMaterialChanges,
     materialChangesCount,
+    summary,
     items,
     valuationAttribution,
     evaluatedExpectations,

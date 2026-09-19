@@ -9,6 +9,7 @@ import { WhatChangedResult } from './whatChangedEngine';
 
 export type ReEvaluationStance =
   | 'RE_EVALUATION_WARRANTED'
+  | 'REVIEW_SUGGESTED'
   | 'THESIS_CONDITION_TRIGGERED'
   | 'VALUATION_REVISION_NOTED'
   | 'EXPECTATIONS_REVIEW_NEEDED'
@@ -239,7 +240,7 @@ export function buildDecisionContext(
   // 3. What Changed Material Deltas Check
   if (whatChanged) {
     for (const item of whatChanged.items) {
-      if (item.materiality === 'HIGH') {
+      if (item.materiality === 'HIGH' && (item.domain === 'EVIDENCE_CHANGE' || item.domain === 'THESIS_MODEL_CHANGE') && item.confirmation === 'CONFIRMED') {
         let cat: DecisionReason['category'] = 'VALUATION';
         if (item.category === 'SEC_FILING') cat = 'SEC';
         else if (item.category === 'RISKS_AND_CATALYSTS') cat = 'RISK';
@@ -258,14 +259,34 @@ export function buildDecisionContext(
             evidenceRef: item.evidenceRef
           });
         }
+      } else if (item.confirmation === 'UNCONFIRMED') {
+        reasons.push({
+          id: `dec_review_${item.id}`,
+          category: item.category === 'RISKS_AND_CATALYSTS' ? 'RISK' : 'THESIS',
+          severity: 'INFO',
+          title: item.metricLabel,
+          titleTh: item.metricLabelTh,
+          detail: item.explanation,
+          detailTh: item.explanationTh,
+          evidenceRef: item.evidenceRef
+        });
       }
     }
   }
 
-  // Determine Stance & Headline
+  // Determine Stance & Headline deterministically from Canonical Summary
   let stance: ReEvaluationStance = 'NO_NEW_EVIDENCE';
   let headline = `No New Evidence Currently Changes Thesis Status — Monitoring Continues for ${ticker}`;
   let headlineTh = `ยังไม่พบหลักฐานใหม่ที่เปลี่ยนสถานะสมมติฐาน — ติดตามต่อเนื่องสำหรับ ${ticker}`;
+
+  const qualifyingConfirmedChanges = whatChanged
+    ? whatChanged.items.filter(
+        i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'THESIS_MODEL_CHANGE') &&
+          i.confirmation === 'CONFIRMED' &&
+          (i.materiality === 'HIGH' || i.materiality === 'MEDIUM') &&
+          i.category !== 'SEC_FILING'
+      )
+    : [];
 
   if (invalidationTriggersFound.length > 0) {
     stance = 'THESIS_CONDITION_TRIGGERED';
@@ -275,14 +296,18 @@ export function buildDecisionContext(
     stance = 'EXPECTATIONS_REVIEW_NEEDED';
     headline = `Expectations Missed — Fundamental Review Warranted for ${ticker}`;
     headlineTh = `ผลลัพธ์พลาดจากความคาดหวัง — ควรทบทวนปัจจัยพื้นฐานสำหรับ ${ticker}`;
-  } else if (whatChanged && whatChanged.materialChangesCount >= 3) {
+  } else if (qualifyingConfirmedChanges.length >= 1) {
     stance = 'RE_EVALUATION_WARRANTED';
-    headline = `Material Changes Detected — Re-evaluation Warranted for ${ticker}`;
-    headlineTh = `พบการเปลี่ยนแปลงที่มีนัยสำคัญหลายประการ — ควรประเมินความเชื่อมั่นซ้ำสำหรับ ${ticker}`;
-  } else if (whatChanged && whatChanged.items.some(i => i.id === 'change_fair_value' && i.materiality === 'HIGH')) {
+    headline = `Confirmed Material Changes Detected — Re-evaluation Warranted for ${ticker}`;
+    headlineTh = `พบการเปลี่ยนแปลงที่ยืนยันแล้วและมีนัยสำคัญ — ควรประเมินความเชื่อมั่นซ้ำสำหรับ ${ticker}`;
+  } else if (whatChanged && whatChanged.items.some(i => i.id === 'change_fair_value' && i.materiality === 'HIGH' && i.confirmation === 'CONFIRMED')) {
     stance = 'VALUATION_REVISION_NOTED';
     headline = `Material Valuation Adjustment — Review Assumptions for ${ticker}`;
     headlineTh = `มูลค่ายุติธรรมเปลี่ยนแปลงอย่างมีนัยสำคัญ — ควรทบทวนสมมติฐานสำหรับ ${ticker}`;
+  } else if (whatChanged && whatChanged.summary.needsReview > 0) {
+    stance = 'REVIEW_SUGGESTED';
+    headline = `Review Items Detected — No Confirmed Material Change for ${ticker}`;
+    headlineTh = `มีประเด็นควรตรวจสอบ — ยังไม่พบการเปลี่ยนแปลงที่ยืนยันแล้วสำหรับ ${ticker}`;
   } else {
     // Check if new evidence was verified and consistent (THESIS_STABLE) vs no new evidence (NO_NEW_EVIDENCE)
     const hasVerifiedNewFiling = Boolean(
@@ -320,6 +345,9 @@ export function buildDecisionContext(
   } else if (stance === 'NO_NEW_EVIDENCE') {
     summaryNarrative = `No new material evidence or filings detected since the previous distinct research snapshot. Monitoring continues without altering thesis stance.`;
     summaryNarrativeTh = `ยังไม่พบหลักฐานใหม่หรือรายงานทางการเงินเพิ่มเติมที่มีผลต่อสถานะสมมติฐาน ติดตามต่อเนื่อง`;
+  } else if (stance === 'REVIEW_SUGGESTED') {
+    summaryNarrative = `Review items detected (${whatChanged?.summary.needsReview || 0} candidate(s)), but no confirmed material evidence change has occurred requiring thesis re-evaluation. Monitoring continues with targeted review suggested.`;
+    summaryNarrativeTh = `พบประเด็นที่ควรตรวจสอบเพิ่มเติม แต่ยังไม่มีการเปลี่ยนแปลงเชิงหลักฐานที่ยืนยันแล้วซึ่งจำเป็นต้องประเมินสมมติฐานใหม่ ติดตามต่อเนื่อง`;
   } else {
     summaryNarrative = `Identified ${reasons.length} key decision factor(s) warranting closer re-evaluation. Review the specific drivers and expectation variances below before updating thesis conviction.`;
     summaryNarrativeTh = `พบ ${reasons.length} ปัจจัยสำคัญที่ควรนำมาพิจารณาประเมินซ้ำ กรุณาตรวจสอบรายละเอียดความแปรผันของผลการดำเนินงานและสมมติฐานด้านล่างก่อนปรับระดับความเชื่อมั่น`;
