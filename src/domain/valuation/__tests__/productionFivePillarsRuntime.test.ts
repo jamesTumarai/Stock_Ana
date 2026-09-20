@@ -68,12 +68,11 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     assert.equal(resolved.fivePillarsData.profitability.gross_margin_pct !== undefined, true, 'Gross margin must be present');
   });
 
-  it('3. EPS Growth must be derived from eps_diluted when missing from key_indicators', () => {
+  it('3. EPS Growth fails closed when only adjacent quarters exist without a prior-year comparable', () => {
     const resolved = resolveAdaptiveFivePillars(actualProductionTslaReport, 'TSLA');
-    assert.ok(resolved.fivePillarsData.growth.eps_growth_yoy_pct !== undefined, 'EPS Growth YoY must be calculated from eps_diluted');
-    // Q4 2025 EPS (0.71) vs Q1 2025 EPS (0.34) or YoY equivalent
-    assert.ok(Number.isFinite(resolved.fivePillarsData.growth.eps_growth_yoy_pct));
-    assert.ok(resolved.fivePillarsData.growth.peg_ratio !== undefined, 'PEG ratio must be calculated once EPS growth is present');
+    assert.equal(resolved.fivePillarsData.growth.eps_growth_yoy_pct, undefined);
+    assert.equal(resolved.fivePillarsData.growth.resolved_metrics?.eps_growth_yoy.status, 'INSUFFICIENT_HISTORY');
+    assert.equal(resolved.fivePillarsData.growth.peg_ratio, undefined, 'PEG must not use adjacent-quarter EPS as YoY growth');
   });
 
   it('4. ROIC must be deterministically derived from operating income, equity, debt, and cash', () => {
@@ -154,7 +153,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     assert.ok(resolved.pillars.solvency.titleEn.includes('Capital'), 'Pillar 3 must be Capital & Funding');
   });
 
-  it('9. EPS Growth calculated from YoY equivalent diluted EPS with period provenance', () => {
+  it('9. Quarter YoY EPS growth keeps period provenance and does not pair with trailing P/E', () => {
     const epsReport: Partial<ReportData> = {
       ticker: 'GROWTH_CO',
       financial_statements: {
@@ -176,7 +175,9 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     const resolved = resolveAdaptiveFivePillars(epsReport, 'GROWTH_CO');
     // Growth = (0.40 - 0.25) / 0.25 * 100 = +60%
     assert.equal(resolved.fivePillarsData.growth.eps_growth_yoy_pct, 60);
-    assert.equal(resolved.fivePillarsData.growth.peg_ratio, 0.5); // 30 / 60 = 0.5x
+    assert.equal(resolved.fivePillarsData.growth.resolved_metrics?.eps_growth_yoy.basis, 'QUARTER_YOY');
+    assert.equal(resolved.fivePillarsData.growth.peg_ratio, undefined);
+    assert.equal(resolved.fivePillarsData.growth.peg_status, 'BASIS_MISMATCH');
   });
 
   it('10. EPS Turnaround (loss to profit) must not produce misleading PEG input', () => {

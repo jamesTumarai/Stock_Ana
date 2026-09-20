@@ -5,7 +5,28 @@ import {
   Sparkles, CheckCircle2, AlertTriangle, ArrowUpRight, ArrowDownRight,
   Layers, Award, Scale, BarChart3, Check, SlidersHorizontal, Info, Lightbulb
 } from 'lucide-react';
-import { FivePillarsData, PeerBenchmarkRow } from '../types';
+import type { FivePillarsData, FivePillarsResolvedMetric, PeerBenchmarkRow } from '../types';
+
+const resolvedDisplay = (
+  resolved: FivePillarsResolvedMetric | undefined,
+  fallback: number | undefined,
+  isThai: boolean,
+  unit = '%',
+  prefix = '+',
+) => {
+  const value = typeof resolved?.value === 'number' && Number.isFinite(resolved.value) ? resolved.value : fallback;
+  if (typeof value === 'number' && Number.isFinite(value)) return `${value > 0 ? prefix : ''}${value}${unit}`;
+  return (isThai ? resolved?.reasonTh : resolved?.reason) || resolved?.reasonTh || resolved?.reason || 'N/A';
+};
+
+const pegBadge = (resolved: FivePillarsResolvedMetric | undefined, fallback: number | undefined, isThai: boolean) => {
+  const value = typeof resolved?.value === 'number' && Number.isFinite(resolved.value) ? resolved.value : fallback;
+  if (typeof value === 'number' && Number.isFinite(value)) return `PEG ${value}x`;
+  if (resolved?.status === 'TURNAROUND') return isThai ? 'PEG N/M · ฟื้นตัว' : 'PEG N/M · Turnaround';
+  if (resolved?.status === 'BASIS_MISMATCH') return isThai ? 'PEG N/A · ต่างฐานเวลา' : 'PEG N/A · Basis mismatch';
+  if (resolved?.status === 'GUARDED' || resolved?.status === 'NOT_APPLICABLE') return isThai ? 'PEG ไม่เหมาะกับธุรกิจนี้' : 'PEG not applicable';
+  return 'PEG N/A';
+};
 
 interface Props {
   data?: FivePillarsData;
@@ -24,6 +45,7 @@ export function FivePillarsAnalysis({
     typeof v === 'number' && Number.isFinite(v) ? `${prefix}${v}${unit}` : 'N/A';
 
   const growth = data?.growth || {};
+  const resolvedGrowth = growth.resolved_metrics;
   const profit = data?.profitability || {};
   const balance = data?.balance_sheet || {};
   const yields = data?.yields || {};
@@ -140,13 +162,7 @@ export function FivePillarsAnalysis({
                   ? growth.revenue_growth_yoy_pct !== undefined
                     ? `Rev +${growth.revenue_growth_yoy_pct}%`
                     : 'N/A'
-                  : typeof growth.peg_ratio === 'number' && Number.isFinite(growth.peg_ratio)
-                    ? `PEG ${metric(growth.peg_ratio, 'x', '')}`
-                    : growth.peg_status === 'BASIS_MISMATCH'
-                      ? (isThai ? 'PEG ต่างฐานเวลา' : 'PEG Basis Mismatch')
-                      : growth.peg_status === 'TURNAROUND'
-                        ? (isThai ? 'PEG Turnaround' : 'PEG Turnaround')
-                        : 'PEG N/A'}
+                  : pegBadge(resolvedGrowth?.peg, growth.peg_ratio, isThai)}
               </span>
             </div>
 
@@ -161,7 +177,9 @@ export function FivePillarsAnalysis({
                 <span className="text-stone-600 font-sans text-sm sm:text-base">
                   {isThai ? 'กำไร EPS เติบโต YoY (EPS Growth):' : 'EPS YoY Growth:'}
                 </span>
-                <span className="font-bold text-emerald-700 text-base sm:text-lg">{metric(growth.eps_growth_yoy_pct, '%', '+')}</span>
+                <span className="font-bold text-emerald-700 text-right text-sm sm:text-base max-w-[58%]" title={resolvedGrowth?.eps_growth_yoy.reasonTh || resolvedGrowth?.eps_growth_yoy.reason}>
+                  {resolvedDisplay(resolvedGrowth?.eps_growth_yoy, growth.eps_growth_yoy_pct, isThai)}
+                </span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
                 <span className="text-stone-600 font-sans text-sm sm:text-base">
@@ -169,21 +187,23 @@ export function FivePillarsAnalysis({
                     ? (isThai ? 'FCF Growth (ไม่ใช้กับธนาคาร):' : 'FCF Growth (Guarded):')
                     : (isThai ? 'กระแสเงินสด FCF เติบโต YoY:' : 'FCF YoY Growth:')}
                 </span>
-                <span className={`text-base sm:text-lg ${isFinancial ? 'text-stone-400 font-sans text-xs sm:text-sm italic' : 'font-bold text-emerald-700'}`}>
-                  {isFinancial ? (isThai ? 'Financial Sector Guard' : 'Guarded for Sector') : metric(growth.fcf_growth_yoy_pct, '%', '+')}
+                <span className={`text-right max-w-[58%] ${isFinancial || typeof resolvedGrowth?.fcf_growth_yoy.value !== 'number' ? 'text-stone-500 font-sans text-xs sm:text-sm' : 'font-bold text-emerald-700 text-sm sm:text-base'}`} title={resolvedGrowth?.fcf_growth_yoy.reasonTh || resolvedGrowth?.fcf_growth_yoy.reason}>
+                  {resolvedDisplay(resolvedGrowth?.fcf_growth_yoy, growth.fcf_growth_yoy_pct, isThai)}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-stone-500 font-sans text-xs sm:text-sm">
                   {isThai ? 'การเติบโตเฉลี่ย 3 ปี (3Y Rev CAGR):' : '3Y Revenue CAGR:'}
                 </span>
-                <span className="font-bold text-stone-800 text-sm sm:text-base">{metric(growth.revenue_cagr_3yr_pct, '%', '+')}</span>
+                <span className="font-bold text-stone-800 text-right text-xs sm:text-sm max-w-[58%]" title={resolvedGrowth?.revenue_cagr_3y.reasonTh || resolvedGrowth?.revenue_cagr_3y.reason}>
+                  {resolvedDisplay(resolvedGrowth?.revenue_cagr_3y, growth.revenue_cagr_3yr_pct, isThai)}
+                </span>
               </div>
             </div>
 
             <div className="text-xs sm:text-sm text-stone-700 font-sans leading-relaxed bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200/70 shadow-2xs flex items-start gap-2">
               <Lightbulb className="w-4 h-4 text-[#0b5a4b] shrink-0 mt-0.5" />
-              <span>{growth.peg_interpretation ?? 'N/A'}</span>
+              <span>{(isThai ? resolvedGrowth?.peg.reasonTh : resolvedGrowth?.peg.reason) || growth.peg_interpretation || 'N/A'}</span>
             </div>
           </div>
         )}
@@ -417,7 +437,12 @@ export function FivePillarsAnalysis({
                               ? (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'คู่แข่งตรง' : 'บริษัทเทียบเคียง')
                               : (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'Direct Peer' : 'Closest Comparable')}
                           </span>
-                          <span className="text-xs font-bold text-stone-800 truncate max-w-[180px]" title={`${peerMatrix[0].direct_peer_ticker} — ${peerMatrix[0].direct_peer_name || ''}`}>
+                          <span
+                            tabIndex={0}
+                            aria-label={`${peerMatrix[0].direct_peer_ticker} — ${peerMatrix[0].direct_peer_name || ''}`}
+                            className="text-xs font-bold text-stone-800 max-w-[220px] whitespace-normal break-words text-right rounded focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                            title={`${peerMatrix[0].direct_peer_ticker} — ${peerMatrix[0].direct_peer_name || ''}`}
+                          >
                             {peerMatrix[0].direct_peer_ticker} {peerMatrix[0].direct_peer_name ? `— ${peerMatrix[0].direct_peer_name}` : ''}
                           </span>
                         </div>

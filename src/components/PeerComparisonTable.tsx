@@ -129,7 +129,12 @@ export function PeerComparisonTable({
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] text-stone-500 font-normal block truncate max-w-[140px]">
+                          <span
+                            tabIndex={0}
+                            title={peer.company_name}
+                            aria-label={peer.company_name}
+                            className="text-[11px] text-stone-500 font-normal block max-w-[180px] whitespace-normal break-words rounded focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                          >
                             {peer.company_name}
                           </span>
                         </div>

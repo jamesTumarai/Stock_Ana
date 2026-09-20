@@ -2,6 +2,7 @@ import type {
   ReportData,
   FivePillarsData,
   FivePillarsGrowthData,
+  FivePillarsResolvedMetric,
   FivePillarsProfitabilityData,
   FivePillarsBalanceSheetData,
   FivePillarsYieldsData,
@@ -102,6 +103,13 @@ export function resolveAdaptiveFivePillars(
     peg_interpretation: resolvedMetrics.peg.reasonTh || resolvedMetrics.peg.reason || 'N/A',
     peg_status: resolvedMetrics.peg.status,
     peg_basis: resolvedMetrics.peg.basis,
+    resolved_metrics: {
+      eps_growth_yoy: resolvedMetrics.epsGrowthYoY,
+      fcf_growth_yoy: resolvedMetrics.fcfGrowthYoY,
+      revenue_cagr_3y: resolvedMetrics.revenueCagr3Y,
+      pe_trailing: resolvedMetrics.peTrailing,
+      peg: resolvedMetrics.peg,
+    },
   };
 
   // 4. Resolve Pillar 2: Profitability & Returns
@@ -322,6 +330,16 @@ function buildAdaptivePillarSections(
     if (finite(val)) return { val, fmt: `${prefix}${val}${unit}`, status: DataGapState.VERIFIED_AVAILABLE };
     return { val: null, fmt: 'N/A', status: DataGapState.NOT_REPORTED };
   };
+  const resolvedFmt = (metric: FivePillarsResolvedMetric | undefined, fallback?: number, unit = '%', prefix = '+') => {
+    const value = typeof metric?.value === 'number' ? metric.value : fallback;
+    if (finite(value)) return { val: value, fmt: `${value > 0 ? prefix : ''}${value}${unit}`, status: DataGapState.VERIFIED_AVAILABLE };
+    const status = metric?.status;
+    const gapStatus = status === 'GUARDED' ? DataGapState.GUARDED_FOR_BUSINESS_MODEL
+      : status === 'NOT_APPLICABLE' ? DataGapState.NOT_APPLICABLE
+        : status === 'INSUFFICIENT_HISTORY' ? DataGapState.INSUFFICIENT_PERIOD_DATA
+          : DataGapState.NOT_REPORTED;
+    return { val: null, fmt: metric?.reasonTh || metric?.reason || 'N/A', status: gapStatus };
+  };
 
   // Pillar 1: Growth
   const p1TitleTh = isFinancial
@@ -349,26 +367,26 @@ function buildAdaptivePillarSections(
       key: 'eps_growth',
       labelEn: 'EPS YoY Growth:',
       labelTh: 'กำไร EPS เติบโต YoY (EPS Growth):',
-      value: fmt(g.eps_growth_yoy_pct, '%', '+').val,
-      formattedValue: fmt(g.eps_growth_yoy_pct, '%', '+').fmt,
-      status: fmt(g.eps_growth_yoy_pct).status,
+      value: resolvedFmt(g.resolved_metrics?.eps_growth_yoy, g.eps_growth_yoy_pct).val,
+      formattedValue: resolvedFmt(g.resolved_metrics?.eps_growth_yoy, g.eps_growth_yoy_pct).fmt,
+      status: resolvedFmt(g.resolved_metrics?.eps_growth_yoy, g.eps_growth_yoy_pct).status,
     },
     {
       key: 'fcf_growth',
       labelEn: isFinancial ? 'FCF Growth (Guarded):' : 'FCF YoY Growth:',
       labelTh: isFinancial ? 'FCF Growth (ไม่ใช้กับธนาคาร):' : 'กระแสเงินสด FCF เติบโต YoY:',
-      value: isFinancial ? null : fmt(g.fcf_growth_yoy_pct, '%', '+').val,
-      formattedValue: isFinancial ? 'Financial Sector Guard' : fmt(g.fcf_growth_yoy_pct, '%', '+').fmt,
-      status: isFinancial ? DataGapState.GUARDED_FOR_BUSINESS_MODEL : fmt(g.fcf_growth_yoy_pct).status,
+      value: resolvedFmt(g.resolved_metrics?.fcf_growth_yoy, g.fcf_growth_yoy_pct).val,
+      formattedValue: resolvedFmt(g.resolved_metrics?.fcf_growth_yoy, g.fcf_growth_yoy_pct).fmt,
+      status: resolvedFmt(g.resolved_metrics?.fcf_growth_yoy, g.fcf_growth_yoy_pct).status,
       isGuarded: isFinancial,
     },
     {
       key: 'rev_cagr_3yr',
       labelEn: '3Y Revenue CAGR:',
       labelTh: 'การเติบโตเฉลี่ย 3 ปี (3Y Rev CAGR):',
-      value: fmt(g.revenue_cagr_3yr_pct, '%', '+').val,
-      formattedValue: fmt(g.revenue_cagr_3yr_pct, '%', '+').fmt,
-      status: fmt(g.revenue_cagr_3yr_pct).status,
+      value: resolvedFmt(g.resolved_metrics?.revenue_cagr_3y, g.revenue_cagr_3yr_pct).val,
+      formattedValue: resolvedFmt(g.resolved_metrics?.revenue_cagr_3y, g.revenue_cagr_3yr_pct).fmt,
+      status: resolvedFmt(g.resolved_metrics?.revenue_cagr_3y, g.revenue_cagr_3yr_pct).status,
     },
   ];
 
@@ -524,7 +542,17 @@ function buildAdaptivePillarSections(
       titleEn: p1TitleEn,
       titleTh: p1TitleTh,
       badgeLabel: isFinancial ? 'Rev YoY' : 'PEG',
-      badgeValue: isFinancial ? fmt(g.revenue_growth_yoy_pct, '%', '+').fmt : fmt(g.peg_ratio, 'x').fmt,
+      badgeValue: isFinancial
+        ? fmt(g.revenue_growth_yoy_pct, '%', '+').fmt
+        : finite(g.resolved_metrics?.peg.value)
+          ? `PEG ${g.resolved_metrics!.peg.value}x`
+          : g.resolved_metrics?.peg.status === 'TURNAROUND'
+            ? 'PEG N/M · Turnaround'
+            : g.resolved_metrics?.peg.status === 'BASIS_MISMATCH'
+              ? 'PEG N/A · Basis mismatch'
+              : g.resolved_metrics?.peg.status === 'GUARDED' || g.resolved_metrics?.peg.status === 'NOT_APPLICABLE'
+                ? 'PEG not applicable'
+                : 'PEG N/A',
       metrics: growthMetrics,
       interpretationEn: g.peg_interpretation,
       interpretationTh: g.peg_interpretation,
