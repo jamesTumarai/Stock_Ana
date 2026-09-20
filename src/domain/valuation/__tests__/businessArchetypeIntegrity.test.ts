@@ -405,7 +405,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
   it('62. PEG is unavailable when EPS growth is null, even if Revenue Growth is available', () => {
     const reportWithRevOnly: Partial<ReportData> = {
       ticker: 'GROWTH_CO',
-      valuation_ratios: [{ name: 'P/E', value: 40.0 }],
+      valuation_ratios: [{ name: 'P/E (Trailing)', value: 40.0 }],
       financial_statements: {
         periods: ['2024'],
         income_statement: {
@@ -422,7 +422,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
     // When verified EPS growth is provided
     const reportWithEpsGrowth: Partial<ReportData> = {
       ticker: 'GROWTH_CO',
-      valuation_ratios: [{ name: 'P/E', value: 40.0 }],
+      valuation_ratios: [{ name: 'P/E (Trailing)', value: 40.0 }],
       financial_statements: {
         periods: ['2024'],
         income_statement: {

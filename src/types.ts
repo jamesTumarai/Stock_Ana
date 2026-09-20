@@ -960,6 +960,25 @@ export interface FivePillarsGrowthData {
   peg_interpretation?: string;
   peg_status?: string;
   peg_basis?: string;
+  resolved_metrics?: {
+    eps_growth_yoy: FivePillarsResolvedMetric;
+    fcf_growth_yoy: FivePillarsResolvedMetric;
+    revenue_cagr_3y: FivePillarsResolvedMetric;
+    pe_trailing: FivePillarsResolvedMetric;
+    peg: FivePillarsResolvedMetric;
+  };
+}
+
+export interface FivePillarsResolvedMetric {
+  value?: number | null;
+  basis?: string;
+  period?: string;
+  formula?: string;
+  source?: string;
+  status: string;
+  reason?: string;
+  reasonTh?: string;
+  isGuarded?: boolean;
 }
 
 export interface FivePillarsProfitabilityData {

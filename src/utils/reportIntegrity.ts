@@ -51,12 +51,21 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   const equity = at(bs?.total_equity);
   // Build a non-destructive provenance view over the statement arrays. This does not
   // rewrite financial values and does not promote linked sources to independently verified data.
-  const canonicalFinancials = buildCanonicalFinancialDataset(result);
+  const existingCanonical = result.canonical_financials;
+  const hasIndependentSecAuthority = existingCanonical?.provenanceStatus === 'verified'
+    && /sec-xbrl/i.test(existingCanonical.generatedBy || '');
+  const canonicalFinancials = hasIndependentSecAuthority
+    ? existingCanonical
+    : buildCanonicalFinancialDataset(result);
   if (canonicalFinancials) result.canonical_financials = canonicalFinancials;
   else delete result.canonical_financials;
 
+  const completedFacts = result.data_completeness?.verifiedFacts;
   const gapInventory = buildDataGapInventory(result);
-  result.data_completeness = gapInventory.summary;
+  result.data_completeness = {
+    ...gapInventory.summary,
+    verifiedFacts: completedFacts?.length ? completedFacts : gapInventory.summary.verifiedFacts,
+  };
 
   // Integrate live Treasury quote if available from market provider
   const treasuryQuote = live?.['^TNX'] || live?.['TNX'];

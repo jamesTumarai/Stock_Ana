@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ReportData } from '../../../types.js';
 import { resolveFundamentalMetrics } from '../metricRegistry.js';
 import { resolveAdaptiveFivePillars } from '../fivePillarsResolver.js';
+import { normalizeReport } from '../../../utils/reportIntegrity.js';
 import {
   discoverPeers,
   discoverPeerCandidates,
@@ -625,6 +626,127 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
     // Fabless peer must be prioritized over foundry
     assert.equal(result.peers[0].ticker, 'NVDA_LIKE', 'Fabless peer must rank higher than foundry for fabless target');
     assert.notEqual(foundryCandidate.relationType, 'DIRECT_PEER', 'Foundry must NOT be labeled DIRECT_PEER for fabless target');
+  });
+
+  it('60. Atomic PEG: P/E 334.2 and historical EPS growth 17.95 resolve to one consistent 18.62x state', () => {
+    const resolved = resolveAdaptiveFivePillars({
+      ticker: 'TSLA',
+      valuation_ratios: [{ name: 'P/E (Trailing)', value: 334.2 } as any],
+      key_indicators: { growth: { eps_growth_yoy_pct: 17.95 } as any },
+    }, 'TSLA');
+    const growth = resolved.fivePillarsData.growth;
+    assert.equal(growth.peg_ratio, 18.62);
+    assert.equal(growth.resolved_metrics?.peg.value, 18.62);
+    assert.equal(growth.resolved_metrics?.peg.status, 'CALCULATED');
+    assert.equal(growth.peg_interpretation?.includes('ไม่พร้อม'), false);
+  });
+
+  it('61. Ambiguous reported P/E fails closed instead of being assumed trailing', () => {
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'AMBIG',
+      key_indicators: { valuation: { pe_ratio: 25 }, growth: { eps_growth_yoy_pct: 20 } } as any,
+    }, 'AMBIG');
+    assert.equal(metrics.peTrailing.basis, 'REPORTED');
+    assert.equal(metrics.peg.status, 'BASIS_MISMATCH');
+    assert.equal(metrics.peg.value, null);
+  });
+
+  it('62. Negative EPS growth has a semantic reason and never masquerades as missing data', () => {
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'DECLINE',
+      valuation_ratios: [{ name: 'P/E (Trailing)', value: 30 } as any],
+      key_indicators: { growth: { eps_growth_yoy_pct: -8 } as any },
+    }, 'DECLINE');
+    assert.equal(metrics.peg.status, 'UNAVAILABLE');
+    assert.equal(metrics.peg.reason, 'Negative or zero EPS growth');
+    assert.match(metrics.peg.reasonTh || '', /ติดลบ|ศูนย์/);
+  });
+
+  it('63. Verified completion facts survive normalization and recover a true three-year revenue CAGR', () => {
+    const facts = [
+      { fiscalPeriod: 'FY2023', value: 100 },
+      { fiscalPeriod: 'FY2026', value: 172.8 },
+    ].map(item => ({
+      ...item,
+      metricKey: 'income_statement.revenue', unit: 'USD_M', periodType: 'DURATION_ANNUAL',
+      sourceType: 'SEC_XBRL', sourceDocument: '10-K', extractionMethod: 'STRUCTURED_XBRL',
+      reportedOrDerived: 'GAAP', verificationStatus: 'VERIFIED', confidence: 1, issuerIdentity: 'RECOVER',
+    }));
+    const normalized = normalizeReport({
+      ticker: 'RECOVER',
+      financial_statements: { currency: 'USD', periods: ['FY2026'], income_statement: { revenue: [172.8] } as any } as any,
+      data_completeness: { verifiedFacts: facts } as any,
+    } as ReportData, 'RECOVER');
+    assert.equal(normalized.five_pillars?.growth.resolved_metrics?.revenue_cagr_3y.status, 'CALCULATED');
+    assert.equal(normalized.five_pillars?.growth.revenue_cagr_3yr_pct, 20);
+  });
+
+  it('64. Three annual observations spanning only two years are insufficient for a 3Y CAGR', () => {
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'TWO_YEAR',
+      financial_statements: {
+        currency: 'USD', periods: ['FY2024', 'FY2025', 'FY2026'],
+        income_statement: { revenue: [100, 120, 144] } as any,
+      } as any,
+    }, 'TWO_YEAR');
+    assert.equal(metrics.revenueCagr3Y.status, 'INSUFFICIENT_HISTORY');
+    assert.equal(metrics.revenueCagr3Y.value, null);
+  });
+
+  it('65. SEC FCF uses matching Q2 periods even when statement order contains unrelated quarters', () => {
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'SEC_FCF',
+      sec_verification: {
+        status: 'verified_eligible', ticker: 'SEC_FCF', retrieved_at: '2026-09-20', provenance_status: 'verified',
+        provenance_warnings: [], dcf_coverage: null, dcf_financial_inputs: null, latest_statements_source: null,
+        sec_period_statements: [
+          { period: '2025-Q2', fiscal_year: 2025, fiscal_quarter: 2, operating_cash_flow: 130, capital_expenditure: -30 },
+          { period: '2026-Q1', fiscal_year: 2026, fiscal_quarter: 1, operating_cash_flow: 95, capital_expenditure: -15 },
+          { period: '2026-Q2', fiscal_year: 2026, fiscal_quarter: 2, operating_cash_flow: 150, capital_expenditure: -30 },
+        ],
+      },
+    }, 'SEC_FCF');
+    assert.equal(metrics.fcfGrowthYoY.value, 20);
+    assert.equal(metrics.fcfGrowthYoY.period, 'Q2 2025 → Q2 2026');
+    assert.match(metrics.fcfGrowthYoY.source || '', /SEC verified/);
+  });
+
+  it('66. REIT FCF growth is explicitly not applicable instead of generic N/A', () => {
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'REITX',
+      company_profile: { overview: { sector: 'Real Estate', industry: 'REIT - Industrial' } as any },
+    }, 'REITX');
+    assert.equal(metrics.fcfGrowthYoY.status, 'NOT_APPLICABLE');
+    assert.match(metrics.fcfGrowthYoY.reasonTh || '', /FFO\/AFFO/);
+  });
+
+  it('67. Missing P/E reports the P/E gap, not an EPS-history contradiction', () => {
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'NO_PE',
+      key_indicators: { growth: { eps_growth_yoy_pct: 20 } as any },
+    }, 'NO_PE');
+    assert.equal(metrics.peg.reason, 'MISSING_PE');
+    assert.match(metrics.peg.reasonTh || '', /P\/E/);
+    assert.equal(metrics.peg.reasonTh?.includes('EPS Growth ไม่พร้อม'), false);
+  });
+
+  it('68. Independently verified SEC canonical history recovers annual CAGR without legacy arrays', () => {
+    const canonicalItem = (period: string, value: number) => ({
+      metric: 'revenue', statement: 'income_statement', value, unit: 'USD_M', period,
+      type: 'reported', verification: 'verified', source: { provider: 'SEC EDGAR' },
+    });
+    const metrics = resolveFundamentalMetrics({
+      ticker: 'CANON',
+      canonical_financials: {
+        schemaVersion: 1, generatedBy: 'sec-xbrl-companyfacts-v1', ticker: 'CANON', currency: 'USD',
+        periods: ['FY2023', 'FY2026'], provenanceStatus: 'verified', provenanceWarnings: [],
+        values: { 'income_statement.revenue': [canonicalItem('FY2023', 100), canonicalItem('FY2026', 172.8)] },
+        sourceCoverage: { sourceLinkedValues: 2, verifiedValues: 2, nonNullValues: 2, missingValues: 0, totalValues: 2 },
+      } as any,
+    }, 'CANON');
+    assert.equal(metrics.revenueCagr3Y.status, 'CALCULATED');
+    assert.equal(metrics.revenueCagr3Y.value, 20);
+    assert.match(metrics.revenueCagr3Y.source || '', /canonical/);
   });
 
 });
