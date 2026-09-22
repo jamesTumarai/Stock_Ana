@@ -146,7 +146,7 @@ describe('Five Pillars final data completeness', () => {
       companyFacts: { cik: 1, facts: { 'us-gaap': {
         Revenues: { units: { USD: [annual(2023, 100_000_000, 'a'), annual(2026, 172_800_000, 'b')] } },
         OperatingIncomeLoss: { units: { USD: [{ start: '2026-01-01', end: '2026-03-31', val: 10_000_000, accn: 'b', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-05-01' }] } },
-        InterestExpenseNonOperating: { units: { USD: [{ start: '2026-01-01', end: '2026-03-31', val: 1_000_000, accn: 'b', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-05-01' }] } },
+        InterestExpenseNonoperating: { units: { USD: [{ start: '2026-01-01', end: '2026-03-31', val: 1_000_000, accn: 'b', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-05-01' }] } },
       } } },
     };
     const history = mapSecBundleToAnnualRevenueHistory(bundle);

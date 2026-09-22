@@ -41,7 +41,7 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'income_statement', metric: 'revenue', concepts: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'gross_profit', concepts: ['GrossProfit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'operating_income', concepts: ['OperatingIncomeLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'interest_expense', concepts: ['InterestExpenseNonOperating', 'InterestExpenseDebt', 'InterestAndDebtExpense'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'interest_expense', concepts: ['InterestExpense', 'InterestExpenseNonoperating', 'InterestExpenseDebt', 'InterestExpenseDebtExcludingAmortization', 'InterestAndDebtExpense'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'income_before_tax', concepts: ['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'income_tax_expense', concepts: ['IncomeTaxExpenseBenefit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'net_income', concepts: ['NetIncomeLoss', 'ProfitLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
