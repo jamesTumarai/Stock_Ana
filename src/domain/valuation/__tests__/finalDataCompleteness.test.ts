@@ -154,4 +154,31 @@ describe('Five Pillars final data completeness', () => {
     const canonical = mapSecBundleToCanonicalFinancials(bundle)!;
     assert.equal(canonical.values['income_statement.interest_expense'][0].value, 1);
   });
+
+  it('keys comparative annual revenue by period end instead of the filing fiscal year', () => {
+    const comparative = (end: string, val: number, filed: string) => ({
+      start: `${Number(end.slice(0, 4))}-01-01`, end, val, accn: filed,
+      fy: 2026, fp: 'FY', form: '10-K', filed,
+    });
+    const bundle: any = {
+      identity: { ticker: 'CMP', cik: '0000000002', title: 'Comparative Co' },
+      retrievedAt: '2026-02-01T00:00:00Z',
+      submissions: { cik: '2', filings: { recent: { accessionNumber: [], primaryDocument: [], form: [], filingDate: [] } } },
+      companyFacts: { cik: 2, facts: { 'us-gaap': { Revenues: { units: { USD: [
+        comparative('2023-12-31', 100_000_000, '2024-02-01'),
+        comparative('2023-12-31', 105_000_000, '2026-02-01'),
+        comparative('2024-12-31', 120_000_000, '2026-02-01'),
+        comparative('2025-12-31', 140_000_000, '2026-02-01'),
+        comparative('2026-12-31', 160_000_000, '2027-02-01'),
+      ] } } } } },
+    };
+
+    const history = mapSecBundleToAnnualRevenueHistory(bundle);
+    assert.deepEqual(history.map(item => [item.fiscal_year, item.period_end, item.value]), [
+      [2023, '2023-12-31', 105],
+      [2024, '2024-12-31', 120],
+      [2025, '2025-12-31', 140],
+      [2026, '2026-12-31', 160],
+    ]);
+  });
 });
