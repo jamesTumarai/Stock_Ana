@@ -119,7 +119,7 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
   // =========================================================================
   // 46: TEST — PEER ROIC MISSING
   // =========================================================================
-  it('46. Peer ROIC missing: Target ROIC available, peers lack compatible ROIC -> Target: 0.76%, Peer Median: N/A, Direct Peer: N/A', () => {
+  it('46. Peer ROIC missing: Target ROIC available, peers lack compatible ROIC -> exact insufficient-comparable-data state', () => {
     const report: Partial<ReportData> = {
       ticker: 'TARGET',
       company_profile: {
@@ -155,7 +155,8 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
     const roicRow = peerMatrix.find(r => r.metric_name === 'ROIC' || r.metric_name_th?.includes('ROIC'));
     assert.ok(roicRow, 'ROIC row must exist');
     assert.ok(roicRow.target_value !== 'N/A', 'Target ROIC must be preserved');
-    assert.equal(roicRow.sector_median, 'N/A', 'Peer median must be N/A when peers lack verified ROIC');
+    assert.equal(roicRow.sector_median, 'Insufficient Comparable Peer Data', 'Weak coverage must not produce a misleading median');
+    assert.equal(roicRow.peer_sample_size, 0);
     assert.equal(roicRow.direct_peer_value, 'N/A', 'Direct peer ROIC must be N/A if that peer lacks ROIC (no borrowing)');
   });
 

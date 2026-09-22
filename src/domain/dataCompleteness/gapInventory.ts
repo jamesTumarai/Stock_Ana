@@ -107,6 +107,8 @@ export const ARCHETYPE_METRIC_RULES: Record<BusinessArchetype, MetricArchetypeRu
     { fieldKey: 'pe_ratio', displayName: 'P/E Ratio', displayNameTh: 'อัตราส่วน P/E', canonicalPath: 'financial_statements.key_indicators.pe_ratio', expectedUnit: 'x', businessRelevance: 'LOW', applicability: 'NOT_MEANINGFUL_FOR_PRIMARY_INTERPRETATION' },
   ],
   general_operating: [
+    { fieldKey: 'operating_income', displayName: 'Operating Income (EBIT)', displayNameTh: 'กำไรจากการดำเนินงาน (EBIT)', canonicalPath: 'financial_statements.income_statement.operating_income', expectedUnit: 'USD_M', businessRelevance: 'HIGH', applicability: 'PRIMARY', definition: 'Interest Coverage numerator; same fiscal period as interest expense' },
+    { fieldKey: 'interest_expense', displayName: 'Interest Expense', displayNameTh: 'ดอกเบี้ยจ่าย', canonicalPath: 'financial_statements.income_statement.interest_expense', expectedUnit: 'USD_M', businessRelevance: 'HIGH', applicability: 'PRIMARY', definition: 'Interest-bearing expense magnitude; same fiscal period as operating income' },
     { fieldKey: 'gross_margin_pct', displayName: 'Gross Margin', displayNameTh: 'อัตรากำไรขั้นต้น', canonicalPath: 'financial_statements.income_statement.gross_margin_pct', expectedUnit: 'percent', businessRelevance: 'CRITICAL', applicability: 'PRIMARY' },
     { fieldKey: 'operating_margin_pct', displayName: 'Operating Margin', displayNameTh: 'อัตรากำไรจากการดำเนินงาน', canonicalPath: 'financial_statements.income_statement.operating_margin_pct', expectedUnit: 'percent', businessRelevance: 'CRITICAL', applicability: 'PRIMARY' },
     { fieldKey: 'free_cash_flow', displayName: 'Free Cash Flow', displayNameTh: 'กระแสเงินสดอิสระ', canonicalPath: 'financial_statements.cash_flow.free_cash_flow', expectedUnit: 'USD_M', businessRelevance: 'CRITICAL', applicability: 'PRIMARY' },
@@ -126,6 +128,17 @@ export const ARCHETYPE_METRIC_RULES: Record<BusinessArchetype, MetricArchetypeRu
 for (const key of Object.keys(ARCHETYPE_METRIC_RULES) as BusinessArchetype[]) {
   if (ARCHETYPE_METRIC_RULES[key].length === 0) {
     ARCHETYPE_METRIC_RULES[key] = ARCHETYPE_METRIC_RULES.general_operating;
+  }
+}
+
+const COVERAGE_INPUT_RULES = ARCHETYPE_METRIC_RULES.general_operating.filter(rule =>
+  rule.fieldKey === 'operating_income' || rule.fieldKey === 'interest_expense');
+for (const key of Object.keys(ARCHETYPE_METRIC_RULES) as BusinessArchetype[]) {
+  if (['bank', 'lender', 'fintech', 'insurer', 'asset_manager', 'broker_exchange', 'reit'].includes(key)) continue;
+  for (const rule of COVERAGE_INPUT_RULES) {
+    if (!ARCHETYPE_METRIC_RULES[key].some(existing => existing.fieldKey === rule.fieldKey)) {
+      ARCHETYPE_METRIC_RULES[key].push(rule);
+    }
   }
 }
 

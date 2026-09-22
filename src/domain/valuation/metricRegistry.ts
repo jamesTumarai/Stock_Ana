@@ -11,7 +11,8 @@ export type MetricResolutionStatus =
   | 'DETERIORATION'
   | 'INSUFFICIENT_HISTORY'
   | 'NOT_APPLICABLE'
-  | 'GUARDED';
+  | 'GUARDED'
+  | 'NO_MATERIAL_INTEREST';
 
 export interface ResolvedMetricItem<T = number> {
   value?: T;
@@ -42,6 +43,7 @@ export interface ResolvedFundamentalMetrics {
   roe: ResolvedMetricItem;
   roa: ResolvedMetricItem;
   roic: ResolvedMetricItem;
+  interestCoverage: ResolvedMetricItem;
 
   fcfYield: ResolvedMetricItem;
   earningsYield: ResolvedMetricItem;
@@ -62,6 +64,8 @@ type FiscalPoint = {
   kind: FiscalKind;
   label: string;
   source: string;
+  periodEnd?: string;
+  definition?: string;
 };
 
 const fiscalIdentity = (label?: string | null, fiscalYear?: number, fiscalQuarter?: number | null, form?: string | null) => {
@@ -138,6 +142,10 @@ export function resolveFundamentalMetrics(
   const inc = fs?.income_statement;
   const bs = fs?.balance_sheet;
   const cf = fs?.cash_flow;
+  const verifiedCanonical = (report as any).canonical_financials?.provenanceStatus === 'verified'
+    && /sec-xbrl/i.test((report as any).canonical_financials?.generatedBy || '')
+    ? (report as any).canonical_financials
+    : undefined;
 
   const rev = at(inc?.revenue);
   const netInc = at(inc?.net_income);
@@ -429,6 +437,99 @@ export function resolveFundamentalMetrics(
     isGuarded: isFinancial,
   };
 
+  // 5b. Interest Coverage — one canonical definition and period-matched inputs.
+  // Operating income is used as EBIT consistently across target and completion paths.
+  const reportedInterestCoverage = getKi('interest_coverage');
+  const secCoverageInputs = ((report as any).sec_verification?.sec_period_statements || [])
+    .filter((statement: any) => finite(statement.operating_income) && finite(statement.interest_expense))
+    .map((statement: any) => ({
+      operatingIncome: statement.operating_income as number,
+      interestExpense: statement.interest_expense as number,
+      period: String(statement.period || statement.period_end || 'SEC period'),
+      source: `SEC ${statement.form || 'filing'}${statement.accession ? ` (${statement.accession})` : ''}`,
+    }))
+    .pop();
+  const canonicalOperating = verifiedCanonical?.values?.['income_statement.operating_income'];
+  const canonicalInterest = verifiedCanonical?.values?.['income_statement.interest_expense'];
+  let canonicalCoverageInputs: { operatingIncome: number; interestExpense: number; period: string; source: string } | undefined;
+  if (canonicalOperating && canonicalInterest) {
+    for (let i = verifiedCanonical.periods.length - 1; i >= 0; i -= 1) {
+      const op = canonicalOperating[i];
+      const interest = canonicalInterest[i];
+      if (op?.verification === 'verified' && interest?.verification === 'verified' && finite(op.value) && finite(interest.value) && op.period === interest.period) {
+        canonicalCoverageInputs = {
+          operatingIncome: op.value,
+          interestExpense: interest.value,
+          period: op.period,
+          source: 'SEC verified canonical financials',
+        };
+        break;
+      }
+    }
+  }
+  const legacyInterest = at(inc?.interest_expense);
+  const coverageInputs = secCoverageInputs || canonicalCoverageInputs || (
+    opInc !== undefined && legacyInterest !== undefined
+      ? { operatingIncome: opInc, interestExpense: legacyInterest, period: latestPeriod, source: 'Financial Statements (period matched)' }
+      : undefined
+  );
+
+  let interestCoverage: ResolvedMetricItem;
+  if (isFinancial) {
+    interestCoverage = resolvedReason('GUARDED', 'NOT_APPLICABLE_TO_FINANCIAL_INTERMEDIARY', 'ไม่ใช้กับธุรกิจประเภทนี้ เนื่องจากดอกเบี้ยเป็นต้นทุนดำเนินงานหลักของสถาบันการเงิน', {
+      basis: 'Financial Sector Guard', isGuarded: true,
+    });
+  } else if (finite(reportedInterestCoverage)) {
+    interestCoverage = {
+      value: reportedInterestCoverage,
+      basis: 'Reported period-matched EBIT / Interest Expense',
+      period: latestPeriod,
+      source: 'Key Indicators',
+      status: 'REPORTED',
+    };
+  } else if (coverageInputs) {
+    const denominator = Math.abs(coverageInputs.interestExpense);
+    const immaterialThreshold = Math.max(Math.abs(coverageInputs.operatingIncome) * 0.0001, 0.01);
+    if (denominator <= immaterialThreshold) {
+      interestCoverage = resolvedReason('NO_MATERIAL_INTEREST', 'NO_MATERIAL_INTEREST_EXPENSE', 'ไม่มีภาระดอกเบี้ยที่มีนัยสำคัญในช่วงเวลาที่ตรวจสอบ', {
+        basis: 'Period-matched Operating Income / Interest Expense', period: coverageInputs.period,
+        formula: 'Operating Income / |Interest Expense|', source: coverageInputs.source,
+      });
+    } else {
+      interestCoverage = {
+        value: rounded(coverageInputs.operatingIncome / denominator),
+        basis: 'Period-matched Operating Income / Interest Expense',
+        period: coverageInputs.period,
+        formula: 'Operating Income / |Interest Expense|',
+        source: coverageInputs.source,
+        status: 'CALCULATED',
+      };
+    }
+  } else {
+    const hasOperatingIncome = opInc !== undefined
+      || ((report as any).sec_verification?.sec_period_statements || []).some((statement: any) => finite(statement.operating_income));
+    const hasInterestExpense = legacyInterest !== undefined
+      || ((report as any).sec_verification?.sec_period_statements || []).some((statement: any) => finite(statement.interest_expense));
+    const reason = !hasOperatingIncome && !hasInterestExpense
+      ? 'MISSING_PERIOD_MATCHED_OPERATING_INCOME_AND_INTEREST_EXPENSE'
+      : !hasOperatingIncome
+        ? 'MISSING_PERIOD_MATCHED_OPERATING_INCOME'
+        : !hasInterestExpense
+          ? 'MISSING_PERIOD_MATCHED_INTEREST_EXPENSE'
+          : 'PERIOD_MISMATCH_OPERATING_INCOME_AND_INTEREST_EXPENSE';
+    const reasonTh = !hasOperatingIncome && !hasInterestExpense
+      ? 'ไม่พบกำไรจากการดำเนินงานและดอกเบี้ยจ่ายของช่วงเวลาที่เทียบกันได้'
+      : !hasOperatingIncome
+        ? 'ไม่พบกำไรจากการดำเนินงานของช่วงเวลาที่เทียบกันได้'
+        : !hasInterestExpense
+          ? 'ไม่พบดอกเบี้ยจ่ายของช่วงเวลาที่เทียบกันได้'
+          : 'กำไรจากการดำเนินงานและดอกเบี้ยจ่ายอยู่คนละช่วงเวลา จึงไม่คำนวณอัตราคุ้มครองดอกเบี้ย';
+    interestCoverage = resolvedReason('UNAVAILABLE', reason, reasonTh, {
+      basis: 'Period-matched Operating Income / Interest Expense',
+      formula: 'Operating Income / |Interest Expense|',
+    });
+  }
+
   // 6. ROE & ROA (Independent denominators)
   const roeVal = getKi('roe') ?? getKi('roe_pct') ?? (netInc !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded((netInc / totalEquity) * 100) : undefined);
   const roe: ResolvedMetricItem = {
@@ -491,10 +592,6 @@ export function resolveFundamentalMetrics(
       : undefined;
     return finite(value) && identity ? [{ value, ...identity, source: 'SEC verified period statements' }] : [];
   }));
-  const verifiedCanonical = (report as any).canonical_financials?.provenanceStatus === 'verified'
-    && /sec-xbrl/i.test((report as any).canonical_financials?.generatedBy || '')
-    ? (report as any).canonical_financials
-    : undefined;
   const canonicalFcfPoints = dedupeFiscalPoints((verifiedCanonical?.values?.['cash_flow.free_cash_flow'] || []).flatMap((item: any) => {
     const identity = fiscalIdentity(item.period || item.periodEnd);
     return item.verification === 'verified' && finite(item.value) && identity
@@ -557,46 +654,80 @@ export function resolveFundamentalMetrics(
     const isVerified = ['VERIFIED', 'VERIFIED_AVAILABLE', 'VERIFIED_DERIVED'].includes(String(fact.verificationStatus || ''));
     const identity = fiscalIdentity(fact.fiscalPeriod || fact.periodEnd);
     return isRevenue && isVerified && finite(fact.value) && identity?.kind === 'ANNUAL'
-      ? [{ value: fact.value, ...identity, source: `Verified fact (${fact.sourceDocument || fact.sourceType || 'source'})` }]
+      ? [{ value: fact.value, ...identity, periodEnd: fact.periodEnd, definition: fact.definition || fact.metricKey, source: `Verified fact (${fact.sourceDocument || fact.sourceType || 'source'})` }]
+      : [];
+  });
+  const secAnnualRevenuePoints = ((report as any).sec_verification?.historical_annual_facts || []).flatMap((fact: any) => {
+    const identity = fiscalIdentity(fact.period, fact.fiscal_year, undefined, fact.source_document);
+    return fact.metric === 'revenue' && fact.verification === 'verified' && finite(fact.value) && identity?.kind === 'ANNUAL'
+      ? [{ value: fact.value, ...identity, periodEnd: fact.period_end, definition: fact.definition, source: `SEC annual history (${fact.source_document || '10-K'})` }]
       : [];
   });
   const legacyRevenuePoints = (inc?.revenue || []).flatMap((value, index) => {
     const identity = fiscalIdentity(periods[index]);
     return finite(value) && identity?.kind === 'ANNUAL'
-      ? [{ value, ...identity, source: 'Financial Statements (annual revenue)' }]
+      ? [{ value, ...identity, definition: 'report.financial_statements.revenue', source: 'Financial Statements (annual revenue)' }]
       : [];
   });
   const canonicalRevenuePoints = (verifiedCanonical?.values?.['income_statement.revenue'] || []).flatMap((item: any) => {
     const identity = fiscalIdentity(item.period || item.periodEnd);
     return item.verification === 'verified' && finite(item.value) && identity?.kind === 'ANNUAL'
-      ? [{ value: item.value, ...identity, source: 'SEC verified canonical financials' }]
+      ? [{ value: item.value, ...identity, periodEnd: item.periodEnd, definition: item.metric || 'revenue', source: 'SEC verified canonical financials' }]
       : [];
   });
   const annualRevenuePoints = dedupeFiscalPoints(
-    verifiedRevenueFacts.length > 0 ? verifiedRevenueFacts : canonicalRevenuePoints.length > 0 ? canonicalRevenuePoints : legacyRevenuePoints,
+    verifiedRevenueFacts.length > 0
+      ? verifiedRevenueFacts
+      : secAnnualRevenuePoints.length > 0
+        ? secAnnualRevenuePoints
+        : canonicalRevenuePoints.length > 0
+          ? canonicalRevenuePoints
+          : legacyRevenuePoints,
   );
   const endingRevenue = annualRevenuePoints[annualRevenuePoints.length - 1];
-  const startingRevenue = endingRevenue ? comparablePrior(annualRevenuePoints, endingRevenue, 3) : undefined;
+  const elapsedYears = (start?: FiscalPoint, end?: FiscalPoint) => {
+    if (!start || !end) return undefined;
+    const startDate = start.periodEnd ? Date.parse(start.periodEnd) : NaN;
+    const endDate = end.periodEnd ? Date.parse(end.periodEnd) : NaN;
+    if (Number.isFinite(startDate) && Number.isFinite(endDate) && endDate > startDate) {
+      const exact = (endDate - startDate) / (365.2425 * 86_400_000);
+      const fiscalYearDistance = end.year - start.year;
+      // Same fiscal year-end across a leap year remains exactly N fiscal years.
+      return Math.abs(exact - fiscalYearDistance) <= 0.03 ? fiscalYearDistance : exact;
+    }
+    return end.year - start.year;
+  };
+  const startingRevenue = endingRevenue
+    ? annualRevenuePoints
+        .filter(point => point !== endingRevenue && (!endingRevenue.definition || !point.definition || point.definition === endingRevenue.definition))
+        .map(point => ({ point, years: elapsedYears(point, endingRevenue) }))
+        .filter((candidate): candidate is { point: FiscalPoint; years: number } => typeof candidate.years === 'number' && candidate.years >= 2.75 && candidate.years <= 3.25)
+        .sort((a, b) => Math.abs(a.years - 3) - Math.abs(b.years - 3))[0]
+    : undefined;
   const reportedCagr = getKi('revenue_cagr_3yr_pct');
   let revenueCagr3Y: ResolvedMetricItem;
   if (finite(reportedCagr)) {
     revenueCagr3Y = { value: reportedCagr, basis: '3Y Annual CAGR (reported)', source: 'Key Indicators', status: 'REPORTED' };
   } else if (!endingRevenue || !startingRevenue) {
-    revenueCagr3Y = resolvedReason('INSUFFICIENT_HISTORY', 'INSUFFICIENT_3Y_ANNUAL_REVENUE_HISTORY', 'ประวัติรายได้รายปียังไม่ครอบคลุม 3 ปีบริบูรณ์', {
+    const hasDefinitionMismatch = Boolean(endingRevenue && annualRevenuePoints.some(point => {
+      const years = elapsedYears(point, endingRevenue);
+      return years !== undefined && years >= 2.75 && years <= 3.25 && point.definition && endingRevenue.definition && point.definition !== endingRevenue.definition;
+    }));
+    revenueCagr3Y = resolvedReason(hasDefinitionMismatch ? 'BASIS_MISMATCH' : 'INSUFFICIENT_HISTORY', hasDefinitionMismatch ? 'REVENUE_DEFINITION_MISMATCH' : 'INSUFFICIENT_3Y_ANNUAL_REVENUE_HISTORY', hasDefinitionMismatch ? 'นิยามรายได้ต้นงวดและปลายงวดไม่ตรงกัน จึงไม่คำนวณ CAGR' : 'ประวัติรายได้รายปียังไม่ครอบคลุม 3 ปีบริบูรณ์', {
       basis: '3Y Annual CAGR',
       period: annualRevenuePoints.length > 0 ? `${annualRevenuePoints[0].label} → ${endingRevenue?.label}` : undefined,
       source: endingRevenue?.source,
     });
-  } else if (startingRevenue.value <= 0 || endingRevenue.value <= 0) {
+  } else if (startingRevenue.point.value <= 0 || endingRevenue.value <= 0) {
     revenueCagr3Y = resolvedReason('UNAVAILABLE', 'NON_POSITIVE_REVENUE_ENDPOINT', 'รายได้ต้นงวดหรือปลายงวดไม่เป็นบวก จึงคำนวณ CAGR ไม่ได้', {
-      basis: '3Y Annual CAGR', period: `${startingRevenue.label} → ${endingRevenue.label}`, source: endingRevenue.source,
+      basis: '3Y Annual CAGR', period: `${startingRevenue.point.label} → ${endingRevenue.label}`, source: endingRevenue.source,
     });
   } else {
     revenueCagr3Y = {
-      value: rounded(((endingRevenue.value / startingRevenue.value) ** (1 / 3) - 1) * 100),
-      basis: '3Y Annual CAGR',
-      period: `${startingRevenue.label} → ${endingRevenue.label}`,
-      formula: '(Ending annual revenue / Starting annual revenue)^(1/3) - 1',
+      value: rounded(((endingRevenue.value / startingRevenue.point.value) ** (1 / startingRevenue.years) - 1) * 100),
+      basis: `Annual CAGR (${rounded(startingRevenue.years)} elapsed fiscal years)`,
+      period: `${startingRevenue.point.label} → ${endingRevenue.label}`,
+      formula: `(Ending annual revenue / Starting annual revenue)^(1/${rounded(startingRevenue.years)}) - 1`,
       source: endingRevenue.source,
       status: 'CALCULATED',
     };
@@ -656,6 +787,7 @@ export function resolveFundamentalMetrics(
     roe,
     roa,
     roic,
+    interestCoverage,
     fcfYield,
     earningsYield,
     peTrailing,

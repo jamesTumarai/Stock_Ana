@@ -67,6 +67,7 @@ export function adaptSecCanonicalToFinancialStatements(dataset: CanonicalFinanci
   };
   assignSeries(income as unknown as Record<string, unknown>, 'gross_profit', seriesValues(dataset, 'income_statement.gross_profit'));
   assignSeries(income as unknown as Record<string, unknown>, 'operating_income', seriesValues(dataset, 'income_statement.operating_income'));
+  assignSeries(income as unknown as Record<string, unknown>, 'interest_expense', seriesValues(dataset, 'income_statement.interest_expense'));
   assignSeries(income as unknown as Record<string, unknown>, 'income_before_tax', seriesValues(dataset, 'income_statement.income_before_tax'));
   assignSeries(income as unknown as Record<string, unknown>, 'income_tax_expense', seriesValues(dataset, 'income_statement.income_tax_expense'));
   assignSeries(income as unknown as Record<string, unknown>, 'eps_diluted', seriesValues(dataset, 'income_statement.eps_diluted'));

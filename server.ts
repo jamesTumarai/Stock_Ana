@@ -423,6 +423,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "operating_expenses": [],
       "operating_income": [],
       "operating_margin_pct": [],
+      "interest_expense": [],
       "income_before_tax": [],
       "income_tax_expense": [],
       "net_income": [],
@@ -655,8 +656,22 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         "pe_forward": null,
         "revenue_growth_yoy_pct": null,
         "gross_margin_pct": null,
+        "operating_margin_pct": null,
         "net_margin_pct": null,
-        "ev_ebitda": null
+        "ev_ebitda": null,
+        "subIndustry": null,
+        "lifecycle": null,
+        "profitabilityState": null,
+        "scaleTier": null,
+        "operating_income": null,
+        "income_before_tax": null,
+        "income_tax_expense": null,
+        "total_debt": null,
+        "total_equity": null,
+        "cash_and_equivalents": null,
+        "short_term_investments": null,
+        "financial_period": null,
+        "financial_source": null
       }
     ],
     "key_takeaway": "..."
@@ -1003,6 +1018,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       "operating_expenses": [],
       "operating_income": [],
       "operating_margin_pct": [],
+      "interest_expense": [],
       "income_before_tax": [],
       "income_tax_expense": [],
       "net_income": [],
@@ -1235,8 +1251,22 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         "pe_forward": null,
         "revenue_growth_yoy_pct": null,
         "gross_margin_pct": null,
+        "operating_margin_pct": null,
         "net_margin_pct": null,
-        "ev_ebitda": null
+        "ev_ebitda": null,
+        "subIndustry": null,
+        "lifecycle": null,
+        "profitabilityState": null,
+        "scaleTier": null,
+        "operating_income": null,
+        "income_before_tax": null,
+        "income_tax_expense": null,
+        "total_debt": null,
+        "total_equity": null,
+        "cash_and_equivalents": null,
+        "short_term_investments": null,
+        "financial_period": null,
+        "financial_source": null
       }
     ],
     "key_takeaway": "..."
@@ -1744,6 +1774,7 @@ CRITICAL CHECKS & DATA COMPLETION MANDATE:
 - Financial Statements & Latest Quarter Grounding: Attempt to retrieve four completed fiscal quarters, including the latest public Form 10-Q or Form 10-K available as of ${todayISO}. Every period must reflect its own identified filing. Never shift a value between periods or reconstruct a missing period. If a period cannot be verified, leave its observations null and flag the history as incomplete. Ensure all available revenue, net income, margins, growth, balance-sheet, and cash-flow figures are mathematically consistent.
 - Latest Quarter SEC Filings & Findings Check (คำนวณตรงกัน): Verify that the FIRST and primary document in "findings" (findings[0]) is the company's latest available Form 10-Q or Form 10-K for the most recent completed period. Ensure its URL, filing date, period end, and key figures agree with the report. Replace an older citation only after retrieving and verifying the newer filing; otherwise flag the source as unavailable.
 - Peer Comparison Grounding: Independently retrieve and verify current prices, market capitalizations, and valuation multiples for ${ticker} and every company in "peer_comparison" from identified sources dated as of ${todayISO}. Never use numerical examples from this prompt as market data, and leave unavailable values null.
+- Peer Fundamental Comparability: For each accepted peer, populate lifecycle, profitabilityState, scaleTier, financial_period, and financial_source. Populate operating_income, income_before_tax, income_tax_expense, total_debt, total_equity, cash_and_equivalents, and short_term_investments only when they come from the same compatible SEC/issuer fiscal period. Never copy a pre-calculated third-party ROIC into these source facts; Lumina derives comparable peer ROIC deterministically.
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
 - DCF input integrity: All financial-statement money values are USD millions. Attempt to retrieve four completed quarterly periods in chronological order, the latest diluted shares outstanding in company_profile.shares_outstanding, and cash, short-term investments, total debt, revenue, and free cash flow for matching periods. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default, a market-cap-derived share count, or a price-derived revenue estimate. If a primary source cannot supply an input, leave it unavailable and do not produce a fair value.
   * Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn (e.g. EOSE, RIVN, PLUG, QS):

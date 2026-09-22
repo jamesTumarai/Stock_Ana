@@ -3,6 +3,7 @@ import { buildSecDcfFinancialInputs } from '../src/services/sec/secDcfInputs';
 import { compareSecCanonicalToReport } from '../src/services/sec/secReportComparison';
 import { SecDataError } from '../src/services/sec/secClient';
 import { adaptFinancialStatementsToSecPeriodStatements, diffSecFinancialStatements } from '../src/utils/secFilingDiffEngine';
+import { mapSecBundleToAnnualRevenueHistory } from '../src/services/sec/secFinancialMapper';
 
 const normalizeTicker = (value: unknown) => typeof value === 'string' ? value.trim().toUpperCase() : '';
 const validTicker = (ticker: string) => /^[A-Z0-9.-]{1,12}$/.test(ticker);
@@ -52,6 +53,7 @@ export async function handleSecPreview(req: any, res: any) {
 
   try {
     const pkg = await fetchSecVerifiedIntegrationPackage(ticker);
+    const annualRevenueHistory = pkg.sourceBundle ? mapSecBundleToAnnualRevenueHistory(pkg.sourceBundle) : [];
     const dcfFinancialInputs = buildSecDcfFinancialInputs(
       pkg.canonicalFinancials,
       pkg.shareSnapshot,
@@ -77,6 +79,7 @@ export async function handleSecPreview(req: any, res: any) {
       dcfCoverage: pkg.dcfCoverage,
       dcfFinancialInputs,
       secPeriodStatements,
+      historicalAnnualFacts: annualRevenueHistory,
       secFilingDiff,
       coverageDiagnostics: presentCoverageDiagnostics(pkg.coverageDiagnostics),
       shareSnapshot: pkg.shareSnapshot ? {

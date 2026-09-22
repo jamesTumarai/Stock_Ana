@@ -188,6 +188,26 @@ export async function fetchSecVerificationEnvelope(
     const secPeriodStatements = Array.isArray(body.secPeriodStatements)
       ? (body.secPeriodStatements as any[])
       : undefined;
+    const historicalAnnualFacts = Array.isArray(body.historicalAnnualFacts)
+      ? body.historicalAnnualFacts.flatMap((item: unknown) => {
+          if (!isRecord(item) || item.metric !== 'revenue' || item.verification !== 'verified') return [];
+          if (!finite(item.fiscal_year) || !finite(item.value) || typeof item.period_end !== 'string' || typeof item.definition !== 'string') return [];
+          return [{
+            metric: 'revenue' as const,
+            fiscal_year: item.fiscal_year,
+            period: typeof item.period === 'string' ? item.period : `FY${item.fiscal_year}`,
+            period_end: item.period_end,
+            value: item.value,
+            unit: 'USD_M' as const,
+            definition: item.definition,
+            source_document: typeof item.source_document === 'string' ? item.source_document : null,
+            source_url: typeof item.source_url === 'string' ? item.source_url : null,
+            accession: typeof item.accession === 'string' ? item.accession : null,
+            filed_date: typeof item.filed_date === 'string' ? item.filed_date : null,
+            verification: 'verified' as const,
+          }];
+        })
+      : undefined;
 
     return {
       status: eligible ? 'verified_eligible' : provenanceStatus === 'verified' ? 'verified_partial' : 'unavailable',
@@ -199,6 +219,7 @@ export async function fetchSecVerificationEnvelope(
       dcf_financial_inputs: dcfFinancialInputs,
       latest_statements_source: latestSource,
       sec_period_statements: secPeriodStatements,
+      historical_annual_facts: historicalAnnualFacts,
     };
   } catch (error: any) {
     if (parentSignal?.aborted) return null;

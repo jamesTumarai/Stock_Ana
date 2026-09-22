@@ -43,6 +43,7 @@ export interface SecPeriodStatement {
   units?: string | null;
   revenue?: number | null;
   operating_income?: number | null;
+  interest_expense?: number | null;
   net_income?: number | null;
   operating_cash_flow?: number | null;
   capital_expenditure?: number | null;
@@ -52,6 +53,21 @@ export interface SecPeriodStatement {
   accounts_receivable?: number | null;
   inventory?: number | null;
   accounts_payable?: number | null;
+}
+
+export interface SecHistoricalAnnualFact {
+  metric: 'revenue';
+  fiscal_year: number;
+  period: string;
+  period_end: string;
+  value: number;
+  unit: 'USD_M';
+  definition: string;
+  source_document?: string | null;
+  source_url?: string | null;
+  accession?: string | null;
+  filed_date?: string | null;
+  verification: 'verified';
 }
 
 export interface SecVerificationEnvelope {
@@ -70,6 +86,7 @@ export interface SecVerificationEnvelope {
     units?: string;
   } | null;
   sec_period_statements?: SecPeriodStatement[];
+  historical_annual_facts?: SecHistoricalAnnualFact[];
   error?: {
     code: string;
     message: string;

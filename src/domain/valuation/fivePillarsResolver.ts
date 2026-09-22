@@ -155,7 +155,8 @@ export function resolveAdaptiveFivePillars(
   }
 
   const debtToEquity = at(bs?.debt_to_equity) ?? getKi('debt_to_equity') ?? (totalDebt !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded(totalDebt / totalEquity) : undefined);
-  const interestCoverage = getKi('interest_coverage');
+  const interestCoverageMetric = resolvedMetrics.interestCoverage;
+  const interestCoverage = typeof interestCoverageMetric.value === 'number' ? interestCoverageMetric.value : undefined;
   const cashRunway = getKi('cash_runway_months');
 
   let solvencyScoreLabel = 'ฐานะการเงินระดับมาตรฐาน';
@@ -184,6 +185,11 @@ export function resolveAdaptiveFivePillars(
     is_net_cash: isFinancial ? undefined : netCashOrDebt !== undefined ? netCashOrDebt >= 0 : undefined,
     debt_to_equity: debtToEquity,
     interest_coverage: isFinancial ? undefined : interestCoverage,
+    interest_coverage_status: interestCoverageMetric.status,
+    interest_coverage_reason: interestCoverageMetric.reasonTh || interestCoverageMetric.reason,
+    interest_coverage_basis: interestCoverageMetric.basis,
+    interest_coverage_formula: interestCoverageMetric.formula,
+    interest_coverage_source: interestCoverageMetric.source,
     solvency_score_label: solvencyScoreLabel,
   };
 
@@ -267,6 +273,9 @@ export function resolveAdaptiveFivePillars(
   }
   if (profitabilityData.roic_pct === undefined && !isFinancial) {
     unavailableReasons.roic = resolvedMetrics.roic.reason || 'Insufficient verified invested-capital inputs';
+  }
+  if (balanceSheetData.interest_coverage === undefined && !isFinancial) {
+    unavailableReasons.interest_coverage = interestCoverageMetric.reason || 'Missing period-matched interest expense';
   }
   if (peerMatrix.length === 0) {
     unavailableReasons.peer = 'No verified comparable candidates';
@@ -477,8 +486,17 @@ function buildAdaptivePillarSections(
       labelEn: isFinancial ? 'Capital Structure Context:' : 'Interest Coverage Ratio:',
       labelTh: isFinancial ? 'โครงสร้างเงินทุน:' : 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):',
       value: isFinancial ? null : fmt(b.interest_coverage, 'x').val,
-      formattedValue: isFinancial ? 'รองรับโดยเงินกองทุนและเงินฝาก' : fmt(b.interest_coverage, 'x').fmt,
-      status: isFinancial ? DataGapState.NOT_APPLICABLE : fmt(b.interest_coverage).status,
+      formattedValue: isFinancial
+        ? 'รองรับโดยเงินกองทุนและเงินฝาก'
+        : finite(b.interest_coverage)
+          ? fmt(b.interest_coverage, 'x').fmt
+          : b.interest_coverage_reason || 'ไม่พบข้อมูลช่วงเวลาที่เทียบกันได้',
+      status: isFinancial
+        ? DataGapState.NOT_APPLICABLE
+        : b.interest_coverage_status === 'NO_MATERIAL_INTEREST'
+          ? DataGapState.VERIFIED_DERIVED
+          : fmt(b.interest_coverage).status,
+      sourcePeriod: b.interest_coverage_basis,
     },
   ];
 

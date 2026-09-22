@@ -132,6 +132,22 @@ export function discoverPeerCandidates(
 const peerDiscoveryCache = new Map<string, { timestamp: number; result: PeerDiscoveryResult }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+const scaleRank: Record<NonNullable<PeerBusinessFingerprint['scaleTier']>, number> = { small: 0, mid: 1, large: 2, mega: 3 };
+const inferScaleTier = (marketCap: unknown, revenueM?: number): NonNullable<PeerBusinessFingerprint['scaleTier']> | undefined => {
+  let marketCapB: number | undefined;
+  if (typeof marketCap === 'number' && Number.isFinite(marketCap)) marketCapB = marketCap > 1_000_000 ? marketCap / 1_000_000_000 : marketCap;
+  if (typeof marketCap === 'string') {
+    const match = marketCap.replace(/[$,]/g, '').match(/([0-9.]+)\s*([TBM])?/i);
+    if (match) {
+      const raw = Number(match[1]);
+      marketCapB = match[2]?.toUpperCase() === 'T' ? raw * 1000 : match[2]?.toUpperCase() === 'M' ? raw / 1000 : raw;
+    }
+  }
+  const basisB = marketCapB ?? (Number.isFinite(revenueM) ? revenueM! / 1000 : undefined);
+  if (basisB === undefined) return undefined;
+  return basisB >= 100 ? 'mega' : basisB >= 10 ? 'large' : basisB >= 2 ? 'mid' : 'small';
+};
+
 /**
  * Builds a PeerBusinessFingerprint for a given stock report.
  */
@@ -213,6 +229,13 @@ export function buildPeerBusinessFingerprint(
     : subIndustry === 'automotive_manufacturing'
       ? ['vehicle_sales', 'energy_storage', 'services']
       : ['product_sales', 'subscription'];
+  const latestRevenue = (inc?.revenue || []).filter(v => typeof v === 'number').at(-1) as number | undefined;
+  const scaleTier = inferScaleTier((profile as any)?.market_cap || (profile as any)?.overview?.market_cap, latestRevenue);
+  const lifecycle = archetype === 'early_stage'
+    ? 'early_stage'
+    : profitabilityState === 'pre_profit'
+      ? 'growth'
+      : 'mature';
 
   return {
     ticker: sym,
@@ -226,10 +249,11 @@ export function buildPeerBusinessFingerprint(
     majorBusinessLines: [industry],
     businessLines: [industry],
     geography: 'US',
-    lifecycle: archetype === 'early_stage' ? 'early_stage' : 'mature',
+    lifecycle,
     profitabilityState,
     capitalIntensity,
     regulatoryType: isFinancial ? 'banking' : archetype === 'reit' ? 'reit' : 'standard',
+    scaleTier,
   };
 }
 
@@ -242,39 +266,39 @@ export function calculatePeerSimilarity(
 ): { score: number; relationType: PeerRelationType; rationaleEn: string; rationaleTh: string } {
   let score = 0;
 
-  // 1. Business Archetype Match (Weight: 0.35)
+  // 1. Business Archetype Match (Weight: 0.30)
   if (target.archetype === candidate.archetype) {
-    score += 0.35;
+    score += 0.30;
   } else {
     // Partial credit for compatible financial intermediaries
     const financialArchetypes = new Set(['bank', 'lender', 'fintech']);
     if (financialArchetypes.has(target.archetype) && financialArchetypes.has(candidate.archetype)) {
-      score += 0.22;
+      score += 0.18;
     }
   }
 
-  // 2. Sub-Industry / Sector Match (Weight: 0.30)
+  // 2. Sub-Industry / Sector Match (Weight: 0.25)
   if (target.subIndustry && candidate.subIndustry && target.subIndustry === candidate.subIndustry) {
-    score += 0.30;
+    score += 0.25;
   } else if (target.industry.toLowerCase() === candidate.industry.toLowerCase()) {
-    score += 0.20;
+    score += 0.17;
   } else if (target.sector.toLowerCase() === candidate.sector.toLowerCase()) {
-    score += 0.10;
+    score += 0.08;
   }
 
-  // 3. Revenue Models Overlap (Weight: 0.15)
+  // 3. Revenue Models Overlap (Weight: 0.10)
   const targetRev = new Set(target.revenueModels);
   const sharedRev = candidate.revenueModels.filter(r => targetRev.has(r)).length;
   if (sharedRev > 0) {
-    score += Math.min(0.15, (sharedRev / Math.max(1, targetRev.size)) * 0.15);
+    score += Math.min(0.10, (sharedRev / Math.max(1, targetRev.size)) * 0.10);
   }
 
-  // 4. Profitability & Lifecycle Match (Weight: 0.10)
+  // 4. Profitability & Lifecycle Match (Weight: 0.15)
   if (target.profitabilityState === candidate.profitabilityState) {
-    score += 0.05;
+    score += 0.075;
   }
   if (target.lifecycle === candidate.lifecycle) {
-    score += 0.05;
+    score += 0.075;
   }
 
   // 5. Capital Intensity & Regulatory Framework (Weight: 0.10)
@@ -285,10 +309,17 @@ export function calculatePeerSimilarity(
     score += 0.05;
   }
 
+  // 6. Scale compatibility (Weight: 0.10). Unknown scale earns no points.
+  const scaleDistance = target.scaleTier && candidate.scaleTier
+    ? Math.abs(scaleRank[target.scaleTier] - scaleRank[candidate.scaleTier])
+    : undefined;
+  if (scaleDistance === 0) score += 0.10;
+  else if (scaleDistance === 1) score += 0.05;
+
   score = Math.round(score * 100) / 100;
 
   let relationType: PeerRelationType = 'BROADER_SECTOR_REFERENCE';
-  if (score >= 0.78) {
+  if (score >= 0.80) {
     relationType = 'DIRECT_PEER';
   } else if (score >= 0.58) {
     relationType = 'CLOSE_COMPARABLE';
@@ -304,18 +335,21 @@ export function calculatePeerSimilarity(
     ) {
       relationType = 'CLOSE_COMPARABLE';
     }
+    if (target.lifecycle !== candidate.lifecycle || target.profitabilityState !== candidate.profitabilityState || (scaleDistance !== undefined && scaleDistance > 1)) {
+      relationType = 'CLOSE_COMPARABLE';
+    }
   }
 
   const rationaleEn = relationType === 'DIRECT_PEER'
     ? `Direct peer sharing identical ${target.archetype} business archetype and ${target.subIndustry || target.industry} operating model.`
     : relationType === 'CLOSE_COMPARABLE'
-      ? `Close comparable with aligned economics in ${target.industry}.`
+      ? `Close comparable with aligned core economics in ${target.industry}, but a material lifecycle, profitability, scale, or product-mix difference.`
       : `Broader sector reference in ${target.sector}.`;
 
   const rationaleTh = relationType === 'DIRECT_PEER'
     ? `คู่แข่งตรงที่มีโครงสร้างธุรกิจแบบ ${target.archetype} และโมเดลการดำเนินงาน ${target.subIndustry || target.industry} เดียวกัน`
     : relationType === 'CLOSE_COMPARABLE'
-      ? `กลุ่มบริษัทเทียบเคียงที่มีความใกล้เคียงเชิงเศรษฐศาสตร์ในกลุ่ม ${target.industry}`
+      ? `บริษัทเทียบเคียงในกลุ่ม ${target.industry} ที่โมเดลธุรกิจใกล้เคียง แต่ต่างกันอย่างมีนัยสำคัญด้านวงจรธุรกิจ กำไร ขนาด หรือส่วนผสมสินค้า`
       : `บริษัทอ้างอิงระดับอุตสาหกรรมในกลุ่ม ${target.sector}`;
 
   return { score, relationType, rationaleEn, rationaleTh };
@@ -495,7 +529,7 @@ function buildCandidateFingerprint(
     profitabilityState: p.profitabilityState || target.profitabilityState,
     capitalIntensity: p.capitalIntensity || (isFinancial ? 'financial_intermediary' : subIndustry === 'automotive_manufacturing' ? 'capital_intensive' : target.capitalIntensity),
     regulatoryType: p.regulatoryType || (isFinancial ? 'banking' : archetype === 'reit' ? 'reit' : 'standard'),
-    scaleTier: p.scaleTier || 'large',
+    scaleTier: p.scaleTier || inferScaleTier(p.market_cap),
   };
 }
 
@@ -510,8 +544,33 @@ function extractCandidateMetrics(
 ): Record<string, PeerMetricObservation> {
   const metricObservations: Record<string, PeerMetricObservation> = {};
 
+  const completeDerivedMetrics = () => {
+    if (metricObservations.roic_pct?.value !== null && metricObservations.roic_pct?.status === 'VERIFIED') return;
+    const requiredKeys = ['operating_income', 'income_before_tax', 'income_tax_expense', 'total_debt', 'total_equity', 'cash_and_equivalents'];
+    const facts = requiredKeys.map(key => metricObservations[key]);
+    if (facts.some(fact => !fact || fact.value === null || fact.status !== 'VERIFIED')) return;
+    if (facts.some(fact => !/SEC|10-K|10-Q|20-F|issuer|official/i.test(fact.source))) return;
+    const periods = new Set(facts.map(fact => fact.period));
+    if (periods.size !== 1) return;
+    const [operating, pretax, tax, debt, equity, cash] = facts.map(fact => fact.value as number);
+    const shortInvestments = metricObservations.short_term_investments?.value ?? 0;
+    if (pretax <= 0 || tax < 0 || tax > pretax) return;
+    const investedCapital = equity + debt - cash - shortInvestments;
+    if (investedCapital <= 0) return;
+    const effectiveTaxRate = tax / pretax;
+    const value = Math.round(((operating * (1 - effectiveTaxRate)) / investedCapital) * 10_000) / 100;
+    metricObservations.roic_pct = {
+      ticker, company: companyName, metric: 'roic_pct', value, unit: '%',
+      period: facts[0].period, asOfDate,
+      source: `Derived from ${[...new Set(facts.map(fact => fact.source))].join(' + ')}`,
+      reportedOrDerived: 'DERIVED', status: 'VERIFIED',
+    };
+  };
+
   if ('metrics' in raw && raw.metrics && typeof raw.metrics === 'object') {
     for (const [mKey, mData] of Object.entries((raw as CandidateDefinition).metrics)) {
+      const definitionCompatible = mKey !== 'roic_pct'
+        || (/SEC|10-K|10-Q|20-F|issuer|official/i.test(mData.source) && mData.reportedOrDerived === 'DERIVED');
       metricObservations[mKey] = {
         ticker,
         company: companyName,
@@ -522,16 +581,17 @@ function extractCandidateMetrics(
         asOfDate: (mData as any).asOfDate || asOfDate,
         source: mData.source,
         reportedOrDerived: mData.reportedOrDerived,
-        status: mData.value !== null ? 'VERIFIED' : 'NOT_REPORTED',
+        status: mData.value !== null && definitionCompatible ? 'VERIFIED' : mData.value !== null ? 'FOUND_UNVERIFIED' : 'NOT_REPORTED',
       };
     }
+    completeDerivedMetrics();
     return metricObservations;
   }
 
   // Map from PeerCompanyItem
   const p = raw as PeerCompanyItem;
-  const period = p.as_of_date || asOfDate || 'Latest';
-  const source = 'Verified Peer Disclosure / Market Snapshot';
+  const period = p.financial_period || p.as_of_date || asOfDate || 'Latest';
+  const source = p.financial_source || 'Verified Peer Disclosure / Market Snapshot';
 
   const mapMetric = (key: string, val: number | null | undefined, unit: string) => {
     metricObservations[key] = {
@@ -552,11 +612,21 @@ function extractCandidateMetrics(
   mapMetric('pe_forward', p.pe_forward, 'x');
   mapMetric('revenue_growth_yoy_pct', p.revenue_growth_yoy_pct, '%');
   mapMetric('gross_margin_pct', p.gross_margin_pct, '%');
+  mapMetric('operating_margin_pct', p.operating_margin_pct, '%');
   mapMetric('net_margin_pct', p.net_margin_pct, '%');
   mapMetric('ev_ebitda', p.ev_ebitda, 'x');
   mapMetric('price_to_book', p.pb_ratio, 'x');
   mapMetric('roe_pct', p.roe_pct, '%');
   mapMetric('fcf_yield_pct', p.fcf_yield_pct, '%');
+  mapMetric('operating_income', p.operating_income, 'USD_M');
+  mapMetric('income_before_tax', p.income_before_tax, 'USD_M');
+  mapMetric('income_tax_expense', p.income_tax_expense, 'USD_M');
+  mapMetric('total_debt', p.total_debt, 'USD_M');
+  mapMetric('total_equity', p.total_equity, 'USD_M');
+  mapMetric('cash_and_equivalents', p.cash_and_equivalents, 'USD_M');
+  mapMetric('short_term_investments', p.short_term_investments, 'USD_M');
+
+  completeDerivedMetrics();
 
   return metricObservations;
 }
@@ -653,7 +723,14 @@ export function discoverPeers(
     const filterRes = passesHardFilters(targetFingerprint, candFingerprint);
     if (!filterRes.passes) continue;
 
-    const { score, relationType, rationaleEn, rationaleTh } = calculatePeerSimilarity(targetFingerprint, candFingerprint);
+    const similarity = calculatePeerSimilarity(targetFingerprint, candFingerprint);
+    const suppliedRelation = (raw as any).relation_type || (raw as any).relationType;
+    const relationType = suppliedRelation === 'CLOSE_COMPARABLE' && similarity.relationType === 'DIRECT_PEER'
+      ? 'CLOSE_COMPARABLE'
+      : suppliedRelation === 'BROADER_SECTOR_REFERENCE'
+        ? 'BROADER_SECTOR_REFERENCE'
+        : similarity.relationType;
+    const score = similarity.score;
     if (score < 0.25) continue;
 
     const metrics = extractCandidateMetrics(raw, candTicker, candFingerprint.companyName, report.as_of_date);
@@ -663,9 +740,9 @@ export function discoverPeers(
       companyName: candFingerprint.companyName,
       fingerprint: candFingerprint,
       similarityScore: score,
-      relationType: (raw as any).relation_type || (raw as any).relationType || relationType,
-      selectionRationale: rationaleEn,
-      selectionRationaleTh: rationaleTh,
+      relationType,
+      selectionRationale: relationType === similarity.relationType ? similarity.rationaleEn : `Upstream comparability evidence caps this candidate at ${relationType}; ${similarity.rationaleEn}`,
+      selectionRationaleTh: relationType === similarity.relationType ? similarity.rationaleTh : `หลักฐานเปรียบเทียบจากต้นทางกำหนดเพดานความสัมพันธ์เป็น ${relationType}; ${similarity.rationaleTh}`,
       metrics,
     });
   }
@@ -694,6 +771,7 @@ export function discoverPeers(
       unavailableMessageEn,
       unavailableMessageTh,
       medians: {},
+      metricSampleCounts: {},
       isBroadSectorUniverse: false,
       benchmarkRows: [],
       peerCompanyItems: [],
@@ -710,10 +788,12 @@ export function discoverPeers(
   }
 
   const medians: Record<string, number | null> = {};
+  const metricSampleCounts: Record<string, number> = {};
   for (const k of allMetricKeys) {
-    const vals = finalPeers.map(p => p.metrics[k]?.value);
+    const vals = finalPeers.map(p => p.metrics[k]?.status === 'VERIFIED' ? p.metrics[k]?.value : null);
     const isMultiple = ['pe_trailing', 'pe_forward', 'ev_ebitda', 'ev_sales', 'p_ffo_multiple'].includes(k);
     medians[k] = calculateDeterministicMedian(vals, isMultiple);
+    metricSampleCounts[k] = vals.filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && (!isMultiple || value > 0)).length;
   }
 
   // Map to PeerCompanyItem for PeerComparisonTable
@@ -725,7 +805,9 @@ export function discoverPeers(
     pe_forward: p.metrics.pe_forward?.value,
     revenue_growth_yoy_pct: p.metrics.revenue_growth_yoy_pct?.value,
     gross_margin_pct: p.metrics.gross_margin_pct?.value,
+    operating_margin_pct: p.metrics.operating_margin_pct?.value,
     net_margin_pct: p.metrics.net_margin_pct?.value,
+    roic_pct: p.metrics.roic_pct?.status === 'VERIFIED' ? p.metrics.roic_pct?.value : null,
     ev_ebitda: p.metrics.ev_ebitda?.value,
     pb_ratio: p.metrics.price_to_book?.value,
     roe_pct: p.metrics.roe_pct?.value,
@@ -737,6 +819,12 @@ export function discoverPeers(
     selection_rationale: p.selectionRationale,
     selection_rationale_th: p.selectionRationaleTh,
     as_of_date: p.metrics.pe_trailing?.period || report.as_of_date,
+    financial_period: p.metrics.roic_pct?.period || p.metrics.operating_margin_pct?.period || report.as_of_date,
+    financial_source: p.metrics.roic_pct?.source || p.metrics.operating_margin_pct?.source,
+    subIndustry: p.fingerprint.subIndustry,
+    lifecycle: p.fingerprint.lifecycle,
+    profitabilityState: p.fingerprint.profitabilityState,
+    scaleTier: p.fingerprint.scaleTier,
   }));
 
   // Resolve target metrics from canonical resolver if not provided in options
@@ -762,7 +850,7 @@ export function discoverPeers(
   });
 
   // Build archetype-aware benchmark rows for Five Pillars (Pillar 5)
-  const benchmarkRows = buildArchetypeBenchmarkRows(targetFingerprint.archetype, report, finalPeers, medians, targetResolvedMetrics);
+  const benchmarkRows = buildArchetypeBenchmarkRows(targetFingerprint.archetype, report, finalPeers, medians, metricSampleCounts, targetResolvedMetrics);
 
   const result: PeerDiscoveryResult = {
     targetTicker,
@@ -771,6 +859,7 @@ export function discoverPeers(
     peerCount,
     isLimitedSample,
     medians,
+    metricSampleCounts,
     isBroadSectorUniverse: false,
     benchmarkRows,
     peerCompanyItems,
@@ -790,6 +879,7 @@ function buildArchetypeBenchmarkRows(
   report: Partial<ReportData>,
   peers: PeerCandidate[],
   medians: Record<string, number | null>,
+  metricSampleCounts: Record<string, number>,
   targetMetrics?: ResolvedFundamentalMetrics
 ): PeerBenchmarkRow[] {
   const rows: PeerBenchmarkRow[] = [];
@@ -805,6 +895,10 @@ function buildArchetypeBenchmarkRows(
     if (v <= 0) return 'N/M';
     return `${v}${unit}`;
   };
+  const requiredPeerSample = peers.length <= 2 ? peers.length : Math.max(2, Math.ceil(peers.length * 0.5));
+  const benchmarkMedian = (key: string) => (metricSampleCounts[key] || 0) >= requiredPeerSample ? medians[key] : null;
+  const verifiedPeerValue = (peer: PeerCandidate | undefined, key: string) =>
+    peer?.metrics[key]?.status === 'VERIFIED' ? peer.metrics[key]?.value : null;
 
   // Section 27: Direct Peer must refer to one company.
   // Prefer DIRECT_PEER, or fall back to closest comparable if no DIRECT_PEER meets threshold
@@ -819,7 +913,7 @@ function buildArchetypeBenchmarkRows(
 
   if (isFinancial) {
     // Financial Benchmark Rows: P/E, P/B, ROE, NIM
-    const peMed = medians.pe_trailing;
+    const peMed = benchmarkMedian('pe_trailing');
     const targetPE = targetMetrics?.peTrailing.value ?? report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
     rows.push({
       metric_name: 'P/E (Trailing)',
@@ -836,7 +930,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const pbMed = medians.price_to_book;
+    const pbMed = benchmarkMedian('price_to_book');
     const targetPB = report.valuation_ratios?.find(r => /P\/B/i.test(r.name))?.value;
     rows.push({
       metric_name: 'P/B Ratio',
@@ -853,7 +947,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const roeMed = medians.roe_pct;
+    const roeMed = benchmarkMedian('roe_pct');
     const targetROE = targetMetrics?.roe.value ?? (report.key_indicators as any)?.profitability?.roe_pct ?? (report.financial_statements?.key_indicators as any)?.roe_pct;
     rows.push({
       metric_name: 'Return on Equity (ROE)',
@@ -870,7 +964,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const nimMed = medians.net_interest_margin_pct;
+    const nimMed = benchmarkMedian('net_interest_margin_pct');
     const kiNim = (report.key_indicators as any)?.profitability?.net_interest_margin_pct;
     rows.push({
       metric_name: 'Net Interest Margin (NIM)',
@@ -888,7 +982,7 @@ function buildArchetypeBenchmarkRows(
     });
   } else if (isReit) {
     // REIT Benchmark Rows: P/FFO, Occupancy Rate
-    const pffoMed = medians.p_ffo_multiple;
+    const pffoMed = benchmarkMedian('p_ffo_multiple');
     rows.push({
       metric_name: 'Price / FFO',
       metric_name_th: 'ราคาต่อกระแสเงินสดจากดำเนินงาน (P/FFO)',
@@ -904,7 +998,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const occMed = medians.occupancy_rate_pct;
+    const occMed = benchmarkMedian('occupancy_rate_pct');
     rows.push({
       metric_name: 'Occupancy Rate',
       metric_name_th: 'อัตราการเช่าพื้นที่',
@@ -921,7 +1015,7 @@ function buildArchetypeBenchmarkRows(
     });
   } else if (isEarlyStage) {
     // Early Stage Benchmark Rows: EV/Sales, Revenue Growth
-    const evsMed = medians.ev_sales;
+    const evsMed = benchmarkMedian('ev_sales');
     rows.push({
       metric_name: 'EV / Sales Multiple',
       metric_name_th: 'มูลค่ากิจการต่อรายได้',
@@ -937,7 +1031,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const revgMed = medians.revenue_growth_yoy_pct;
+    const revgMed = benchmarkMedian('revenue_growth_yoy_pct');
     const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value ?? report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
       (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
     ];
@@ -957,7 +1051,7 @@ function buildArchetypeBenchmarkRows(
     });
   } else {
     // Standard Operating & Industrial/Manufacturing Benchmark Rows: P/E, EV/EBITDA, Revenue Growth, ROIC
-    const peMed = medians.pe_trailing;
+    const peMed = benchmarkMedian('pe_trailing');
     const targetPE = targetMetrics?.peTrailing.value ?? report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
     rows.push({
       metric_name: 'P/E (Trailing)',
@@ -974,7 +1068,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const eveMed = medians.ev_ebitda;
+    const eveMed = benchmarkMedian('ev_ebitda');
     const targetEVE = report.valuation_ratios?.find(r => /EV\/EBITDA/i.test(r.name))?.value;
     rows.push({
       metric_name: 'EV / EBITDA',
@@ -991,7 +1085,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const revgMed = medians.revenue_growth_yoy_pct;
+    const revgMed = benchmarkMedian('revenue_growth_yoy_pct');
     const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value ?? report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
       (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
     ];
@@ -1010,23 +1104,52 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const roicMed = medians.roic_pct;
     const targetROIC = targetMetrics?.roic.value ?? (report.key_indicators as any)?.profitability?.roic_pct;
+    const profitabilityOptions = [
+      { key: 'roic_pct', name: 'ROIC', nameTh: 'ผลตอบแทนเงินลงทุน', target: targetROIC, unit: '%', basis: targetMetrics?.roic.basis },
+      { key: 'operating_margin_pct', name: 'Operating Margin', nameTh: 'อัตรากำไรจากการดำเนินงาน', target: targetMetrics?.operatingMargin.value, unit: '%', basis: targetMetrics?.operatingMargin.basis },
+      { key: 'net_margin_pct', name: 'Net Margin', nameTh: 'อัตรากำไรสุทธิ', target: targetMetrics?.netMargin.value, unit: '%', basis: targetMetrics?.netMargin.basis },
+      { key: 'roe_pct', name: 'Return on Equity (ROE)', nameTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น', target: targetMetrics?.roe.value, unit: '%', basis: targetMetrics?.roe.basis },
+    ];
+    const selectedProfitability = profitabilityOptions.find(option => typeof option.target === 'number' && (metricSampleCounts[option.key] || 0) >= requiredPeerSample)
+      || profitabilityOptions[0];
+    const profitabilityMedian = benchmarkMedian(selectedProfitability.key);
     rows.push({
-      metric_name: 'ROIC',
-      metric_name_th: 'ผลตอบแทนเงินลงทุน',
-      target_value: fmt(targetROIC, '%'),
-      sector_median: fmt(roicMed, '%'),
-      direct_peer_value: fmt(directPeer?.metrics.roic_pct?.value, '%'),
-      status: targetROIC && roicMed ? (targetROIC > roicMed ? 'better' : 'worse') : 'neutral',
-      status_label_th: targetROIC && roicMed ? (targetROIC > roicMed ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'เทียบเท่า',
+      metric_name: selectedProfitability.name,
+      metric_name_th: selectedProfitability.nameTh,
+      target_value: fmt(selectedProfitability.target, selectedProfitability.unit),
+      sector_median: profitabilityMedian === null ? 'Insufficient Comparable Peer Data' : fmt(profitabilityMedian, selectedProfitability.unit),
+      direct_peer_value: fmt(verifiedPeerValue(directPeer, selectedProfitability.key), selectedProfitability.unit),
+      status: selectedProfitability.target && profitabilityMedian ? (selectedProfitability.target > profitabilityMedian ? 'better' : 'worse') : 'neutral',
+      status_label_th: selectedProfitability.target && profitabilityMedian ? (selectedProfitability.target > profitabilityMedian ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'ข้อมูลเทียบเคียงไม่เพียงพอ',
       direct_peer_ticker: directPeer?.ticker,
       direct_peer_name: directPeer?.companyName,
       direct_peer_relation: directPeer?.relationType,
       direct_peer_header_th: directHeaderTh,
       direct_peer_header_en: directHeaderEn,
+      metric_basis: selectedProfitability.basis,
     });
   }
 
-  return rows;
+  const metricKeyByName: Record<string, string> = {
+    'P/E (Trailing)': 'pe_trailing', 'P/B Ratio': 'price_to_book', 'Return on Equity (ROE)': 'roe_pct',
+    'Net Interest Margin (NIM)': 'net_interest_margin_pct', 'Price / FFO': 'p_ffo_multiple',
+    'Occupancy Rate': 'occupancy_rate_pct', 'EV / Sales Multiple': 'ev_sales', 'YoY Revenue Growth': 'revenue_growth_yoy_pct',
+    'EV / EBITDA': 'ev_ebitda', 'Revenue Growth YoY': 'revenue_growth_yoy_pct', ROIC: 'roic_pct',
+    'Operating Margin': 'operating_margin_pct', 'Net Margin': 'net_margin_pct',
+  };
+  return rows.map(row => {
+    const key = metricKeyByName[row.metric_name];
+    if (!key) return row;
+    const count = metricSampleCounts[key] || 0;
+    const sufficient = count >= requiredPeerSample;
+    return {
+      ...row,
+      sector_median: !sufficient && row.sector_median === 'N/A' ? 'Insufficient Comparable Peer Data' : row.sector_median,
+      peer_sample_size: count,
+      peer_required_sample_size: requiredPeerSample,
+      peer_coverage_status: sufficient ? 'SUFFICIENT' as const : 'INSUFFICIENT' as const,
+      peer_coverage_reason: sufficient ? undefined : `Comparable observations ${count}/${peers.length}; minimum required ${requiredPeerSample}.`,
+    };
+  });
 }

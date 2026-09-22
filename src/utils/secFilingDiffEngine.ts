@@ -128,6 +128,7 @@ export function adaptFinancialStatementsToSecPeriodStatements(
       const isLatest = i === dataset.periods.length - 1;
       const revInfo = getValWithSource('income_statement.revenue', period, i);
       const opIncInfo = getValWithSource('income_statement.operating_income', period, i);
+      const interestExpenseInfo = getValWithSource('income_statement.interest_expense', period, i);
       const netIncInfo = getValWithSource('income_statement.net_income', period, i);
       const ocfInfo = getValWithSource('cash_flow.operating_cash_flow', period, i);
       const capexInfo = getValWithSource('cash_flow.capex', period, i);
@@ -150,6 +151,7 @@ export function adaptFinancialStatementsToSecPeriodStatements(
         units: (primarySource as any)?.unit || primaryUnit || 'USD',
         revenue: revInfo.val,
         operating_income: opIncInfo.val,
+        interest_expense: interestExpenseInfo.val,
         net_income: netIncInfo.val,
         operating_cash_flow: ocfInfo.val,
         capital_expenditure: capexInfo.val,

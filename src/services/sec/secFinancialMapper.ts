@@ -41,6 +41,7 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'income_statement', metric: 'revenue', concepts: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'gross_profit', concepts: ['GrossProfit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'operating_income', concepts: ['OperatingIncomeLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'interest_expense', concepts: ['InterestExpenseNonOperating', 'InterestExpenseDebt', 'InterestAndDebtExpense'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'income_before_tax', concepts: ['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'income_tax_expense', concepts: ['IncomeTaxExpenseBenefit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'net_income', concepts: ['NetIncomeLoss', 'ProfitLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
@@ -125,6 +126,65 @@ const getConcept = (facts: SecCompanyFactsResponse, conceptName: string): SecCom
   }
   return undefined;
 };
+
+export interface SecAnnualRevenueFact {
+  metric: 'revenue';
+  fiscal_year: number;
+  period: string;
+  period_end: string;
+  value: number;
+  unit: 'USD_M';
+  definition: string;
+  source_document?: string | null;
+  source_url?: string | null;
+  accession?: string | null;
+  filed_date?: string | null;
+  verification: 'verified';
+}
+
+/**
+ * Extracts source-verified annual revenue endpoints from SEC Company Facts.
+ * These values are kept separate from standalone quarters so downstream CAGR
+ * logic never mistakes array length for elapsed fiscal years.
+ */
+export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike): SecAnnualRevenueFact[] {
+  const submissionMap = submissionDocumentMap(bundle.identity, bundle.submissions);
+  const revenueConcepts = ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'];
+  let bestHistory: SecAnnualRevenueFact[] = [];
+
+  for (const definition of revenueConcepts) {
+    const byYear = new Map<number, SecAnnualRevenueFact>();
+    const concept = getConcept(bundle.companyFacts, definition);
+    const facts = concept?.units?.USD;
+    if (!Array.isArray(facts)) continue;
+    for (const fact of facts) {
+      if (!Number.isFinite(fact.val) || !fact.start || !fact.end || !Number.isFinite(fact.fy)) continue;
+      if (!['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A'].includes(String(fact.form || ''))) continue;
+      if (String(fact.fp || '').toUpperCase() !== 'FY') continue;
+      const durationDays = (Date.parse(fact.end) - Date.parse(fact.start)) / 86_400_000;
+      if (!Number.isFinite(durationDays) || durationDays < 300 || durationDays > 400) continue;
+
+      const fiscalYear = Number(fact.fy);
+      const filing = fact.accn ? submissionMap.get(fact.accn) : undefined;
+      const candidate: SecAnnualRevenueFact = {
+        metric: 'revenue', fiscal_year: fiscalYear, period: `FY${fiscalYear}`,
+        period_end: fact.end, value: fact.val! / 1_000_000, unit: 'USD_M', definition,
+        source_document: filing?.form || fact.form || null,
+        source_url: filing?.documentUrl || null,
+        accession: fact.accn || null,
+        filed_date: filing?.filingDate || fact.filed || null,
+        verification: 'verified',
+      };
+      const existing = byYear.get(fiscalYear);
+      if (!existing || String(candidate.filed_date || '') > String(existing.filed_date || '')) byYear.set(fiscalYear, candidate);
+    }
+    const history = [...byYear.values()].sort((a, b) => a.fiscal_year - b.fiscal_year);
+    if (history.length > bestHistory.length) bestHistory = history;
+    // Do not mix definitions. The highest-priority concept wins once it covers a true 3Y endpoint.
+    if (history.some((end, index) => history.slice(0, index).some(start => end.fiscal_year - start.fiscal_year === 3))) return history;
+  }
+  return bestHistory;
+}
 
 const normalizeConcept = (concept: SecCompanyConcept | undefined, spec: MetricSpec): NormalizedSecQuarterFact[] => {
   const rawFacts = concept?.units?.[spec.unit] || (spec.unit === 'pure' ? concept?.units?.['pure'] : undefined);
