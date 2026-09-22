@@ -26,6 +26,7 @@ const companyFacts: SecCompanyFactsResponse = {
     'us-gaap': {
       Revenues: usd(duration([100_000_000, 120_000_000, 130_000_000, 150_000_000], 'rev')),
       NetIncomeLoss: usd(duration([10_000_000, 12_000_000, 13_000_000, 15_000_000], 'ni')),
+      InterestExpense: usd(duration([1_000_000, 1_200_000, 1_300_000, 1_500_000], 'interest')),
       EarningsPerShareDiluted: perShare(duration([0.10, 0.12, 0.13, 0.15], 'eps')),
       CashAndCashEquivalentsAtCarryingValue: usd(instant([50_000_000, 55_000_000, 60_000_000, 70_000_000], 'cash')),
       Assets: usd(instant([500_000_000, 520_000_000, 540_000_000, 580_000_000], 'assets')),
@@ -48,6 +49,7 @@ const identity: SecTickerRecord = { cik: '0000123456', ticker: 'TEST', title: 'T
 const accessionNumbers = [
   'rev-q1', 'rev-q2', 'rev-q3', 'rev-fy',
   'ni-q1', 'ni-q2', 'ni-q3', 'ni-fy',
+  'interest-q1', 'interest-q2', 'interest-q3', 'interest-fy',
   'eps-q1', 'eps-q2', 'eps-q3', 'eps-fy',
   'cash-q1', 'cash-q2', 'cash-q3', 'cash-fy',
   'assets-q1', 'assets-q2', 'assets-q3', 'assets-fy',
@@ -91,6 +93,7 @@ assert.match(dataset?.generatedBy || '', /sec-xbrl-v1/);
 
 assert.deepEqual(dataset?.values['income_statement.revenue'].map(item => item.value), [100, 120, 130, 150]);
 assert.deepEqual(dataset?.values['income_statement.net_income'].map(item => item.value), [10, 12, 13, 15]);
+assert.deepEqual(dataset?.values['income_statement.interest_expense'].map(item => item.value), [1, 1.2, 1.3, 1.5]);
 assert.deepEqual(dataset?.values['income_statement.eps_diluted'].map(item => item.value), [0.10, 0.12, 0.13, 0.15]);
 assert.deepEqual(dataset?.values['balance_sheet.cash_and_equivalents'].map(item => item.value), [50, 55, 60, 70]);
 assert.deepEqual(dataset?.values['balance_sheet.common_stock'].map(item => item.value), [10, 10, 11, 12]);
