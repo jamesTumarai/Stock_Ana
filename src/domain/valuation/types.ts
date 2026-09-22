@@ -65,6 +65,7 @@ export interface PeerDiscoveryResult {
   unavailableMessageEn?: string;
   unavailableMessageTh?: string;
   medians: Record<string, number | null>;
+  metricSampleCounts: Record<string, number>;
   isBroadSectorUniverse: boolean;
   sectorMedians?: Record<string, number | null>;
   benchmarkRows: PeerBenchmarkRow[];

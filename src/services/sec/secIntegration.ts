@@ -16,6 +16,7 @@ export interface SecVerifiedIntegrationPackage {
   dcfCoverage: SecDcfCoverageAssessment;
   coverageDiagnostics?: SecCoverageDiagnostics;
   retrievedAt?: string;
+  sourceBundle?: SecCompanyBundleLike;
 }
 
 const unavailableCoverage = (code: string, message: string): SecDcfCoverageAssessment => ({
@@ -70,6 +71,7 @@ export function buildSecVerifiedIntegrationPackage(
     dcfCoverage,
     coverageDiagnostics,
     retrievedAt: bundle.retrievedAt,
+    sourceBundle: bundle,
   };
 }
 

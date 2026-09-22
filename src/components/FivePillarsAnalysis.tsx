@@ -322,7 +322,11 @@ export function FivePillarsAnalysis({
                     : (isThai ? 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):' : 'Interest Coverage Ratio:')}
                 </span>
                 <span className={`text-sm sm:text-base ${isFinancial ? 'text-stone-600 font-sans text-xs sm:text-sm' : 'font-bold text-stone-800'}`}>
-                  {isFinancial ? (isThai ? 'เงินฝากเป็นวัตถุดิบดำเนินงาน' : 'Deposits as Operating Inventory') : metric(balance.interest_coverage, 'x', '')}
+                  {isFinancial
+                    ? (isThai ? 'เงินฝากเป็นวัตถุดิบดำเนินงาน' : 'Deposits as Operating Inventory')
+                    : typeof balance.interest_coverage === 'number'
+                      ? metric(balance.interest_coverage, 'x', '')
+                      : (balance.interest_coverage_reason || (isThai ? 'ไม่พบข้อมูลช่วงเวลาที่เทียบกันได้' : 'No comparable-period interest expense'))}
                 </span>
               </div>
             </div>
@@ -468,7 +472,15 @@ export function FivePillarsAnalysis({
                         {row.target_value}
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-stone-600">
-                        {row.sector_median}
+                        <div>{row.sector_median}</div>
+                        {typeof row.peer_sample_size === 'number' && (
+                          <div
+                            className={`mt-0.5 text-[10px] font-sans ${row.peer_coverage_status === 'INSUFFICIENT' ? 'text-amber-700' : 'text-stone-400'}`}
+                            title={row.peer_coverage_reason}
+                          >
+                            {isThai ? `ตัวอย่าง n=${row.peer_sample_size}` : `Peer Median (n=${row.peer_sample_size})`}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-stone-700 font-medium">
                         {row.direct_peer_value}

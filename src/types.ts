@@ -1,8 +1,8 @@
-import type { SecVerificationEnvelope, SecPeriodStatement } from './domain/secVerification';
+import type { SecVerificationEnvelope, SecPeriodStatement, SecHistoricalAnnualFact } from './domain/secVerification';
 import type { ReportProvenanceManifest } from './domain/reportProvenance';
 import type { DataCompletenessSummary } from './domain/dataCompleteness/types';
 
-export type { SecPeriodStatement, DataCompletenessSummary };
+export type { SecPeriodStatement, SecHistoricalAnnualFact, DataCompletenessSummary };
 
 export interface IncomeStatementData {
   revenue: (number | null)[];
@@ -705,7 +705,16 @@ export interface PeerCompanyItem {
   pe_forward?: number | null;
   revenue_growth_yoy_pct?: number | null;
   gross_margin_pct?: number | null;
+  operating_margin_pct?: number | null;
   net_margin_pct?: number | null;
+  roic_pct?: number | null;
+  operating_income?: number | null;
+  income_before_tax?: number | null;
+  income_tax_expense?: number | null;
+  total_debt?: number | null;
+  total_equity?: number | null;
+  cash_and_equivalents?: number | null;
+  short_term_investments?: number | null;
   ev_ebitda?: number | null;
   pb_ratio?: number | null;
   roe_pct?: number | null;
@@ -719,6 +728,12 @@ export interface PeerCompanyItem {
   as_of_date?: string;
   sector?: string;
   industry?: string;
+  subIndustry?: string;
+  lifecycle?: 'early_stage' | 'growth' | 'mature' | 'cyclical';
+  profitabilityState?: 'pre_profit' | 'breakeven' | 'profitable';
+  scaleTier?: 'mega' | 'large' | 'mid' | 'small';
+  financial_period?: string;
+  financial_source?: string;
 }
 
 export interface PeerComparisonData {
@@ -1004,6 +1019,11 @@ export interface FivePillarsBalanceSheetData {
   debt_to_equity?: number;
   net_debt_to_ebitda?: number;
   interest_coverage?: number;
+  interest_coverage_status?: string;
+  interest_coverage_reason?: string;
+  interest_coverage_basis?: string;
+  interest_coverage_formula?: string;
+  interest_coverage_source?: string;
   solvency_score_label?: string;
 }
 
@@ -1038,6 +1058,12 @@ export interface PeerBenchmarkRow {
   direct_peer_relation?: 'DIRECT_PEER' | 'CLOSE_COMPARABLE' | 'BROADER_SECTOR_REFERENCE' | string;
   direct_peer_header_th?: string;
   direct_peer_header_en?: string;
+  peer_sample_size?: number;
+  peer_required_sample_size?: number;
+  peer_coverage_status?: 'SUFFICIENT' | 'INSUFFICIENT';
+  peer_coverage_reason?: string;
+  metric_basis?: string;
+  metric_source?: string;
 }
 
 export interface FivePillarsData {
