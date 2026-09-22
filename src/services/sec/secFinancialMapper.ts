@@ -153,7 +153,11 @@ export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike)
   let bestHistory: SecAnnualRevenueFact[] = [];
 
   for (const definition of revenueConcepts) {
-    const byYear = new Map<number, SecAnnualRevenueFact>();
+    // Company Facts repeats comparative annual values in later filings. `fy`
+    // identifies the filing's fiscal year, so all three comparative rows in a
+    // 10-K can share the same value. The fact's duration end is the identity of
+    // the reported annual period and must drive both de-duplication and labels.
+    const byPeriodEnd = new Map<string, SecAnnualRevenueFact>();
     const concept = getConcept(bundle.companyFacts, definition);
     const facts = concept?.units?.USD;
     if (!Array.isArray(facts)) continue;
@@ -164,7 +168,8 @@ export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike)
       const durationDays = (Date.parse(fact.end) - Date.parse(fact.start)) / 86_400_000;
       if (!Number.isFinite(durationDays) || durationDays < 300 || durationDays > 400) continue;
 
-      const fiscalYear = Number(fact.fy);
+      const fiscalYear = Number(fact.end.slice(0, 4));
+      if (!Number.isFinite(fiscalYear)) continue;
       const filing = fact.accn ? submissionMap.get(fact.accn) : undefined;
       const candidate: SecAnnualRevenueFact = {
         metric: 'revenue', fiscal_year: fiscalYear, period: `FY${fiscalYear}`,
@@ -175,10 +180,14 @@ export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike)
         filed_date: filing?.filingDate || fact.filed || null,
         verification: 'verified',
       };
-      const existing = byYear.get(fiscalYear);
-      if (!existing || String(candidate.filed_date || '') > String(existing.filed_date || '')) byYear.set(fiscalYear, candidate);
+      const existing = byPeriodEnd.get(fact.end);
+      // Prefer the newest filing for the same annual period so restatements and
+      // later comparative disclosures supersede the originally filed value.
+      if (!existing || String(candidate.filed_date || '') > String(existing.filed_date || '')) {
+        byPeriodEnd.set(fact.end, candidate);
+      }
     }
-    const history = [...byYear.values()].sort((a, b) => a.fiscal_year - b.fiscal_year);
+    const history = [...byPeriodEnd.values()].sort((a, b) => a.period_end.localeCompare(b.period_end));
     if (history.length > bestHistory.length) bestHistory = history;
     // Do not mix definitions. The highest-priority concept wins once it covers a true 3Y endpoint.
     if (history.some((end, index) => history.slice(0, index).some(start => end.fiscal_year - start.fiscal_year === 3))) return history;
