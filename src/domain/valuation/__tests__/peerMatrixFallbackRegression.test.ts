@@ -257,4 +257,31 @@ describe('Peer Matrix truthful fallback regression', () => {
     assert.equal(source.match(/ยังไม่พบกลุ่มบริษัทที่เปรียบเทียบได้และมีข้อมูลที่ตรวจสอบแล้วเพียงพอ/g)?.length, 1);
     assert.equal(source.match(/No sufficiently comparable source-verified peer set is currently available\./g)?.length, 1);
   });
+
+  it('normalizes production-shaped peer metadata and strict numeric strings before admission', () => {
+    const productionPayload = targetReport({
+      ticker: 'PRODAUTO',
+      peer_comparison: {
+        industry_name: 'Automotive / Clean Energy & AI',
+        as_of_date: '2026-09-23',
+        peers: [
+          {
+            ticker: 'AUTOA', company_name: 'Auto A', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers',
+            subIndustry: 'Automotive Manufacturing', pe_trailing: '21.6', ev_ebitda: '12.4x',
+            revenue_growth_yoy_pct: '22.4%', financial_period: 'Q2 2026', financial_source: 'Issuer filing and market snapshot',
+          } as any,
+          {
+            ticker: 'AUTOB', company_name: 'Auto B', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers',
+            subIndustry: 'Electric Vehicle Manufacturing', pe_trailing: '37.3', ev_ebitda: '18.2x',
+            revenue_growth_yoy_pct: '8.5%', financial_period: 'Q2 2026', financial_source: 'Issuer filing and market snapshot',
+          } as any,
+        ],
+      },
+    });
+    const result = discoverPeers(productionPayload, 'PRODAUTO', { disableFixtureFallback: true });
+    assert.equal(result.peerCount, 2);
+    assert.equal(result.benchmarkRows.length > 0, true);
+    assert.equal(result.metricSampleCounts.pe_trailing, 2);
+    assert.equal(result.medians.pe_trailing, 29.45);
+  });
 });
