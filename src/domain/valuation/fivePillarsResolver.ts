@@ -140,10 +140,23 @@ export function resolveAdaptiveFivePillars(
     roic_pct: isFinancial ? undefined : (typeof resolvedMetrics.roic.value === 'number' ? resolvedMetrics.roic.value : undefined),
     roic_basis: resolvedMetrics.roic.basis,
     roic_formula: resolvedMetrics.roic.formula,
+    roe_basis: resolvedMetrics.roe.basis,
+    roa_basis: resolvedMetrics.roa.basis,
+    gross_margin_basis: resolvedMetrics.grossMargin.basis,
+    operating_margin_basis: resolvedMetrics.operatingMargin.basis,
+    net_margin_basis: resolvedMetrics.netMargin.basis,
     roa_pct: typeof resolvedMetrics.roa.value === 'number' ? resolvedMetrics.roa.value : undefined,
     net_interest_margin_pct: isFinancial ? nim : undefined,
     efficiency_ratio_pct: isFinancial ? efficiencyRatio : undefined,
     capital_efficiency_verdict: capitalEfficiencyVerdict,
+    resolved_metrics: {
+      roic: resolvedMetrics.roic,
+      roe: resolvedMetrics.roe,
+      roa: resolvedMetrics.roa,
+      gross_margin: resolvedMetrics.grossMargin,
+      operating_margin: resolvedMetrics.operatingMargin,
+      net_margin: resolvedMetrics.netMargin,
+    },
   };
 
   // 5. Resolve Pillar 3: Balance Sheet / Financial Health
