@@ -18,6 +18,7 @@ import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHi
 import { fetchSecVerificationEnvelope } from './services/secVerificationService';
 import { fetchLiveQuotes } from './services/marketDataService';
 import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
+import { fetchPeerCompletion } from './services/peerCompletionService';
 import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
 import { isSoftDeletedReportRecord, sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
 import { authenticatedFetch } from './services/authenticatedFetch';
@@ -870,6 +871,27 @@ export default function App() {
             }
 
             const nowIso = new Date().toISOString();
+            if (aType !== 'technical' && requestedTicker) {
+              try {
+                const peerCompletionRes = await fetchPeerCompletion(
+                  requestedTicker,
+                  reportForValidation.peer_comparison?.peers,
+                  reportForValidation.five_pillars?.archetype as any,
+                  controller.signal
+                );
+                if (peerCompletionRes?.peers && peerCompletionRes.peers.length > 0) {
+                  reportForValidation.peer_comparison = {
+                    ...reportForValidation.peer_comparison,
+                    as_of_date: reportForValidation.peer_comparison?.as_of_date || nowIso.split('T')[0],
+                    industry_name: reportForValidation.peer_comparison?.industry_name || reportForValidation.company_profile?.industry || 'Peer Universe',
+                    peers: peerCompletionRes.peers,
+                  };
+                }
+              } catch (peerErr) {
+                console.warn('[peerCompletion] Peer enrichment failed, proceeding with existing peers:', peerErr);
+              }
+            }
+
             const prepared = validateAndPrepareReport(
               {
                 ...reportForValidation,

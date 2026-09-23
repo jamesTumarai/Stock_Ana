@@ -1,5 +1,10 @@
 import type { CandidateDefinition } from '../../src/domain/valuation/__fixtures__/peerUniverse.js';
 import type { PeerCandidateDiscoveryInput } from '../../src/domain/valuation/peerDiscoveryEngine.js';
+import { enrichPeerCandidates, type PeerEnrichmentOptions } from './peerFinancialEnrichmentService.js';
+
+export interface RuntimePeerDiscoveryOptions extends PeerEnrichmentOptions {
+  enrichFundamentals?: boolean;
+}
 
 interface YahooSearchQuote {
   symbol: string;
@@ -18,13 +23,15 @@ const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
  * Server-side runtime peer candidate discovery service.
  * Discovers candidate public companies from live Yahoo Finance search,
  * enforces strict verification (EQUITY only, valid ticker, rejects self, aligns archetype),
- * and enriches top candidates with live market metrics.
+ * and enriches top candidates with live market metrics AND verified SEC EDGAR company facts.
  */
 export async function discoverRuntimePeerCandidates(
-  input: PeerCandidateDiscoveryInput
+  input: PeerCandidateDiscoveryInput,
+  options?: RuntimePeerDiscoveryOptions
 ): Promise<CandidateDefinition[]> {
   const targetTicker = (input.ticker || '').toUpperCase().trim();
-  const cacheKey = `${targetTicker}:${input.primaryArchetype}:${input.subIndustry || input.industry || input.sector || 'general'}`;
+  const enrichKey = options?.enrichFundamentals === false ? 'no_fund' : 'with_fund';
+  const cacheKey = `${targetTicker}:${input.primaryArchetype}:${input.subIndustry || input.industry || input.sector || 'general'}:${enrichKey}`;
   const cached = cache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
     return cached.candidates;
@@ -162,6 +169,18 @@ export async function discoverRuntimePeerCandidates(
     console.warn('[runtimePeerDiscovery] Metric enrichment failed:', err);
   }
 
-  cache.set(cacheKey, { timestamp: Date.now(), candidates });
-  return candidates;
+  let finalCandidates = candidates;
+  if (options?.enrichFundamentals !== false && candidates.length > 0) {
+    try {
+      const enrichment = await enrichPeerCandidates(candidates, options);
+      if (enrichment.enrichedCandidates.length > 0) {
+        finalCandidates = enrichment.enrichedCandidates;
+      }
+    } catch (enrichErr) {
+      console.warn('[runtimePeerDiscovery] SEC fundamental enrichment failed, falling back to market metrics:', enrichErr);
+    }
+  }
+
+  cache.set(cacheKey, { timestamp: Date.now(), candidates: finalCandidates });
+  return finalCandidates;
 }

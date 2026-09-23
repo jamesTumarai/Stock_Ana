@@ -231,6 +231,8 @@ export async function handlePeerCandidates(req: any, res: any) {
     const companyName = body.companyName || req.query?.companyName || url.searchParams.get('companyName') || undefined;
 
     const { discoverRuntimePeerCandidates } = await import('../services/runtimePeerDiscoveryService.ts');
+    const { candidateToPeerCompanyItem } = await import('../services/peerFinancialEnrichmentService.ts');
+    const enrichFundamentals = body.enrichFundamentals !== false && req.query?.enrichFundamentals !== 'false';
     const candidates = await discoverRuntimePeerCandidates({
       ticker,
       companyName,
@@ -238,10 +240,13 @@ export async function handlePeerCandidates(req: any, res: any) {
       sector,
       industry,
       subIndustry,
-    });
+    }, { enrichFundamentals });
+
+    const peers = candidates.map(candidateToPeerCompanyItem);
 
     return sendJson(res, 200, {
       candidates,
+      peers,
       count: candidates.length,
       asOf: new Date().toISOString(),
     });
@@ -251,8 +256,66 @@ export async function handlePeerCandidates(req: any, res: any) {
   }
 }
 
+export async function handlePeerCompletion(req: any, res: any) {
+  try {
+    const url = new URL(req.url || '/api/peer-completion', 'http://localhost');
+    const body = req.body || {};
+    const ticker = (body.ticker || req.query?.ticker || url.searchParams.get('ticker') || '').toUpperCase().trim();
+    const peersInput = body.peers || [];
+    const archetype = (body.archetype || body.primaryArchetype || req.query?.archetype || url.searchParams.get('archetype') || 'general_operating') as any;
+
+    const { enrichPeerCandidates, candidateToPeerCompanyItem } = await import('../services/peerFinancialEnrichmentService.ts');
+    const { discoverRuntimePeerCandidates } = await import('../services/runtimePeerDiscoveryService.ts');
+
+    let enrichedCandidates: any[] = [];
+    let allGaps: any[] = [];
+
+    if (Array.isArray(peersInput) && peersInput.length > 0) {
+      // Normalize string tickers or PeerCompanyItems
+      const normalizedCandidates = peersInput.map((p: any) => {
+        if (typeof p === 'string') {
+          return { ticker: p.toUpperCase().trim() };
+        }
+        return p;
+      });
+
+      const enrichRes = await enrichPeerCandidates(normalizedCandidates, {
+        maxCandidates: body.maxCandidates || 8,
+        concurrency: body.concurrency || 3,
+      });
+      enrichedCandidates = enrichRes.enrichedCandidates;
+      allGaps = enrichRes.allGaps;
+    } else if (ticker) {
+      // Auto-discover runtime candidates with verified SEC fundamentals
+      enrichedCandidates = await discoverRuntimePeerCandidates({
+        ticker,
+        primaryArchetype: archetype,
+        sector: body.sector,
+        industry: body.industry,
+        subIndustry: body.subIndustry,
+      }, { enrichFundamentals: true });
+    }
+
+    const peers = enrichedCandidates.map(candidateToPeerCompanyItem);
+
+    return sendJson(res, 200, {
+      ticker,
+      peers,
+      enrichedCandidates,
+      gaps: allGaps,
+      count: peers.length,
+      asOf: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("[/api/peer-completion] Unexpected error:", error);
+    return sendJson(res, 500, { error: error?.message || "Internal server error" });
+  }
+}
+
 export function registerMarketRoutes(app: Express) {
   app.get("/api/live-quotes", handleLiveQuotes);
   app.get("/api/peer-candidates", handlePeerCandidates);
   app.post("/api/peer-candidates", handlePeerCandidates);
+  app.get("/api/peer-completion", handlePeerCompletion);
+  app.post("/api/peer-completion", handlePeerCompletion);
 }

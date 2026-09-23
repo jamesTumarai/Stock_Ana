@@ -745,8 +745,8 @@ function extractCandidateMetrics(
     let status: FactVerificationStatus = 'NOT_REPORTED';
     if (normalizedValue !== null) {
       if (key === 'roic_pct') {
-        // Pre-computed raw ROIC cannot be verified without underlying filing derivation
-        status = 'FOUND_UNVERIFIED';
+        // Pre-computed raw ROIC requires underlying filing derivation or verified provenance flag
+        status = ((p as any).roic_verified && isFilingGradeSource(source)) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
       } else if (MARKET_METRICS.has(key)) {
         const isUnverified = GENERATED_FALLBACK_SOURCE_REGEX.test(p.financial_source || '') || /unverified/i.test(p.financial_source || '');
         status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
@@ -766,8 +766,12 @@ function extractCandidateMetrics(
       period,
       asOfDate: p.as_of_date || asOfDate,
       source: source || (MARKET_METRICS.has(key) ? 'Market disclosure' : 'Unverified source'),
-      reportedOrDerived: 'REPORTED',
+      reportedOrDerived: (p as any).reportedOrDerived || 'REPORTED',
       status,
+      periodBasis: (p as any)[`${key}_period_basis`] || (p as any).periodBasis || (key === 'roic_pct' ? 'TTM' : /Q[1-4]/i.test(period) ? 'QUARTERLY' : undefined),
+      basis: (p as any)[`${key}_basis`] || (p as any).basis,
+      reason: (p as any)[`${key}_reason`],
+      reasonTh: (p as any)[`${key}_reason_th`],
     };
   };
 
@@ -1513,6 +1517,7 @@ function buildArchetypeBenchmarkRows(
     return {
       ...row,
       metric_key: key,
+      median_value: coverage.canPublishMedian ? (medians[key] ?? null) : null,
       sector_median: coverage.canPublishMedian ? row.sector_median : 'Insufficient Comparable Peer Data',
       peer_sample_size: count,
       peer_required_sample_size: requiredPeerSample,
