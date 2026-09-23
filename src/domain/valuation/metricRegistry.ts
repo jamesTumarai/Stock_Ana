@@ -1,6 +1,7 @@
 import type { ReportData } from '../../types';
 import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMetricContext';
 import { findKeyIndicatorInSource } from '../metricLineage';
+import { calculateCanonicalRoic, calculateInvestedCapital } from './canonicalRoic';
 
 export type MetricResolutionStatus =
   | 'CALCULATED'
@@ -17,6 +18,7 @@ export type MetricResolutionStatus =
 export interface ResolvedMetricItem<T = number> {
   value?: T;
   basis?: string;
+  periodBasis?: 'TTM' | 'ANNUAL' | 'QUARTERLY';
   period?: string;
   formula?: string;
   source?: string;
@@ -102,6 +104,180 @@ const resolvedReason = (
   reasonTh: string,
   extra: Partial<ResolvedMetricItem> = {},
 ): ResolvedMetricItem => ({ value: null, status, reason, reasonTh, ...extra });
+
+const extractFiscalSeries = (
+  values: (number | null | undefined)[] | undefined,
+  periods: string[] | undefined,
+  sourceName: string
+): FiscalPoint[] => {
+  if (!values || !periods) return [];
+  const points: FiscalPoint[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const val = values[i];
+    const periodStr = periods[i];
+    if (!finite(val) || !periodStr) continue;
+    if (/\bYTD\b|6M|9M|cumulative/i.test(periodStr)) continue;
+    const identity = fiscalIdentity(periodStr);
+    if (identity) {
+      points.push({ value: val, ...identity, label: identity.label, source: sourceName, periodEnd: periodStr });
+    }
+  }
+  return points;
+};
+
+const extractSecPeriodFacts = (
+  statements: any[] | undefined,
+  field: string
+): FiscalPoint[] => {
+  if (!Array.isArray(statements)) return [];
+  const points: FiscalPoint[] = [];
+  for (const s of statements) {
+    const val = s[field];
+    if (!finite(val)) continue;
+    const periodStr = String(s.period || s.period_end || '');
+    if (/\bYTD\b|6M|9M|cumulative/i.test(periodStr)) continue;
+    if (s.derivation === 'reported_ytd' && s.fiscal_quarter && s.fiscal_quarter > 1) continue;
+    const identity = fiscalIdentity(periodStr, s.fiscal_year, s.fiscal_quarter, s.form);
+    if (identity) {
+      points.push({
+        value: val,
+        ...identity,
+        label: identity.label,
+        source: `SEC ${s.form || 'filing'}${s.accession ? ` (${s.accession})` : ''}`,
+        periodEnd: s.period_end || periodStr,
+      });
+    }
+  }
+  return points;
+};
+
+const extractCanonicalFacts = (
+  canonicalValues: any[] | undefined,
+  metricName: string
+): FiscalPoint[] => {
+  if (!Array.isArray(canonicalValues)) return [];
+  const points: FiscalPoint[] = [];
+  for (const item of canonicalValues) {
+    if (item.verification !== 'verified' || !finite(item.value)) continue;
+    const periodStr = String(item.period || item.periodEnd || '');
+    if (/\bYTD\b|6M|9M|cumulative/i.test(periodStr)) continue;
+    const identity = fiscalIdentity(periodStr);
+    if (identity) {
+      points.push({
+        value: item.value,
+        ...identity,
+        label: identity.label,
+        source: 'SEC verified canonical financials',
+        periodEnd: item.periodEnd || periodStr,
+      });
+    }
+  }
+  return points;
+};
+
+type TrailingQuarterResult = {
+  kind: 'TTM' | 'ANNUAL' | 'QUARTERLY' | 'INSUFFICIENT';
+  points: FiscalPoint[];
+  totalValue: number | null;
+  periodLabel: string;
+  source: string;
+};
+
+const resolveTrailingFourQuarters = (
+  points: FiscalPoint[],
+  latestFiscal?: { year: number; quarter?: number; kind: FiscalKind }
+): TrailingQuarterResult => {
+  const annualPoints = points.filter(p => p.kind === 'ANNUAL').sort((a, b) => a.year - b.year);
+  const quarterlyPoints = points.filter(p => p.kind === 'QUARTERLY' && finite(p.quarter)).sort((a, b) => a.year - b.year || (a.quarter || 0) - (b.quarter || 0));
+
+  if (latestFiscal?.kind === 'ANNUAL') {
+    const matchingAnnual = annualPoints.find(p => p.year === latestFiscal.year) || annualPoints[annualPoints.length - 1];
+    if (matchingAnnual) {
+      return {
+        kind: 'ANNUAL',
+        points: [matchingAnnual],
+        totalValue: matchingAnnual.value,
+        periodLabel: matchingAnnual.label,
+        source: matchingAnnual.source,
+      };
+    }
+  }
+
+  if (quarterlyPoints.length > 0) {
+    const endQuarterPoint = (latestFiscal?.kind === 'QUARTERLY' && latestFiscal.quarter)
+      ? quarterlyPoints.find(p => p.year === latestFiscal.year && p.quarter === latestFiscal.quarter) || quarterlyPoints[quarterlyPoints.length - 1]
+      : quarterlyPoints[quarterlyPoints.length - 1];
+
+    if (endQuarterPoint && endQuarterPoint.quarter) {
+      const targetYear = endQuarterPoint.year;
+      const targetQ = endQuarterPoint.quarter;
+      const consecutive: FiscalPoint[] = [];
+
+      for (let offset = 3; offset >= 0; offset--) {
+        let qYear = targetYear;
+        let qNum = targetQ - offset;
+        while (qNum <= 0) {
+          qYear -= 1;
+          qNum += 4;
+        }
+        const found = quarterlyPoints.find(p => p.year === qYear && p.quarter === qNum);
+        if (found) {
+          consecutive.push(found);
+        }
+      }
+
+      if (consecutive.length === 4) {
+        const sum = consecutive.reduce((acc, p) => acc + p.value, 0);
+        return {
+          kind: 'TTM',
+          points: consecutive,
+          totalValue: Math.round(sum * 100) / 100,
+          periodLabel: `${consecutive[0].label} → ${consecutive[3].label}`,
+          source: consecutive[3].source,
+        };
+      }
+
+      // If only 1 quarter exists in points, allow single-period quarter (Option B)
+      if (quarterlyPoints.length === 1) {
+        return {
+          kind: 'QUARTERLY',
+          points: [endQuarterPoint],
+          totalValue: endQuarterPoint.value,
+          periodLabel: endQuarterPoint.label,
+          source: endQuarterPoint.source,
+        };
+      }
+
+      // 2 or 3 quarters exist: cannot form TTM
+      return {
+        kind: 'INSUFFICIENT',
+        points: consecutive,
+        totalValue: null,
+        periodLabel: `${endQuarterPoint.label} (fewer than 4 quarters)`,
+        source: endQuarterPoint.source,
+      };
+    }
+  }
+
+  if (annualPoints.length > 0) {
+    const lastAnnual = annualPoints[annualPoints.length - 1];
+    return {
+      kind: 'ANNUAL',
+      points: [lastAnnual],
+      totalValue: lastAnnual.value,
+      periodLabel: lastAnnual.label,
+      source: lastAnnual.source,
+    };
+  }
+
+  return {
+    kind: 'INSUFFICIENT',
+    points: [],
+    totalValue: null,
+    periodLabel: 'No history',
+    source: 'Financial Statements',
+  };
+};
 
 /**
  * Resolves all canonical fundamental metrics from verified facts and statements into a single,
@@ -364,73 +540,151 @@ export function resolveFundamentalMetrics(
     reasonTh: pegReasonTh,
   };
 
-  // 5. ROIC (Deterministic NOPAT / Average Invested Capital)
-  let roicVal = getKi('roic') ?? getKi('roic_pct');
+  // 5. ROIC (Canonical NOPAT / Average Invested Capital)
+  const secOpPoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'operating_income');
+  const canonicalOpPoints = extractCanonicalFacts(verifiedCanonical?.values?.['income_statement.operating_income'], 'operating_income');
+  const legacyOpPoints = extractFiscalSeries(inc?.operating_income, periods, 'Financial Statements (operating income)');
+  const allOpPoints = dedupeFiscalPoints(secOpPoints.length > 0 ? secOpPoints : canonicalOpPoints.length > 0 ? canonicalOpPoints : legacyOpPoints);
+  const trailingOp = resolveTrailingFourQuarters(allOpPoints, latestFiscal);
+
+  const secEbtPoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'income_before_tax');
+  const canonicalEbtPoints = extractCanonicalFacts(verifiedCanonical?.values?.['income_statement.income_before_tax'], 'income_before_tax');
+  const legacyEbtPoints = extractFiscalSeries(inc?.income_before_tax, periods, 'Financial Statements (EBT)');
+  const allEbtPoints = dedupeFiscalPoints(secEbtPoints.length > 0 ? secEbtPoints : canonicalEbtPoints.length > 0 ? canonicalEbtPoints : legacyEbtPoints);
+
+  const secTaxPoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'income_tax_expense');
+  const canonicalTaxPoints = extractCanonicalFacts(verifiedCanonical?.values?.['income_statement.income_tax_expense'], 'income_tax_expense');
+  const legacyTaxPoints = extractFiscalSeries(inc?.income_tax_expense || (inc as any)?.tax_provision, periods, 'Financial Statements (tax expense)');
+  const allTaxPoints = dedupeFiscalPoints(secTaxPoints.length > 0 ? secTaxPoints : canonicalTaxPoints.length > 0 ? canonicalTaxPoints : legacyTaxPoints);
+
+  let ttmEbt: number | undefined;
+  let ttmTaxExp: number | undefined;
+  if (trailingOp.kind === 'TTM') {
+    const matchingEbt = allEbtPoints.filter(p => trailingOp.points.some(q => q.year === p.year && q.quarter === p.quarter));
+    if (matchingEbt.length === 4) ttmEbt = matchingEbt.reduce((sum, p) => sum + p.value, 0);
+    const matchingTax = allTaxPoints.filter(p => trailingOp.points.some(q => q.year === p.year && q.quarter === p.quarter));
+    if (matchingTax.length === 4) ttmTaxExp = matchingTax.reduce((sum, p) => sum + p.value, 0);
+  } else if (trailingOp.kind === 'ANNUAL' && trailingOp.points[0]) {
+    ttmEbt = allEbtPoints.find(p => p.kind === 'ANNUAL' && p.year === trailingOp.points[0].year)?.value ?? at(inc?.income_before_tax);
+    ttmTaxExp = allTaxPoints.find(p => p.kind === 'ANNUAL' && p.year === trailingOp.points[0].year)?.value ?? at(inc?.income_tax_expense) ?? at((inc as any)?.tax_provision);
+  } else if (trailingOp.kind === 'QUARTERLY' && trailingOp.points[0]) {
+    ttmEbt = allEbtPoints.find(p => p.year === trailingOp.points[0].year && p.quarter === trailingOp.points[0].quarter)?.value ?? at(inc?.income_before_tax);
+    ttmTaxExp = allTaxPoints.find(p => p.year === trailingOp.points[0].year && p.quarter === trailingOp.points[0].quarter)?.value ?? at(inc?.income_tax_expense) ?? at((inc as any)?.tax_provision);
+  }
+
+  const endingIC = totalEquity !== undefined && totalDebt !== undefined && totalCash !== undefined
+    ? totalEquity + totalDebt - totalCash
+    : null;
+
+  const eqArr = bs?.total_equity || [];
+  const debtArr = bs?.total_debt || [];
+  const cashArr = bs?.cash_and_equivalents || [];
+  const stArr = bs?.short_term_investments || [];
+  const assetsArr = bs?.total_assets || [];
+
+  let beginIC: number | undefined;
+  let beginEq: number | undefined;
+  let beginAssets: number | undefined;
+  if (eqArr.length >= 2) {
+    const beginIdx = Math.max(0, lastIndex - 4);
+    beginEq = eqArr[beginIdx];
+    const beginDebt = debtArr[beginIdx] ?? (bs?.short_term_debt?.[beginIdx] ?? 0) + (bs?.long_term_debt?.[beginIdx] ?? 0);
+    const beginCash = (cashArr[beginIdx] ?? 0) + (stArr[beginIdx] ?? 0);
+    beginAssets = assetsArr[beginIdx];
+    if (finite(beginEq) && finite(beginDebt)) {
+      beginIC = beginEq + beginDebt - beginCash;
+    }
+  }
+
+  let roicVal: number | null | undefined;
   let roicBasis = 'Reported';
   let roicFormula: string | undefined;
-  let roicStatus: MetricResolutionStatus = finite(roicVal) ? 'REPORTED' : 'UNAVAILABLE';
+  let roicStatus: MetricResolutionStatus = 'UNAVAILABLE';
   let roicReason: string | undefined;
   let roicReasonTh: string | undefined;
+  let roicPeriod: string | undefined = latestPeriod;
 
   if (isFinancial) {
     roicVal = undefined;
     roicStatus = 'GUARDED';
     roicReason = 'ROIC guarded for financial institutions';
     roicReasonTh = 'ROIC ไม่ใช้กับสถาบันการเงินเนื่องจากเงินฝากเป็นสินค้าคงคลังดำเนินงาน (เน้น ROE/ROA)';
-  } else if (roicVal === undefined) {
-    if (opInc !== undefined && totalEquity !== undefined && totalDebt !== undefined && totalCash !== undefined) {
-      const taxExp = at(inc?.income_tax_expense);
-      const ebt = at(inc?.income_before_tax);
-      const effTaxRate = (taxExp !== undefined && ebt !== undefined && ebt > 0 && taxExp >= 0 && taxExp <= ebt)
-        ? taxExp / ebt
-        : 0.21;
-      const nopat = opInc * (1 - effTaxRate);
-      const endingIC = totalEquity + totalDebt - totalCash;
-
-      const eqArr = bs?.total_equity || [];
-      const debtArr = bs?.total_debt || [];
-      const cashArr = bs?.cash_and_equivalents || [];
-      const stArr = bs?.short_term_investments || [];
-      let avgIC = endingIC;
-
-      if (eqArr.length >= 2) {
-        const beginEq = eqArr[0];
-        const beginDebt = debtArr[0] ?? 0;
-        const beginCash = (cashArr[0] ?? 0) + (stArr[0] ?? 0);
-        if (finite(beginEq) && finite(beginDebt)) {
-          const beginIC = beginEq + beginDebt - beginCash;
-          if (beginIC > 0) {
-            avgIC = (beginIC + endingIC) / 2;
-            roicBasis = 'NOPAT / Average Invested Capital (Beginning & Ending Period)';
-          }
-        }
-      }
-      if (!roicBasis || roicBasis === 'Reported') {
-        roicBasis = 'NOPAT / Ending Invested Capital';
-      }
-
-      if (avgIC > 0) {
-        roicVal = rounded((nopat / avgIC) * 100);
-        roicFormula = 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash)';
-        roicStatus = 'CALCULATED';
-      } else {
-        roicStatus = 'UNAVAILABLE';
-        roicReason = 'Invested capital is non-positive';
-        roicReasonTh = 'เงินลงทุนดำเนินงานสุทธิ (Invested Capital) มีค่าติดลบหรือไม่เป็นบวก';
-      }
-    } else {
-      roicStatus = 'UNAVAILABLE';
-      roicReason = 'Insufficient verified invested-capital inputs';
-      roicReasonTh = 'ข้อมูลสำหรับคำนวณเงินลงทุนสุทธิ (Invested Capital) ไม่เพียงพอ';
-    }
+  } else if (secOpPoints.length >= 4 && trailingOp.kind === 'TTM' && trailingOp.totalValue !== null && endingIC !== null && endingIC > 0) {
+    // 1. Independently verified SEC 4 quarters
+    const roicResult = calculateCanonicalRoic({
+      operatingIncome: trailingOp.totalValue,
+      incomeBeforeTax: finite(ttmEbt) ? ttmEbt : at(inc?.income_before_tax),
+      incomeTaxExpense: finite(ttmTaxExp) ? ttmTaxExp : at(inc?.income_tax_expense) ?? at((inc as any)?.tax_provision),
+      beginningInvestedCapital: finite(beginIC) && beginIC > 0 ? beginIC : undefined,
+      endingInvestedCapital: endingIC,
+      periodBasis: 'TTM',
+      periodLabel: trailingOp.periodLabel,
+      source: trailingOp.source,
+    });
+    roicVal = roicResult.value;
+    roicStatus = roicResult.status === 'CALCULATED' ? 'CALCULATED' : 'UNAVAILABLE';
+    roicBasis = roicResult.basis;
+    roicPeriod = roicResult.period;
+    roicFormula = roicResult.formula;
+    roicReason = roicResult.reason;
+    roicReasonTh = roicResult.reasonTh;
+  } else if (finite(getKi('roic')) || finite(getKi('roic_pct'))) {
+    // 2. Canonical Key Indicators
+    roicVal = getKi('roic') ?? getKi('roic_pct');
+    roicStatus = 'REPORTED';
+    roicBasis = 'Reported';
+  } else if (allOpPoints.length === 0 || endingIC === null || endingIC === undefined) {
+    roicVal = undefined;
+    roicStatus = 'UNAVAILABLE';
+    roicReason = 'Insufficient verified invested-capital inputs';
+    roicReasonTh = 'ข้อมูลสำหรับคำนวณเงินลงทุนสุทธิ (Invested Capital) ไม่เพียงพอ';
+  } else if (trailingOp.kind === 'INSUFFICIENT') {
+    roicVal = undefined;
+    roicStatus = 'UNAVAILABLE';
+    roicReason = 'INSUFFICIENT_TTM_HISTORY';
+    roicReasonTh = 'ประวัติผลการดำเนินงานรายไตรมาสที่ตรวจสอบแล้วไม่ครบ 4 ไตรมาสเพื่อคำนวณ TTM ROIC';
+    roicBasis = 'TTM NOPAT / Average Invested Capital';
+  } else if (endingIC <= 0) {
+    roicVal = undefined;
+    roicStatus = 'UNAVAILABLE';
+    roicReason = 'Invested capital is non-positive';
+    roicReasonTh = 'เงินลงทุนดำเนินงานสุทธิ (Invested Capital) มีค่าติดลบหรือไม่เป็นบวก';
+    roicBasis = 'Invested Capital non-positive';
+  } else if (trailingOp.totalValue !== null && endingIC > 0) {
+    const roicResult = calculateCanonicalRoic({
+      operatingIncome: trailingOp.totalValue,
+      incomeBeforeTax: finite(ttmEbt) ? ttmEbt : at(inc?.income_before_tax),
+      incomeTaxExpense: finite(ttmTaxExp) ? ttmTaxExp : at(inc?.income_tax_expense) ?? at((inc as any)?.tax_provision),
+      beginningInvestedCapital: finite(beginIC) && beginIC > 0 ? beginIC : undefined,
+      endingInvestedCapital: endingIC,
+      periodBasis: trailingOp.kind === 'TTM' ? 'TTM' : trailingOp.kind === 'ANNUAL' ? 'ANNUAL' : 'QUARTERLY',
+      periodLabel: trailingOp.periodLabel,
+      source: trailingOp.source,
+    });
+    roicVal = roicResult.value;
+    roicStatus = roicResult.status === 'CALCULATED' ? 'CALCULATED' : 'UNAVAILABLE';
+    roicBasis = roicResult.basis;
+    roicPeriod = roicResult.period;
+    roicFormula = roicResult.formula;
+    roicReason = roicResult.reason;
+    roicReasonTh = roicResult.reasonTh;
+  } else {
+    roicVal = undefined;
+    roicStatus = 'UNAVAILABLE';
+    roicReason = 'Insufficient verified invested-capital inputs';
+    roicReasonTh = 'ข้อมูลสำหรับคำนวณเงินลงทุนสุทธิ (Invested Capital) ไม่เพียงพอ';
   }
 
+  const roicPeriodBasis: 'TTM' | 'ANNUAL' | 'QUARTERLY' | undefined =
+    trailingOp.kind === 'TTM' ? 'TTM' : trailingOp.kind === 'ANNUAL' ? 'ANNUAL' : trailingOp.kind === 'QUARTERLY' ? 'QUARTERLY' : undefined;
+
   const roic: ResolvedMetricItem = {
-    value: roicVal,
+    value: roicVal ?? undefined,
     basis: roicBasis,
-    period: latestPeriod,
+    periodBasis: roicPeriodBasis,
+    period: roicPeriod || latestPeriod,
     formula: roicFormula,
-    source: roicStatus === 'CALCULATED' ? 'SEC Operating Income & Balance Sheet' : 'Key Indicators',
+    source: roicStatus === 'CALCULATED' ? (trailingOp.source || 'SEC Operating Income & Balance Sheet') : 'Key Indicators',
     status: roicStatus,
     reason: roicReason,
     reasonTh: roicReasonTh,
@@ -530,32 +784,132 @@ export function resolveFundamentalMetrics(
     });
   }
 
-  // 6. ROE & ROA (Independent denominators)
-  const roeVal = getKi('roe') ?? getKi('roe_pct') ?? (netInc !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded((netInc / totalEquity) * 100) : undefined);
+  // 6. ROE & ROA (Canonical TTM / Annual Net Income / Average Capital)
+  const secNiPoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'net_income');
+  const canonicalNiPoints = extractCanonicalFacts(verifiedCanonical?.values?.['income_statement.net_income'], 'net_income');
+  const legacyNiPoints = extractFiscalSeries(inc?.net_income, periods, 'Financial Statements (net income)');
+  const allNiPoints = dedupeFiscalPoints(secNiPoints.length > 0 ? secNiPoints : canonicalNiPoints.length > 0 ? canonicalNiPoints : legacyNiPoints);
+  const trailingNi = resolveTrailingFourQuarters(allNiPoints, latestFiscal);
+
+  let roeVal: number | undefined;
+  let roeBasis = 'TTM Net Income / Average Total Equity';
+  let roePeriod = latestPeriod;
+  let roeStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  let roeReason: string | undefined;
+  let roeReasonTh: string | undefined;
+
+  let roaVal: number | undefined;
+  let roaBasis = 'TTM Net Income / Average Total Assets';
+  let roaPeriod = latestPeriod;
+  let roaStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  let roaReason: string | undefined;
+  let roaReasonTh: string | undefined;
+
+  if (secNiPoints.length >= 4 && trailingNi.kind === 'TTM' && trailingNi.totalValue !== null && totalEquity !== undefined && totalEquity > 0) {
+    const avgEquity = beginEq && beginEq > 0 ? (beginEq + totalEquity) / 2 : totalEquity;
+    roeVal = rounded((trailingNi.totalValue / avgEquity) * 100);
+    roeBasis = beginEq && beginEq > 0 ? 'TTM Net Income / Average Total Equity' : 'TTM Net Income / Ending Total Equity';
+    roePeriod = trailingNi.periodLabel;
+    roeStatus = 'CALCULATED';
+
+    if (totalAssets !== undefined && totalAssets > 0) {
+      const avgAssets = beginAssets && beginAssets > 0 ? (beginAssets + totalAssets) / 2 : totalAssets;
+      roaVal = rounded((trailingNi.totalValue / avgAssets) * 100);
+      roaBasis = beginAssets && beginAssets > 0 ? 'TTM Net Income / Average Total Assets' : 'TTM Net Income / Ending Total Assets';
+      roaPeriod = trailingNi.periodLabel;
+      roaStatus = 'CALCULATED';
+    }
+  } else if (finite(getKi('roe')) || finite(getKi('roe_pct'))) {
+    roeVal = getKi('roe') ?? getKi('roe_pct');
+    roeBasis = 'Reported';
+    roeStatus = 'REPORTED';
+    if (finite(getKi('roa')) || finite(getKi('roa_pct'))) {
+      roaVal = getKi('roa') ?? getKi('roa_pct');
+      roaBasis = 'Reported';
+      roaStatus = 'REPORTED';
+    }
+  } else if (trailingNi.kind === 'TTM' && trailingNi.totalValue !== null && totalEquity !== undefined && totalEquity > 0) {
+    const avgEquity = beginEq && beginEq > 0 ? (beginEq + totalEquity) / 2 : totalEquity;
+    roeVal = rounded((trailingNi.totalValue / avgEquity) * 100);
+    roeBasis = beginEq && beginEq > 0 ? 'TTM Net Income / Average Total Equity' : 'TTM Net Income / Ending Total Equity';
+    roePeriod = trailingNi.periodLabel;
+    roeStatus = 'CALCULATED';
+
+    if (totalAssets !== undefined && totalAssets > 0) {
+      const avgAssets = beginAssets && beginAssets > 0 ? (beginAssets + totalAssets) / 2 : totalAssets;
+      roaVal = rounded((trailingNi.totalValue / avgAssets) * 100);
+      roaBasis = beginAssets && beginAssets > 0 ? 'TTM Net Income / Average Total Assets' : 'TTM Net Income / Ending Total Assets';
+      roaPeriod = trailingNi.periodLabel;
+      roaStatus = 'CALCULATED';
+    }
+  } else if (trailingNi.kind === 'ANNUAL' && trailingNi.totalValue !== null && totalEquity !== undefined && totalEquity > 0) {
+    const avgEquity = beginEq && beginEq > 0 ? (beginEq + totalEquity) / 2 : totalEquity;
+    roeVal = rounded((trailingNi.totalValue / avgEquity) * 100);
+    roeBasis = beginEq && beginEq > 0 ? 'Annual Net Income / Average Total Equity' : 'Annual Net Income / Ending Total Equity';
+    roePeriod = trailingNi.periodLabel;
+    roeStatus = 'CALCULATED';
+
+    if (totalAssets !== undefined && totalAssets > 0) {
+      const avgAssets = beginAssets && beginAssets > 0 ? (beginAssets + totalAssets) / 2 : totalAssets;
+      roaVal = rounded((trailingNi.totalValue / avgAssets) * 100);
+      roaBasis = beginAssets && beginAssets > 0 ? 'Annual Net Income / Average Total Assets' : 'Annual Net Income / Ending Total Assets';
+      roaPeriod = trailingNi.periodLabel;
+      roaStatus = 'CALCULATED';
+    }
+  } else if (trailingNi.kind === 'QUARTERLY' && trailingNi.totalValue !== null && totalEquity !== undefined && totalEquity > 0) {
+    roeVal = rounded((trailingNi.totalValue / totalEquity) * 100);
+    roeBasis = `${trailingNi.periodLabel} Net Income / Ending Total Equity`;
+    roePeriod = trailingNi.periodLabel;
+    roeStatus = 'CALCULATED';
+
+    if (totalAssets !== undefined && totalAssets > 0) {
+      roaVal = rounded((trailingNi.totalValue / totalAssets) * 100);
+      roaBasis = `${trailingNi.periodLabel} Net Income / Ending Total Assets`;
+      roaPeriod = trailingNi.periodLabel;
+      roaStatus = 'CALCULATED';
+    }
+  } else if (trailingNi.kind === 'INSUFFICIENT') {
+    roeStatus = 'UNAVAILABLE';
+    roeReason = 'INSUFFICIENT_TTM_HISTORY';
+    roeReasonTh = 'ประวัติกำไรสุทธิรายไตรมาสที่ตรวจสอบแล้วไม่ครบ 4 ไตรมาสเพื่อคำนวณ TTM ROE';
+    roaStatus = 'UNAVAILABLE';
+    roaReason = 'INSUFFICIENT_TTM_HISTORY';
+    roaReasonTh = 'ประวัติกำไรสุทธิรายไตรมาสที่ตรวจสอบแล้วไม่ครบ 4 ไตรมาสเพื่อคำนวณ TTM ROA';
+  }
+
+  const niPeriodBasis: 'TTM' | 'ANNUAL' | 'QUARTERLY' | undefined =
+    trailingNi.kind === 'TTM' ? 'TTM' : trailingNi.kind === 'ANNUAL' ? 'ANNUAL' : trailingNi.kind === 'QUARTERLY' ? 'QUARTERLY' : undefined;
+
   const roe: ResolvedMetricItem = {
     value: roeVal,
-    basis: 'TTM',
-    period: latestPeriod,
+    basis: roeBasis,
+    periodBasis: niPeriodBasis,
+    period: roePeriod,
     formula: 'Net Income / Total Equity × 100',
-    source: getKi('roe') ? 'Key Indicators' : 'SEC Income Statement & Balance Sheet',
-    status: finite(roeVal) ? 'REPORTED' : 'UNAVAILABLE',
+    source: roeStatus === 'CALCULATED' ? (trailingNi.source || 'SEC Income Statement & Balance Sheet') : 'Key Indicators',
+    status: roeStatus,
+    reason: roeReason,
+    reasonTh: roeReasonTh,
   };
 
-  const roaVal = getKi('roa') ?? getKi('roa_pct') ?? (netInc !== undefined && totalAssets !== undefined && totalAssets > 0 ? rounded((netInc / totalAssets) * 100) : undefined);
   const roa: ResolvedMetricItem = {
     value: roaVal,
-    basis: 'TTM',
-    period: latestPeriod,
+    basis: roaBasis,
+    periodBasis: niPeriodBasis,
+    period: roaPeriod,
     formula: 'Net Income / Total Assets × 100',
-    source: getKi('roa') ? 'Key Indicators' : 'SEC Income Statement & Balance Sheet',
-    status: finite(roaVal) ? 'REPORTED' : 'UNAVAILABLE',
+    source: roaStatus === 'CALCULATED' ? (trailingNi.source || 'SEC Income Statement & Balance Sheet') : 'Key Indicators',
+    status: roaStatus,
+    reason: roaReason,
+    reasonTh: roaReasonTh,
   };
 
-  // 7. Margins
+  // 7. Margins — Truthful period metadata matching input statement
+  const marginPeriodLabel = latestFiscal?.label || latestPeriod || 'Quarterly';
   const grossMarginVal = isFinancial ? undefined : (at(inc?.gross_margin_pct) ?? (rev !== undefined && grossProfit !== undefined && rev > 0 ? rounded((grossProfit / rev) * 100) : undefined));
   const grossMargin: ResolvedMetricItem = {
     value: grossMarginVal,
-    basis: 'TTM',
+    basis: marginPeriodLabel,
     period: latestPeriod,
     status: isFinancial ? 'GUARDED' : finite(grossMarginVal) ? 'REPORTED' : 'UNAVAILABLE',
     isGuarded: isFinancial,
@@ -564,7 +918,7 @@ export function resolveFundamentalMetrics(
   const opMarginVal = at(inc?.operating_margin_pct) ?? (rev !== undefined && opInc !== undefined && rev > 0 ? rounded((opInc / rev) * 100) : undefined);
   const operatingMargin: ResolvedMetricItem = {
     value: opMarginVal,
-    basis: 'TTM',
+    basis: marginPeriodLabel,
     period: latestPeriod,
     status: finite(opMarginVal) ? 'REPORTED' : 'UNAVAILABLE',
   };
@@ -572,7 +926,7 @@ export function resolveFundamentalMetrics(
   const netMarginVal = at(inc?.net_margin_pct) ?? (rev !== undefined && netInc !== undefined && rev > 0 ? rounded((netInc / rev) * 100) : undefined);
   const netMargin: ResolvedMetricItem = {
     value: netMarginVal,
-    basis: 'TTM',
+    basis: marginPeriodLabel,
     period: latestPeriod,
     status: finite(netMarginVal) ? 'REPORTED' : 'UNAVAILABLE',
   };

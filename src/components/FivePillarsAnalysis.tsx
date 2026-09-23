@@ -219,39 +219,67 @@ export function FivePillarsAnalysis({
 
             <div className="space-y-2.5 font-mono">
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
-                <span className="text-stone-600 font-sans text-sm sm:text-base">
-                  {isFinancial
-                    ? (isThai ? 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):' : 'Return on Equity (ROE):')
-                    : (isThai ? 'ผลตอบแทนจากเงินลงทุน (ROIC):' : 'Return on Invested Capital (ROIC):')}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-stone-600 font-sans text-sm sm:text-base">
+                    {isFinancial
+                      ? (isThai ? 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):' : 'Return on Equity (ROE):')
+                      : (isThai ? 'ผลตอบแทนจากเงินลงทุน (ROIC):' : 'Return on Invested Capital (ROIC):')}
+                  </span>
+                  {(isFinancial ? profit.roe_basis : profit.roic_basis) && (
+                    <span className="text-[11px] text-stone-400 font-sans font-normal">
+                      {isFinancial ? profit.roe_basis : profit.roic_basis}
+                    </span>
+                  )}
+                </div>
                 <span className="font-bold text-stone-900 text-base sm:text-lg">
                   {isFinancial ? metric(profit.roe_pct, '%', '') : metric(profit.roic_pct, '%', '')}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
-                <span className="text-stone-600 font-sans text-sm sm:text-base">
-                  {isFinancial
-                    ? (isThai ? 'ผลตอบแทนจากสินทรัพย์รวม (ROA):' : 'Return on Assets (ROA):')
-                    : (isThai ? 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):' : 'Return on Equity (ROE):')}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-stone-600 font-sans text-sm sm:text-base">
+                    {isFinancial
+                      ? (isThai ? 'ผลตอบแทนจากสินทรัพย์รวม (ROA):' : 'Return on Assets (ROA):')
+                      : (isThai ? 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):' : 'Return on Equity (ROE):')}
+                  </span>
+                  {(isFinancial ? profit.roa_basis : profit.roe_basis) && (
+                    <span className="text-[11px] text-stone-400 font-sans font-normal">
+                      {isFinancial ? profit.roa_basis : profit.roe_basis}
+                    </span>
+                  )}
+                </div>
                 <span className="font-bold text-stone-900 text-base sm:text-lg">
                   {isFinancial ? (profit.roa_pct !== undefined ? `${profit.roa_pct}%` : 'N/A') : metric(profit.roe_pct, '%', '')}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-stone-200/40">
-                <span className="text-stone-600 font-sans text-sm sm:text-base">
-                  {isFinancial
-                    ? (isThai ? 'อัตรากำไรขั้นต้น (Gross Margin):' : 'Gross Margin:')
-                    : (isThai ? 'อัตรากำไรขั้นต้น (Gross Margin):' : 'Gross Margin:')}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-stone-600 font-sans text-sm sm:text-base">
+                    {isFinancial
+                      ? (isThai ? 'อัตรากำไรขั้นต้น (Gross Margin):' : 'Gross Margin:')
+                      : (isThai ? 'อัตรากำไรขั้นต้น (Gross Margin):' : 'Gross Margin:')}
+                  </span>
+                  {!isFinancial && profit.gross_margin_basis && (
+                    <span className="text-[11px] text-stone-400 font-sans font-normal">
+                      {profit.gross_margin_basis}
+                    </span>
+                  )}
+                </div>
                 <span className={`text-base sm:text-lg ${isFinancial ? 'text-stone-400 font-sans text-xs sm:text-sm italic' : 'font-bold text-stone-800'}`}>
                   {isFinancial ? (isThai ? 'ไม่เหมาะกับธุรกิจการเงิน' : 'Not Applicable (No COGS)') : metric(profit.gross_margin_pct, '%', '')}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-stone-500 font-sans text-xs sm:text-sm">
-                  {isThai ? 'อัตรากำไรสุทธิ (Net Margin):' : 'Net Margin:'}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-stone-500 font-sans text-xs sm:text-sm">
+                    {isThai ? 'อัตรากำไรสุทธิ (Net Margin):' : 'Net Margin:'}
+                  </span>
+                  {profit.net_margin_basis && (
+                    <span className="text-[11px] text-stone-400 font-sans font-normal">
+                      {profit.net_margin_basis}
+                    </span>
+                  )}
+                </div>
                 <span className="font-bold text-stone-800 text-sm sm:text-base">{metric(profit.net_margin_pct, '%', '')}</span>
               </div>
             </div>
@@ -308,11 +336,18 @@ export function FivePillarsAnalysis({
                 <span className="font-bold text-stone-800 text-base sm:text-lg">{metric(balance.debt_to_equity, 'x', '')}</span>
               </div>
               <div className="flex justify-between items-center py-1">
-                <span className="text-stone-500 font-sans text-xs sm:text-sm">
-                  {isFinancial
-                    ? (isThai ? 'โครงสร้างเงินทุน (Financial Context):' : 'Capital Structure:')
-                    : (isThai ? 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):' : 'Interest Coverage Ratio:')}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-stone-500 font-sans text-xs sm:text-sm">
+                    {isFinancial
+                      ? (isThai ? 'โครงสร้างเงินทุน (Financial Context):' : 'Capital Structure:')
+                      : (isThai ? 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):' : 'Interest Coverage Ratio:')}
+                  </span>
+                  {!isFinancial && balance.interest_coverage_basis && (
+                    <span className="text-[11px] text-stone-400 font-sans font-normal">
+                      {balance.interest_coverage_basis}
+                    </span>
+                  )}
+                </div>
                 <span className={`text-sm sm:text-base ${isFinancial ? 'text-stone-600 font-sans text-xs sm:text-sm' : 'font-bold text-stone-800'}`}>
                   {isFinancial
                     ? (isThai ? 'เงินฝากเป็นวัตถุดิบดำเนินงาน' : 'Deposits as Operating Inventory')
@@ -477,7 +512,15 @@ export function FivePillarsAnalysis({
                         )}
                       </td>
                       <td className="py-3 px-3 text-right font-mono text-stone-700 font-medium">
-                        {row.direct_peer_value}
+                        <div>{row.direct_peer_value}</div>
+                        {(row.direct_peer_reason || row.direct_peer_reason_th) && (row.direct_peer_value === 'N/A' || row.direct_peer_value === 'N/M') && (
+                          <div
+                            className="mt-0.5 text-[10px] font-sans text-stone-400 max-w-[150px] ml-auto whitespace-normal break-words leading-tight"
+                            title={row.direct_peer_reason}
+                          >
+                            {isThai ? (row.direct_peer_reason_th || row.direct_peer_reason) : row.direct_peer_reason}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border shadow-2xs ${

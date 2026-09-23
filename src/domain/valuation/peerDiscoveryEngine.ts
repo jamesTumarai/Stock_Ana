@@ -1,7 +1,9 @@
 import type { ReportData, PeerBenchmarkRow, PeerCompanyItem } from '../../types.js';
 import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMetricContext.js';
 import { resolveFundamentalMetrics, type ResolvedFundamentalMetrics } from './metricRegistry.js';
+import { calculateCanonicalRoic, calculateInvestedCapital } from './canonicalRoic.js';
 import type {
+  FactVerificationStatus,
   PeerBusinessFingerprint,
   PeerCandidate,
   PeerDiscoveryResult,
@@ -564,6 +566,38 @@ function buildCandidateFingerprint(
   };
 }
 
+export const GENERATED_FALLBACK_SOURCE_STRING = 'Verified Peer Disclosure / Market Snapshot';
+const GENERATED_FALLBACK_SOURCE_REGEX = /Verified Peer Disclosure \/ Market Snapshot/i;
+
+const MARKET_METRICS = new Set([
+  'pe_trailing',
+  'pe_forward',
+  'market_cap',
+  'ev_ebitda',
+  'ev_sales',
+  'price_to_book',
+  'price_to_tbv',
+  'p_ffo_multiple',
+  'p_affo_multiple',
+  'fcf_yield_pct',
+  'occupancy_rate_pct',
+]);
+
+export function isFilingGradeSource(source?: string | null): boolean {
+  if (!source || typeof source !== 'string') return false;
+  const s = source.trim();
+  if (!s || GENERATED_FALLBACK_SOURCE_REGEX.test(s)) return false;
+  return /SEC|10-K|10-Q|20-F|8-K|EDGAR|XBRL|issuer|filing|official|earnings release|annual report|quarterly report|source-backed|disclosure/i.test(s);
+}
+
+export function isMarketGradeSource(source?: string | null): boolean {
+  if (!source || typeof source !== 'string') return false;
+  const s = source.trim();
+  if (!s || GENERATED_FALLBACK_SOURCE_REGEX.test(s)) return false;
+  if (isFilingGradeSource(s)) return true;
+  return /market|provider|bloomberg|factset|s&p|refinitiv|morningstar|yahoo|google|exchange|nasdaq|nyse|fmp|financial modeling prep|lseg|snapshot/i.test(s);
+}
+
 /**
  * Extracts normalized metric observations from a candidate.
  */
@@ -580,28 +614,94 @@ function extractCandidateMetrics(
     const requiredKeys = ['operating_income', 'income_before_tax', 'income_tax_expense', 'total_debt', 'total_equity', 'cash_and_equivalents'];
     const facts = requiredKeys.map(key => metricObservations[key]);
     if (facts.some(fact => !fact || fact.value === null || fact.status !== 'VERIFIED')) return;
-    if (facts.some(fact => !/SEC|10-K|10-Q|20-F|issuer|official/i.test(fact.source))) return;
+    if (facts.some(fact => !isFilingGradeSource(fact.source))) return;
     const periods = new Set(facts.map(fact => fact.period));
     if (periods.size !== 1) return;
     const [operating, pretax, tax, debt, equity, cash] = facts.map(fact => fact.value as number);
     const shortInvestments = metricObservations.short_term_investments?.value ?? 0;
-    if (pretax <= 0 || tax < 0 || tax > pretax) return;
-    const investedCapital = equity + debt - cash - shortInvestments;
-    if (investedCapital <= 0) return;
-    const effectiveTaxRate = tax / pretax;
-    const value = Math.round(((operating * (1 - effectiveTaxRate)) / investedCapital) * 10_000) / 100;
-    metricObservations.roic_pct = {
-      ticker, company: companyName, metric: 'roic_pct', value, unit: '%',
-      period: facts[0].period, asOfDate,
+
+    const investedCapital = calculateInvestedCapital(equity, debt, cash, shortInvestments);
+    if (investedCapital === null || investedCapital <= 0) {
+      metricObservations.roic_pct = {
+        ticker,
+        company: companyName,
+        metric: 'roic_pct',
+        value: null,
+        unit: '%',
+        period: facts[0].period,
+        asOfDate,
+        source: `Derived from ${[...new Set(facts.map(fact => fact.source))].join(' + ')}`,
+        reportedOrDerived: 'DERIVED',
+        status: 'NOT_REPORTED',
+        reason: 'Invested capital is non-positive',
+        reasonTh: 'เงินลงทุนดำเนินงานสุทธิ (Invested Capital) มีค่าติดลบหรือไม่เป็นบวก',
+      };
+      return;
+    }
+
+    const periodStr = facts[0].period || '';
+    const periodBasis: 'TTM' | 'ANNUAL' | 'QUARTERLY' = /TTM|trailing/i.test(periodStr)
+      ? 'TTM'
+      : /FY\d{4}|annual|10-K/i.test(periodStr)
+        ? 'ANNUAL'
+        : 'QUARTERLY';
+
+    const roicResult = calculateCanonicalRoic({
+      operatingIncome: operating,
+      incomeBeforeTax: pretax,
+      incomeTaxExpense: tax,
+      endingInvestedCapital: investedCapital,
+      periodBasis,
+      periodLabel: facts[0].period,
       source: `Derived from ${[...new Set(facts.map(fact => fact.source))].join(' + ')}`,
-      reportedOrDerived: 'DERIVED', status: 'VERIFIED',
-    };
+    });
+
+    if (roicResult.status === 'CALCULATED' && typeof roicResult.value === 'number') {
+      metricObservations.roic_pct = {
+        ticker,
+        company: companyName,
+        metric: 'roic_pct',
+        value: roicResult.value,
+        unit: '%',
+        period: facts[0].period,
+        asOfDate,
+        source: roicResult.source || `Derived from ${facts[0].source}`,
+        reportedOrDerived: 'DERIVED',
+        status: 'VERIFIED',
+        basis: roicResult.basis,
+        periodBasis: roicResult.periodBasis,
+      };
+    } else {
+      metricObservations.roic_pct = {
+        ticker,
+        company: companyName,
+        metric: 'roic_pct',
+        value: null,
+        unit: '%',
+        period: facts[0].period,
+        asOfDate,
+        source: roicResult.source || `Derived from ${facts[0].source}`,
+        reportedOrDerived: 'DERIVED',
+        status: 'NOT_REPORTED',
+        reason: roicResult.reason || 'Insufficient verified TTM operating history',
+        reasonTh: roicResult.reasonTh,
+      };
+    }
   };
 
   if ('metrics' in raw && raw.metrics && typeof raw.metrics === 'object') {
     for (const [mKey, mData] of Object.entries((raw as CandidateDefinition).metrics)) {
-      const definitionCompatible = mKey !== 'roic_pct'
-        || (/SEC|10-K|10-Q|20-F|issuer|official/i.test(mData.source) && mData.reportedOrDerived === 'DERIVED');
+      let status: FactVerificationStatus = 'NOT_REPORTED';
+      if (mData.value !== null && Number.isFinite(mData.value)) {
+        if (mKey === 'roic_pct') {
+          status = isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+        } else if (MARKET_METRICS.has(mKey)) {
+          const isUnverified = !mData.source || GENERATED_FALLBACK_SOURCE_REGEX.test(mData.source) || /unverified/i.test(mData.source);
+          status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
+        } else {
+          status = isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+        }
+      }
       metricObservations[mKey] = {
         ticker,
         company: companyName,
@@ -612,7 +712,11 @@ function extractCandidateMetrics(
         asOfDate: (mData as any).asOfDate || asOfDate,
         source: mData.source,
         reportedOrDerived: mData.reportedOrDerived,
-        status: mData.value !== null && definitionCompatible ? 'VERIFIED' : mData.value !== null ? 'FOUND_UNVERIFIED' : 'NOT_REPORTED',
+        status,
+        basis: (mData as any).basis,
+        periodBasis: (mData as any).periodBasis,
+        reason: (mData as any).reason,
+        reasonTh: (mData as any).reasonTh,
       };
     }
     completeDerivedMetrics();
@@ -622,7 +726,10 @@ function extractCandidateMetrics(
   // Map from PeerCompanyItem
   const p = raw as PeerCompanyItem;
   const period = p.financial_period || p.as_of_date || asOfDate || 'Latest';
-  const source = p.financial_source || 'Verified Peer Disclosure / Market Snapshot';
+  const rawSource = p.financial_source?.trim();
+  const source = rawSource && !GENERATED_FALLBACK_SOURCE_REGEX.test(rawSource)
+    ? rawSource
+    : '';
 
   const normalizePeerNumber = (value: unknown): number | null => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -635,6 +742,19 @@ function extractCandidateMetrics(
 
   const mapMetric = (key: string, val: unknown, unit: string) => {
     const normalizedValue = normalizePeerNumber(val);
+    let status: FactVerificationStatus = 'NOT_REPORTED';
+    if (normalizedValue !== null) {
+      if (key === 'roic_pct') {
+        // Pre-computed raw ROIC cannot be verified without underlying filing derivation
+        status = 'FOUND_UNVERIFIED';
+      } else if (MARKET_METRICS.has(key)) {
+        const isUnverified = GENERATED_FALLBACK_SOURCE_REGEX.test(p.financial_source || '') || /unverified/i.test(p.financial_source || '');
+        status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
+      } else {
+        // Fundamental filing facts: strictly require genuine filing-grade provenance
+        status = isFilingGradeSource(source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+      }
+    }
     metricObservations[key] = {
       ticker,
       company: companyName,
@@ -643,9 +763,9 @@ function extractCandidateMetrics(
       unit,
       period,
       asOfDate: p.as_of_date || asOfDate,
-      source,
+      source: source || (MARKET_METRICS.has(key) ? 'Market disclosure' : 'Unverified source'),
       reportedOrDerived: 'REPORTED',
-      status: normalizedValue !== null ? 'VERIFIED' : 'NOT_REPORTED',
+      status,
     };
   };
 
@@ -661,6 +781,7 @@ function extractCandidateMetrics(
   mapMetric('price_to_tbv', p.ptbv_ratio, 'x');
   mapMetric('roe_pct', p.roe_pct, '%');
   mapMetric('roa_pct', p.roa_pct, '%');
+  mapMetric('roic_pct', (p as any).roic_pct, '%');
   mapMetric('net_interest_margin_pct', p.net_interest_margin_pct, '%');
   mapMetric('combined_ratio_pct', p.combined_ratio_pct, '%');
   mapMetric('p_ffo_multiple', p.p_ffo_multiple, 'x');
@@ -900,6 +1021,11 @@ export function discoverPeers(
 
   // Compute deterministic medians per metric with progressive relationship
   // widening. Broader references participate only when stronger tiers do not
+  // Resolve target metrics from canonical resolver if not provided in options
+  const targetResolvedMetrics = options?.targetMetrics || resolveFundamentalMetrics(report, targetTicker);
+
+  // Compute deterministic medians per metric with progressive relationship
+  // widening. Broader references participate only when stronger tiers do not
   // provide the normal three-observation sample.
   const allMetricKeys = new Set<string>();
   for (const p of finalPeers) {
@@ -916,7 +1042,26 @@ export function discoverPeers(
       const tierValues = finalPeers
         .filter(peer => peer.relationType === tier)
         .map(peer => peer.metrics[k])
-        .filter(metric => metric?.status === 'VERIFIED' && typeof metric.value === 'number' && Number.isFinite(metric.value))
+        .filter(metric => {
+          if (!metric || metric.status !== 'VERIFIED' || typeof metric.value !== 'number' || !Number.isFinite(metric.value)) {
+            return false;
+          }
+          if (k === 'roic_pct') {
+            // Target-peer ROIC period and definition compatibility guard
+            const targetRoic = targetResolvedMetrics?.roic;
+            if (targetRoic && targetRoic.status === 'CALCULATED') {
+              const targetIsQuarterly = targetRoic.periodBasis === 'QUARTERLY' || targetRoic.basis?.includes('Quarterly');
+              const peerIsQuarterly = metric.periodBasis === 'QUARTERLY' || (/Q[1-4]/i.test(metric.period || '') && !/TTM|annual|FY\d{4}/i.test(metric.period || ''));
+              if (!targetIsQuarterly && peerIsQuarterly) {
+                return false; // Standalone quarter ROIC excluded from TTM target median
+              }
+              if (targetIsQuarterly && !peerIsQuarterly) {
+                return false;
+              }
+            }
+          }
+          return true;
+        })
         .map(metric => metric.value as number);
       selectedValues.push(...tierValues);
       if (selectedValues.length >= 3) break;
@@ -966,9 +1111,6 @@ export function discoverPeers(
     profitabilityState: p.fingerprint.profitabilityState,
     scaleTier: p.fingerprint.scaleTier,
   }));
-
-  // Resolve target metrics from canonical resolver if not provided in options
-  const targetResolvedMetrics = options?.targetMetrics || resolveFundamentalMetrics(report, targetTicker);
 
   // Add target row to peerCompanyItems for context
   const targetPE = targetResolvedMetrics.peTrailing.value;
@@ -1286,13 +1428,15 @@ function buildArchetypeBenchmarkRows(
     ];
     const selectedProfitability = profitabilityOptions.find(option => typeof option.target === 'number' && (metricSampleCounts[option.key] || 0) >= requiredPeerSample)
       || profitabilityOptions[0];
+    const directPeerProfitMetric = directPeer?.metrics[selectedProfitability.key];
+    const directPeerProfitVal = verifiedPeerValue(directPeer, selectedProfitability.key);
     const profitabilityMedian = benchmarkMedian(selectedProfitability.key);
     rows.push({
       metric_name: selectedProfitability.name,
       metric_name_th: selectedProfitability.nameTh,
       target_value: fmt(selectedProfitability.target, selectedProfitability.unit),
       sector_median: profitabilityMedian === null ? 'Insufficient Comparable Peer Data' : fmt(profitabilityMedian, selectedProfitability.unit),
-      direct_peer_value: fmt(verifiedPeerValue(directPeer, selectedProfitability.key), selectedProfitability.unit),
+      direct_peer_value: fmt(directPeerProfitVal, selectedProfitability.unit),
       status: selectedProfitability.target && profitabilityMedian ? (selectedProfitability.target > profitabilityMedian ? 'better' : 'worse') : 'neutral',
       status_label_th: selectedProfitability.target && profitabilityMedian ? (selectedProfitability.target > profitabilityMedian ? 'สูงกว่าค่ากลาง' : 'ต่ำกว่าค่ากลาง') : 'ข้อมูลเทียบเคียงไม่เพียงพอ',
       direct_peer_ticker: directPeer?.ticker,
@@ -1301,6 +1445,8 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_th: directHeaderTh,
       direct_peer_header_en: directHeaderEn,
       metric_basis: selectedProfitability.basis,
+      direct_peer_reason: directPeerProfitVal === null ? (directPeerProfitMetric?.reason || 'Filing data not available for ROIC derivation') : undefined,
+      direct_peer_reason_th: directPeerProfitVal === null ? (directPeerProfitMetric?.reasonTh || 'ไม่มีข้อมูลงบการเงินที่ตรวจสอบแล้วสำหรับคำนวณ ROIC') : undefined,
     });
   }
 
@@ -1318,6 +1464,7 @@ function buildArchetypeBenchmarkRows(
     const coverage = resolvePeerMetricCoverage(count);
     return {
       ...row,
+      metric_key: key,
       sector_median: coverage.canPublishMedian ? row.sector_median : 'Insufficient Comparable Peer Data',
       peer_sample_size: count,
       peer_required_sample_size: requiredPeerSample,

@@ -1010,14 +1010,27 @@ export interface FivePillarsProfitabilityData {
   roic_basis?: string;
   roic_formula?: string;
   roe_pct?: number;
+  roe_basis?: string;
   roa_pct?: number;
+  roa_basis?: string;
   gross_margin_pct?: number;
+  gross_margin_basis?: string;
   operating_margin_pct?: number;
+  operating_margin_basis?: string;
   net_margin_pct?: number;
+  net_margin_basis?: string;
   fcf_margin_pct?: number;
   net_interest_margin_pct?: number;
   efficiency_ratio_pct?: number;
   capital_efficiency_verdict?: string;
+  resolved_metrics?: {
+    roic?: FivePillarsResolvedMetric;
+    roe?: FivePillarsResolvedMetric;
+    roa?: FivePillarsResolvedMetric;
+    gross_margin?: FivePillarsResolvedMetric;
+    operating_margin?: FivePillarsResolvedMetric;
+    net_margin?: FivePillarsResolvedMetric;
+  };
 }
 
 export interface FivePillarsBalanceSheetData {
@@ -1054,6 +1067,7 @@ export interface FivePillarsYieldsData {
 }
 
 export interface PeerBenchmarkRow {
+  metric_key?: string;
   metric_name: string;
   metric_name_th?: string;
   target_value: string | number;
@@ -1073,6 +1087,8 @@ export interface PeerBenchmarkRow {
   peer_coverage_reason?: string;
   metric_basis?: string;
   metric_source?: string;
+  direct_peer_reason?: string;
+  direct_peer_reason_th?: string;
 }
 
 export interface FivePillarsData {

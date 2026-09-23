@@ -1,6 +1,8 @@
-import type { BusinessArchetype } from '../financialMetricContext';
-import type { DataGapState, FactVerificationStatus } from '../dataCompleteness/types';
-import type { FivePillarsData, PeerBenchmarkRow, PeerCompanyItem } from '../../types';
+import type { BusinessArchetype } from '../financialMetricContext.js';
+import type { DataGapState, FactVerificationStatus } from '../dataCompleteness/types.js';
+import type { FivePillarsData, PeerBenchmarkRow, PeerCompanyItem } from '../../types.js';
+
+export type { FactVerificationStatus };
 
 export type PeerRelationType = 'DIRECT_PEER' | 'CLOSE_COMPARABLE' | 'BROADER_SECTOR_REFERENCE';
 
@@ -36,6 +38,10 @@ export interface PeerMetricObservation {
   source: string;
   reportedOrDerived: 'REPORTED' | 'DERIVED';
   status: FactVerificationStatus;
+  basis?: string;
+  periodBasis?: 'TTM' | 'ANNUAL' | 'QUARTERLY';
+  reason?: string;
+  reasonTh?: string;
 }
 
 export interface PeerCandidate {
