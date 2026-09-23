@@ -486,8 +486,26 @@ function buildCandidateFingerprint(
     archetype = resolveBusinessArchetype({ company_profile: { sector, industry } } as any, ticker);
   }
 
-  let subIndustry = p.subIndustry || 'general';
-  if (!p.subIndustry) {
+  const suppliedSubIndustry = typeof p.subIndustry === 'string'
+    ? p.subIndustry.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+    : '';
+  let subIndustry = suppliedSubIndustry || 'general';
+  if (/automotive|auto_manufact|electric_vehicle|vehicle_manufact/.test(suppliedSubIndustry)) {
+    subIndustry = 'automotive_manufacturing';
+  } else if (/property.*casualty|casualty.*property|p_c_insurance/.test(suppliedSubIndustry)) {
+    subIndustry = 'pc_insurance';
+  } else if (/industrial.*reit|logistics.*reit/.test(suppliedSubIndustry)) {
+    subIndustry = 'industrial_logistics_reit';
+  } else if (/office.*reit/.test(suppliedSubIndustry)) {
+    subIndustry = 'office_reit';
+  } else if (/data.*center.*reit/.test(suppliedSubIndustry)) {
+    subIndustry = 'data_center_reit';
+  } else if (/physical.*retail|omnichannel.*retail/.test(suppliedSubIndustry)) {
+    subIndustry = 'physical_omnichannel_retail';
+  } else if (/digital.*marketplace|online.*marketplace/.test(suppliedSubIndustry)) {
+    subIndustry = 'digital_marketplace';
+  }
+  if (!suppliedSubIndustry) {
     if (/auto\s*manufactur|electric\s*vehicle|automotive/i.test(industry)) {
       subIndustry = 'automotive_manufacturing';
     } else if (archetype === 'semiconductor') {
@@ -597,18 +615,28 @@ function extractCandidateMetrics(
   const period = p.financial_period || p.as_of_date || asOfDate || 'Latest';
   const source = p.financial_source || 'Verified Peer Disclosure / Market Snapshot';
 
-  const mapMetric = (key: string, val: number | null | undefined, unit: string) => {
+  const normalizePeerNumber = (value: unknown): number | null => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().replace(/,/g, '').replace(/[x%]$/i, '').trim();
+    if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const mapMetric = (key: string, val: unknown, unit: string) => {
+    const normalizedValue = normalizePeerNumber(val);
     metricObservations[key] = {
       ticker,
       company: companyName,
       metric: key,
-      value: typeof val === 'number' && Number.isFinite(val) ? val : null,
+      value: normalizedValue,
       unit,
       period,
       asOfDate: p.as_of_date || asOfDate,
       source,
       reportedOrDerived: 'REPORTED',
-      status: typeof val === 'number' && Number.isFinite(val) ? 'VERIFIED' : 'NOT_REPORTED',
+      status: normalizedValue !== null ? 'VERIFIED' : 'NOT_REPORTED',
     };
   };
 
