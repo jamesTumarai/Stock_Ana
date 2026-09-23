@@ -568,7 +568,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     };
 
     const discovery = discoverPeers(targetReport, 'TARGET_CORP', { candidates: [directPeer, otherPeer], disableFixtureFallback: true });
-    
+
     // In every benchmark row, direct_peer_ticker must be PRIMARY_PEER
     for (const row of discovery.benchmarkRows) {
       if (row.direct_peer_ticker) {
