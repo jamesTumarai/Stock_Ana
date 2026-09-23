@@ -351,7 +351,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
 
     const result = discoverPeers(target, 'ALIEN_CO', { candidates: [], disableFixtureFallback: true });
     assert.equal(result.peerCount, 0);
-    assert.equal(result.unavailableReason, 'NO_CANDIDATES');
+    assert.equal(result.unavailableReason, 'SOURCE_GAP');
     assert.equal(result.benchmarkRows.length, 0);
   });
 

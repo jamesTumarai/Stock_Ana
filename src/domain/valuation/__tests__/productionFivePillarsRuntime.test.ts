@@ -386,7 +386,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     // In production mode with disableFixtureFallback
     const result = discoverPeers(emptyReport, 'UNKNOWN_EXTREME', { disableFixtureFallback: true });
     assert.equal(result.peerCount, 0, 'Must return 0 peers in production when no candidates match');
-    assert.equal(result.unavailableReason, 'NO_CANDIDATES');
+    assert.equal(result.unavailableReason, 'SOURCE_GAP');
   });
 
   it('18. Close comparables qualify when no DIRECT_PEER meets threshold', () => {
