@@ -74,7 +74,11 @@ export function resolveAdaptiveFivePillars(
 
   const cash = at(bs?.cash_and_equivalents);
   const stInvestments = at(bs?.short_term_investments);
-  const totalDebt = at(bs?.total_debt);
+  const totalDebt = at(bs?.total_debt) ?? (
+    at(bs?.short_term_debt) !== undefined && at(bs?.long_term_debt) !== undefined
+      ? (at(bs?.short_term_debt) as number) + (at(bs?.long_term_debt) as number)
+      : undefined
+  );
   const totalEquity = at(bs?.total_equity);
 
   const totalCash = cash !== undefined
@@ -88,6 +92,10 @@ export function resolveAdaptiveFivePillars(
   // 3. Resolve canonical fundamental metrics from single domain registry
   const resolvedMetrics = resolveFundamentalMetrics(report, sym);
   const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
+
+  // Discover peers early so that Pillar 2 narrative cross-references actual Pillar 5 benchmark coverage
+  const peerDiscovery = discoverPeers(report, sym, { targetMetrics: resolvedMetrics });
+  const peerMatrix = peerDiscovery.benchmarkRows;
 
   const growthData: FivePillarsGrowthData = {
     revenue_growth_yoy_pct: typeof resolvedMetrics.revenueGrowthYoY.value === 'number' ? resolvedMetrics.revenueGrowthYoY.value : undefined,
@@ -123,11 +131,29 @@ export function resolveAdaptiveFivePillars(
       : 'วิเคราะห์ผลตอบแทนสถาบันการเงินผ่าน ROE, ROA และ NIM';
   } else if (typeof resolvedMetrics.roic.value === 'number') {
     const roicVal = resolvedMetrics.roic.value;
-    capitalEfficiencyVerdict = roicVal > 15
-      ? `ROIC ${roicVal}% สะท้อนความสามารถในการจัดสรรเงินทุนที่ยอดเยี่ยม (High Capital Efficiency)`
-      : roicVal > 8
-        ? `ROIC ${roicVal}% สร้างผลตอบแทนเงินลงทุนในระดับมาตรฐานอุตสาหกรรม`
-        : `ROIC ${roicVal}% อัตราผลตอบแทนเงินลงทุนต่ำกว่าเกณฑ์เฉลี่ย`;
+    const roicRow = peerMatrix.find(r => r.metric_name === 'ROIC' || r.metric_key === 'roic_pct');
+    const hasValidPeerRoic = Boolean(
+      roicRow &&
+      roicRow.peer_coverage_status !== 'INSUFFICIENT' &&
+      typeof peerDiscovery.medians.roic_pct === 'number'
+    );
+    if (hasValidPeerRoic) {
+      const roicMed = peerDiscovery.medians.roic_pct as number;
+      const isLimited = roicRow?.peer_coverage_status === 'LIMITED';
+      const limitedSuffix = isLimited ? ' (กลุ่มตัวอย่างจำกัด)' : '';
+      capitalEfficiencyVerdict = roicVal > roicMed
+        ? `ROIC ${roicVal}% สูงกว่าค่ากลางกลุ่มคู่แข่ง (${roicMed}%)${limitedSuffix}`
+        : roicVal < roicMed
+          ? `ROIC ${roicVal}% ต่ำกว่าค่ากลางกลุ่มคู่แข่ง (${roicMed}%)${limitedSuffix}`
+          : `ROIC ${roicVal}% ใกล้เคียงค่ากลางกลุ่มคู่แข่ง (${roicMed}%)${limitedSuffix}`;
+    } else {
+      // Neutral target-only canonical narrative without false peer-median comparisons
+      capitalEfficiencyVerdict = roicVal > 15
+        ? `ROIC ${roicVal}% ตามฐาน TTM NOPAT / Average Invested Capital สะท้อนประสิทธิภาพการจัดสรรเงินทุนระดับสูง`
+        : roicVal > 8
+          ? `ROIC ${roicVal}% ตามฐาน TTM NOPAT / Average Invested Capital อยู่ในระดับมาตรฐาน`
+          : `ROIC ${roicVal}% ตามฐาน TTM NOPAT / Average Invested Capital อยู่ในเกณฑ์ชะลอตัว`;
+    }
   } else if (typeof resolvedMetrics.roe.value === 'number') {
     capitalEfficiencyVerdict = `ROE ${resolvedMetrics.roe.value}% สะท้อนผลตอบแทนต่อส่วนของผู้ถือหุ้น`;
   }
@@ -275,9 +301,7 @@ export function resolveAdaptiveFivePillars(
     yield_interpretation: yieldInterpretation,
   };
 
-  // 7. Resolve Pillar 5: Peer Discovery & Benchmark Matrix
-  const peerDiscovery = discoverPeers(report, sym, { targetMetrics: resolvedMetrics });
-  const peerMatrix = peerDiscovery.benchmarkRows;
+  // 7. Resolve Pillar 5: Peer Discovery & Benchmark Matrix (using peerDiscovery resolved above)
 
   // Build missing reason mapping for user-facing precision
   const unavailableReasons: Record<string, string> = {};
