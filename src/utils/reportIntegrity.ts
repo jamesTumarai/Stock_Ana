@@ -82,11 +82,9 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
     result.five_pillars.yields.treasury_fetch_status = 'available';
   }
 
-  if (result.financial_statements || result.five_pillars) {
-    const adaptivePillars = resolveAdaptiveFivePillars(result, ticker || result.ticker);
-    result.five_pillars = adaptivePillars.fivePillarsData;
-  }
-
+  // Recover the peer universe before resolving Five Pillars. Previously this ran
+  // afterwards, leaving Pillar 5 permanently empty even when fallback discovery
+  // successfully populated peer_comparison later in this function.
   if (result.financial_statements || result.peer_comparison) {
     if (!result.peer_comparison || !result.peer_comparison.peers || result.peer_comparison.peers.length === 0) {
       const peerDiscovery = discoverPeers(result, ticker || result.ticker);
@@ -101,6 +99,11 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
         };
       }
     }
+  }
+
+  if (result.financial_statements || result.five_pillars) {
+    const adaptivePillars = resolveAdaptiveFivePillars(result, ticker || result.ticker);
+    result.five_pillars = adaptivePillars.fivePillarsData;
   }
 
   // Keep dated research intact. Explicit quote refresh updates only current market fields.

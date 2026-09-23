@@ -716,8 +716,17 @@ export interface PeerCompanyItem {
   cash_and_equivalents?: number | null;
   short_term_investments?: number | null;
   ev_ebitda?: number | null;
+  ev_sales?: number | null;
   pb_ratio?: number | null;
+  ptbv_ratio?: number | null;
   roe_pct?: number | null;
+  roa_pct?: number | null;
+  net_interest_margin_pct?: number | null;
+  combined_ratio_pct?: number | null;
+  p_ffo_multiple?: number | null;
+  p_affo_multiple?: number | null;
+  occupancy_rate_pct?: number | null;
+  noi_growth_yoy_pct?: number | null;
   fcf_yield_pct?: number | null;
   status_label_th?: string;
   status_label_en?: string;
@@ -1060,7 +1069,7 @@ export interface PeerBenchmarkRow {
   direct_peer_header_en?: string;
   peer_sample_size?: number;
   peer_required_sample_size?: number;
-  peer_coverage_status?: 'SUFFICIENT' | 'INSUFFICIENT';
+  peer_coverage_status?: 'SUFFICIENT' | 'LIMITED' | 'INSUFFICIENT';
   peer_coverage_reason?: string;
   metric_basis?: string;
   metric_source?: string;
