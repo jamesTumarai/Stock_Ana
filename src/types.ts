@@ -701,13 +701,14 @@ export interface PeerCompanyItem {
   company_name: string;
   name?: string;
   market_cap?: string | number;
-  pe_trailing?: number | null;
+  pe_trailing?: number | null | string;
   pe_forward?: number | null;
   revenue_growth_yoy_pct?: number | null;
   gross_margin_pct?: number | null;
   operating_margin_pct?: number | null;
   net_margin_pct?: number | null;
   roic_pct?: number | null;
+  roic_verified?: boolean;
   operating_income?: number | null;
   income_before_tax?: number | null;
   income_tax_expense?: number | null;
@@ -715,7 +716,7 @@ export interface PeerCompanyItem {
   total_equity?: number | null;
   cash_and_equivalents?: number | null;
   short_term_investments?: number | null;
-  ev_ebitda?: number | null;
+  ev_ebitda?: number | null | string;
   ev_sales?: number | null;
   pb_ratio?: number | null;
   ptbv_ratio?: number | null;
@@ -743,6 +744,12 @@ export interface PeerCompanyItem {
   scaleTier?: 'mega' | 'large' | 'mid' | 'small';
   financial_period?: string;
   financial_source?: string;
+  revenue_growth_yoy_pct_period_basis?: string;
+  revenue_growth_yoy_pct_basis?: string;
+  operating_margin_pct_period_basis?: string;
+  operating_margin_pct_basis?: string;
+  roic_pct_period_basis?: string;
+  roic_pct_basis?: string;
 }
 
 export interface PeerComparisonData {
@@ -1072,6 +1079,7 @@ export interface PeerBenchmarkRow {
   metric_name_th?: string;
   target_value: string | number;
   sector_median: string | number;
+  median_value?: number | null;
   direct_peer_value: string | number;
   industry_leader_value?: string | number;
   status: 'better' | 'worse' | 'neutral' | 'premium' | 'discount';
