@@ -567,4 +567,3 @@ export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompa
     roic_pct_basis: m.roic_pct?.basis,
   };
 }
-
