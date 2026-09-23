@@ -331,8 +331,8 @@ export function resolveFundamentalMetrics(
   const cash = at(bs?.cash_and_equivalents);
   const stInvestments = at(bs?.short_term_investments);
   const totalDebt = at(bs?.total_debt) ?? (
-    at(bs?.short_term_debt) !== undefined || at(bs?.long_term_debt) !== undefined
-      ? (at(bs?.short_term_debt) ?? 0) + (at(bs?.long_term_debt) ?? 0)
+    at(bs?.short_term_debt) !== undefined && at(bs?.long_term_debt) !== undefined
+      ? (at(bs?.short_term_debt) as number) + (at(bs?.long_term_debt) as number)
       : undefined
   );
   const totalEquity = at(bs?.total_equity);
@@ -588,7 +588,11 @@ export function resolveFundamentalMetrics(
   if (eqArr.length >= 2) {
     const beginIdx = Math.max(0, lastIndex - 4);
     beginEq = eqArr[beginIdx];
-    const beginDebt = debtArr[beginIdx] ?? (bs?.short_term_debt?.[beginIdx] ?? 0) + (bs?.long_term_debt?.[beginIdx] ?? 0);
+    const beginDebt = debtArr[beginIdx] ?? (
+      bs?.short_term_debt?.[beginIdx] !== undefined && bs?.long_term_debt?.[beginIdx] !== undefined
+        ? (bs.short_term_debt[beginIdx] as number) + (bs.long_term_debt[beginIdx] as number)
+        : undefined
+    );
     const beginCash = (cashArr[beginIdx] ?? 0) + (stArr[beginIdx] ?? 0);
     beginAssets = assetsArr[beginIdx];
     if (finite(beginEq) && finite(beginDebt)) {

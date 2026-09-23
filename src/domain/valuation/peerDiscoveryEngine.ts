@@ -754,6 +754,8 @@ function extractCandidateMetrics(
         // Fundamental filing facts: strictly require genuine filing-grade provenance
         status = isFilingGradeSource(source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
       }
+    } else if (key === 'pe_trailing' && (val === 'N/M' || p.profitabilityState === 'pre_profit' || (typeof p.net_margin_pct === 'number' && p.net_margin_pct < 0))) {
+      status = 'VERIFIED';
     }
     metricObservations[key] = {
       ticker,
@@ -1060,6 +1062,24 @@ export function discoverPeers(
               }
             }
           }
+          if (['operating_margin_pct', 'gross_margin_pct', 'net_margin_pct', 'revenue_growth_yoy_pct'].includes(k)) {
+            const targetMetric = targetResolvedMetrics ? (
+              k === 'operating_margin_pct' ? targetResolvedMetrics.operatingMargin :
+              k === 'gross_margin_pct' ? targetResolvedMetrics.grossMargin :
+              k === 'net_margin_pct' ? targetResolvedMetrics.netMargin :
+              targetResolvedMetrics.revenueGrowthYoY
+            ) : undefined;
+            if (targetMetric && typeof targetMetric.value === 'number') {
+              const targetBasis = targetMetric.basis || '';
+              const targetIsQuarterly = /Q[1-4]/i.test(targetBasis) && !/TTM|annual|FY\d{4}/i.test(targetBasis);
+              const peerPeriod = metric.period || '';
+              const peerBasis = metric.basis || '';
+              const peerIsQuarterly = metric.periodBasis === 'QUARTERLY' || (/Q[1-4]/i.test(peerPeriod) && !/TTM|annual|FY\d{4}/i.test(peerPeriod)) || (/quarter/i.test(peerBasis) && !/TTM|annual/i.test(peerBasis));
+              if (targetIsQuarterly !== peerIsQuarterly) {
+                return false; // Exclude period basis mismatch (e.g. Target standalone quarter vs Peer TTM/annual)
+              }
+            }
+          }
           return true;
         })
         .map(metric => metric.value as number);
@@ -1184,6 +1204,28 @@ function buildArchetypeBenchmarkRows(
   const verifiedPeerValue = (peer: PeerCandidate | undefined, key: string) =>
     peer?.metrics[key]?.status === 'VERIFIED' ? peer.metrics[key]?.value : null;
 
+  const resolvePeerPeDisplay = (peer: PeerCandidate | undefined) => {
+    const val = verifiedPeerValue(peer, 'pe_trailing');
+    const obs = peer?.metrics['pe_trailing'];
+    const hasNegativeEarnings = Boolean(
+      peer && (
+        (typeof val === 'number' && val <= 0) ||
+        obs?.reason === 'NEGATIVE_EARNINGS' ||
+        obs?.value === -1 ||
+        peer.fingerprint.profitabilityState === 'pre_profit' ||
+        (peer.metrics['net_margin_pct']?.status === 'VERIFIED' && typeof peer.metrics['net_margin_pct']?.value === 'number' && peer.metrics['net_margin_pct'].value < 0) ||
+        (peer.metrics['operating_income']?.status === 'VERIFIED' && typeof peer.metrics['operating_income']?.value === 'number' && peer.metrics['operating_income'].value < 0)
+      )
+    );
+    if (typeof val === 'number' && val > 0) {
+      return { display: `${val}x`, reason: undefined, reasonTh: undefined };
+    }
+    if (hasNegativeEarnings) {
+      return { display: 'N/M', reason: 'Negative earnings (Not Meaningful)', reasonTh: 'ผลประกอบการขาดทุนสุทธิ (Not Meaningful)' };
+    }
+    return { display: 'N/A', reason: obs?.reason, reasonTh: obs?.reasonTh };
+  };
+
   // Section 27: Direct Peer must refer to one company.
   // Prefer DIRECT_PEER, or fall back to closest comparable if no DIRECT_PEER meets threshold
   const directPeer = peers.find(p => p.relationType === 'DIRECT_PEER')
@@ -1230,12 +1272,13 @@ function buildArchetypeBenchmarkRows(
     // Financial Benchmark Rows: P/E, P/B, ROE, NIM
     const peMed = benchmarkMedian('pe_trailing');
     const targetPE = targetMetrics?.peTrailing.value ?? report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
+    const directPE = resolvePeerPeDisplay(directPeer);
     rows.push({
       metric_name: 'P/E (Trailing)',
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
       target_value: fmtMultiple(targetPE, 'x'),
       sector_median: fmtMultiple(peMed, 'x'),
-      direct_peer_value: fmtMultiple(verifiedPeerValue(directPeer, 'pe_trailing'), 'x'),
+      direct_peer_value: directPE.display,
       status: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
       direct_peer_ticker: directPeer?.ticker,
@@ -1243,6 +1286,8 @@ function buildArchetypeBenchmarkRows(
       direct_peer_relation: directPeer?.relationType,
       direct_peer_header_th: directHeaderTh,
       direct_peer_header_en: directHeaderEn,
+      direct_peer_reason: directPE.reason,
+      direct_peer_reason_th: directPE.reasonTh,
     });
 
     const pbMed = benchmarkMedian('price_to_book');
@@ -1368,12 +1413,13 @@ function buildArchetypeBenchmarkRows(
     // Standard Operating & Industrial/Manufacturing Benchmark Rows: P/E, EV/EBITDA, Revenue Growth, ROIC
     const peMed = benchmarkMedian('pe_trailing');
     const targetPE = targetMetrics?.peTrailing.value ?? report.valuation_ratios?.find(r => /P\/E/.test(r.name) && !/forward/i.test(r.name))?.value;
+    const directPE = resolvePeerPeDisplay(directPeer);
     rows.push({
       metric_name: 'P/E (Trailing)',
       metric_name_th: 'อัตราส่วนราคาต่อกำไร',
       target_value: fmtMultiple(targetPE, 'x'),
       sector_median: fmtMultiple(peMed, 'x'),
-      direct_peer_value: fmtMultiple(verifiedPeerValue(directPeer, 'pe_trailing'), 'x'),
+      direct_peer_value: directPE.display,
       status: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'better' : 'premium') : 'neutral',
       status_label_th: targetPE && peMed && targetPE > 0 && peMed > 0 ? (targetPE < peMed ? 'ต่ำกว่าค่ากลาง' : 'พรีเมียมกว่าค่ากลาง') : 'เทียบเท่า',
       direct_peer_ticker: directPeer?.ticker,
@@ -1381,6 +1427,8 @@ function buildArchetypeBenchmarkRows(
       direct_peer_relation: directPeer?.relationType,
       direct_peer_header_th: directHeaderTh,
       direct_peer_header_en: directHeaderEn,
+      direct_peer_reason: directPE.reason,
+      direct_peer_reason_th: directPE.reasonTh,
     });
 
     const eveMed = benchmarkMedian('ev_ebitda');
@@ -1475,7 +1523,11 @@ function buildArchetypeBenchmarkRows(
           ? `Limited benchmark: ${count} verified comparable observations.`
           : `Comparable observations ${count}/${peers.length}; minimum required ${requiredPeerSample}.`,
       status: coverage.canPublishMedian ? row.status : 'neutral',
-      status_label_th: coverage.canPublishMedian ? row.status_label_th : 'ข้อมูลเทียบเคียงไม่เพียงพอ',
+      status_label_th: coverage.canPublishMedian
+        ? (coverage.status === 'LIMITED' && row.status_label_th && !row.status_label_th.includes('ตัวอย่างจำกัด') && row.status_label_th !== 'เทียบเท่า' && row.status_label_th !== 'ข้อมูลเทียบเคียงไม่เพียงพอ'
+            ? `${row.status_label_th} (ตัวอย่างจำกัด)`
+            : row.status_label_th)
+        : 'ข้อมูลเทียบเคียงไม่เพียงพอ',
     };
   });
 }

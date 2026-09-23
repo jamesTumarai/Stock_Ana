@@ -142,7 +142,13 @@ export function PeerComparisonTable({
                     </td>
                     <td className="py-3 px-3 text-right text-stone-800">{peer.market_cap || '-'}</td>
                     <td className="py-3 px-3 text-right font-bold text-stone-900">
-                      {peer.pe_trailing !== null && peer.pe_trailing !== undefined ? `${peer.pe_trailing}x` : 'N/A'}
+                      {typeof peer.pe_trailing === 'number' && peer.pe_trailing > 0
+                        ? `${peer.pe_trailing}x`
+                        : (typeof peer.pe_trailing === 'number' && peer.pe_trailing <= 0) ||
+                          (typeof peer.net_margin_pct === 'number' && peer.net_margin_pct < 0) ||
+                          peer.profitabilityState === 'pre_profit'
+                          ? 'N/M'
+                          : 'N/A'}
                     </td>
                     <td className="py-3 px-3 text-right text-stone-700">
                       {peer.pe_forward !== null && peer.pe_forward !== undefined ? `${peer.pe_forward}x` : 'N/A'}
