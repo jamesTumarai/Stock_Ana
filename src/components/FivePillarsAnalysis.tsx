@@ -83,14 +83,6 @@ export function FivePillarsAnalysis({
 
   return (
     <div className="bg-white rounded-3xl p-5 sm:p-7 border border-stone-200 shadow-sm flex flex-col gap-6 w-full">
-      {peerMatrix.length === 0 && (
-        <p className="text-xs text-amber-800 bg-amber-50/70 px-3 py-2 rounded-xl border border-amber-200/60">
-          {isThai
-            ? 'ยังไม่พบกลุ่มบริษัทที่เปรียบเทียบได้และมีข้อมูลที่ตรวจสอบแล้วเพียงพอ'
-            : 'No sufficiently comparable source-verified peer set is currently available.'}
-        </p>
-      )}
-
       {/* 1. Header with Badge & Info */}
       <div className="flex flex-col gap-4 border-b border-stone-100 pb-5">
         <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
@@ -438,8 +430,8 @@ export function FivePillarsAnalysis({
                         <div className="flex flex-col items-end">
                           <span className="text-[10px] text-stone-400 font-sans font-normal uppercase">
                             {isThai
-                              ? (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'คู่แข่งตรง' : 'บริษัทเทียบเคียง')
-                              : (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'Direct Peer' : 'Closest Comparable')}
+                              ? (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'คู่แข่งตรง' : peerMatrix[0].direct_peer_relation === 'CLOSE_COMPARABLE' ? 'บริษัทเทียบเคียง' : 'บริษัทอ้างอิงอุตสาหกรรม')
+                              : (peerMatrix[0].direct_peer_relation === 'DIRECT_PEER' ? 'Direct Peer' : peerMatrix[0].direct_peer_relation === 'CLOSE_COMPARABLE' ? 'Closest Comparable' : 'Industry Reference')}
                           </span>
                           <span
                             tabIndex={0}
@@ -475,10 +467,12 @@ export function FivePillarsAnalysis({
                         <div>{row.sector_median}</div>
                         {typeof row.peer_sample_size === 'number' && (
                           <div
-                            className={`mt-0.5 text-[10px] font-sans ${row.peer_coverage_status === 'INSUFFICIENT' ? 'text-amber-700' : 'text-stone-400'}`}
+                            className={`mt-0.5 text-[10px] font-sans ${row.peer_coverage_status === 'INSUFFICIENT' ? 'text-amber-700' : row.peer_coverage_status === 'LIMITED' ? 'text-amber-600' : 'text-stone-400'}`}
                             title={row.peer_coverage_reason}
                           >
-                            {isThai ? `ตัวอย่าง n=${row.peer_sample_size}` : `Peer Median (n=${row.peer_sample_size})`}
+                            {isThai
+                              ? `${row.peer_coverage_status === 'LIMITED' ? 'ตัวอย่างจำกัด' : row.peer_coverage_status === 'INSUFFICIENT' ? 'ข้อมูลไม่พอ' : 'ค่ากลางกลุ่ม'} n=${row.peer_sample_size}`
+                              : `${row.peer_coverage_status === 'LIMITED' ? 'Limited benchmark' : row.peer_coverage_status === 'INSUFFICIENT' ? 'Insufficient sample' : 'Peer Median'} (n=${row.peer_sample_size})`}
                           </div>
                         )}
                       </td>
