@@ -431,11 +431,16 @@ function passesHardFilters(
 
   // 11. Automotive Guard: reject an explicitly different industrial business model.
   // Unknown/general metadata is allowed through for scoring instead of becoming a false hard rejection.
+  const knownNonAutomotiveIndustrialModels = new Set([
+    'aerospace_defense', 'industrial_machinery', 'fabless_accelerator',
+    'foundry_manufacturing', 'equipment', 'oil_gas_ep', 'refining',
+    'oilfield_services', 'physical_omnichannel_retail', 'digital_marketplace',
+    'enterprise_cloud_software',
+  ]);
   if (
     target.subIndustry === 'automotive_manufacturing'
-    && candidate.subIndustry
-    && candidate.subIndustry !== 'general'
-    && candidate.subIndustry !== 'automotive_manufacturing'
+    && (candidate.archetype !== 'industrial_manufacturing'
+      || knownNonAutomotiveIndustrialModels.has(candidate.subIndustry || ''))
   ) {
     return { passes: false, reason: 'AUTOMOTIVE_SUBSECTOR_MISMATCH' };
   }
@@ -489,8 +494,12 @@ function buildCandidateFingerprint(
   const suppliedSubIndustry = typeof p.subIndustry === 'string'
     ? p.subIndustry.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
     : '';
+  const businessIdentityText = `${suppliedSubIndustry} ${industry} ${(p as any).description || ''}`.toLowerCase();
   let subIndustry = suppliedSubIndustry || 'general';
-  if (/automotive|auto_manufact|electric_vehicle|vehicle_manufact/.test(suppliedSubIndustry)) {
+  if (
+    archetype === 'industrial_manufacturing'
+    && /automotive|automaker|auto[_\s-]*manufact|electric[_\s-]*vehicle|vehicle[_\s-]*manufact|(^|[_\s-])ev([_\s-]|$)|car[_\s-]*manufact/.test(businessIdentityText)
+  ) {
     subIndustry = 'automotive_manufacturing';
   } else if (/property.*casualty|casualty.*property|p_c_insurance/.test(suppliedSubIndustry)) {
     subIndustry = 'pc_insurance';
@@ -768,18 +777,31 @@ export function discoverPeers(
   // eligible even when one or more benchmark metrics are unavailable.
   const candidates: PeerCandidate[] = [];
   const seenTickers = new Set<string>();
+  const rejectionCounts: Record<string, number> = {};
+  const recordRejection = (reason: string) => {
+    rejectionCounts[reason] = (rejectionCounts[reason] || 0) + 1;
+  };
 
   const processCandidates = (items: (CandidateDefinition | PeerCompanyItem)[]) => {
     for (const raw of items) {
       const v = verifyCandidate(raw);
-      if (!v.valid) continue;
+      if (!v.valid) {
+        recordRejection(v.reason || 'INVALID_IDENTITY');
+        continue;
+      }
 
       const candTicker = (raw.ticker || (raw as any).symbol || '').toUpperCase().trim();
-      if (candTicker === targetTicker || seenTickers.has(candTicker)) continue;
+      if (candTicker === targetTicker || seenTickers.has(candTicker)) {
+        recordRejection(candTicker === targetTicker ? 'SELF_TARGET' : 'DUPLICATE_TICKER');
+        continue;
+      }
 
       const candFingerprint = buildCandidateFingerprint(raw, targetFingerprint);
       const filterRes = passesHardFilters(targetFingerprint, candFingerprint);
-      if (!filterRes.passes) continue;
+      if (!filterRes.passes) {
+        recordRejection(filterRes.reason || 'BUSINESS_MODEL_MISMATCH');
+        continue;
+      }
 
       const similarity = calculatePeerSimilarity(targetFingerprint, candFingerprint);
       const suppliedRelation = (raw as any).relation_type || (raw as any).relationType;
@@ -789,11 +811,17 @@ export function discoverPeers(
           ? 'BROADER_SECTOR_REFERENCE'
           : similarity.relationType;
       const score = similarity.score;
-      if (score < 0.25) continue;
+      if (score < 0.25) {
+        recordRejection('BELOW_RELEVANCE_THRESHOLD');
+        continue;
+      }
 
       const metrics = extractCandidateMetrics(raw, candTicker, candFingerprint.companyName, report.as_of_date);
       const verifiedMetricCount = Object.values(metrics).filter(metric => metric.status === 'VERIFIED' && metric.value !== null).length;
-      if (verifiedMetricCount === 0) continue;
+      if (verifiedMetricCount === 0) {
+        recordRejection('NO_VERIFIED_METRICS');
+        continue;
+      }
 
       seenTickers.add(candTicker);
       candidates.push({
@@ -830,9 +858,27 @@ export function discoverPeers(
 
   // Handle Truthful Unavailable State if 0 peers found
   if (peerCount === 0) {
-    const unavailableReason: PeerUnavailableReason = 'NO_CANDIDATES';
-    const unavailableMessageTh = 'ยังไม่พบกลุ่มบริษัทที่เปรียบเทียบได้และมีข้อมูลที่ตรวจสอบแล้วเพียงพอ';
-    const unavailableMessageEn = 'No sufficiently comparable source-verified peer set is currently available.';
+    const hasRawCandidates = rawCandidates.length > 0;
+    const lacksVerifiedMetrics = Boolean(rejectionCounts.NO_VERIFIED_METRICS);
+    const unavailableReason: PeerUnavailableReason = !hasRawCandidates
+      ? 'SOURCE_GAP'
+      : lacksVerifiedMetrics
+        ? 'INSUFFICIENT_VERIFIED_METRICS'
+        : 'BUSINESS_MODEL_AMBIGUOUS';
+    const rejectionSummary = Object.entries(rejectionCounts)
+      .filter(([reason]) => reason !== 'SELF_TARGET' && reason !== 'DUPLICATE_TICKER')
+      .map(([reason, count]) => `${reason} (${count})`)
+      .join(', ');
+    const unavailableMessageTh = !hasRawCandidates
+      ? 'ยังไม่พบข้อมูลบริษัทอ้างอิงจากแหล่งข้อมูลที่เชื่อถือได้'
+      : lacksVerifiedMetrics
+        ? 'พบบริษัทที่เกี่ยวข้อง แต่ยังไม่มีตัวเลขเปรียบเทียบที่ตรวจสอบได้'
+        : `บริษัทที่พบยังไม่ผ่านเกณฑ์ความสอดคล้องของโมเดลธุรกิจ${rejectionSummary ? `: ${rejectionSummary}` : ''}`;
+    const unavailableMessageEn = !hasRawCandidates
+      ? 'No source-backed comparable company data was supplied.'
+      : lacksVerifiedMetrics
+        ? 'Relevant companies were found, but no source-verified benchmark observations were available.'
+        : `Candidates did not satisfy the business-model comparability guard${rejectionSummary ? `: ${rejectionSummary}` : ''}.`;
 
     const emptyResult: PeerDiscoveryResult = {
       targetTicker,

@@ -246,9 +246,9 @@ describe('Verified Peer Discovery Engine', () => {
 
     const result = discoverPeers(report, 'OBSCURE_CO');
     assert.equal(result.peerCount, 0, 'Must have 0 peers');
-    assert.equal(result.unavailableReason, 'NO_CANDIDATES');
-    assert.equal(result.unavailableMessageTh, 'ยังไม่พบกลุ่มบริษัทที่เปรียบเทียบได้และมีข้อมูลที่ตรวจสอบแล้วเพียงพอ');
-    assert.equal(result.unavailableMessageEn, 'No sufficiently comparable source-verified peer set is currently available.');
+    assert.equal(result.unavailableReason, 'BUSINESS_MODEL_AMBIGUOUS');
+    assert.match(result.unavailableMessageTh ?? '', /^บริษัทที่พบยังไม่ผ่านเกณฑ์ความสอดคล้องของโมเดลธุรกิจ:/);
+    assert.match(result.unavailableMessageEn ?? '', /^Candidates did not satisfy the business-model comparability guard:/);
     assert.equal(result.benchmarkRows.length, 0);
   });
 

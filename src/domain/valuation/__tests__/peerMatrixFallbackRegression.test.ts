@@ -136,7 +136,7 @@ describe('Peer Matrix truthful fallback regression', () => {
       disableFixtureFallback: true,
     });
     assert.equal(result.peerCount, 0);
-    assert.equal(result.unavailableReason, 'NO_CANDIDATES');
+    assert.equal(result.unavailableReason, 'BUSINESS_MODEL_AMBIGUOUS');
   });
 
   it('uses broader industry references after the close-comparable tier without mislabeling them', () => {
@@ -267,12 +267,12 @@ describe('Peer Matrix truthful fallback regression', () => {
         peers: [
           {
             ticker: 'AUTOA', company_name: 'Auto A', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers',
-            subIndustry: 'Automotive Manufacturing', pe_trailing: '21.6', ev_ebitda: '12.4x',
+            subIndustry: 'Integrated Automaker', pe_trailing: '21.6', ev_ebitda: '12.4x',
             revenue_growth_yoy_pct: '22.4%', financial_period: 'Q2 2026', financial_source: 'Issuer filing and market snapshot',
           } as any,
           {
             ticker: 'AUTOB', company_name: 'Auto B', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers',
-            subIndustry: 'Electric Vehicle Manufacturing', pe_trailing: '37.3', ev_ebitda: '18.2x',
+            subIndustry: 'EV Startup', pe_trailing: '37.3', ev_ebitda: '18.2x',
             revenue_growth_yoy_pct: '8.5%', financial_period: 'Q2 2026', financial_source: 'Issuer filing and market snapshot',
           } as any,
         ],
@@ -283,5 +283,19 @@ describe('Peer Matrix truthful fallback regression', () => {
     assert.equal(result.benchmarkRows.length > 0, true);
     assert.equal(result.metricSampleCounts.pe_trailing, 2);
     assert.equal(result.medians.pe_trailing, 29.45);
+  });
+
+  it('keeps an unknown automotive subtype as broader context but rejects an explicit non-automotive model', () => {
+    const result = discoverPeers(targetReport({ ticker: 'AUTOEDGE' }), 'AUTOEDGE', {
+      candidates: [
+        candidate('OEMX', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 18 }, { subIndustry: 'legacy_oem_platform' as any }),
+        candidate('CHIPX', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 24 }, {
+          archetype: 'semiconductor', sector: 'Technology', industry: 'Semiconductors', subIndustry: 'fabless_accelerator',
+          revenueModels: ['chip_sales'], majorBusinessLines: ['semiconductors'], capitalIntensity: 'asset_light',
+        }),
+      ],
+      disableFixtureFallback: true,
+    });
+    assert.deepEqual(result.peers.map(peer => peer.ticker), ['OEMX']);
   });
 });
