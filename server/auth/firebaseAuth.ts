@@ -52,7 +52,8 @@ export function createRequireFirebaseAuth(
         email: identity.email ?? null,
       };
       next();
-    } catch {
+    } catch (err) {
+      console.warn('[firebaseAuth] Token verification failed:', err instanceof Error ? err.message : String(err));
       res.status(401).json({ code: 'AUTH_INVALID', error: 'Invalid or expired authentication token.' });
     }
   };
