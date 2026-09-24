@@ -21,5 +21,18 @@ export async function authenticatedFetch(
   const headers = new Headers(init.headers ?? inheritedHeaders);
   headers.set('Authorization', `Bearer ${idToken}`);
 
-  return fetch(input, { ...init, headers });
+  const response = await fetch(input, { ...init, headers });
+  if (response.status === 401) {
+    try {
+      const refreshedToken = await currentUser.getIdToken(true);
+      if (refreshedToken && refreshedToken !== idToken) {
+        headers.set('Authorization', `Bearer ${refreshedToken}`);
+        return await fetch(input, { ...init, headers });
+      }
+    } catch {
+      // Ignore refresh error and return original 401 response
+    }
+  }
+
+  return response;
 }

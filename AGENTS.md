@@ -19,7 +19,7 @@
 | `src/ReportTemplate.tsx` | แสดงผลรายงาน รวมถึงการพิมพ์ |
 | `src/types.ts` | สัญญาโครงสร้างข้อมูลรายงาน |
 | `src/components/` | ส่วน UI, timeline, intro, video และ modal |
-| `src/index.css` | Styles หลักของแอป; อย่าสับสนกับ `index.css` ที่ราก |
+| `src/index.css` | Styles หลักของแอป |
 | `src/lib/`, `src/services/`, `src/utils/` | Firebase, services และ utilities ฝั่งเว็บ |
 | `server.ts` | Express API, prompts, streaming, artifacts และ Vite middleware |
 | `server/lib/agentClient.ts` | เรียก Gemini interactions และจัดการ agent events |
