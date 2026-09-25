@@ -41,14 +41,35 @@ export interface ResolvedFundamentalMetrics {
   grossMargin: ResolvedMetricItem;
   operatingMargin: ResolvedMetricItem;
   netMargin: ResolvedMetricItem;
+  fcfMargin: ResolvedMetricItem;
 
   roe: ResolvedMetricItem;
   roa: ResolvedMetricItem;
   roic: ResolvedMetricItem;
+  wacc: ResolvedMetricItem;
+  roicWaccSpread: ResolvedMetricItem;
   interestCoverage: ResolvedMetricItem;
 
   fcfYield: ResolvedMetricItem;
   earningsYield: ResolvedMetricItem;
+  dividendYield: ResolvedMetricItem;
+  netBuybackYield: ResolvedMetricItem;
+  shareholderYield: ResolvedMetricItem;
+  fcfConversion: ResolvedMetricItem;
+
+  netCashOrDebt: ResolvedMetricItem;
+  netCashToMarketCap: ResolvedMetricItem;
+  netDebtToEbitda: ResolvedMetricItem;
+  currentRatio: ResolvedMetricItem;
+  quickRatio: ResolvedMetricItem;
+  cashRunwayMonths: ResolvedMetricItem;
+  cashBurnRate: ResolvedMetricItem;
+
+  nim: ResolvedMetricItem;
+  efficiencyRatio: ResolvedMetricItem;
+  combinedRatio: ResolvedMetricItem;
+  pffo: ResolvedMetricItem;
+  occupancyRate: ResolvedMetricItem;
 
   peTrailing: ResolvedMetricItem;
   peForward: ResolvedMetricItem;
@@ -400,20 +421,43 @@ export function resolveFundamentalMetrics(
   };
 
   // 2. Revenue Growth YoY
-  const rawRevGrowth = at(inc?.yoy_revenue_growth_pct) ?? getKi('revenue_growth_yoy_pct');
+  const latestFiscal = fiscalIdentity(latestPeriod);
+  let rawRevGrowth = at(inc?.yoy_revenue_growth_pct) ?? getKi('revenue_growth_yoy_pct');
+  let revGrowthStatus: MetricResolutionStatus = finite(rawRevGrowth) ? 'REPORTED' : 'UNAVAILABLE';
+  let revGrowthSource = inc?.yoy_revenue_growth_pct ? 'Income Statement' : 'Key Indicators';
+  let revGrowthBasis = latestFiscal?.kind === 'QUARTERLY' ? 'Quarter YoY' : latestFiscal?.kind === 'ANNUAL' ? 'FY YoY' : 'YoY';
+  let revGrowthPeriod = latestPeriod;
+
+  // If reported growth not directly present, attempt calculation from verified standalone quarter revenue history
+  if (!finite(rawRevGrowth)) {
+    const secRevPoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'revenue');
+    const canonicalRevPoints = extractCanonicalFacts(verifiedCanonical?.values?.['income_statement.revenue'], 'revenue');
+    const legacyRevPoints = extractFiscalSeries(inc?.revenue, periods, 'Financial Statements (revenue)');
+    const allRevPoints = dedupeFiscalPoints([...secRevPoints, ...canonicalRevPoints, ...legacyRevPoints]);
+    const currentRevPoint = allRevPoints[allRevPoints.length - 1];
+    const priorRevPoint = currentRevPoint ? comparablePrior(allRevPoints, currentRevPoint) : undefined;
+    if (currentRevPoint && priorRevPoint && priorRevPoint.value > 0 && currentRevPoint.value > 0) {
+      rawRevGrowth = rounded(((currentRevPoint.value / priorRevPoint.value) - 1) * 100);
+      revGrowthStatus = 'CALCULATED';
+      revGrowthSource = currentRevPoint.source;
+      revGrowthBasis = currentRevPoint.kind === 'QUARTERLY' ? 'Quarter YoY' : 'FY YoY';
+      revGrowthPeriod = `${priorRevPoint.label} → ${currentRevPoint.label}`;
+    }
+  }
+
   const revenueGrowthYoY: ResolvedMetricItem = {
     value: rawRevGrowth,
-    basis: 'YoY',
-    period: latestPeriod,
-    source: inc?.yoy_revenue_growth_pct ? 'Income Statement' : 'Key Indicators',
-    status: finite(rawRevGrowth) ? 'REPORTED' : 'UNAVAILABLE',
+    basis: revGrowthBasis,
+    periodBasis: latestFiscal?.kind === 'QUARTERLY' ? 'QUARTERLY' : latestFiscal?.kind === 'ANNUAL' ? 'ANNUAL' : undefined,
+    period: revGrowthPeriod,
+    source: revGrowthSource,
+    status: revGrowthStatus,
     reason: finite(rawRevGrowth) ? undefined : 'Revenue growth history unavailable',
     reasonTh: finite(rawRevGrowth) ? undefined : 'ข้อมูลการเติบโตของรายได้ไม่พร้อมใช้งาน',
   };
 
   // 3. EPS Growth YoY
   let epsGrowthVal = at((inc as any)?.yoy_eps_growth_pct) ?? getKi('yoy_eps_growth_pct') ?? getKi('eps_growth_yoy_pct') ?? getKi('eps_growth');
-  const latestFiscal = fiscalIdentity(latestPeriod);
   let epsGrowthBasis: string = at((inc as any)?.yoy_eps_growth_pct) !== undefined
     ? latestFiscal?.kind === 'QUARTERLY' ? 'QUARTER_YOY' : latestFiscal?.kind === 'ANNUAL' ? 'FY_YOY' : 'AMBIGUOUS'
     : getKi('yoy_eps_growth_pct') !== undefined || getKi('eps_growth_yoy_pct') !== undefined
@@ -956,7 +1000,13 @@ export function resolveFundamentalMetrics(
       ? [{ value: item.value, ...identity, source: 'SEC verified canonical financials' }]
       : [];
   }));
-  const fcfPoints = secFcfPoints.length > 0 ? secFcfPoints : canonicalFcfPoints.length > 0 ? canonicalFcfPoints : legacyFcfPoints;
+  const fcfPoints = dedupeFiscalPoints([
+    ...secFcfPoints,
+    ...canonicalFcfPoints,
+    ...legacyFcfPoints,
+  ]);
+  const trailingFcf = resolveTrailingFourQuarters(fcfPoints, latestFiscal);
+  const canonicalTtmFcf = trailingFcf.totalValue;
   const currentFcf = fcfPoints[fcfPoints.length - 1];
   const priorFcf = currentFcf ? comparablePrior(fcfPoints, currentFcf) : undefined;
   let fcfGrowthYoY: ResolvedMetricItem;
@@ -1033,15 +1083,12 @@ export function resolveFundamentalMetrics(
       ? [{ value: item.value, ...identity, periodEnd: item.periodEnd, definition: item.metric || 'revenue', source: 'SEC verified canonical financials' }]
       : [];
   });
-  const annualRevenuePoints = dedupeFiscalPoints(
-    verifiedRevenueFacts.length > 0
-      ? verifiedRevenueFacts
-      : secAnnualRevenuePoints.length > 0
-        ? secAnnualRevenuePoints
-        : canonicalRevenuePoints.length > 0
-          ? canonicalRevenuePoints
-          : legacyRevenuePoints,
-  );
+  const annualRevenuePoints = dedupeFiscalPoints([
+    ...secAnnualRevenuePoints,
+    ...verifiedRevenueFacts,
+    ...canonicalRevenuePoints,
+    ...legacyRevenuePoints,
+  ]);
   const endingRevenue = annualRevenuePoints[annualRevenuePoints.length - 1];
   const elapsedYears = (start?: FiscalPoint, end?: FiscalPoint) => {
     if (!start || !end) return undefined;
@@ -1091,25 +1138,67 @@ export function resolveFundamentalMetrics(
     };
   }
 
+  // Resolve Market Capitalization in millions for consistent ratio derivations
+  const rawMcap = (report as any)?.market_snapshot?.market_cap
+    ?? (report as any)?.company_profile?.market_cap
+    ?? getKi('market_cap');
+  let mcapMillions: number | undefined;
+  if (finite(rawMcap) && rawMcap > 0) {
+    mcapMillions = rawMcap > 1e6 ? rawMcap / 1e6 : rawMcap;
+  } else if (typeof rawMcap === 'string') {
+    const text = rawMcap.trim().toUpperCase();
+    const num = parseFloat(text.replace(/[^0-9.-]/g, ''));
+    if (finite(num)) {
+      if (text.includes('T')) mcapMillions = num * 1_000_000;
+      else if (text.includes('B')) mcapMillions = num * 1_000;
+      else if (text.includes('M')) mcapMillions = num;
+      else mcapMillions = num > 1e6 ? num / 1e6 : num;
+    }
+  }
+
   // 10. Yields (FCF Yield & Earnings Yield)
   const pfcfRatio = report.valuation_ratios?.find(r => /P\/FCF/i.test(r.name))?.value;
   let fcfYieldVal: number | undefined;
+  let fcfYieldBasis = 'FCF / Market Cap';
+  let fcfYieldPeriod = latestPeriod;
+  let fcfYieldSource = 'Market Snapshot / Valuation Ratios';
+  let fcfYieldStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  let fcfYieldFormula = 'TTM Free Cash Flow / Market Capitalization × 100';
+
   if (!isFinancial) {
-    if (finite(pfcfRatio) && pfcfRatio > 0) {
+    if (mcapMillions && mcapMillions > 0 && finite(canonicalTtmFcf)) {
+      fcfYieldVal = rounded((canonicalTtmFcf / mcapMillions) * 100);
+      fcfYieldBasis = trailingFcf.kind === 'TTM' ? 'TTM FCF / Market Cap' : `${trailingFcf.periodLabel} FCF / Market Cap`;
+      fcfYieldPeriod = trailingFcf.periodLabel;
+      fcfYieldSource = trailingFcf.source || 'SEC Free Cash Flow';
+      fcfYieldStatus = 'CALCULATED';
+      fcfYieldFormula = trailingFcf.kind === 'TTM' ? 'TTM Free Cash Flow / Market Capitalization × 100' : 'Free Cash Flow / Market Capitalization × 100';
+    } else if (finite(pfcfRatio) && pfcfRatio > 0) {
       fcfYieldVal = rounded(100 / pfcfRatio);
+      fcfYieldBasis = 'Market Provider P/FCF reciprocal';
+      fcfYieldSource = 'Valuation Ratios (P/FCF)';
+      fcfYieldStatus = 'REPORTED';
+      fcfYieldFormula = '1 / (P/FCF) × 100';
     } else if (finite(report.five_pillars?.yields?.fcf_yield_pct)) {
       fcfYieldVal = report.five_pillars!.yields.fcf_yield_pct;
+      fcfYieldBasis = 'Five Pillars reported';
+      fcfYieldStatus = 'REPORTED';
     } else if (finite(getKi('fcf_yield_pct'))) {
       fcfYieldVal = getKi('fcf_yield_pct');
+      fcfYieldBasis = 'Key Indicators reported';
+      fcfYieldStatus = 'REPORTED';
     }
   }
 
   const fcfYield: ResolvedMetricItem = {
     value: fcfYieldVal,
-    basis: 'FCF / Market Cap',
-    status: isFinancial ? 'GUARDED' : finite(fcfYieldVal) ? 'REPORTED' : 'UNAVAILABLE',
-    reason: isFinancial ? 'Guarded for financial institutions' : undefined,
-    reasonTh: isFinancial ? 'FCF Yield ไม่ใช้กับสถาบันการเงิน (Financial Sector Guard)' : undefined,
+    basis: fcfYieldBasis,
+    period: fcfYieldPeriod,
+    formula: fcfYieldFormula,
+    source: fcfYieldSource,
+    status: isFinancial ? 'GUARDED' : finite(fcfYieldVal) ? fcfYieldStatus : 'UNAVAILABLE',
+    reason: isFinancial ? 'Guarded for financial institutions' : finite(fcfYieldVal) && fcfYieldVal < 0 ? 'Negative Free Cash Flow (Cash Burn)' : undefined,
+    reasonTh: isFinancial ? 'FCF Yield ไม่ใช้กับสถาบันการเงิน (Financial Sector Guard)' : finite(fcfYieldVal) && fcfYieldVal < 0 ? 'กระแสเงินสดอิสระติดลบ (Cash Burn)' : undefined,
     isGuarded: isFinancial,
   };
 
@@ -1131,6 +1220,421 @@ export function resolveFundamentalMetrics(
     status: finite(earningsYieldVal) ? 'REPORTED' : 'UNAVAILABLE',
   };
 
+  // 11. FCF Margin (Quarterly FCF / Quarterly Revenue * 100)
+  let fcfMarginVal: number | undefined;
+  let fcfMarginBasis = currentFcf?.label ? `${currentFcf.label} FCF / Revenue` : 'Quarter FCF / Revenue';
+  let fcfMarginPeriod = currentFcf?.label || latestPeriod;
+  let fcfMarginSource = currentFcf?.source || 'Cash Flow Statement';
+  let fcfMarginFormula = 'Quarterly Free Cash Flow / Quarterly Revenue × 100';
+
+  if (!isFinancial) {
+    if (currentFcf?.value !== undefined && rev !== undefined && rev > 0) {
+      fcfMarginVal = rounded((currentFcf.value / rev) * 100);
+      fcfMarginBasis = `${currentFcf.label} FCF / Revenue`;
+      fcfMarginPeriod = currentFcf.label;
+      fcfMarginSource = currentFcf.source;
+    } else if (at(cf?.free_cash_flow) !== undefined && rev !== undefined && rev > 0) {
+      fcfMarginVal = rounded((at(cf!.free_cash_flow)! / rev) * 100);
+      fcfMarginBasis = latestPeriod ? `${latestPeriod} FCF / Revenue` : 'Quarter FCF / Revenue';
+      fcfMarginPeriod = latestPeriod;
+    } else if (finite(getKi('fcf_margin_pct'))) {
+      fcfMarginVal = getKi('fcf_margin_pct');
+      fcfMarginBasis = 'Reported';
+      fcfMarginSource = 'Key Indicators';
+    }
+  }
+  const fcfMargin: ResolvedMetricItem = {
+    value: fcfMarginVal,
+    basis: fcfMarginBasis,
+    period: fcfMarginPeriod,
+    formula: fcfMarginFormula,
+    source: fcfMarginSource,
+    status: isFinancial ? 'GUARDED' : finite(fcfMarginVal) ? 'CALCULATED' : 'UNAVAILABLE',
+    reason: isFinancial ? 'FCF Margin guarded for financial institutions' : undefined,
+    reasonTh: isFinancial ? 'FCF Margin ไม่ใช้กับสถาบันการเงิน (Financial Sector Guard)' : undefined,
+    isGuarded: isFinancial,
+  };
+
+  // 12. WACC & ROIC - WACC Spread
+  const dcf = (report.intrinsic_value as any)?.dcf ?? (report.intrinsic_value as any)?.dcf_model;
+  const modelAssumptions = (report.intrinsic_value as any)?.model_assumptions;
+  const dcfAssumptions = (report as any)?.dcf_assumptions;
+  const dashboardWacc = (report as any)?.valuation_dashboard?.wacc;
+  const rootWacc = (report as any)?.wacc_pct ?? getKi('wacc') ?? getKi('wacc_pct');
+  const costOfCapitalWacc = (report.intrinsic_value as any)?.cost_of_capital?.wacc ?? (report.intrinsic_value as any)?.cost_of_capital?.wacc_pct;
+  const candidateWacc = costOfCapitalWacc ?? dcf?.wacc_pct ?? dcf?.wacc ?? modelAssumptions?.wacc ?? dcfAssumptions?.wacc ?? dashboardWacc ?? rootWacc;
+  let waccVal: number | undefined;
+  let waccSource = 'DCF Assumptions';
+  if (finite(candidateWacc) && candidateWacc > 0 && candidateWacc < 50) {
+    waccVal = candidateWacc <= 1 && candidateWacc > 0 ? rounded(candidateWacc * 100) : rounded(candidateWacc);
+    if (costOfCapitalWacc) waccSource = 'Intrinsic Value Cost of Capital';
+    else if (dcf?.wacc_pct || dcf?.wacc) waccSource = 'Intrinsic Value DCF Model';
+    else if (modelAssumptions?.wacc) waccSource = 'Valuation Model Assumptions';
+    else if (dashboardWacc) waccSource = 'Valuation Dashboard';
+    else waccSource = 'Key Indicators';
+  }
+
+  const wacc: ResolvedMetricItem = {
+    value: waccVal,
+    basis: 'Weighted Average Cost of Capital',
+    formula: 'Cost of Equity × Equity% + Cost of Debt × Debt% × (1 - Tax Rate)',
+    source: waccSource,
+    status: isFinancial ? 'GUARDED' : finite(waccVal) ? 'CALCULATED' : 'UNAVAILABLE',
+    reason: isFinancial ? 'WACC not applicable to financial institutions' : finite(waccVal) ? undefined : 'WACC inputs unavailable',
+    reasonTh: isFinancial ? 'WACC ไม่ใช้กับสถาบันการเงิน' : finite(waccVal) ? undefined : 'ไม่พบข้อมูลต้นทุนทางการเงิน (WACC)',
+    isGuarded: isFinancial,
+  };
+
+  let roicWaccSpreadVal: number | undefined;
+  let roicWaccStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  let roicWaccReason: string | undefined;
+  let roicWaccReasonTh: string | undefined;
+  if (isFinancial) {
+    roicWaccStatus = 'GUARDED';
+    roicWaccReason = 'ROIC-WACC Spread guarded for financial institutions';
+    roicWaccReasonTh = 'ROIC - WACC ไม่ใช้กับสถาบันการเงิน (Financial Sector Guard)';
+  } else if (finite(roic.value) && finite(waccVal)) {
+    roicWaccSpreadVal = rounded(roic.value - waccVal);
+    roicWaccStatus = 'CALCULATED';
+    roicWaccReason = roicWaccSpreadVal > 0
+      ? `ROIC exceeds cost of capital by ${roicWaccSpreadVal} percentage points`
+      : roicWaccSpreadVal < 0
+        ? `ROIC is ${Math.abs(roicWaccSpreadVal)} percentage points below estimated cost of capital`
+        : `ROIC matches estimated cost of capital`;
+    roicWaccReasonTh = roicWaccSpreadVal > 0
+      ? `ผลตอบแทนจากเงินลงทุน (ROIC) สูงกว่าต้นทุนทางการเงิน (WACC) อยู่ ${roicWaccSpreadVal} จุดเปอร์เซ็นต์`
+      : roicWaccSpreadVal < 0
+        ? `ผลตอบแทนจากเงินลงทุน (ROIC) ต่ำกว่าต้นทุนทางการเงิน (WACC) อยู่ ${Math.abs(roicWaccSpreadVal)} จุดเปอร์เซ็นต์`
+        : `ผลตอบแทนจากเงินลงทุน (ROIC) ใกล้เคียงกับต้นทุนทางการเงิน (WACC)`;
+  } else {
+    roicWaccStatus = 'UNAVAILABLE';
+    roicWaccReason = !finite(waccVal) ? 'WACC cannot be independently supported' : 'ROIC inputs unavailable';
+    roicWaccReasonTh = !finite(waccVal) ? 'ไม่พบข้อมูลต้นทุนเงินทุน (WACC) ที่ตรวจสอบได้ จึงไม่แสดงส่วนต่าง ROIC - WACC' : 'ข้อมูล ROIC ไม่พร้อมใช้งาน';
+  }
+
+  const roicWaccSpread: ResolvedMetricItem = {
+    value: roicWaccSpreadVal,
+    basis: roicWaccSpreadVal !== undefined ? `${roic.basis || 'ROIC'} - WACC (${waccVal}%)` : undefined,
+    formula: 'ROIC - WACC',
+    source: `${roic.source || 'ROIC'} - ${wacc.source || 'WACC'}`,
+    status: roicWaccStatus,
+    reason: roicWaccReason,
+    reasonTh: roicWaccReasonTh,
+    isGuarded: isFinancial,
+  };
+
+
+
+  // 13. Dividend Yield & Net Buyback Yield & Shareholder Yield
+  const rawDivYield = (report as any)?.market_snapshot?.dividend_yield
+    ?? report.valuation_ratios?.find(r => /dividend.*yield/i.test(r.name))?.value
+    ?? getKi('dividend_yield')
+    ?? getKi('dividend_yield_pct')
+    ?? report.five_pillars?.yields?.dividend_yield_pct;
+  let divYieldVal: number | undefined;
+  if (finite(rawDivYield) && rawDivYield >= 0) {
+    divYieldVal = rawDivYield <= 0.3 && rawDivYield > 0 ? rounded(rawDivYield * 100) : rounded(rawDivYield);
+  }
+  const dividendYield: ResolvedMetricItem = {
+    value: divYieldVal,
+    basis: 'Annual Dividend / Current Share Price',
+    formula: 'Annual Dividend / Share Price × 100',
+    source: 'Market Snapshot / Key Indicators',
+    status: finite(divYieldVal) ? 'REPORTED' : 'UNAVAILABLE',
+    reason: finite(divYieldVal) ? undefined : 'Dividend yield not reported or unavailable',
+    reasonTh: finite(divYieldVal) ? undefined : 'ไม่มีข้อมูลอัตราผลตอบแทนเงินปันผล',
+  };
+
+  // Extract SEC repurchases and issuances
+  const secRepurchasePoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'repurchase_of_common_stock');
+  const canonicalRepurchasePoints = extractCanonicalFacts(verifiedCanonical?.values?.['cash_flow.repurchase_of_common_stock'], 'repurchase_of_common_stock');
+  const legacyRepurchasePoints = extractFiscalSeries((cf as any)?.repurchase_of_common_stock, periods, 'Financial Statements (repurchases)');
+  const allRepurchasePoints = dedupeFiscalPoints([...secRepurchasePoints, ...canonicalRepurchasePoints, ...legacyRepurchasePoints]);
+
+  const secIssuancePoints = extractSecPeriodFacts((report as any).sec_verification?.sec_period_statements, 'issuance_of_common_stock');
+  const canonicalIssuancePoints = extractCanonicalFacts(verifiedCanonical?.values?.['cash_flow.issuance_of_common_stock'], 'issuance_of_common_stock');
+  const legacyIssuancePoints = extractFiscalSeries((cf as any)?.issuance_of_common_stock, periods, 'Financial Statements (issuance)');
+  const allIssuancePoints = dedupeFiscalPoints([...secIssuancePoints, ...canonicalIssuancePoints, ...legacyIssuancePoints]);
+
+  const trailingRepurchases = resolveTrailingFourQuarters(allRepurchasePoints, latestFiscal);
+  const trailingIssuance = resolveTrailingFourQuarters(allIssuancePoints, latestFiscal);
+
+  const repurchases = trailingRepurchases.totalValue
+    ?? at((cf as any)?.repurchase_of_common_stock)
+    ?? at((cf as any)?.share_repurchases)
+    ?? at((cf as any)?.payments_for_repurchase_of_equity);
+  const issuance = trailingIssuance.totalValue
+    ?? at((cf as any)?.issuance_of_common_stock)
+    ?? at((cf as any)?.sale_of_stock)
+    ?? at((cf as any)?.proceeds_from_stock_issuance);
+  const kiBuyback = getKi('net_buyback_yield') ?? getKi('net_buyback_yield_pct') ?? getKi('buyback_yield_pct');
+
+  let netBuybackVal: number | undefined;
+  let buybackSource = 'Cash Flow Statement';
+  if (finite(kiBuyback)) {
+    netBuybackVal = kiBuyback;
+    buybackSource = 'Key Indicators';
+  } else if (mcapMillions && mcapMillions > 0 && (repurchases !== undefined || issuance !== undefined || (report as any)?.is_zero_buybacks_established)) {
+    const netRepurchases = (Math.abs(repurchases ?? 0)) - (Math.abs(issuance ?? 0));
+    netBuybackVal = rounded((netRepurchases / mcapMillions) * 100);
+    buybackSource = trailingRepurchases.kind === 'TTM'
+      ? 'SEC Cash Flow Statement TTM (Repurchases - Issuance) / Market Cap'
+      : 'SEC Cash Flow Statement (Repurchases - Issuance) / Market Cap';
+  }
+
+  const netBuybackYield: ResolvedMetricItem = {
+    value: netBuybackVal,
+    basis: '(Share Repurchases - Equity Issuance) / Market Cap',
+    formula: '(Net Repurchases - Equity Issuance) / Market Capitalization × 100',
+    source: buybackSource,
+    status: finite(netBuybackVal) ? 'CALCULATED' : 'UNAVAILABLE',
+    reason: finite(netBuybackVal)
+      ? (netBuybackVal < 0 ? `Net Shareholder Dilution of ${Math.abs(netBuybackVal)}%` : `Net Buyback Yield of ${netBuybackVal}%`)
+      : 'Insufficient verified repurchase or issuance data',
+    reasonTh: finite(netBuybackVal)
+      ? (netBuybackVal < 0 ? `การเจือจางหุ้นสุทธิ (Net Dilution) ${Math.abs(netBuybackVal)}%` : `อัตราการซื้อหุ้นคืนสุทธิ ${netBuybackVal}%`)
+      : 'ข้อมูลการซื้อหุ้นคืนหรือการออกหุ้นเพิ่มทุนไม่เพียงพอ',
+  };
+
+  let shareholderYieldVal: number | undefined;
+  let shareholderYieldStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  if (divYieldVal !== undefined && netBuybackVal !== undefined) {
+    shareholderYieldVal = rounded(divYieldVal + netBuybackVal);
+    shareholderYieldStatus = 'CALCULATED';
+  } else if (divYieldVal !== undefined && netBuybackVal === undefined && (report as any)?.is_zero_buybacks_established) {
+    shareholderYieldVal = divYieldVal;
+    shareholderYieldStatus = 'CALCULATED';
+  }
+
+  const shareholderYield: ResolvedMetricItem = {
+    value: shareholderYieldVal,
+    basis: shareholderYieldVal !== undefined ? `Dividend Yield (${divYieldVal}%) + Net Buyback Yield (${netBuybackVal}%)` : undefined,
+    formula: 'Cash Shareholder Yield = (TTM Dividends + TTM Share Repurchases - TTM Equity Issuance) / Market Cap × 100',
+    source: 'SEC Cash Flow Statement + Market Dividend Yield',
+    status: shareholderYieldStatus,
+    reason: shareholderYieldVal !== undefined
+      ? `Shareholder Yield ${shareholderYieldVal}% (Dividend: ${divYieldVal}%, Net Buyback/Dilution: ${netBuybackVal}%)`
+      : 'Insufficient verified dividend or buyback inputs',
+    reasonTh: shareholderYieldVal !== undefined
+      ? `ผลตอบแทนรวมสู่ผู้ถือหุ้น ${shareholderYieldVal}% (ปันผล: ${divYieldVal}%, ซื้อหุ้นคืน/เจือจาง: ${netBuybackVal}%)`
+      : 'ข้อมูลเงินปันผลหรือการซื้อหุ้นคืน/เจือจางไม่เพียงพอ',
+  };
+
+  // 14. FCF Conversion (TTM FCF / TTM Net Income * 100)
+  let fcfConversionVal: number | undefined;
+  let fcfConversionStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  let fcfConversionReason: string | undefined;
+  let fcfConversionReasonTh: string | undefined;
+  let fcfConversionBasis = 'TTM FCF / TTM Net Income';
+
+  const ttmNi = trailingNi.totalValue ?? netInc;
+  // Use the exact SAME canonical TTM FCF as FCF Yield
+  const ttmFcf = canonicalTtmFcf ?? currentFcf?.value ?? at(cf?.free_cash_flow);
+
+  if (isFinancial || archetype === 'reit') {
+    fcfConversionStatus = 'GUARDED';
+    fcfConversionReason = isFinancial ? 'FCF Conversion guarded for financial institutions' : 'FCF Conversion not applicable to REITs (prefer AFFO)';
+    fcfConversionReasonTh = isFinancial ? 'FCF Conversion ไม่ใช้กับสถาบันการเงิน (Financial Sector Guard)' : 'FCF Conversion ไม่ใช้กับ REIT (เน้น FFO/AFFO)';
+  } else if (finite(ttmFcf) && finite(ttmNi)) {
+    if (ttmNi <= 0) {
+      fcfConversionStatus = 'UNAVAILABLE';
+      fcfConversionReason = 'Net Income non-positive (N/M)';
+      fcfConversionReasonTh = 'กำไรสุทธิมีค่าติดลบหรือไม่เป็นบวก จึงไม่คำนวณอัตราการแปลงเป็นเงินสด (N/M)';
+      fcfConversionBasis = 'TTM FCF / TTM Net Income (Net Loss)';
+    } else if (ttmNi < 1) {
+      fcfConversionStatus = 'UNAVAILABLE';
+      fcfConversionReason = 'Net Income near zero (N/M)';
+      fcfConversionReasonTh = 'กำไรสุทธิต่ำใกล้ศูนย์ จึงไม่คำนวณอัตราส่วนแปลงเงินสดเพื่อหลีกเลี่ยงความคลาดเคลื่อน (N/M)';
+      fcfConversionBasis = 'TTM FCF / TTM Net Income (Near Zero)';
+    } else {
+      fcfConversionVal = rounded((ttmFcf / ttmNi) * 100);
+      fcfConversionStatus = 'CALCULATED';
+      fcfConversionReason = `${fcfConversionVal}% cash conversion rate`;
+      fcfConversionReasonTh = `อัตราการแปลงกำไรเป็นกระแสเงินสด ${fcfConversionVal}%`;
+    }
+  } else {
+    fcfConversionStatus = 'UNAVAILABLE';
+    fcfConversionReason = 'Insufficient verified FCF or Net Income inputs';
+    fcfConversionReasonTh = 'ข้อมูลกระแสเงินสดอิสระหรือกำไรสุทธิไม่เพียงพอ';
+  }
+
+  // Cross-metric sign invariant guard:
+  // If TTM NI > 0 and FCF Conversion < 0, then TTM FCF < 0, so FCF Yield cannot be positive
+  if (finite(ttmNi) && ttmNi > 0 && finite(fcfConversionVal) && fcfConversionVal < 0 && finite(fcfYield.value) && fcfYield.value > 0) {
+    if (finite(ttmFcf) && mcapMillions && mcapMillions > 0) {
+      fcfYield.value = rounded((ttmFcf / mcapMillions) * 100);
+      fcfYield.basis = 'TTM FCF / Market Cap (Canonical Sign Invariant)';
+      fcfYield.status = 'CALCULATED';
+    }
+  }
+
+  const fcfConversion: ResolvedMetricItem = {
+    value: fcfConversionVal,
+    basis: fcfConversionBasis,
+    formula: 'TTM Free Cash Flow / TTM Net Income × 100',
+    source: 'SEC Cash Flow Statement / Income Statement',
+    status: fcfConversionStatus,
+    reason: fcfConversionReason,
+    reasonTh: fcfConversionReasonTh,
+    isGuarded: isFinancial || archetype === 'reit',
+  };
+
+  // 15. Balance Sheet: Net Cash/Debt, Net Cash/Market Cap, Net Debt/EBITDA, Liquidity
+  const netCashAmount = totalCash !== undefined && totalDebt !== undefined ? rounded((totalCash - totalDebt) / 1000) : undefined;
+  const isNetCash = netCashAmount !== undefined && netCashAmount >= 0;
+
+  const netCashOrDebt: ResolvedMetricItem = {
+    value: netCashAmount !== undefined ? Math.abs(netCashAmount) : undefined,
+    basis: isNetCash ? 'Net Cash (Total Cash - Total Debt)' : 'Net Debt (Total Debt - Total Cash)',
+    status: netCashAmount !== undefined ? 'CALCULATED' : 'UNAVAILABLE',
+    reason: isNetCash ? `Net Cash +$${Math.abs(netCashAmount!)}B` : `Net Debt -$${Math.abs(netCashAmount!)}B`,
+    reasonTh: isNetCash ? `สถานะเงินสดสุทธิ +$${Math.abs(netCashAmount!)}B` : `ภาระหนี้สินสุทธิ -$${Math.abs(netCashAmount!)}B`,
+  };
+
+  let netCashToMcapVal: number | undefined;
+  if (isNetCash && netCashAmount !== undefined && netCashAmount > 0 && mcapMillions && mcapMillions > 0) {
+    netCashToMcapVal = rounded(((netCashAmount * 1000) / mcapMillions) * 100);
+  }
+  const netCashToMarketCap: ResolvedMetricItem = {
+    value: netCashToMcapVal,
+    basis: 'Net Cash / Market Capitalization',
+    formula: 'Net Cash / Market Cap × 100',
+    status: isNetCash && finite(netCashToMcapVal) ? 'CALCULATED' : 'NOT_APPLICABLE',
+    reason: isNetCash && finite(netCashToMcapVal) ? `${netCashToMcapVal}% of market cap in net cash` : 'Not in net cash position',
+    reasonTh: isNetCash && finite(netCashToMcapVal) ? `เงินสดสุทธิคิดเป็น ${netCashToMcapVal}% ของมูลค่าหลักทรัพย์ตามราคาตลาด` : 'บริษัทไม่มีสถานะเงินสดสุทธิ',
+  };
+
+  const depAmort = at((cf as any)?.depreciation_amortization) ?? at(cf?.depreciation);
+  const ebitdaVal = at((inc as any)?.ebitda) ?? getKi('ebitda') ?? (opInc !== undefined && depAmort !== undefined ? opInc + Math.abs(depAmort) : undefined);
+  let netDebtToEbitdaVal: number | undefined;
+  let netDebtToEbitdaStatus: MetricResolutionStatus = 'UNAVAILABLE';
+  let netDebtToEbitdaReason: string | undefined;
+  let netDebtToEbitdaReasonTh: string | undefined;
+
+  if (isFinancial) {
+    netDebtToEbitdaStatus = 'GUARDED';
+    netDebtToEbitdaReason = 'Guarded for financial institutions';
+    netDebtToEbitdaReasonTh = 'Net Debt / EBITDA ไม่ใช้กับสถาบันการเงิน (Financial Sector Guard)';
+  } else if (isNetCash) {
+    netDebtToEbitdaStatus = 'NOT_APPLICABLE';
+    netDebtToEbitdaReason = 'Company in Net Cash position; Net Debt / EBITDA not applicable';
+    netDebtToEbitdaReasonTh = 'บริษัทมีสถานะเงินสดสุทธิ (Net Cash) จึงไม่ใช้อัตราส่วน Net Debt / EBITDA';
+  } else if (totalDebt !== undefined && totalCash !== undefined && totalDebt > totalCash) {
+    const netDebtRaw = totalDebt - totalCash;
+    if (ebitdaVal !== undefined && ebitdaVal <= 0) {
+      netDebtToEbitdaStatus = 'UNAVAILABLE';
+      netDebtToEbitdaReason = 'EBITDA non-positive (N/M)';
+      netDebtToEbitdaReasonTh = 'EBITDA มีค่าติดลบหรือไม่เป็นบวก จึงไม่แสดงอัตราส่วน Net Debt / EBITDA (N/M)';
+    } else if (ebitdaVal !== undefined && ebitdaVal > 0) {
+      netDebtToEbitdaVal = rounded(netDebtRaw / ebitdaVal);
+      netDebtToEbitdaStatus = 'CALCULATED';
+      netDebtToEbitdaReason = `${netDebtToEbitdaVal}x Net Debt / EBITDA`;
+      netDebtToEbitdaReasonTh = `หนี้สินสุทธิต่อ EBITDA เท่ากับ ${netDebtToEbitdaVal}x`;
+    } else {
+      netDebtToEbitdaStatus = 'UNAVAILABLE';
+      netDebtToEbitdaReason = 'EBITDA inputs unavailable';
+      netDebtToEbitdaReasonTh = 'ไม่พบข้อมูล EBITDA';
+    }
+  } else {
+    netDebtToEbitdaStatus = 'UNAVAILABLE';
+    netDebtToEbitdaReason = 'Balance sheet debt inputs unavailable';
+    netDebtToEbitdaReasonTh = 'ข้อมูลหนี้สินในงบดุลไม่เพียงพอ';
+  }
+
+  const netDebtToEbitda: ResolvedMetricItem = {
+    value: netDebtToEbitdaVal,
+    basis: '(Total Debt - Cash) / TTM EBITDA',
+    formula: 'Net Debt / TTM EBITDA',
+    status: netDebtToEbitdaStatus,
+    reason: netDebtToEbitdaReason,
+    reasonTh: netDebtToEbitdaReasonTh,
+    isGuarded: isFinancial,
+  };
+
+  const currAssets = at(bs?.total_current_assets);
+  const currLiab = at(bs?.total_current_liabilities);
+  const repCurrentRatio = getKi('current_ratio');
+  let currentRatioVal: number | undefined;
+  if (finite(repCurrentRatio)) {
+    currentRatioVal = repCurrentRatio;
+  } else if (currAssets !== undefined && currLiab !== undefined && currLiab > 0) {
+    currentRatioVal = rounded(currAssets / currLiab);
+  }
+  const currentRatio: ResolvedMetricItem = {
+    value: currentRatioVal,
+    basis: 'Total Current Assets / Total Current Liabilities',
+    formula: 'Current Assets / Current Liabilities',
+    status: isFinancial ? 'GUARDED' : finite(currentRatioVal) ? 'CALCULATED' : 'UNAVAILABLE',
+    isGuarded: isFinancial,
+  };
+
+  const repQuickRatio = getKi('quick_ratio');
+  let quickRatioVal: number | undefined;
+  if (finite(repQuickRatio)) {
+    quickRatioVal = repQuickRatio;
+  } else if (cash !== undefined && currLiab !== undefined && currLiab > 0) {
+    const recVal = at((bs as any)?.net_receivables) ?? at(bs?.receivables) ?? at(bs?.accounts_receivable) ?? 0;
+    const quickAssets = (cash + (stInvestments ?? 0) + recVal);
+    quickRatioVal = rounded(quickAssets / currLiab);
+  }
+  const quickRatio: ResolvedMetricItem = {
+    value: quickRatioVal,
+    basis: 'Quick Assets / Total Current Liabilities',
+    formula: '(Cash + ST Investments + Receivables) / Current Liabilities',
+    status: isFinancial ? 'GUARDED' : finite(quickRatioVal) ? 'CALCULATED' : 'UNAVAILABLE',
+    isGuarded: isFinancial,
+  };
+
+  const repRunway = getKi('cash_runway_months') ?? getKi('cash_runway');
+  const cashRunwayMonths: ResolvedMetricItem = {
+    value: finite(repRunway) ? repRunway : undefined,
+    basis: 'Cash Runway in Months',
+    status: finite(repRunway) ? 'REPORTED' : 'UNAVAILABLE',
+  };
+
+  const repBurn = getKi('cash_burn_annual') ?? getKi('annual_cash_burn');
+  const cashBurnRate: ResolvedMetricItem = {
+    value: finite(repBurn) ? repBurn : undefined,
+    basis: 'Annual Cash Burn Rate ($B)',
+    status: finite(repBurn) ? 'REPORTED' : 'UNAVAILABLE',
+  };
+
+  // 16. Sector-Specific Fundamentals
+  const nimVal = getKi('nim') ?? getKi('net_interest_margin_pct');
+  const nim: ResolvedMetricItem = {
+    value: nimVal,
+    basis: 'Net Interest Margin',
+    status: isFinancial && finite(nimVal) ? 'REPORTED' : isFinancial ? 'UNAVAILABLE' : 'NOT_APPLICABLE',
+  };
+
+  const effVal = getKi('efficiency_ratio') ?? getKi('efficiency_ratio_pct');
+  const efficiencyRatio: ResolvedMetricItem = {
+    value: effVal,
+    basis: 'Non-Interest Expense / Revenue',
+    status: isFinancial && finite(effVal) ? 'REPORTED' : isFinancial ? 'UNAVAILABLE' : 'NOT_APPLICABLE',
+  };
+
+  const combVal = (report.key_indicators as any)?.profitability?.combined_ratio_pct ?? getKi('combined_ratio');
+  const combinedRatio: ResolvedMetricItem = {
+    value: combVal,
+    basis: 'Incurred Losses + Expenses / Earned Premiums',
+    status: archetype === 'insurer' && finite(combVal) ? 'REPORTED' : archetype === 'insurer' ? 'UNAVAILABLE' : 'NOT_APPLICABLE',
+  };
+
+  const pffoVal = report.valuation_ratios?.find(r => /P\/FFO/i.test(r.name))?.value ?? getKi('p_ffo_multiple');
+  const pffo: ResolvedMetricItem = {
+    value: pffoVal,
+    basis: 'Price / Funds From Operations',
+    status: archetype === 'reit' && finite(pffoVal) ? 'REPORTED' : archetype === 'reit' ? 'UNAVAILABLE' : 'NOT_APPLICABLE',
+  };
+
+  const occVal = (report.key_indicators as any)?.operational?.occupancy_rate_pct ?? getKi('occupancy_rate') ?? getKi('occupancy_rate_pct');
+  const occupancyRate: ResolvedMetricItem = {
+    value: occVal,
+    basis: 'Portfolio Occupancy Rate',
+    status: archetype === 'reit' && finite(occVal) ? 'REPORTED' : archetype === 'reit' ? 'UNAVAILABLE' : 'NOT_APPLICABLE',
+  };
+
   return {
     ticker: sym,
     archetype,
@@ -1142,12 +1646,31 @@ export function resolveFundamentalMetrics(
     grossMargin,
     operatingMargin,
     netMargin,
+    fcfMargin,
     roe,
     roa,
     roic,
+    wacc,
+    roicWaccSpread,
     interestCoverage,
     fcfYield,
     earningsYield,
+    dividendYield,
+    netBuybackYield,
+    shareholderYield,
+    fcfConversion,
+    netCashOrDebt,
+    netCashToMarketCap,
+    netDebtToEbitda,
+    currentRatio,
+    quickRatio,
+    cashRunwayMonths,
+    cashBurnRate,
+    nim,
+    efficiencyRatio,
+    combinedRatio,
+    pffo,
+    occupancyRate,
     peTrailing,
     peForward,
     peg,

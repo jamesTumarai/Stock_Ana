@@ -19,6 +19,9 @@ export type BusinessArchetype =
   | 'utility'
   | 'telecom'
   | 'early_stage'
+  | 'automotive'
+  | 'healthcare'
+  | 'biotech'
   | 'general_operating';
 
 export interface BusinessClassificationEvidence {
@@ -752,7 +755,40 @@ export function resolveBusinessClassification(
     };
   }
 
-  // 19. Default General Operating Company
+  // 19. Healthcare / Pharmaceuticals / Biotech
+  if (
+    sector.includes('health') ||
+    industry.includes('health') ||
+    industry.includes('pharma') ||
+    industry.includes('biotech') ||
+    industry.includes('medical') ||
+    businessSummary.includes('biopharmaceutical') ||
+    businessSummary.includes('therapeutics') ||
+    businessSummary.includes('pharmaceutical')
+  ) {
+    const isBiotech = industry.includes('biotech') || businessSummary.includes('biotechnology') || businessSummary.includes('clinical');
+    const isPreRev = isNegativeGrossMargin || isConsecutiveNegativeFcf;
+    const primaryArchetype: BusinessArchetype = (isBiotech && isPreRev) ? 'biotech' : 'healthcare';
+    return {
+      primaryArchetype,
+      secondaryBusinessLines,
+      sector: rawSector || 'Healthcare',
+      industry: rawIndustry || (primaryArchetype === 'biotech' ? 'Biotechnology' : 'Healthcare'),
+      subIndustry: rawIndustry,
+      confidence: 'HIGH',
+      evidence: {
+        archetype: primaryArchetype,
+        confidence: 'HIGH',
+        strongSignals,
+        supportingSignals,
+        conflictingSignals,
+        primaryArchetype,
+        secondaryBusinessLines,
+      },
+    };
+  }
+
+  // 20. Default General Operating Company
   const defaultArchetype: BusinessArchetype = 'general_operating';
   return {
     primaryArchetype: defaultArchetype,
@@ -798,6 +834,9 @@ const ARCHETYPE_METADATA: Record<BusinessArchetype, { labelEn: string; labelTh: 
   utility: { labelEn: 'Regulated Utility', labelTh: 'สาธารณูปโภคที่มีการกำกับดูแล', isFinancial: false },
   telecom: { labelEn: 'Telecommunications & Network Infrastructure', labelTh: 'โทรคมนาคมและโครงสร้างพื้นฐานเครือข่าย', isFinancial: false },
   early_stage: { labelEn: 'Early-Stage / High Cash Burn / Pre-Profit', labelTh: 'ธุรกิจระยะเริ่มต้น / กระแสเงินสดยังติดลบ / ยังไม่มีกำไร', isFinancial: false },
+  automotive: { labelEn: 'Automotive & Mobility OEM', labelTh: 'ผู้ผลิตยานยนต์และระบบขับเคลื่อน', isFinancial: false },
+  healthcare: { labelEn: 'Healthcare & Pharmaceuticals', labelTh: 'สุขภาพและเวชภัณฑ์ยา', isFinancial: false },
+  biotech: { labelEn: 'Pre-Revenue Clinical Biotech', labelTh: 'เทคโนโลยีชีวภาพระยะวิจัย (ก่อนมีรายได้)', isFinancial: false },
   general_operating: { labelEn: 'General Operating Company', labelTh: 'บริษัทดำเนินธุรกิจเชิงพาณิชย์ทั่วไป', isFinancial: false }
 };
 

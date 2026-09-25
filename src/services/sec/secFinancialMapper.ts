@@ -78,6 +78,8 @@ const METRIC_SPECS: MetricSpec[] = [
   // It is a fallback only for fiscal periods where the narrower PPE concept is unavailable.
   { statement: 'cash_flow', metric: 'capex', concepts: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'cash_flow', metric: 'dividends_paid', concepts: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'cash_flow', metric: 'repurchase_of_common_stock', concepts: ['PaymentsForRepurchaseOfCommonStock', 'PaymentsForRepurchaseOfEquity', 'PaymentsForRepurchaseOfInitialPublicOfferingShares'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'cash_flow', metric: 'issuance_of_common_stock', concepts: ['ProceedsFromIssuanceOfCommonStock', 'ProceedsFromStockOptionsExercised', 'ProceedsFromIssuanceOrSaleOfEquity', 'ProceedsFromStockIssuance', 'ProceedsFromIssuanceOfShares'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
 
   // Banking / FinTech
   { statement: 'income_statement', metric: 'net_interest_income', concepts: ['NetInterestIncome', 'InterestIncomeExpenseNet', 'InterestAndDividendIncomeOperating'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
