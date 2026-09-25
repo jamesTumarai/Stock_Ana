@@ -747,6 +747,11 @@ function extractCandidateMetrics(
       if (key === 'roic_pct') {
         // Pre-computed raw ROIC requires underlying filing derivation or verified provenance flag
         status = ((p as any).roic_verified && isFilingGradeSource(source)) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+      } else if (key === 'revenue_growth_yoy_pct' || key === 'operating_margin_pct') {
+        // Persisted AI peer rows may claim a filing source without containing a verified calculation.
+        status = p[`${key}_verified`] === true && isFilingGradeSource(source)
+          ? 'VERIFIED'
+          : 'FOUND_UNVERIFIED';
       } else if (MARKET_METRICS.has(key)) {
         const isUnverified = GENERATED_FALLBACK_SOURCE_REGEX.test(p.financial_source || '') || /unverified/i.test(p.financial_source || '');
         status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
@@ -1316,7 +1321,7 @@ function buildArchetypeBenchmarkRows(
     });
 
     const roeMed = benchmarkMedian('roe_pct');
-    const targetROE = targetMetrics?.roe.value ?? (report.key_indicators as any)?.profitability?.roe_pct ?? (report.financial_statements?.key_indicators as any)?.roe_pct;
+    const targetROE = targetMetrics?.roe.value;
     rows.push({
       metric_name: 'Return on Equity (ROE)',
       metric_name_th: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น',
@@ -1400,9 +1405,7 @@ function buildArchetypeBenchmarkRows(
     });
 
     const revgMed = benchmarkMedian('revenue_growth_yoy_pct');
-    const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value ?? report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
-      (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
-    ];
+    const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value;
     rows.push({
       metric_name: 'YoY Revenue Growth',
       metric_name_th: 'การเติบโตรายได้ YoY',
@@ -1457,9 +1460,7 @@ function buildArchetypeBenchmarkRows(
     });
 
     const revgMed = benchmarkMedian('revenue_growth_yoy_pct');
-    const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value ?? report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[
-      (report.financial_statements?.income_statement?.yoy_revenue_growth_pct?.length || 0) - 1
-    ];
+    const targetRevGrowth = targetMetrics?.revenueGrowthYoY.value;
     rows.push({
       metric_name: 'Revenue Growth YoY',
       metric_name_th: 'การเติบโตรายได้ YoY',
@@ -1475,7 +1476,7 @@ function buildArchetypeBenchmarkRows(
       direct_peer_header_en: directHeaderEn,
     });
 
-    const targetROIC = targetMetrics?.roic.value ?? (report.key_indicators as any)?.profitability?.roic_pct;
+    const targetROIC = targetMetrics?.roic.value;
     const profitabilityOptions = [
       { key: 'roic_pct', name: 'ROIC', nameTh: 'ผลตอบแทนเงินลงทุน', target: targetROIC, unit: '%', basis: targetMetrics?.roic.basis },
       { key: 'operating_margin_pct', name: 'Operating Margin', nameTh: 'อัตรากำไรจากการดำเนินงาน', target: targetMetrics?.operatingMargin.value, unit: '%', basis: targetMetrics?.operatingMargin.basis },

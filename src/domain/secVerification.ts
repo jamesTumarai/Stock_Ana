@@ -70,6 +70,8 @@ export interface SecHistoricalAnnualFact {
   verification: 'verified';
 }
 
+import type { CanonicalFinancialDataset } from './financialValue';
+
 export interface SecVerificationEnvelope {
   status: 'verified_eligible' | 'verified_partial' | 'unavailable';
   ticker: string;
@@ -86,6 +88,7 @@ export interface SecVerificationEnvelope {
     units?: string;
   } | null;
   sec_period_statements?: SecPeriodStatement[];
+  canonical_financials?: CanonicalFinancialDataset;
   historical_annual_facts?: SecHistoricalAnnualFact[];
   error?: {
     code: string;

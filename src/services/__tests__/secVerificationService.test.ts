@@ -59,6 +59,31 @@ try {
   assert.equal(eligible?.dcf_financial_inputs?.net_cash_m, -40000);
   assert.equal(eligible?.dcf_financial_inputs?.current_shares_outstanding_m, 14750);
 
+  const withCanonical = {
+    ...eligibleBody,
+    canonicalFinancials: {
+      ticker: 'AAPL', generatedBy: 'lumina-sec-xbrl-v1', provenanceStatus: 'verified',
+      periods: ['Q2 2026'],
+      values: { 'income_statement.eps_diluted': [{ period: 'Q2 2026', value: 0.32, verification: 'verified' }] },
+    },
+  };
+  globalThis.fetch = (async () => new Response(JSON.stringify(withCanonical), { status: 200 })) as typeof fetch;
+  const withHistory = await fetchSecVerificationEnvelope('AAPL');
+  assert.equal(withHistory?.canonical_financials?.values['income_statement.eps_diluted'][0].value, 0.32);
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    ...withCanonical, canonicalFinancials: { ...withCanonical.canonicalFinancials, ticker: 'MSFT' },
+  }), { status: 200 })) as typeof fetch;
+  const wrongIssuer = await fetchSecVerificationEnvelope('AAPL');
+  assert.equal(wrongIssuer?.canonical_financials, undefined);
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    ...withCanonical,
+    canonicalFinancials: { ...withCanonical.canonicalFinancials,
+      values: { 'income_statement.eps_diluted': [{ period: 'Q1 2026', value: 0.32, verification: 'verified' }] },
+    },
+  }), { status: 200 })) as typeof fetch;
+  const mismatchedPeriod = await fetchSecVerificationEnvelope('AAPL');
+  assert.equal(mismatchedPeriod?.canonical_financials, undefined);
+
   const malformed = structuredClone(eligibleBody);
   malformed.dcfFinancialInputs.netCashM = -39999;
   globalThis.fetch = (async () => new Response(JSON.stringify(malformed), {

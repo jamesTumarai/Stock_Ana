@@ -75,19 +75,17 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     assert.equal(resolved.fivePillarsData.growth.peg_ratio, undefined, 'PEG must not use adjacent-quarter EPS as YoY growth');
   });
 
-  it('4. ROIC must be deterministically derived from operating income, equity, debt, and cash', () => {
+  it('4. ROIC requires a comparable beginning capital balance before publishing an average-capital return', () => {
     const resolved = resolveAdaptiveFivePillars(actualProductionTslaReport, 'TSLA');
-    assert.ok(resolved.fivePillarsData.profitability.roic_pct !== undefined, 'ROIC must be derived deterministically');
-    assert.ok(Number.isFinite(resolved.fivePillarsData.profitability.roic_pct));
+    assert.equal(resolved.fivePillarsData.profitability.roic_pct, undefined);
   });
 
-  it('5. ROE and ROA must use independent denominators and never accidentally be identical', () => {
+  it('5. ROE and ROA require comparable beginning balances for TTM returns', () => {
     const resolved = resolveAdaptiveFivePillars(actualProductionTslaReport, 'TSLA');
     const roe = resolved.fivePillarsData.profitability.roe_pct;
     const roa = resolved.fivePillarsData.profitability.roa_pct;
-    assert.ok(roe !== undefined, 'ROE must be defined');
-    assert.ok(roa !== undefined, 'ROA must be defined');
-    assert.notEqual(roe, roa, 'ROE (netInc/equity) and ROA (netInc/assets) must not share denominator');
+    assert.equal(roe, undefined);
+    assert.equal(roa, undefined);
   });
 
   it('6. Stale financial five_pillars in report JSON must NOT override resolved operating archetype', () => {
@@ -480,7 +478,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     assert.equal(resolved.fivePillarsData.yields.treasury_10yr_yield_pct, 4.45);
     assert.equal(resolved.fivePillarsData.yields.treasury_as_of_date, '2026-03-15');
     assert.equal(resolved.fivePillarsData.yields.treasury_source, 'Federal Reserve H.15');
-    assert.equal(resolved.fivePillarsData.yields.yield_spread_vs_treasury, 1.75); // 6.20 - 4.45 = +1.75%
+    assert.equal(resolved.fivePillarsData.yields.yield_spread_vs_treasury, undefined, 'Reported FCF yield cannot replace canonical TTM FCF in the spread');
   });
 
   it('21. 10Y Treasury yield failure remains undefined, NEVER falls back to 4.25%', () => {

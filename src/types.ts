@@ -704,8 +704,10 @@ export interface PeerCompanyItem {
   pe_trailing?: number | null | string;
   pe_forward?: number | null;
   revenue_growth_yoy_pct?: number | null;
+  revenue_growth_yoy_pct_verified?: boolean;
   gross_margin_pct?: number | null;
   operating_margin_pct?: number | null;
+  operating_margin_pct_verified?: boolean;
   net_margin_pct?: number | null;
   roic_pct?: number | null;
   roic_verified?: boolean;
@@ -746,8 +748,12 @@ export interface PeerCompanyItem {
   financial_source?: string;
   revenue_growth_yoy_pct_period_basis?: string;
   revenue_growth_yoy_pct_basis?: string;
+  revenue_growth_yoy_pct_concepts_used?: string[];
+  revenue_growth_yoy_pct_inputs_used?: Record<string, number>;
   operating_margin_pct_period_basis?: string;
   operating_margin_pct_basis?: string;
+  operating_margin_pct_concepts_used?: string[];
+  operating_margin_pct_inputs_used?: Record<string, number>;
   roic_pct_period_basis?: string;
   roic_pct_basis?: string;
 }
@@ -1010,6 +1016,8 @@ export interface FivePillarsResolvedMetric {
   reason?: string;
   reasonTh?: string;
   isGuarded?: boolean;
+  quartersUsed?: string[];
+  inputsUsed?: Record<string, number>;
 }
 
 export interface FivePillarsProfitabilityData {
@@ -1080,12 +1088,16 @@ export interface FivePillarsYieldsData {
   earnings_yield_basis?: 'TTM' | 'FORWARD' | string;
   pfcf_multiple?: number;
   fcf_yield_pct?: number;
+  fcf_yield_quarters_used?: string[];
+  fcf_yield_inputs_used?: Record<string, number>;
   is_fcf_guarded?: boolean;
   fcf_guard_reason?: string;
   dividend_yield_pct?: number;
   net_buyback_yield_pct?: number;
   shareholder_yield_pct?: number;
   fcf_conversion_pct?: number;
+  fcf_conversion_quarters_used?: string[];
+  fcf_conversion_inputs_used?: Record<string, number>;
   fcf_conversion_basis?: string;
   fcf_conversion_status?: string;
   fcf_conversion_reason?: string;

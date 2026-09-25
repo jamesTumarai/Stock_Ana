@@ -1,6 +1,7 @@
 import type { CandidateDefinition } from '../../src/domain/valuation/__fixtures__/peerUniverse.js';
 import type { PeerCompanyItem } from '../../src/types.js';
 import { calculateCanonicalRoic } from '../../src/domain/valuation/canonicalRoic.js';
+import { validTrailingFourQuarterLabels } from '../../src/domain/valuation/canonicalQuarterWindow.js';
 import {
   fetchSecVerifiedIntegrationPackage,
   type SecVerifiedIntegrationPackage,
@@ -23,6 +24,8 @@ export interface EnrichedPeerMetricObservation {
   periodBasis?: 'TTM' | 'ANNUAL' | 'QUARTERLY';
   reason?: string;
   reasonTh?: string;
+  conceptsUsed?: string[];
+  inputsUsed?: Record<string, number>;
 }
 
 export interface PeerEnrichmentOptions {
@@ -131,6 +134,10 @@ export async function enrichPeerCandidate(
       };
     }
   }
+  // Discovery/AI candidate percentages have no accounting definition. Recompute
+  // these two semantic fields from period-matched SEC facts or leave them absent.
+  delete metrics.revenue_growth_yoy_pct;
+  delete metrics.operating_margin_pct;
 
   const fetchPkg = options.secPackageFetcher || (async (t: string) => {
     const client = options.client || createSecEdgarClientFromEnv();
@@ -146,7 +153,7 @@ export async function enrichPeerCandidate(
       ),
     ]);
 
-    if (!pkg?.canonicalFinancials || pkg.canonicalFinancials.periods.length === 0) {
+    if (!pkg?.canonicalFinancials || pkg.canonicalFinancials.provenanceStatus !== 'verified' || !/sec-xbrl/i.test(pkg.canonicalFinancials.generatedBy || '') || pkg.canonicalFinancials.periods.length === 0) {
       gaps.push({
         ticker,
         metric: 'canonical_financials',
@@ -162,8 +169,11 @@ export async function enrichPeerCandidate(
     const latestIndex = periods.length - 1;
     const latestPeriod = periods[latestIndex];
 
-    const getVal = (key: string, idx = latestIndex): CanonicalFinancialValue | undefined =>
-      values[key]?.[idx];
+    const getVal = (key: string, idx = latestIndex): CanonicalFinancialValue | undefined => {
+      const item = values[key]?.[idx];
+      return item && (!item.period || item.period === periods[idx]) && item.verification !== 'unverified'
+        ? item : undefined;
+    };
 
     // Priority 1: Income Statement Fundamentals
     const revFact = getVal('income_statement.revenue');
@@ -180,6 +190,8 @@ export async function enrichPeerCandidate(
     const shortInvFact = getVal('balance_sheet.short_term_investments');
 
     const sourceDoc = revFact?.source?.documentType ? `SEC Form ${revFact.source.documentType}` : 'SEC EDGAR 10-Q';
+    const conceptOf = (item?: CanonicalFinancialValue) =>
+      String(item?.derivation || '').match(/us-gaap:([A-Za-z0-9]+)/)?.[1];
 
     // Store verified raw fundamental facts
     if (finite(revFact?.value)) {
@@ -248,7 +260,8 @@ export async function enrichPeerCandidate(
     const priorIndex = priorPeriod ? periods.indexOf(priorPeriod) : -1;
     if (priorIndex !== -1 && finite(revFact?.value)) {
       const priorRevFact = getVal('income_statement.revenue', priorIndex);
-      if (finite(priorRevFact?.value) && priorRevFact.value > 0) {
+      if (finite(priorRevFact?.value) && priorRevFact.value > 0
+        && (!conceptOf(revFact) || !conceptOf(priorRevFact) || conceptOf(revFact) === conceptOf(priorRevFact))) {
         const growthYoY = rounded(((revFact.value - priorRevFact.value) / priorRevFact.value) * 100);
         metrics.revenue_growth_yoy_pct = {
           value: growthYoY,
@@ -259,12 +272,16 @@ export async function enrichPeerCandidate(
           source: `${sourceDoc} (${latestPeriod} vs ${priorPeriod})`,
           reportedOrDerived: 'DERIVED',
           status: 'VERIFIED',
+          conceptsUsed: [revFact.derivation || 'income_statement.revenue', priorRevFact.derivation || 'income_statement.revenue'],
+          inputsUsed: { currentRevenue: revFact.value, priorYearRevenue: priorRevFact.value },
         };
       } else {
         gaps.push({
           ticker,
           metric: 'revenue_growth_yoy_pct',
-          reason: 'Prior-year comparable quarter revenue is non-positive or unavailable',
+          reason: conceptOf(revFact) && conceptOf(priorRevFact) && conceptOf(revFact) !== conceptOf(priorRevFact)
+            ? 'Revenue concept differs from the prior-year comparable quarter'
+            : 'Prior-year comparable quarter revenue is non-positive or unavailable',
           attemptedSources: ['SEC EDGAR XBRL'],
           periodNeeded: priorPeriod,
         });
@@ -279,7 +296,8 @@ export async function enrichPeerCandidate(
     }
 
     // SECTION 9: Derive Peer Operating Margin (same standalone quarter)
-    if (finite(opIncFact?.value) && finite(revFact?.value) && revFact.value > 0) {
+    if (finite(opIncFact?.value) && finite(revFact?.value) && revFact.value > 0
+      && (!opIncFact.periodEnd || !revFact.periodEnd || opIncFact.periodEnd === revFact.periodEnd)) {
       metrics.operating_margin_pct = {
         value: rounded((opIncFact.value / revFact.value) * 100),
         unit: '%',
@@ -289,6 +307,8 @@ export async function enrichPeerCandidate(
         source: sourceDoc,
         reportedOrDerived: 'DERIVED',
         status: 'VERIFIED',
+        conceptsUsed: [opIncFact.derivation || 'income_statement.operating_income', revFact.derivation || 'income_statement.revenue'],
+        inputsUsed: { operatingIncome: opIncFact.value, revenue: revFact.value },
       };
     } else {
       gaps.push({
@@ -325,7 +345,7 @@ export async function enrichPeerCandidate(
     }
 
     // SECTION 11: Derive Peer ROIC (Canonical TTM NOPAT / Average Invested Capital)
-    if (periods.length >= 4) {
+    if (periods.length >= 4 && validTrailingFourQuarterLabels(periods.slice(-4))) {
       const qIndices = [latestIndex - 3, latestIndex - 2, latestIndex - 1, latestIndex];
       const opIncs = qIndices.map(i => getVal('income_statement.operating_income', i)?.value);
       const allOpIncsValid = opIncs.every(finite);
@@ -414,7 +434,7 @@ export async function enrichPeerCandidate(
     }
 
     // SECTION 30: P/E N/M Semantics when TTM Earnings are verified negative
-    if (periods.length >= 4) {
+    if (periods.length >= 4 && validTrailingFourQuarterLabels(periods.slice(-4))) {
       const qIndices = [latestIndex - 3, latestIndex - 2, latestIndex - 1, latestIndex];
       const netIncs = qIndices.map(i => getVal('income_statement.net_income', i)?.value);
       if (netIncs.every(finite)) {
@@ -541,9 +561,11 @@ export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompa
     pe_forward: m.pe_forward?.value !== undefined ? m.pe_forward.value : null,
     ev_ebitda: (m.ev_ebitda?.reason === 'NEGATIVE_EBITDA') ? 'N/M' : (m.ev_ebitda?.value !== undefined ? m.ev_ebitda.value : null),
     ev_sales: m.ev_sales?.value !== undefined ? m.ev_sales.value : null,
-    revenue_growth_yoy_pct: m.revenue_growth_yoy_pct?.value !== undefined ? m.revenue_growth_yoy_pct.value : null,
+    revenue_growth_yoy_pct: m.revenue_growth_yoy_pct?.status === 'VERIFIED' && m.revenue_growth_yoy_pct.periodBasis === 'QUARTERLY' ? m.revenue_growth_yoy_pct.value : null,
+    revenue_growth_yoy_pct_verified: m.revenue_growth_yoy_pct?.status === 'VERIFIED' && m.revenue_growth_yoy_pct.periodBasis === 'QUARTERLY',
     gross_margin_pct: m.gross_margin_pct?.value !== undefined ? m.gross_margin_pct.value : null,
-    operating_margin_pct: m.operating_margin_pct?.value !== undefined ? m.operating_margin_pct.value : null,
+    operating_margin_pct: m.operating_margin_pct?.status === 'VERIFIED' && m.operating_margin_pct.periodBasis === 'QUARTERLY' ? m.operating_margin_pct.value : null,
+    operating_margin_pct_verified: m.operating_margin_pct?.status === 'VERIFIED' && m.operating_margin_pct.periodBasis === 'QUARTERLY',
     net_margin_pct: m.net_margin_pct?.value !== undefined ? m.net_margin_pct.value : null,
     roic_pct: m.roic_pct?.value !== undefined ? m.roic_pct.value : null,
     roic_verified: m.roic_pct?.status === 'VERIFIED',
@@ -553,7 +575,7 @@ export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompa
     cash_and_equivalents: m.cash_and_equivalents?.value !== undefined ? m.cash_and_equivalents.value : null,
     short_term_investments: m.short_term_investments?.value !== undefined ? m.short_term_investments.value : null,
     financial_period: m.operating_margin_pct?.period || m.revenue_growth_yoy_pct?.period || m.roic_pct?.period || 'Latest',
-    financial_source: m.operating_margin_pct?.source || m.revenue_growth_yoy_pct?.source || m.roic_pct?.source || 'SEC EDGAR',
+    financial_source: m.operating_margin_pct?.source || m.revenue_growth_yoy_pct?.source || m.roic_pct?.source || 'Unverified source',
     status_label_en: cand.scaleTier ? `${cand.scaleTier} cap` : undefined,
     profitabilityState: cand.profitabilityState,
     lifecycle: cand.lifecycle,
@@ -561,8 +583,12 @@ export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompa
     // Explicit period basis retention
     revenue_growth_yoy_pct_period_basis: m.revenue_growth_yoy_pct?.periodBasis,
     revenue_growth_yoy_pct_basis: m.revenue_growth_yoy_pct?.basis,
+    revenue_growth_yoy_pct_concepts_used: m.revenue_growth_yoy_pct?.conceptsUsed,
+    revenue_growth_yoy_pct_inputs_used: m.revenue_growth_yoy_pct?.inputsUsed,
     operating_margin_pct_period_basis: m.operating_margin_pct?.periodBasis,
     operating_margin_pct_basis: m.operating_margin_pct?.basis,
+    operating_margin_pct_concepts_used: m.operating_margin_pct?.conceptsUsed,
+    operating_margin_pct_inputs_used: m.operating_margin_pct?.inputsUsed,
     roic_pct_period_basis: m.roic_pct?.periodBasis,
     roic_pct_basis: m.roic_pct?.basis,
   };

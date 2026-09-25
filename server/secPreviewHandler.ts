@@ -75,6 +75,7 @@ export async function handleSecPreview(req: any, res: any) {
       periods: pkg.canonicalFinancials?.periods ?? [],
       sourceCoverage: pkg.canonicalFinancials?.sourceCoverage ?? null,
       provenanceStatus: pkg.canonicalFinancials?.provenanceStatus ?? null,
+      canonicalFinancials: pkg.canonicalFinancials?.provenanceStatus === 'verified' ? pkg.canonicalFinancials : null,
       provenanceWarnings: pkg.canonicalFinancials?.provenanceWarnings ?? [],
       dcfCoverage: pkg.dcfCoverage,
       dcfFinancialInputs,

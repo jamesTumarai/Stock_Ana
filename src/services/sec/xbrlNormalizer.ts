@@ -1,7 +1,7 @@
 import type { SecCompanyFact } from './secClient';
 
 export type SecFiscalPeriod = 'Q1' | 'Q2' | 'Q3' | 'FY';
-export type SecQuarterDerivation = 'reported_ytd' | 'derived_ytd_difference' | 'reported_instant' | 'derived_fy_less_q3_ytd';
+export type SecQuarterDerivation = 'reported_ytd' | 'reported_standalone' | 'derived_ytd_difference' | 'reported_instant' | 'derived_fy_less_q3_ytd';
 
 export interface NormalizedSecQuarterFact {
   fiscalYear: number;
@@ -14,6 +14,8 @@ export interface NormalizedSecQuarterFact {
   accessionNumbers: string[];
   derivation: SecQuarterDerivation;
   sourceFacts: SecCompanyFact[];
+  periodType: 'standalone_quarter' | 'instant';
+  durationDays?: number;
 }
 
 const VALID_FORMS = new Set(['10-Q', '10-Q/A', '10-K', '10-K/A']);
@@ -67,17 +69,27 @@ const latestPeriodFacts = (facts: SecCompanyFact[]) => {
 const selectYtdFact = (facts: SecCompanyFact[], fiscalYear: number, fp: SecFiscalPeriod) => {
   const candidates = facts.filter(fact => validFact(fact) && fact.fy === fiscalYear && fact.fp === fp && typeof fact.start === 'string');
   if (candidates.length === 0) return undefined;
-  const currentPeriodCandidates = latestPeriodFacts(candidates);
+  const expected = fp === 'Q1' ? [60, 110] : fp === 'Q2' ? [150, 205] : fp === 'Q3' ? [235, 300] : [300, 400];
+  const matchingDuration = candidates.filter(fact => durationDays(fact) >= expected[0] && durationDays(fact) <= expected[1]);
+  if (matchingDuration.length === 0) return undefined;
+  const currentPeriodCandidates = latestPeriodFacts(matchingDuration);
   const maxDuration = Math.max(...currentPeriodCandidates.map(durationDays));
   if (maxDuration < 1) return undefined;
   return newest(currentPeriodCandidates.filter(fact => durationDays(fact) === maxDuration));
+};
+
+const selectStandaloneFact = (facts: SecCompanyFact[], fiscalYear: number, fp: SecFiscalPeriod, ytd?: SecCompanyFact) => {
+  const candidates = facts.filter(fact => validFact(fact) && fact.fy === fiscalYear && fact.fp === fp
+    && typeof fact.start === 'string' && durationDays(fact) >= 60 && durationDays(fact) <= 110
+    && (!ytd?.end || fact.end === ytd.end));
+  return newest(latestPeriodFacts(candidates));
 };
 
 const accessionList = (facts: SecCompanyFact[]) => Array.from(new Set(
   facts.map(fact => fact.accn).filter((value): value is string => typeof value === 'string' && value.length > 0),
 ));
 
-const makeDirectDuration = (fact: SecCompanyFact, quarter: 1 | 2 | 3): NormalizedSecQuarterFact => ({
+const makeDirectDuration = (fact: SecCompanyFact, quarter: 1 | 2 | 3 | 4): NormalizedSecQuarterFact => ({
   fiscalYear: fact.fy as number,
   fiscalQuarter: quarter,
   value: fact.val as number,
@@ -86,8 +98,10 @@ const makeDirectDuration = (fact: SecCompanyFact, quarter: 1 | 2 | 3): Normalize
   filed: fact.filed,
   form: fact.form,
   accessionNumbers: accessionList([fact]),
-  derivation: 'reported_ytd',
+  derivation: quarter === 1 ? 'reported_ytd' : 'reported_standalone',
   sourceFacts: [fact],
+  periodType: 'standalone_quarter',
+  durationDays: durationDays(fact),
 });
 
 const makeDifference = (
@@ -98,35 +112,44 @@ const makeDifference = (
   fiscalYear: current.fy as number,
   fiscalQuarter: quarter,
   value: stableDifference(current.val as number, prior.val as number),
-  start: prior.end,
+  start: new Date(dateMs(prior.end) + 86_400_000).toISOString().slice(0, 10),
   end: current.end as string,
   filed: current.filed,
   form: current.form,
   accessionNumbers: accessionList([current, prior]),
   derivation: 'derived_ytd_difference',
   sourceFacts: [current, prior],
+  periodType: 'standalone_quarter',
+  durationDays: Math.round((dateMs(current.end) - dateMs(prior.end)) / 86_400_000),
 });
 
 const makeQ4Difference = (annual: SecCompanyFact, q3Ytd: SecCompanyFact): NormalizedSecQuarterFact => ({
   fiscalYear: annual.fy as number,
   fiscalQuarter: 4,
   value: stableDifference(annual.val as number, q3Ytd.val as number),
-  start: q3Ytd.end,
+  start: new Date(dateMs(q3Ytd.end) + 86_400_000).toISOString().slice(0, 10),
   end: annual.end as string,
   filed: annual.filed,
   form: annual.form,
   accessionNumbers: accessionList([annual, q3Ytd]),
   derivation: 'derived_fy_less_q3_ytd',
   sourceFacts: [annual, q3Ytd],
+  periodType: 'standalone_quarter',
+  durationDays: Math.round((dateMs(annual.end) - dateMs(q3Ytd.end)) / 86_400_000),
 });
+
+const compatibleCumulativeFacts = (current?: SecCompanyFact, prior?: SecCompanyFact) => {
+  if (!current || !prior || current.fy !== prior.fy || current.start !== prior.start) return false;
+  const days = Math.round((dateMs(current.end) - dateMs(prior.end)) / 86_400_000);
+  return Number.isFinite(days) && days >= 60 && days <= 110;
+};
 
 /**
  * Convert cumulative SEC duration facts into standalone fiscal quarters.
  *
  * Q1 = Q1 YTD
- * Q2 = H1 YTD - Q1 YTD
- * Q3 = 9M YTD - H1 YTD
- * Q4 = FY - 9M YTD
+ * Q2/Q3/Q4 = filing-reported standalone duration when available;
+ * otherwise H1 YTD - Q1 YTD, 9M YTD - H1 YTD, FY - 9M YTD.
  *
  * Missing prerequisites stay missing. No interpolation or synthetic replacement is allowed.
  */
@@ -141,11 +164,17 @@ export function normalizeDurationFactsToStandaloneQuarters(facts: SecCompanyFact
     const q2 = selectYtdFact(facts, fiscalYear, 'Q2');
     const q3 = selectYtdFact(facts, fiscalYear, 'Q3');
     const fy = selectYtdFact(facts, fiscalYear, 'FY');
+    const q2Standalone = selectStandaloneFact(facts, fiscalYear, 'Q2', q2);
+    const q3Standalone = selectStandaloneFact(facts, fiscalYear, 'Q3', q3);
+    const q4Standalone = selectStandaloneFact(facts, fiscalYear, 'FY', fy);
 
     if (q1) normalized.push(makeDirectDuration(q1, 1));
-    if (q1 && q2) normalized.push(makeDifference(q2, q1, 2));
-    if (q2 && q3) normalized.push(makeDifference(q3, q2, 3));
-    if (q3 && fy) normalized.push(makeQ4Difference(fy, q3));
+    if (q2Standalone && (!q2 || filedRank(q2Standalone) >= filedRank(q2))) normalized.push(makeDirectDuration(q2Standalone, 2));
+    else if (compatibleCumulativeFacts(q2, q1)) normalized.push(makeDifference(q2!, q1!, 2));
+    if (q3Standalone && (!q3 || filedRank(q3Standalone) >= filedRank(q3))) normalized.push(makeDirectDuration(q3Standalone, 3));
+    else if (compatibleCumulativeFacts(q3, q2)) normalized.push(makeDifference(q3!, q2!, 3));
+    if (q4Standalone && (!fy || filedRank(q4Standalone) >= filedRank(fy))) normalized.push(makeDirectDuration(q4Standalone, 4));
+    else if (compatibleCumulativeFacts(fy, q3)) normalized.push(makeQ4Difference(fy!, q3!));
   }
 
   return normalized.filter(item => Number.isFinite(item.value));
@@ -182,6 +211,7 @@ export function normalizeInstantFactsToFiscalQuarters(facts: SecCompanyFact[]): 
       accessionNumbers: accessionList([fact]),
       derivation: 'reported_instant',
       sourceFacts: [fact],
+      periodType: 'instant',
     });
   }
 

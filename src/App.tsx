@@ -16,6 +16,7 @@ import { MotionIntro } from './components/MotionIntro';
 import { UserAvatar } from './components/UserAvatar';
 import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';
 import { fetchSecVerificationEnvelope } from './services/secVerificationService';
+import { adaptSecCanonicalToFinancialStatements } from './services/sec/secLegacyAdapter';
 import { fetchLiveQuotes } from './services/marketDataService';
 import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
 import { fetchPeerCompletion } from './services/peerCompletionService';
@@ -872,6 +873,7 @@ export default function App() {
 
             const nowIso = new Date().toISOString();
             if (aType !== 'technical' && requestedTicker) {
+              let peerCompletionSucceeded = false;
               try {
                 const peerCompletionRes = await fetchPeerCompletion(
                   requestedTicker,
@@ -880,6 +882,7 @@ export default function App() {
                   controller.signal
                 );
                 if (peerCompletionRes?.peers && peerCompletionRes.peers.length > 0) {
+                  peerCompletionSucceeded = true;
                   reportForValidation.peer_comparison = {
                     ...reportForValidation.peer_comparison,
                     as_of_date: reportForValidation.peer_comparison?.as_of_date || nowIso.split('T')[0],
@@ -890,13 +893,30 @@ export default function App() {
               } catch (peerErr) {
                 console.warn('[peerCompletion] Peer enrichment failed, proceeding with existing peers:', peerErr);
               }
+              if (!peerCompletionSucceeded && reportForValidation.peer_comparison?.peers) {
+                reportForValidation.peer_comparison = {
+                  ...reportForValidation.peer_comparison,
+                  peers: reportForValidation.peer_comparison.peers.map(peer => ({
+                    ...peer,
+                    revenue_growth_yoy_pct: null,
+                    operating_margin_pct: null,
+                    roic_pct: null,
+                    roic_verified: false,
+                  })),
+                };
+              }
             }
 
+            const { canonical_financials: verifiedSecCanonical, ...secVerificationMetadata } = secVerification || {};
+            const verifiedSecStatements = verifiedSecCanonical
+              ? adaptSecCanonicalToFinancialStatements(verifiedSecCanonical) : null;
             const prepared = validateAndPrepareReport(
               {
                 ...reportForValidation,
                 generated_at: reportForValidation.generated_at || nowIso,
-                ...(secVerification ? { sec_verification: secVerification } : {}),
+                ...(secVerification ? { sec_verification: secVerificationMetadata } : {}),
+                ...(verifiedSecCanonical ? { canonical_financials: verifiedSecCanonical } : {}),
+                ...(verifiedSecStatements ? { financial_statements: verifiedSecStatements } : {}),
                 analysis_type: aType,
                 ticker: requestedTicker,
               },

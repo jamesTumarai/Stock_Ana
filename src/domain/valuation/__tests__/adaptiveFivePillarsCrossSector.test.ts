@@ -121,12 +121,12 @@ describe('Adaptive Five Fundamental Pillars — Cross-Sector Test Suite', () => 
     const resolved = resolveAdaptiveFivePillars(report, 'SAAS_CO');
     assert.strictEqual(resolved.archetype, 'saas_software');
 
-    // Pillar 4: FCF Conversion = (420 / 300) * 100 = 140%
+    // Two annual observations cannot be relabeled as TTM cash conversion.
     const p4 = resolved.pillars.yields;
     const fcfConv = p4.metrics.find(m => m.key === 'fcf_conversion');
     assert.ok(fcfConv, 'FCF Conversion must exist in Pillar 4');
-    assert.strictEqual(fcfConv.value, 140);
-    assert.strictEqual(fcfConv.status, 'VERIFIED_AVAILABLE');
+    assert.strictEqual(fcfConv.value, null);
+    assert.strictEqual(fcfConv.status, 'NOT_APPLICABLE');
 
     // Pillar 3: Net Cash
     assert.strictEqual(resolved.fivePillarsData.balance_sheet.is_net_cash, true);

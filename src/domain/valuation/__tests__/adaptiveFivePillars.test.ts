@@ -214,7 +214,7 @@ describe('Adaptive Five Pillars Resolver', () => {
 
     assert.equal(data.profitability.roic_pct, 29.5, 'ROIC must be 29.5%');
     assert.equal(data.profitability.gross_margin_pct, 69.81, 'Gross Margin must be 69.81%');
-    assert.equal(data.yields.fcf_yield_pct, 2.8, 'FCF Yield 100/35.7 = 2.8%');
+    assert.equal(data.yields.fcf_yield_pct, undefined, 'P/FCF alone cannot replace canonical four-quarter FCF history');
     assert.equal(pillars.profitability.badgeLabel, 'ROIC');
     assert.equal(data.balance_sheet.is_net_cash, true, 'Microsoft has net cash');
   });
