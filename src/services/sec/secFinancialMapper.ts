@@ -290,6 +290,8 @@ const buildCanonicalValue = (
   const sourceAccessions = fact.accessionNumbers.join(', ');
   const derivation = fact.derivation === 'reported_instant'
     ? `SEC us-gaap:${concept} instant fact.`
+    : fact.derivation === 'reported_standalone'
+      ? `SEC us-gaap:${concept} reported standalone fiscal quarter.`
     : fact.derivation === 'reported_ytd'
       ? `SEC us-gaap:${concept} Q1 duration fact.`
       : fact.derivation === 'derived_ytd_difference'
@@ -303,7 +305,7 @@ const buildCanonicalValue = (
     unit: spec.canonicalUnit,
     period,
     periodEnd: fact.end,
-    type: fact.derivation === 'reported_instant' || fact.derivation === 'reported_ytd' ? (spec.type ?? 'reported') : 'derived',
+    type: fact.derivation === 'reported_instant' || fact.derivation === 'reported_ytd' || fact.derivation === 'reported_standalone' ? (spec.type ?? 'reported') : 'derived',
     verification: 'verified',
     source,
     derivation,

@@ -273,6 +273,7 @@ describe('Adaptive Five Pillars Data Completeness & Cross-Metric Integrity', () 
     // Annual revenue: 2022=50000, 2023=60000, 2024=72000, 2025=86400 (20% CAGR over 3 years)
     const report: Partial<ReportData> = {
       ticker: 'GROWTH_CO',
+      key_indicators: { revenue_cagr_3yr_pct: 99 } as any,
       financial_statements: {
         periods: ['FY 2022', 'FY 2023', 'FY 2024', 'FY 2025'],
         income_statement: {
@@ -313,6 +314,16 @@ describe('Adaptive Five Pillars Data Completeness & Cross-Metric Integrity', () 
     // Growth = (1500 / 1000 - 1) * 100 = 50.0%
     const report: Partial<ReportData> = {
       ticker: 'FCF_MULTI_Q',
+      canonical_financials: {
+        provenanceStatus: 'verified',
+        generatedBy: 'sec-xbrl-test',
+        values: {
+          'cash_flow.free_cash_flow': [
+            { period: 'Q4 2024', value: 1000, verification: 'verified' },
+            { period: 'Q4 2025', value: 1500, verification: 'verified' },
+          ],
+        },
+      } as any,
       financial_statements: {
         periods: ['Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024', 'Q1 2025', 'Q2 2025', 'Q3 2025', 'Q4 2025'],
         cash_flow: {

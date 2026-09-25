@@ -1,6 +1,7 @@
 import type { CanonicalFinancialDataset, CanonicalFinancialValue } from '../../domain/financialValue';
 import type { SecDcfCoverageAssessment, SecDcfCoverageIssue } from './secLegacyAdapter';
 import type { SecShareSnapshot } from './secShareSnapshot';
+import { validTrailingFourQuarterLabels } from '../../domain/valuation/canonicalQuarterWindow';
 
 export const SEC_DCF_FINANCIAL_INPUTS_VERSION = 1;
 
@@ -48,7 +49,7 @@ const lastFourVerified = (
   key: string,
   options: { positive?: boolean } = {},
 ): CanonicalFinancialValue[] | null => {
-  if (dataset.periods.length < 4) return null;
+  if (dataset.periods.length < 4 || !validTrailingFourQuarterLabels(dataset.periods.slice(-4))) return null;
   const offset = dataset.periods.length - 4;
   const items: CanonicalFinancialValue[] = [];
   for (let index = offset; index < dataset.periods.length; index += 1) {

@@ -6,6 +6,7 @@ import type {
   IncomeStatementData,
 } from '../../types';
 import type { SecShareSnapshot } from './secShareSnapshot';
+import { validTrailingFourQuarterLabels } from '../../domain/valuation/canonicalQuarterWindow';
 
 export interface SecDcfCoverageIssue {
   code: string;
@@ -144,7 +145,7 @@ export function adaptSecCanonicalToFinancialStatements(dataset: CanonicalFinanci
 
 const lastFourVerified = (dataset: CanonicalFinancialDataset, key: string, options: { positive?: boolean } = {}) => {
   const series = dataset.values[key];
-  if (!series || dataset.periods.length < 4) return false;
+  if (!series || dataset.periods.length < 4 || !validTrailingFourQuarterLabels(dataset.periods.slice(-4))) return false;
   const lastFourPeriods = dataset.periods.slice(-4);
   const offset = dataset.periods.length - 4;
   return lastFourPeriods.every((period, index) => {

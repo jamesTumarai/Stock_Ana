@@ -177,6 +177,8 @@ describe('Verified Peer Data Completion Pipeline', () => {
 
     assert.equal(enrichedCandidates.length, 3);
     const peerItems = enrichedCandidates.map(candidateToPeerCompanyItem);
+    assert.ok(peerItems.every(peer => peer.revenue_growth_yoy_pct_verified === true));
+    assert.ok(peerItems.every(peer => peer.operating_margin_pct_verified === true));
 
     // Target report
     const targetReport: Partial<ReportData> = {
@@ -251,6 +253,39 @@ describe('Verified Peer Data Completion Pipeline', () => {
 
     assert.equal(candidate.metrics.revenue_growth_yoy_pct, undefined, 'Cannot derive YoY revenue growth without prior-year same quarter');
     assert.ok(gaps.some(g => g.metric === 'revenue_growth_yoy_pct' && g.reason.includes('prior-year comparable quarter')));
+  });
+
+  it('replaces AI semantic percentages with SEC GAAP revenue and operating-income ratios', async () => {
+    const pkg = createMockSecPackage({
+      periods: ['Q2 2024', 'Q3 2024', 'Q4 2024', 'Q1 2025', 'Q2 2025'],
+      revenues: [100, 110, 120, 130, 125],
+      opIncomes: [10, 11, 12, 13, 25],
+    });
+    const raw = {
+      ticker: 'SEMANTIC_PEER', companyName: 'Peer',
+      metrics: {
+        revenue_growth_yoy_pct: { value: 350, unit: '%', period: 'Q2 2025', source: 'AI discovery', reportedOrDerived: 'REPORTED' },
+        operating_margin_pct: { value: 0.5, unit: '%', period: 'Q2 2025', source: 'AI discovery', reportedOrDerived: 'REPORTED' },
+      },
+    };
+    const { candidate } = await enrichPeerCandidate(raw as any, { secPackageFetcher: async () => pkg });
+    assert.equal(candidate.metrics.revenue_growth_yoy_pct?.value, 25);
+    assert.equal(candidate.metrics.operating_margin_pct?.value, 20);
+    const peer = candidateToPeerCompanyItem(candidate);
+    assert.equal(peer.revenue_growth_yoy_pct, 25);
+    assert.equal(peer.operating_margin_pct, 20);
+    assert.deepEqual(peer.revenue_growth_yoy_pct_inputs_used, { currentRevenue: 125, priorYearRevenue: 100 });
+    assert.deepEqual(peer.operating_margin_pct_inputs_used, { operatingIncome: 25, revenue: 125 });
+  });
+
+  it('excludes a prior-year revenue comparison when filing concepts differ', async () => {
+    const pkg = createMockSecPackage({ periods: ['Q2 2024', 'Q3 2024', 'Q4 2024', 'Q1 2025', 'Q2 2025'] });
+    (pkg.canonicalFinancials!.values['income_statement.revenue'][0] as any).derivation = 'SEC us-gaap:Revenues reported standalone fiscal quarter.';
+    (pkg.canonicalFinancials!.values['income_statement.revenue'][4] as any).derivation = 'SEC us-gaap:SalesRevenueNet reported standalone fiscal quarter.';
+    const { candidate, gaps } = await enrichPeerCandidate({ ticker: 'CONCEPT_CHANGE' } as any,
+      { secPackageFetcher: async () => pkg });
+    assert.equal(candidate.metrics.revenue_growth_yoy_pct, undefined);
+    assert.ok(gaps.some(gap => gap.metric === 'revenue_growth_yoy_pct' && /concept differs/.test(gap.reason)));
   });
 
   it('41. TEST — FOREIGN / NON-REPORTING ISSUER: preserves market metrics, leaves fundamentals unverified', async () => {
