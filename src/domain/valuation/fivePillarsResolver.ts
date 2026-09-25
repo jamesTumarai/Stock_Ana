@@ -12,6 +12,7 @@ import { DataGapState } from '../dataCompleteness/types';
 import { findKeyIndicatorInSource } from '../metricLineage';
 import { discoverPeers } from './peerDiscoveryEngine';
 import { resolveFundamentalMetrics } from './metricRegistry';
+import { getFivePillarMetricPolicy } from './fivePillarMetricPolicy';
 import type { AdaptiveFivePillarsResult, AdaptivePillarMetric, AdaptivePillarSection } from './types';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -25,6 +26,9 @@ const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.E
  * 3. Financial Sector Guard (FCF/Cash-Debt Fortress guarded for banks/lenders)
  * 4. Distinct N/A semantics (GUARDED_FOR_BUSINESS_MODEL, NOT_APPLICABLE, NOT_REPORTED)
  * 5. TTM vs Forward Earnings Yield identification
+ * 6. Shareholder Yield (Dividend + Net Buyback) & FCF Quality (FCF Conversion)
+ * 7. ROIC - WACC Value Creation Spread with conservative grounding
+ * 8. Net Cash vs Net Debt solvency adaptation
  */
 export function resolveAdaptiveFivePillars(
   report: Partial<ReportData>,
@@ -32,6 +36,9 @@ export function resolveAdaptiveFivePillars(
 ): AdaptiveFivePillarsResult {
   const sym = (ticker || report.ticker || (report as any)?.symbol || 'STOCK').toUpperCase().trim();
   const archetype = resolveBusinessArchetype(report, sym);
+  const subIndustry = (report.company_profile as any)?.sub_industry || report.company_profile?.industry;
+  const policy = getFivePillarMetricPolicy(archetype, subIndustry);
+
   const fs = report.financial_statements;
   const periods = fs?.periods || [];
   const lastIndex = Math.max(0, periods.length - 1);
@@ -93,7 +100,7 @@ export function resolveAdaptiveFivePillars(
   const resolvedMetrics = resolveFundamentalMetrics(report, sym);
   const isFinancial = ['bank', 'lender', 'fintech', 'insurer'].includes(archetype);
 
-  // Discover peers early so that Pillar 2 narrative cross-references actual Pillar 5 benchmark coverage
+  // Discover peers early so that Pillar 2 & 5 benchmark comparisons cross-reference actual coverage
   const peerDiscovery = discoverPeers(report, sym, { targetMetrics: resolvedMetrics });
   const peerMatrix = peerDiscovery.benchmarkRows;
 
@@ -129,6 +136,13 @@ export function resolveAdaptiveFivePillars(
     capitalEfficiencyVerdict = typeof resolvedMetrics.roe.value === 'number'
       ? `ROE ${resolvedMetrics.roe.value}% สะท้อนอัตราผลตอบแทนต่อส่วนผู้ถือหุ้นของสถาบันการเงิน${nim !== undefined ? ` พร้อม NIM ${nim}%` : ''}`
       : 'วิเคราะห์ผลตอบแทนสถาบันการเงินผ่าน ROE, ROA และ NIM';
+  } else if (typeof resolvedMetrics.roicWaccSpread.value === 'number') {
+    const spread = resolvedMetrics.roicWaccSpread.value;
+    const roic = resolvedMetrics.roic.value;
+    const wacc = resolvedMetrics.wacc.value;
+    capitalEfficiencyVerdict = spread > 0
+      ? `ROIC (${roic}%) สูงกว่า WACC (${wacc}%) อยู่ +${spread}% Spread ยืนยันการสร้างมูลค่าเพิ่มทางเศรษฐกิจ (EVA > 0)`
+      : `ROIC (${roic}%) ต่ำกว่า WACC (${wacc}%) อยู่ ${spread}% Spread สะท้อนผลตอบแทนเงินลงทุนยังไม่ครอบคลุมต้นทุนเงินทุน`;
   } else if (typeof resolvedMetrics.roic.value === 'number') {
     const roicVal = resolvedMetrics.roic.value;
     const roicRow = peerMatrix.find(r => r.metric_name === 'ROIC' || r.metric_key === 'roic_pct');
@@ -174,6 +188,14 @@ export function resolveAdaptiveFivePillars(
     roa_pct: typeof resolvedMetrics.roa.value === 'number' ? resolvedMetrics.roa.value : undefined,
     net_interest_margin_pct: isFinancial ? nim : undefined,
     efficiency_ratio_pct: isFinancial ? efficiencyRatio : undefined,
+    fcf_margin_pct: isFinancial ? undefined : (typeof resolvedMetrics.fcfMargin.value === 'number' ? resolvedMetrics.fcfMargin.value : undefined),
+    fcf_margin_basis: isFinancial ? undefined : resolvedMetrics.fcfMargin.basis,
+    wacc_pct: isFinancial ? undefined : (typeof resolvedMetrics.wacc.value === 'number' ? resolvedMetrics.wacc.value : undefined),
+    roic_wacc_spread_pct: isFinancial ? undefined : (typeof resolvedMetrics.roicWaccSpread.value === 'number' ? resolvedMetrics.roicWaccSpread.value : undefined),
+    roic_wacc_status: resolvedMetrics.roicWaccSpread.status,
+    roic_wacc_verdict: capitalEfficiencyVerdict,
+    combined_ratio_pct: typeof resolvedMetrics.combinedRatio.value === 'number' ? resolvedMetrics.combinedRatio.value : undefined,
+    underwriting_margin_pct: typeof resolvedMetrics.combinedRatio.value === 'number' ? rounded(100 - resolvedMetrics.combinedRatio.value) : undefined,
     capital_efficiency_verdict: capitalEfficiencyVerdict,
     resolved_metrics: {
       roic: resolvedMetrics.roic,
@@ -196,7 +218,7 @@ export function resolveAdaptiveFivePillars(
   const debtToEquity = at(bs?.debt_to_equity) ?? getKi('debt_to_equity') ?? (totalDebt !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded(totalDebt / totalEquity) : undefined);
   const interestCoverageMetric = resolvedMetrics.interestCoverage;
   const interestCoverage = typeof interestCoverageMetric.value === 'number' ? interestCoverageMetric.value : undefined;
-  const cashRunway = getKi('cash_runway_months');
+  const cashRunway = resolvedMetrics.cashRunwayMonths.value ?? getKi('cash_runway_months');
 
   let solvencyScoreLabel = 'ฐานะการเงินระดับมาตรฐาน';
   if (isFinancial) {
@@ -205,7 +227,12 @@ export function resolveAdaptiveFivePillars(
     solvencyScoreLabel = `ระยะเวลากระแสเงินสดคงเหลือประมาณ ${cashRunway} เดือน`;
   } else if (!isFinancial) {
     if (netCashOrDebt !== undefined && netCashOrDebt > 0) {
-      solvencyScoreLabel = `สถานะเงินสดสุทธิ (Net Cash +$${netCashOrDebt}B) มีความมั่นคงทางการเงินสูง`;
+      const mcapPctSuffix = resolvedMetrics.netCashToMarketCap.value !== null && resolvedMetrics.netCashToMarketCap.value !== undefined
+        ? ` คิดเป็น ${resolvedMetrics.netCashToMarketCap.value}% ของมูลค่าตลาด`
+        : '';
+      solvencyScoreLabel = `สถานะเงินสดสุทธิ (Net Cash +$${netCashOrDebt}B${mcapPctSuffix}) มีความมั่นคงทางการเงินสูง`;
+    } else if (resolvedMetrics.netDebtToEbitda.status === 'CALCULATED' && typeof resolvedMetrics.netDebtToEbitda.value === 'number') {
+      solvencyScoreLabel = `ภาระหนี้สินสุทธิต่อ EBITDA ${resolvedMetrics.netDebtToEbitda.value}x อยู่ในเกณฑ์บริหารจัดการได้ (D/E ${debtToEquity ?? 'N/A'}x)`;
     } else if (debtToEquity !== undefined && debtToEquity <= 1.0) {
       solvencyScoreLabel = `ภาระหนี้สินอยู่ในเกณฑ์บริหารจัดการได้ (D/E ${debtToEquity}x)`;
     } else if (debtToEquity !== undefined && debtToEquity > 2.0) {
@@ -220,8 +247,8 @@ export function resolveAdaptiveFivePillars(
   const balanceSheetData: FivePillarsBalanceSheetData = {
     total_cash_and_investments_b: totalCash !== undefined ? rounded(totalCash / 1000) : undefined,
     total_debt_b: totalDebt !== undefined ? rounded(totalDebt / 1000) : undefined,
-    net_cash_or_debt_b: isFinancial ? undefined : netCashOrDebt !== undefined ? Math.abs(netCashOrDebt) : undefined,
-    is_net_cash: isFinancial ? undefined : netCashOrDebt !== undefined ? netCashOrDebt >= 0 : undefined,
+    net_cash_or_debt_b: isFinancial ? undefined : (netCashOrDebt !== undefined ? Math.abs(netCashOrDebt) : undefined),
+    is_net_cash: isFinancial ? undefined : (netCashOrDebt !== undefined ? netCashOrDebt >= 0 : undefined),
     debt_to_equity: debtToEquity,
     interest_coverage: isFinancial ? undefined : interestCoverage,
     interest_coverage_status: interestCoverageMetric.status,
@@ -229,10 +256,18 @@ export function resolveAdaptiveFivePillars(
     interest_coverage_basis: interestCoverageMetric.basis,
     interest_coverage_formula: interestCoverageMetric.formula,
     interest_coverage_source: interestCoverageMetric.source,
+    net_cash_to_market_cap_pct: isFinancial ? undefined : (typeof resolvedMetrics.netCashToMarketCap.value === 'number' ? resolvedMetrics.netCashToMarketCap.value : undefined),
+    net_debt_to_ebitda: isFinancial ? undefined : (typeof resolvedMetrics.netDebtToEbitda.value === 'number' ? resolvedMetrics.netDebtToEbitda.value : undefined),
+    net_debt_to_ebitda_status: resolvedMetrics.netDebtToEbitda.status,
+    net_debt_to_ebitda_reason: resolvedMetrics.netDebtToEbitda.reasonTh || resolvedMetrics.netDebtToEbitda.reason,
+    current_ratio: isFinancial ? undefined : (typeof resolvedMetrics.currentRatio.value === 'number' ? resolvedMetrics.currentRatio.value : undefined),
+    quick_ratio: isFinancial ? undefined : (typeof resolvedMetrics.quickRatio.value === 'number' ? resolvedMetrics.quickRatio.value : undefined),
+    cash_runway_months: typeof resolvedMetrics.cashRunwayMonths.value === 'number' ? resolvedMetrics.cashRunwayMonths.value : undefined,
+    cash_burn_annual_b: typeof resolvedMetrics.cashBurnRate.value === 'number' ? resolvedMetrics.cashBurnRate.value : undefined,
     solvency_score_label: solvencyScoreLabel,
   };
 
-  // 6. Resolve Pillar 4: Yields Perspective
+  // 6. Resolve Pillar 4: Yields Perspective & Shareholder Return
   // Treasury 10Y Benchmark: strictly from verified source, NEVER fall back to hardcoded constant
   const treasury10Yr = report.five_pillars?.yields?.treasury_10yr_yield_pct;
   const treasuryAsOf = report.five_pillars?.yields?.treasury_as_of_date;
@@ -250,30 +285,33 @@ export function resolveAdaptiveFivePillars(
     fcfGuardReason = 'Not used — Financial Sector Guard';
   }
 
+  const divYieldVal = typeof resolvedMetrics.dividendYield.value === 'number' ? resolvedMetrics.dividendYield.value : undefined;
+  const netBuybackVal = typeof resolvedMetrics.netBuybackYield.value === 'number' ? resolvedMetrics.netBuybackYield.value : undefined;
+  const shareholderYieldVal = typeof resolvedMetrics.shareholderYield.value === 'number' ? resolvedMetrics.shareholderYield.value : undefined;
+  const fcfConversionVal = typeof resolvedMetrics.fcfConversion.value === 'number' ? resolvedMetrics.fcfConversion.value : undefined;
+
   let yieldInterpretation = 'N/A';
   if (isFinancial) {
-    if (earningsYield !== undefined) {
-      yieldInterpretation = treasury10Yr !== undefined
-        ? `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% เทียบกับผลตอบแทนพันธบัตร 10 ปี (${treasury10Yr}%) สำหรับสถาบันการเงิน`
-        : `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% สำหรับสถาบันการเงิน (ข้อมูลพันธบัตร 10 ปีไม่พร้อมใช้งาน)`;
+    if (shareholderYieldVal !== undefined) {
+      yieldInterpretation = `Shareholder Yield ${shareholderYieldVal}% สำหรับสถาบันการเงิน (ปันผล ${divYieldVal ?? 0}% + ซื้อหุ้นคืน ${netBuybackVal ?? 0}%)`;
+    } else if (earningsYield !== undefined) {
+      yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% สะท้อนผลตอบแทนจากกำไรสุทธิสถาบันการเงิน`;
     } else {
       yieldInterpretation = 'การประเมินผลตอบแทนสถาบันการเงินอิงตาม P/E, P/B และผลตอบแทนจากกำไร';
     }
-  } else if (fcfYield !== undefined) {
-    if (treasury10Yr !== undefined) {
-      const spread = rounded(fcfYield - treasury10Yr);
-      yieldInterpretation = spread > 0
-        ? `FCF Yield ${fcfYield}% สูงกว่าพันธบัตรสหรัฐฯ 10 ปี (+${spread}% Spread) สะท้อนผลตอบแทนเงินสดที่ดี`
-        : `FCF Yield ${fcfYield}% ต่ำกว่าพันธบัตรสหรัฐฯ 10 ปี (${spread}% Spread) ตลาดสะท้อนการเติบโตในอนาคต`;
-    } else {
-      yieldInterpretation = `FCF Yield ${fcfYield}% สะท้อนผลตอบแทนกระแสเงินสดอิสระ (ข้อมูลพันธบัตร 10 ปีไม่พร้อมใช้งาน)`;
-    }
-  } else if (earningsYield !== undefined) {
-    if (treasury10Yr !== undefined) {
-      const spread = rounded(earningsYield - treasury10Yr);
-      yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% เทียบกับพันธบัตรสหรัฐฯ (${spread}% Spread)`;
-    } else {
-      yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% (ข้อมูลพันธบัตร 10 ปีไม่พร้อมใช้งาน)`;
+  } else {
+    const shText = shareholderYieldVal !== undefined ? `Shareholder Yield ${shareholderYieldVal}%` : undefined;
+    const fcfConvText = fcfConversionVal !== undefined ? `FCF Conversion ${fcfConversionVal}%` : undefined;
+    const fcfYieldText = fcfYield !== undefined ? `FCF Yield ${fcfYield}%` : undefined;
+
+    if (shText && fcfConvText) {
+      yieldInterpretation = `${shText} พร้อม ${fcfConvText} สะท้อนคุณภาพกำไรและการจัดสรรเงินสดคืนสู่ผู้ถือหุ้นจริง`;
+    } else if (shText) {
+      yieldInterpretation = `${shText} สะท้อนผลตอบแทนเงินสดรวมสู่ผู้ถือหุ้นผ่านเงินปันผลและการซื้อหุ้นคืนสุทธิ`;
+    } else if (fcfYieldText) {
+      yieldInterpretation = `${fcfYieldText} สะท้อนผลตอบแทนกระแสเงินสดอิสระต่อมูลค่าตลาด`;
+    } else if (earningsYield !== undefined) {
+      yieldInterpretation = `Earnings Yield (${earningsYieldBasis}) ${earningsYield}% สะท้อนผลตอบแทนจากกำไรสุทธิ`;
     }
   }
 
@@ -294,6 +332,14 @@ export function resolveAdaptiveFivePillars(
     fcf_yield_pct: isFinancial ? undefined : fcfYield,
     is_fcf_guarded: isFcfGuarded ? true : undefined,
     fcf_guard_reason: isFcfGuarded ? fcfGuardReason : undefined,
+    dividend_yield_pct: divYieldVal,
+    net_buyback_yield_pct: netBuybackVal,
+    shareholder_yield_pct: shareholderYieldVal,
+    fcf_conversion_pct: fcfConversionVal,
+    fcf_conversion_basis: resolvedMetrics.fcfConversion.basis,
+    fcf_conversion_status: resolvedMetrics.fcfConversion.status,
+    fcf_conversion_reason: resolvedMetrics.fcfConversion.reason,
+    fcf_conversion_reason_th: resolvedMetrics.fcfConversion.reasonTh,
     treasury_10yr_yield_pct: treasury10Yr,
     treasury_as_of_date: treasuryAsOf,
     treasury_source: treasurySource,
@@ -301,7 +347,39 @@ export function resolveAdaptiveFivePillars(
     yield_interpretation: yieldInterpretation,
   };
 
-  // 7. Resolve Pillar 5: Peer Discovery & Benchmark Matrix (using peerDiscovery resolved above)
+  // 7. Resolve Pillar 5: Peer Discovery & Growth vs Profitability classification
+  const targetRevGrowth = typeof resolvedMetrics.revenueGrowthYoY.value === 'number' ? resolvedMetrics.revenueGrowthYoY.value : undefined;
+  const peerMedRevGrowth = typeof peerDiscovery.medians.revenue_growth_yoy_pct === 'number' ? peerDiscovery.medians.revenue_growth_yoy_pct : undefined;
+  const targetMargin = typeof resolvedMetrics.operatingMargin.value === 'number'
+    ? resolvedMetrics.operatingMargin.value
+    : typeof resolvedMetrics.netMargin.value === 'number'
+      ? resolvedMetrics.netMargin.value
+      : undefined;
+  const marginMetricKey = typeof resolvedMetrics.operatingMargin.value === 'number' ? 'operating_margin_pct' : 'net_margin_pct';
+  const peerMedMargin = typeof peerDiscovery.medians[marginMetricKey] === 'number' ? peerDiscovery.medians[marginMetricKey] : undefined;
+
+  let growthVsProfitability = 'INSUFFICIENT_PEER_SAMPLE';
+  let growthVsProfitabilityTh = 'ข้อมูลเทียบเคียงคู่แข่งไม่เพียงพอ';
+  if (peerDiscovery.peerCount >= 2 && targetRevGrowth !== undefined && peerMedRevGrowth !== undefined && targetMargin !== undefined && peerMedMargin !== undefined) {
+    const revDiff = targetRevGrowth - peerMedRevGrowth;
+    const marginDiff = targetMargin - peerMedMargin;
+    if (revDiff > 1 && marginDiff > 1) {
+      growthVsProfitability = 'Growth Premium / Margin Premium';
+      growthVsProfitabilityTh = 'พรีเมียมทั้งการเติบโตและอัตรากำไร (สูงกว่าค่ากลางกลุ่ม)';
+    } else if (revDiff > 1 && marginDiff < -1) {
+      growthVsProfitability = 'Growth Premium / Margin Discount';
+      growthVsProfitabilityTh = 'การเติบโตสูงกว่าค่ากลาง แต่อัตรากำไรต่ำกว่าค่ากลาง';
+    } else if (revDiff < -1 && marginDiff > 1) {
+      growthVsProfitability = 'Margin Leader / Mature Growth';
+      growthVsProfitabilityTh = 'ผู้นำอัตรากำไร / การเติบโตแบบธุรกิจมั่นคง';
+    } else if (revDiff < -1 && marginDiff < -1) {
+      growthVsProfitability = 'Underperformer / Turnaround';
+      growthVsProfitabilityTh = 'ต่ำกว่าค่ากลางทั้งการเติบโตและอัตรากำไร (อยู่ในช่วงฟื้นตัว)';
+    } else {
+      growthVsProfitability = 'In Line / Neutral';
+      growthVsProfitabilityTh = 'สอดคล้องกับค่ากลางกลุ่มอุตสาหกรรม';
+    }
+  }
 
   // Build missing reason mapping for user-facing precision
   const unavailableReasons: Record<string, string> = {};
@@ -325,12 +403,70 @@ export function resolveAdaptiveFivePillars(
   const fivePillarsData: FivePillarsData = {
     as_of_date: report.as_of_date || new Date().toISOString().split('T')[0],
     archetype,
+    pillar_titles: {
+      growth: policy.pillar1.titleTh,
+      profitability: policy.pillar2.titleTh,
+      balance_sheet: policy.pillar3.titleTh,
+      yields: policy.pillar4.titleTh,
+      peer_matrix: policy.pillar5.titleTh,
+    },
     growth: growthData,
     profitability: profitabilityData,
     balance_sheet: balanceSheetData,
     yields: yieldsData,
     peer_matrix: peerMatrix,
     unavailable_reasons: unavailableReasons,
+    growth_vs_profitability: growthVsProfitability,
+    growth_vs_profitability_th: growthVsProfitabilityTh,
+    growth_vs_profitability_details: {
+      target_rev_growth: targetRevGrowth,
+      peer_median_rev_growth: peerMedRevGrowth,
+      target_margin: targetMargin,
+      peer_median_margin: peerMedMargin,
+      margin_metric: marginMetricKey,
+    },
+    shareholder_return_summary: {
+      dividend_yield: divYieldVal,
+      net_buyback_yield: netBuybackVal,
+      shareholder_yield: shareholderYieldVal,
+      summary_en: shareholderYieldVal !== undefined
+        ? netBuybackVal !== undefined && netBuybackVal < 0
+          ? `Shareholder Yield ${shareholderYieldVal}% reflects dividend yield of ${divYieldVal ?? 0}% offset by ${Math.abs(netBuybackVal)}% net share dilution.`
+          : `Shareholder Yield ${shareholderYieldVal}% consists of ${divYieldVal ?? 0}% dividend yield and ${netBuybackVal ?? 0}% net buyback yield.`
+        : divYieldVal !== undefined
+          ? `Dividend yield of ${divYieldVal}% with net share repurchases unavailable.`
+          : 'Shareholder return data unavailable.',
+      summary_th: shareholderYieldVal !== undefined
+        ? netBuybackVal !== undefined && netBuybackVal < 0
+          ? `Shareholder Yield ${shareholderYieldVal}% ประกอบด้วยปันผล ${divYieldVal ?? 0}% หักลบด้วยการเจือจางหุ้นจากการออกหุ้นเพิ่มทุน ${Math.abs(netBuybackVal)}%`
+          : `Shareholder Yield ${shareholderYieldVal}% ประกอบด้วยเงินปันผล ${divYieldVal ?? 0}% และอัตราการซื้อหุ้นคืนสุทธิ ${netBuybackVal ?? 0}%`
+        : divYieldVal !== undefined
+          ? `อัตราผลตอบแทนเงินปันผล ${divYieldVal}% (ยังไม่รวมข้อมูลการซื้อหุ้นคืน)`
+          : 'ข้อมูลผลตอบแทนผู้ถือหุ้นไม่เพียงพอ',
+    },
+    value_creation_summary: {
+      roic: typeof resolvedMetrics.roic.value === 'number' ? resolvedMetrics.roic.value : undefined,
+      wacc: typeof resolvedMetrics.wacc.value === 'number' ? resolvedMetrics.wacc.value : undefined,
+      spread: typeof resolvedMetrics.roicWaccSpread.value === 'number' ? resolvedMetrics.roicWaccSpread.value : undefined,
+      summary_en: isFinancial
+        ? 'Financial institutions evaluate capital efficiency through ROE, ROA, and regulatory capital returns.'
+        : typeof resolvedMetrics.roicWaccSpread.value === 'number'
+          ? resolvedMetrics.roicWaccSpread.value > 0
+            ? `ROIC (${resolvedMetrics.roic.value}%) exceeds estimated WACC (${resolvedMetrics.wacc.value}%) by +${resolvedMetrics.roicWaccSpread.value}% spread, confirming positive economic value creation (EVA > 0).`
+            : `ROIC (${resolvedMetrics.roic.value}%) trails estimated WACC (${resolvedMetrics.wacc.value}%) by ${resolvedMetrics.roicWaccSpread.value}% spread, indicating economic returns below cost of capital.`
+          : typeof resolvedMetrics.roic.value === 'number'
+            ? `ROIC of ${resolvedMetrics.roic.value}% reflects operating capital efficiency (independent WACC benchmark unavailable).`
+            : 'Insufficient inputs for ROIC - WACC spread derivation.',
+      summary_th: isFinancial
+        ? 'สถาบันการเงินประเมินประสิทธิภาพเงินทุนผ่าน ROE, ROA และอัตราผลตอบแทนต่อเงินกองทุนตามเกณฑ์กำกับดูแล'
+        : typeof resolvedMetrics.roicWaccSpread.value === 'number'
+          ? resolvedMetrics.roicWaccSpread.value > 0
+            ? `ROIC (${resolvedMetrics.roic.value}%) สูงกว่าต้นทุนเงินทุน WACC (${resolvedMetrics.wacc.value}%) อยู่ +${resolvedMetrics.roicWaccSpread.value}% Spread ยืนยันการสร้างมูลค่าเพิ่มทางเศรษฐกิจ (EVA > 0)`
+            : `ROIC (${resolvedMetrics.roic.value}%) ต่ำกว่าต้นทุนเงินทุน WACC (${resolvedMetrics.wacc.value}%) อยู่ ${resolvedMetrics.roicWaccSpread.value}% Spread สะท้อนผลตอบแทนเงินลงทุนยังไม่ครอบคลุมต้นทุนเงินทุน`
+          : typeof resolvedMetrics.roic.value === 'number'
+            ? `ROIC ${resolvedMetrics.roic.value}% สะท้อนผลตอบแทนเงินลงทุน (ข้อมูล WACC ที่ตรวจสอบได้ไม่พร้อมใช้งาน)`
+            : 'ข้อมูลไม่เพียงพอสำหรับคำนวณส่วนต่าง ROIC - WACC',
+    },
     analyst_takeaway: report.five_pillars?.analyst_takeaway || (
       isFinancial
         ? 'วิเคราะห์ตามเกณฑ์สถาบันการเงิน (Financial Sector Guard บังคับใช้): เน้น ROE, NIM, คุณภาพสินเชื่อ และ Equity Multiples แทน FCF'
@@ -436,7 +572,7 @@ function buildAdaptivePillarSections(
     },
   ];
 
-  // Pillar 2: Profitability
+  // Pillar 2: Profitability & Returns
   const p2TitleTh = isFinancial
     ? '2. คุณภาพกำไร & ผลตอบแทนผู้ถือหุ้น (ROE / ROA)'
     : archetype === 'reit'
@@ -449,42 +585,175 @@ function buildAdaptivePillarSections(
       ? '2. FFO / AFFO Quality'
       : '2. ROIC & Capital Efficiency';
 
-  const profitMetrics: AdaptivePillarMetric[] = [
-    {
-      key: 'roic',
-      labelEn: isFinancial ? 'ROIC (Corporate Lens):' : 'Return on Invested Capital (ROIC):',
-      labelTh: isFinancial ? 'ROIC (ไม่ใช้หลักสำหรับธนาคาร):' : 'ผลตอบแทนจากเงินลงทุน (ROIC):',
-      value: isFinancial ? null : fmt(p.roic_pct, '%').val,
-      formattedValue: isFinancial ? 'ไม่เหมาะกับธุรกิจสถาบันการเงิน' : fmt(p.roic_pct, '%').fmt,
-      status: isFinancial ? DataGapState.NOT_APPLICABLE : fmt(p.roic_pct).status,
-    },
-    {
-      key: 'roe',
-      labelEn: 'Return on Equity (ROE):',
-      labelTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):',
-      value: fmt(p.roe_pct, '%').val,
-      formattedValue: fmt(p.roe_pct, '%').fmt,
-      status: fmt(p.roe_pct).status,
-    },
-    {
-      key: 'gross_margin',
-      labelEn: isFinancial ? 'Gross Margin (Not Reported):' : 'Gross Margin:',
-      labelTh: isFinancial ? 'Gross Margin (ไม่มีต้นทุนขายแบบสินค้า):' : 'อัตรากำไรขั้นต้น (Gross Margin):',
-      value: isFinancial ? null : fmt(p.gross_margin_pct, '%').val,
-      formattedValue: isFinancial ? 'บริษัทไม่ได้รายงาน (ไม่มี COGS)' : fmt(p.gross_margin_pct, '%').fmt,
-      status: isFinancial ? DataGapState.NOT_APPLICABLE : fmt(p.gross_margin_pct).status,
-    },
-    {
-      key: 'net_margin',
-      labelEn: 'Net Margin:',
-      labelTh: 'อัตรากำไรสุทธิ (Net Margin):',
-      value: fmt(p.net_margin_pct, '%').val,
-      formattedValue: fmt(p.net_margin_pct, '%').fmt,
-      status: fmt(p.net_margin_pct).status,
-    },
-  ];
+  const profitMetrics: AdaptivePillarMetric[] = [];
+  if (archetype === 'insurer') {
+    profitMetrics.push(
+      {
+        key: 'roe',
+        labelEn: 'Return on Equity (ROE):',
+        labelTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):',
+        value: fmt(p.roe_pct, '%').val,
+        formattedValue: fmt(p.roe_pct, '%').fmt,
+        status: fmt(p.roe_pct).status,
+      },
+      {
+        key: 'combined_ratio',
+        labelEn: 'Combined Ratio:',
+        labelTh: 'อัตราส่วนรวมธุรกิจประกัน (Combined Ratio):',
+        value: fmt(p.combined_ratio_pct, '%').val,
+        formattedValue: fmt(p.combined_ratio_pct, '%').fmt,
+        status: fmt(p.combined_ratio_pct).status,
+      },
+      {
+        key: 'underwriting_margin',
+        labelEn: 'Underwriting Margin:',
+        labelTh: 'อัตรากำไรจากการรับประกัน:',
+        value: fmt(p.underwriting_margin_pct, '%', '+').val,
+        formattedValue: fmt(p.underwriting_margin_pct, '%', '+').fmt,
+        status: fmt(p.underwriting_margin_pct).status,
+      },
+      {
+        key: 'net_margin',
+        labelEn: 'Net Margin:',
+        labelTh: 'อัตรากำไรสุทธิ (Net Margin):',
+        value: fmt(p.net_margin_pct, '%').val,
+        formattedValue: fmt(p.net_margin_pct, '%').fmt,
+        status: fmt(p.net_margin_pct).status,
+      }
+    );
+  } else if (isFinancial) {
+    profitMetrics.push(
+      {
+        key: 'roic',
+        labelEn: 'ROIC (Corporate Lens):',
+        labelTh: 'ROIC (ไม่ใช้หลักสำหรับธนาคาร):',
+        value: null,
+        formattedValue: 'ไม่เหมาะกับธุรกิจสถาบันการเงิน',
+        status: DataGapState.NOT_APPLICABLE,
+        isGuarded: true,
+      },
+      {
+        key: 'roe',
+        labelEn: 'Return on Equity (ROE):',
+        labelTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):',
+        value: fmt(p.roe_pct, '%').val,
+        formattedValue: fmt(p.roe_pct, '%').fmt,
+        status: fmt(p.roe_pct).status,
+      },
+      {
+        key: 'gross_margin',
+        labelEn: 'Gross Margin (Not Reported):',
+        labelTh: 'Gross Margin (ไม่มีต้นทุนขายแบบสินค้า):',
+        value: null,
+        formattedValue: 'บริษัทไม่ได้รายงาน (ไม่มี COGS)',
+        status: DataGapState.NOT_APPLICABLE,
+        isGuarded: true,
+      },
+      {
+        key: 'net_margin',
+        labelEn: 'Net Margin:',
+        labelTh: 'อัตรากำไรสุทธิ (Net Margin):',
+        value: fmt(p.net_margin_pct, '%').val,
+        formattedValue: fmt(p.net_margin_pct, '%').fmt,
+        status: fmt(p.net_margin_pct).status,
+      }
+    );
+  } else if (archetype === 'reit') {
+    profitMetrics.push(
+      {
+        key: 'roe',
+        labelEn: 'Return on Equity (ROE):',
+        labelTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):',
+        value: fmt(p.roe_pct, '%').val,
+        formattedValue: fmt(p.roe_pct, '%').fmt,
+        status: fmt(p.roe_pct).status,
+      },
+      {
+        key: 'operating_margin',
+        labelEn: 'NOI / Operating Margin:',
+        labelTh: 'อัตรากำไรจากการดำเนินงาน (NOI Margin):',
+        value: fmt(p.operating_margin_pct, '%').val,
+        formattedValue: fmt(p.operating_margin_pct, '%').fmt,
+        status: fmt(p.operating_margin_pct).status,
+      },
+      {
+        key: 'net_margin',
+        labelEn: 'Net Margin:',
+        labelTh: 'อัตรากำไรสุทธิ (Net Margin):',
+        value: fmt(p.net_margin_pct, '%').val,
+        formattedValue: fmt(p.net_margin_pct, '%').fmt,
+        status: fmt(p.net_margin_pct).status,
+      },
+      {
+        key: 'roa',
+        labelEn: 'Return on Assets (ROA):',
+        labelTh: 'ผลตอบแทนต่อสินทรัพย์รวม (ROA):',
+        value: fmt(p.roa_pct, '%').val,
+        formattedValue: fmt(p.roa_pct, '%').fmt,
+        status: fmt(p.roa_pct).status,
+      }
+    );
+  } else {
+    // Standard corporate operating company
+    const hasGroundedSpread = typeof p.roic_wacc_spread_pct === 'number';
+    profitMetrics.push(
+      {
+        key: 'roic',
+        labelEn: 'Return on Invested Capital (ROIC):',
+        labelTh: 'ผลตอบแทนจากเงินลงทุน (ROIC):',
+        value: fmt(p.roic_pct, '%').val,
+        formattedValue: fmt(p.roic_pct, '%').fmt,
+        status: fmt(p.roic_pct).status,
+      },
+      hasGroundedSpread ? {
+        key: 'roic_wacc_spread',
+        labelEn: 'ROIC - WACC Spread:',
+        labelTh: 'ส่วนต่างผลตอบแทนต่อต้นทุนเงินทุน (ROIC - WACC):',
+        value: fmt(p.roic_wacc_spread_pct, '%', '+').val,
+        formattedValue: fmt(p.roic_wacc_spread_pct, '%', '+').fmt,
+        status: DataGapState.VERIFIED_AVAILABLE,
+      } : {
+        key: 'roe',
+        labelEn: 'Return on Equity (ROE):',
+        labelTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น (ROE):',
+        value: fmt(p.roe_pct, '%').val,
+        formattedValue: fmt(p.roe_pct, '%').fmt,
+        status: fmt(p.roe_pct).status,
+      },
+      hasGroundedSpread && typeof p.operating_margin_pct === 'number' ? {
+        key: 'operating_margin',
+        labelEn: 'Operating Margin:',
+        labelTh: 'อัตรากำไรจากการดำเนินงาน (Operating Margin):',
+        value: fmt(p.operating_margin_pct, '%').val,
+        formattedValue: fmt(p.operating_margin_pct, '%').fmt,
+        status: fmt(p.operating_margin_pct).status,
+      } : {
+        key: 'gross_margin',
+        labelEn: 'Gross Margin:',
+        labelTh: 'อัตรากำไรขั้นต้น (Gross Margin):',
+        value: fmt(p.gross_margin_pct, '%').val,
+        formattedValue: fmt(p.gross_margin_pct, '%').fmt,
+        status: fmt(p.gross_margin_pct).status,
+      },
+      typeof p.fcf_margin_pct === 'number' ? {
+        key: 'fcf_margin',
+        labelEn: 'Free Cash Flow Margin:',
+        labelTh: 'อัตรากระแสเงินสดอิสระ (FCF Margin):',
+        value: fmt(p.fcf_margin_pct, '%').val,
+        formattedValue: fmt(p.fcf_margin_pct, '%').fmt,
+        status: DataGapState.VERIFIED_AVAILABLE,
+      } : {
+        key: 'net_margin',
+        labelEn: 'Net Margin:',
+        labelTh: 'อัตรากำไรสุทธิ (Net Margin):',
+        value: fmt(p.net_margin_pct, '%').val,
+        formattedValue: fmt(p.net_margin_pct, '%').fmt,
+        status: fmt(p.net_margin_pct).status,
+      }
+    );
+  }
 
-  // Pillar 3: Balance Sheet
+  // Pillar 3: Balance Sheet & Solvency
   const p3TitleTh = isFinancial
     ? '3. ความแข็งแกร่งของเงินกองทุน & แหล่งเงินฝาก (Capital & Funding)'
     : '3. ความแข็งแกร่งงบดุล (Balance Sheet Fortress)';
@@ -493,58 +762,170 @@ function buildAdaptivePillarSections(
     ? '3. Capital, Funding & Balance Sheet'
     : '3. Balance Sheet & Solvency';
 
-  const solvencyMetrics: AdaptivePillarMetric[] = [
-    {
-      key: 'cash',
-      labelEn: isFinancial ? 'Cash & Liquid Reserves:' : 'Total Cash & ST Investments:',
-      labelTh: isFinancial ? 'เงินสดและสินทรัพย์สภาพคล่องสูง:' : 'เงินสด & เงินลงทุนระยะสั้น:',
-      value: fmt(b.total_cash_and_investments_b, 'B', '$').val,
-      formattedValue: fmt(b.total_cash_and_investments_b, 'B', '$').fmt,
-      status: fmt(b.total_cash_and_investments_b).status,
-    },
-    {
-      key: 'debt',
-      labelEn: isFinancial ? 'Borrowings & Senior Notes:' : 'Total Interest-Bearing Debt:',
-      labelTh: isFinancial ? 'เงินกู้ยืมและตราสารหนี้:' : 'หนี้สินที่มีภาระดอกเบี้ย (Total Debt):',
-      value: fmt(b.total_debt_b, 'B', '$').val,
-      formattedValue: fmt(b.total_debt_b, 'B', '$').fmt,
-      status: fmt(b.total_debt_b).status,
-    },
-    {
-      key: 'debt_to_equity',
-      labelEn: 'Debt / Equity Ratio:',
-      labelTh: 'อัตราส่วนหนี้สินต่อทุน (Debt / Equity):',
-      value: fmt(b.debt_to_equity, 'x').val,
-      formattedValue: fmt(b.debt_to_equity, 'x').fmt,
-      status: fmt(b.debt_to_equity).status,
-    },
-    {
-      key: 'coverage',
-      labelEn: isFinancial ? 'Capital Structure Context:' : 'Interest Coverage Ratio:',
-      labelTh: isFinancial ? 'โครงสร้างเงินทุน:' : 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):',
-      value: isFinancial ? null : fmt(b.interest_coverage, 'x').val,
-      formattedValue: isFinancial
-        ? 'รองรับโดยเงินกองทุนและเงินฝาก'
-        : finite(b.interest_coverage)
+  const solvencyMetrics: AdaptivePillarMetric[] = [];
+  if (isFinancial) {
+    solvencyMetrics.push(
+      {
+        key: 'cash',
+        labelEn: 'Cash & Liquid Reserves:',
+        labelTh: 'เงินสดและสินทรัพย์สภาพคล่องสูง:',
+        value: fmt(b.total_cash_and_investments_b, 'B', '$').val,
+        formattedValue: fmt(b.total_cash_and_investments_b, 'B', '$').fmt,
+        status: fmt(b.total_cash_and_investments_b).status,
+      },
+      {
+        key: 'debt',
+        labelEn: 'Borrowings & Senior Notes:',
+        labelTh: 'เงินกู้ยืมและตราสารหนี้:',
+        value: fmt(b.total_debt_b, 'B', '$').val,
+        formattedValue: fmt(b.total_debt_b, 'B', '$').fmt,
+        status: fmt(b.total_debt_b).status,
+      },
+      {
+        key: 'debt_to_equity',
+        labelEn: 'Debt / Equity Ratio:',
+        labelTh: 'อัตราส่วนหนี้สินต่อทุน (Debt / Equity):',
+        value: fmt(b.debt_to_equity, 'x').val,
+        formattedValue: fmt(b.debt_to_equity, 'x').fmt,
+        status: fmt(b.debt_to_equity).status,
+      },
+      {
+        key: 'coverage',
+        labelEn: 'Capital Structure Context:',
+        labelTh: 'โครงสร้างเงินทุน:',
+        value: null,
+        formattedValue: 'รองรับโดยเงินกองทุนและเงินฝาก',
+        status: DataGapState.NOT_APPLICABLE,
+      }
+    );
+  } else if (archetype === 'early_stage' && typeof b.cash_runway_months === 'number') {
+    solvencyMetrics.push(
+      {
+        key: 'cash',
+        labelEn: 'Total Cash & ST Investments:',
+        labelTh: 'เงินสด & เงินลงทุนระยะสั้น:',
+        value: fmt(b.total_cash_and_investments_b, 'B', '$').val,
+        formattedValue: fmt(b.total_cash_and_investments_b, 'B', '$').fmt,
+        status: fmt(b.total_cash_and_investments_b).status,
+      },
+      {
+        key: 'cash_runway',
+        labelEn: 'Cash Runway:',
+        labelTh: 'ระยะเวลากระแสเงินสดคงเหลือ (Cash Runway):',
+        value: b.cash_runway_months,
+        formattedValue: `${b.cash_runway_months} เดือน`,
+        status: DataGapState.VERIFIED_AVAILABLE,
+      },
+      {
+        key: 'cash_burn',
+        labelEn: 'Annual Cash Burn Rate:',
+        labelTh: 'อัตราการใช้เงินสดต่อปี (Annual Burn):',
+        value: fmt(b.cash_burn_annual_b, 'B', '$').val,
+        formattedValue: fmt(b.cash_burn_annual_b, 'B', '$').fmt,
+        status: fmt(b.cash_burn_annual_b).status,
+      },
+      {
+        key: 'debt',
+        labelEn: 'Total Debt:',
+        labelTh: 'หนี้สินที่มีภาระดอกเบี้ย (Total Debt):',
+        value: fmt(b.total_debt_b, 'B', '$').val,
+        formattedValue: fmt(b.total_debt_b, 'B', '$').fmt,
+        status: fmt(b.total_debt_b).status,
+      }
+    );
+  } else if (b.is_net_cash === true) {
+    solvencyMetrics.push(
+      {
+        key: 'cash',
+        labelEn: 'Total Cash & ST Investments:',
+        labelTh: 'เงินสด & เงินลงทุนระยะสั้น:',
+        value: fmt(b.total_cash_and_investments_b, 'B', '$').val,
+        formattedValue: fmt(b.total_cash_and_investments_b, 'B', '$').fmt,
+        status: fmt(b.total_cash_and_investments_b).status,
+      },
+      {
+        key: 'net_cash',
+        labelEn: 'Net Cash Position:',
+        labelTh: 'สถานะเงินสดสุทธิ (Net Cash):',
+        value: fmt(b.net_cash_or_debt_b, 'B', '+$').val,
+        formattedValue: fmt(b.net_cash_or_debt_b, 'B', '+$').fmt,
+        status: DataGapState.VERIFIED_AVAILABLE,
+      },
+      {
+        key: 'net_cash_to_mcap',
+        labelEn: 'Net Cash / Market Cap:',
+        labelTh: 'สัดส่วนเงินสดสุทธิต่อมูลค่าตลาด (Net Cash / MCap):',
+        value: fmt(b.net_cash_to_market_cap_pct, '%').val,
+        formattedValue: fmt(b.net_cash_to_market_cap_pct, '%').fmt,
+        status: fmt(b.net_cash_to_market_cap_pct).status,
+      },
+      {
+        key: 'coverage',
+        labelEn: 'Interest Coverage Ratio:',
+        labelTh: 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):',
+        value: fmt(b.interest_coverage, 'x').val,
+        formattedValue: finite(b.interest_coverage)
           ? fmt(b.interest_coverage, 'x').fmt
           : b.interest_coverage_reason || 'ไม่พบข้อมูลช่วงเวลาที่เทียบกันได้',
-      status: isFinancial
-        ? DataGapState.NOT_APPLICABLE
-        : b.interest_coverage_status === 'NO_MATERIAL_INTEREST'
+        status: b.interest_coverage_status === 'NO_MATERIAL_INTEREST'
           ? DataGapState.VERIFIED_DERIVED
           : fmt(b.interest_coverage).status,
-      sourcePeriod: b.interest_coverage_basis,
-    },
-  ];
+        sourcePeriod: b.interest_coverage_basis,
+      }
+    );
+  } else {
+    // Net debt or unclassified company
+    solvencyMetrics.push(
+      {
+        key: 'cash',
+        labelEn: 'Total Cash & ST Investments:',
+        labelTh: 'เงินสด & เงินลงทุนระยะสั้น:',
+        value: fmt(b.total_cash_and_investments_b, 'B', '$').val,
+        formattedValue: fmt(b.total_cash_and_investments_b, 'B', '$').fmt,
+        status: fmt(b.total_cash_and_investments_b).status,
+      },
+      {
+        key: 'debt',
+        labelEn: 'Total Interest-Bearing Debt:',
+        labelTh: 'หนี้สินที่มีภาระดอกเบี้ย (Total Debt):',
+        value: fmt(b.total_debt_b, 'B', '$').val,
+        formattedValue: fmt(b.total_debt_b, 'B', '$').fmt,
+        status: fmt(b.total_debt_b).status,
+      },
+      typeof b.net_debt_to_ebitda === 'number' && b.net_debt_to_ebitda_status === 'CALCULATED' ? {
+        key: 'net_debt_to_ebitda',
+        labelEn: 'Net Debt / EBITDA Ratio:',
+        labelTh: 'หนี้สินสุทธิต่อ EBITDA (Net Debt / EBITDA):',
+        value: fmt(b.net_debt_to_ebitda, 'x').val,
+        formattedValue: fmt(b.net_debt_to_ebitda, 'x').fmt,
+        status: DataGapState.VERIFIED_AVAILABLE,
+      } : {
+        key: 'debt_to_equity',
+        labelEn: 'Debt / Equity Ratio:',
+        labelTh: 'อัตราส่วนหนี้สินต่อทุน (Debt / Equity):',
+        value: fmt(b.debt_to_equity, 'x').val,
+        formattedValue: fmt(b.debt_to_equity, 'x').fmt,
+        status: fmt(b.debt_to_equity).status,
+      },
+      {
+        key: 'coverage',
+        labelEn: 'Interest Coverage Ratio:',
+        labelTh: 'ความสามารถจ่ายดอกเบี้ย (Interest Coverage):',
+        value: fmt(b.interest_coverage, 'x').val,
+        formattedValue: finite(b.interest_coverage)
+          ? fmt(b.interest_coverage, 'x').fmt
+          : b.interest_coverage_reason || 'ไม่พบข้อมูลช่วงเวลาที่เทียบกันได้',
+        status: b.interest_coverage_status === 'NO_MATERIAL_INTEREST'
+          ? DataGapState.VERIFIED_DERIVED
+          : fmt(b.interest_coverage).status,
+        sourcePeriod: b.interest_coverage_basis,
+      }
+    );
+  }
 
-  // Pillar 4: Yields
-  const p4TitleTh = isFinancial
-    ? '4. มิติมูลค่าหุ้นสถาบันการเงิน (Equity Valuation & Multiples)'
-    : '4. มิติผลตอบแทนเงินสด (Yield Perspective)';
-
-  const p4TitleEn = isFinancial
-    ? '4. Equity Valuation & Multiples'
-    : '4. Yield Perspective';
+  // Pillar 4: Shareholder Return & Cash Quality
+  const p4TitleTh = '4. ผลตอบแทนผู้ถือหุ้นและคุณภาพกระแสเงินสด (Shareholder Return & Cash Quality)';
+  const p4TitleEn = '4. Shareholder Return & Cash Quality';
 
   const yieldMetrics: AdaptivePillarMetric[] = [
     {
@@ -565,20 +946,29 @@ function buildAdaptivePillarSections(
       status: fmt(y.earnings_yield_pct).status,
     },
     {
-      key: 'treasury_10yr',
-      labelEn: '10Y US Treasury Benchmark:',
-      labelTh: 'ผลตอบแทนพันธบัตรสหรัฐฯ 10 ปี (10Y US Treasury):',
-      value: fmt(y.treasury_10yr_yield_pct, '%').val,
-      formattedValue: fmt(y.treasury_10yr_yield_pct, '%').fmt,
-      status: fmt(y.treasury_10yr_yield_pct).status,
+      key: 'shareholder_yield',
+      labelEn: 'Shareholder Yield (Div + Buyback):',
+      labelTh: 'ผลตอบแทนรวมสู่ผู้ถือหุ้น (Shareholder Yield):',
+      value: fmt(y.shareholder_yield_pct, '%', '+').val,
+      formattedValue: fmt(y.shareholder_yield_pct, '%', '+').fmt,
+      status: fmt(y.shareholder_yield_pct).status,
     },
     {
-      key: 'pfcf_multiple',
-      labelEn: isFinancial ? 'Price / Book Multiple:' : 'Price / Free Cash Flow Multiple:',
-      labelTh: isFinancial ? 'อัตราส่วนราคาต่อมูลค่าทางบัญชี (P/B):' : 'Price / Free Cash Flow Multiple:',
-      value: isFinancial ? null : fmt(y.pfcf_multiple, 'x').val,
-      formattedValue: isFinancial ? 'P/B ประเมินในตารางเปรียบเทียบ' : fmt(y.pfcf_multiple, 'x').fmt,
-      status: isFinancial ? DataGapState.NOT_APPLICABLE : fmt(y.pfcf_multiple).status,
+      key: 'fcf_conversion',
+      labelEn: isFinancial ? 'Price / Book Multiple:' : 'FCF Conversion (FCF / Net Income):',
+      labelTh: isFinancial ? 'อัตราส่วนราคาต่อมูลค่าทางบัญชี (P/B):' : 'อัตราการแปลงกำไรเป็นกระแสเงินสด (FCF Conversion):',
+      value: isFinancial ? null : fmt(y.fcf_conversion_pct, '%').val,
+      formattedValue: isFinancial
+        ? 'P/B ประเมินในตารางเปรียบเทียบ'
+        : y.fcf_conversion_status === 'UNAVAILABLE' && y.fcf_conversion_reason?.includes('non-positive')
+          ? 'N/M (ขาดทุนสุทธิ)'
+          : fmt(y.fcf_conversion_pct, '%').fmt,
+      status: isFinancial
+        ? DataGapState.NOT_APPLICABLE
+        : y.fcf_conversion_status === 'UNAVAILABLE'
+          ? DataGapState.NOT_APPLICABLE
+          : fmt(y.fcf_conversion_pct).status,
+      notes: y.fcf_conversion_reason_th || y.fcf_conversion_reason,
     },
   ];
 
@@ -641,8 +1031,16 @@ function buildAdaptivePillarSections(
       id: 'yields',
       titleEn: p4TitleEn,
       titleTh: p4TitleTh,
-      badgeLabel: isFinancial ? 'Earnings Yield' : 'FCF Yield',
-      badgeValue: isFinancial ? fmt(y.earnings_yield_pct, '%').fmt : fmt(y.fcf_yield_pct, '%').fmt,
+      badgeLabel: isFinancial
+        ? 'Earnings Yield'
+        : typeof y.shareholder_yield_pct === 'number'
+          ? 'Shareholder Yield'
+          : 'FCF Yield',
+      badgeValue: isFinancial
+        ? fmt(y.earnings_yield_pct, '%').fmt
+        : typeof y.shareholder_yield_pct === 'number'
+          ? fmt(y.shareholder_yield_pct, '%', '+').fmt
+          : fmt(y.fcf_yield_pct, '%').fmt,
       metrics: yieldMetrics,
       interpretationEn: y.yield_interpretation,
       interpretationTh: y.yield_interpretation,

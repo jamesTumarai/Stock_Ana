@@ -1066,19 +1066,23 @@ export function discoverPeers(
               }
             }
           }
-          if (['operating_margin_pct', 'gross_margin_pct', 'net_margin_pct', 'revenue_growth_yoy_pct'].includes(k)) {
+          if (['operating_margin_pct', 'gross_margin_pct', 'net_margin_pct'].includes(k)) {
             const targetMetric = targetResolvedMetrics ? (
               k === 'operating_margin_pct' ? targetResolvedMetrics.operatingMargin :
               k === 'gross_margin_pct' ? targetResolvedMetrics.grossMargin :
-              k === 'net_margin_pct' ? targetResolvedMetrics.netMargin :
-              targetResolvedMetrics.revenueGrowthYoY
+              targetResolvedMetrics.netMargin
             ) : undefined;
             if (targetMetric && typeof targetMetric.value === 'number') {
               const targetBasis = targetMetric.basis || '';
-              const targetIsQuarterly = /Q[1-4]/i.test(targetBasis) && !/TTM|annual|FY\d{4}/i.test(targetBasis);
+              const targetPeriod = targetMetric.period || '';
+              const targetPeriodBasis = (targetMetric as any).periodBasis;
+              const targetIsQuarterly = targetPeriodBasis === 'QUARTERLY'
+                || ((/Q[1-4]/i.test(targetBasis) || /Q[1-4]/i.test(targetPeriod) || /quarter/i.test(targetBasis)) && !/TTM|annual|FY\d{4}/i.test(targetBasis) && !/TTM|annual|FY\d{4}/i.test(targetPeriod));
               const peerPeriod = metric.period || '';
               const peerBasis = metric.basis || '';
-              const peerIsQuarterly = metric.periodBasis === 'QUARTERLY' || (/Q[1-4]/i.test(peerPeriod) && !/TTM|annual|FY\d{4}/i.test(peerPeriod)) || (/quarter/i.test(peerBasis) && !/TTM|annual/i.test(peerBasis));
+              const peerPeriodBasis = metric.periodBasis;
+              const peerIsQuarterly = peerPeriodBasis === 'QUARTERLY'
+                || ((/Q[1-4]/i.test(peerPeriod) || /quarter/i.test(peerBasis)) && !/TTM|annual|FY\d{4}/i.test(peerPeriod) && !/TTM|annual/i.test(peerBasis));
               if (targetIsQuarterly !== peerIsQuarterly) {
                 return false; // Exclude period basis mismatch (e.g. Target standalone quarter vs Peer TTM/annual)
               }
@@ -1090,7 +1094,7 @@ export function discoverPeers(
       selectedValues.push(...tierValues);
       if (selectedValues.length >= 3) break;
     }
-    const isMultiple = ['pe_trailing', 'pe_forward', 'ev_ebitda', 'ev_sales', 'p_ffo_multiple'].includes(k);
+    const isMultiple = ['pe_trailing', 'pe_forward', 'ev_ebitda', 'ev_sales', 'p_ffo_multiple', 'p_affo_multiple', 'price_to_book', 'price_to_tbv'].includes(k);
     const eligibleValues = selectedValues.filter(value => !isMultiple || value > 0);
     medians[k] = calculateDeterministicMedian(eligibleValues, isMultiple);
     metricSampleCounts[k] = eligibleValues.length;
@@ -1503,17 +1507,18 @@ function buildArchetypeBenchmarkRows(
   }
 
   const metricKeyByName: Record<string, string> = {
-    'P/E (Trailing)': 'pe_trailing', 'P/B Ratio': 'price_to_book', 'Return on Equity (ROE)': 'roe_pct',
-    'Net Interest Margin (NIM)': 'net_interest_margin_pct', 'Combined Ratio': 'combined_ratio_pct', 'Price / FFO': 'p_ffo_multiple',
-    'Occupancy Rate': 'occupancy_rate_pct', 'EV / Sales Multiple': 'ev_sales', 'YoY Revenue Growth': 'revenue_growth_yoy_pct',
+    'P/E (Trailing)': 'pe_trailing', 'P/B Ratio': 'price_to_book', 'Price to Tangible Book (P/TBV)': 'price_to_tbv', 'Return on Equity (ROE)': 'roe_pct',
+    'Net Interest Margin (NIM)': 'net_interest_margin_pct', 'Efficiency Ratio': 'efficiency_ratio_pct', 'Combined Ratio': 'combined_ratio_pct', 'Underwriting Margin': 'underwriting_margin_pct',
+    'Price / FFO': 'p_ffo_multiple', 'Occupancy Rate': 'occupancy_rate_pct', 'EV / Sales Multiple': 'ev_sales', 'YoY Revenue Growth': 'revenue_growth_yoy_pct',
     'EV / EBITDA': 'ev_ebitda', 'Revenue Growth YoY': 'revenue_growth_yoy_pct', ROIC: 'roic_pct',
-    'Operating Margin': 'operating_margin_pct', 'Net Margin': 'net_margin_pct',
+    'Operating Margin': 'operating_margin_pct', 'Net Margin': 'net_margin_pct', 'Gross Margin': 'gross_margin_pct', 'Free Cash Flow Margin': 'fcf_margin_pct',
   };
   return rows.map(row => {
     const key = metricKeyByName[row.metric_name];
     if (!key) return row;
     const count = metricSampleCounts[key] || 0;
     const coverage = resolvePeerMetricCoverage(count);
+    const directMetric = directPeer?.metrics[key];
     return {
       ...row,
       metric_key: key,
@@ -1533,6 +1538,9 @@ function buildArchetypeBenchmarkRows(
             ? `${row.status_label_th} (ตัวอย่างจำกัด)`
             : row.status_label_th)
         : 'ข้อมูลเทียบเคียงไม่เพียงพอ',
+      direct_peer_status: directMetric?.status,
+      direct_peer_basis: directMetric?.basis,
+      direct_peer_period: directMetric?.period,
     };
   });
 }

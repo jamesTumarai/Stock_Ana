@@ -1145,7 +1145,12 @@ export default function App() {
       </AnimatePresence>
 
       {/* Global Background Video (New CloudFront Video) */}
-      <div className="fixed inset-0 z-0 overflow-hidden bg-black pointer-events-none">
+      <div
+        className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-black"
+        style={{
+          background: 'radial-gradient(ellipse 130% 90% at 50% 68%, #0d284a 0%, #061528 32%, #020914 62%, #000308 100%)',
+        }}
+      >
         <CrossfadeVideo
           src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260827_202422_3ffb4889-c520-432d-8458-038009eb40df.mp4"
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"

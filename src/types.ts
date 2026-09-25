@@ -1027,6 +1027,13 @@ export interface FivePillarsProfitabilityData {
   net_margin_pct?: number;
   net_margin_basis?: string;
   fcf_margin_pct?: number;
+  fcf_margin_basis?: string;
+  wacc_pct?: number;
+  roic_wacc_spread_pct?: number;
+  roic_wacc_status?: string;
+  roic_wacc_verdict?: string;
+  combined_ratio_pct?: number;
+  underwriting_margin_pct?: number;
   net_interest_margin_pct?: number;
   efficiency_ratio_pct?: number;
   capital_efficiency_verdict?: string;
@@ -1037,6 +1044,8 @@ export interface FivePillarsProfitabilityData {
     gross_margin?: FivePillarsResolvedMetric;
     operating_margin?: FivePillarsResolvedMetric;
     net_margin?: FivePillarsResolvedMetric;
+    fcf_margin?: FivePillarsResolvedMetric;
+    roic_wacc_spread?: FivePillarsResolvedMetric;
   };
 }
 
@@ -1054,6 +1063,15 @@ export interface FivePillarsBalanceSheetData {
   interest_coverage_formula?: string;
   interest_coverage_source?: string;
   solvency_score_label?: string;
+  net_cash_to_market_cap_pct?: number;
+  net_debt_to_ebitda_status?: string;
+  net_debt_to_ebitda_reason?: string;
+  current_ratio?: number;
+  quick_ratio?: number;
+  cash_runway_months?: number;
+  cash_burn_annual_b?: number;
+  cet1_ratio_pct?: number;
+  tier1_capital_ratio_pct?: number;
 }
 
 export interface FivePillarsYieldsData {
@@ -1065,6 +1083,13 @@ export interface FivePillarsYieldsData {
   is_fcf_guarded?: boolean;
   fcf_guard_reason?: string;
   dividend_yield_pct?: number;
+  net_buyback_yield_pct?: number;
+  shareholder_yield_pct?: number;
+  fcf_conversion_pct?: number;
+  fcf_conversion_basis?: string;
+  fcf_conversion_status?: string;
+  fcf_conversion_reason?: string;
+  fcf_conversion_reason_th?: string;
   treasury_10yr_yield_pct?: number;
   treasury_as_of_date?: string;
   treasury_source?: string;
@@ -1097,6 +1122,9 @@ export interface PeerBenchmarkRow {
   metric_source?: string;
   direct_peer_reason?: string;
   direct_peer_reason_th?: string;
+  direct_peer_status?: 'VERIFIED' | 'FOUND_UNVERIFIED' | 'NOT_REPORTED' | string;
+  direct_peer_period?: string;
+  direct_peer_basis?: string;
 }
 
 export interface FivePillarsData {
@@ -1117,6 +1145,30 @@ export interface FivePillarsData {
   analyst_takeaway?: string;
   unavailable_reasons?: Record<string, string>;
   metric_states?: Record<string, string>;
+  growth_vs_profitability?: string;
+  growth_vs_profitability_th?: string;
+  growth_vs_profitability_details?: {
+    target_rev_growth?: number;
+    peer_median_rev_growth?: number;
+    target_margin?: number;
+    peer_median_margin?: number;
+    margin_metric?: string;
+  };
+  shareholder_return_summary?: {
+    dividend_yield?: number;
+    net_buyback_yield?: number;
+    shareholder_yield?: number;
+    summary_en?: string;
+    summary_th?: string;
+  };
+  value_creation_summary?: {
+    roic?: number;
+    wacc?: number;
+    spread?: number;
+    summary_en?: string;
+    summary_th?: string;
+  };
+  adaptive_sections?: any;
 }
 
 export interface BusinessAnalysisData {
@@ -1324,6 +1376,7 @@ export interface AnalysisReport {
   validation?: ReportValidationResult;
   sec_verification?: SecVerificationEnvelope;
   canonical_financials?: any;
+  market_snapshot?: any;
   report_provenance?: ReportProvenanceManifest;
   verdict?: {
     summary: string;

@@ -122,6 +122,9 @@ export const ARCHETYPE_METRIC_RULES: Record<BusinessArchetype, MetricArchetypeRu
   digital_marketplace: [],
   utility: [],
   telecom: [],
+  automotive: [],
+  healthcare: [],
+  biotech: [],
 };
 
 // Fill empty archetypes with general operating fallback
