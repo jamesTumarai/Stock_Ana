@@ -13,7 +13,11 @@ import {
   selectPreviousDistinctSnapshot
 } from '../utils/researchTimeline';
 import { extractMemorySnapshot } from '../domain/investmentMemory';
-import { computeWhatChanged } from '../domain/whatChangedEngine';
+import {
+  computeWhatChanged,
+  getSemanticCategoryBadge,
+  formatValuationDriverLabel
+} from '../domain/whatChangedEngine';
 import { buildDecisionContext } from '../domain/decisionContextEngine';
 import {
   InvestmentThesisRecord,
@@ -59,7 +63,24 @@ function formatDeltaDisplay(d: string, isThai: boolean): string {
     case 'NEW CATALYST': return isThai ? 'ปัจจัยเร่งใหม่' : 'New Catalyst';
     case 'RESOLVED': return isThai ? 'คลี่คลายแล้ว' : 'Resolved';
     case 'CATALYST CONCLUDED': return isThai ? 'เสร็จสิ้นแล้ว' : 'Concluded';
-    default: return d;
+    case 'DETERIORATION (Pos → Neg)': return isThai ? 'พลิกเป็นลบ (ถดถอย)' : 'Deterioration (Pos → Neg)';
+    case 'TURNAROUND (Neg → Pos)': return isThai ? 'พลิกฟื้นเป็นบวก' : 'Turnaround (Neg → Pos)';
+    case 'UNCHANGED': return isThai ? 'ไม่เปลี่ยนแปลง' : 'Unchanged';
+    case 'SOURCE UPGRADE': return isThai ? 'ยกระดับแหล่งข้อมูล' : 'Source Upgrade';
+    case 'DATA CORRECTION': return isThai ? 'แก้ไขข้อมูลเดิม' : 'Data Correction';
+    case 'RESTATED': return isThai ? 'ปรับปรุงงบย้อนหลัง (Restated)' : 'Restated';
+    default: {
+      if (d.startsWith('DEFICIT EXPANDED')) {
+        return isThai ? d.replace('DEFICIT EXPANDED', 'ขาดดุล/ติดลบเพิ่มขึ้น') : d;
+      }
+      if (d.startsWith('DEFICIT NARROWED')) {
+        return isThai ? d.replace('DEFICIT NARROWED', 'ขาดดุล/ติดลบลดลง') : d;
+      }
+      if (d.endsWith('yrs') || d.endsWith('years')) {
+        return isThai ? d.replace(/(?:yrs|years)/, 'ปี').trim() : (d.endsWith('yrs') ? d.replace('yrs', 'years') : d);
+      }
+      return d;
+    }
   }
 }
 
@@ -164,8 +185,9 @@ export function ResearchTimelineCard({
   const confirmedItems = useMemo(() => {
     if (!whatChanged) return [];
     return whatChanged.items.filter(
-      i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'THESIS_MODEL_CHANGE') &&
-        (i.confirmation === 'CONFIRMED' || i.confirmation === 'SUPPORTED')
+      i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'THESIS_MODEL_CHANGE' || i.domain === 'RESTATED_EVIDENCE') &&
+        (i.confirmation === 'CONFIRMED' || i.confirmation === 'SUPPORTED') &&
+        i.provenance !== 'unverified'
     ).sort((a, b) => {
       const score = (m: string) => m === 'HIGH' ? 3 : m === 'MEDIUM' ? 2 : 1;
       return score(b.materiality) - score(a.materiality);
@@ -174,14 +196,21 @@ export function ResearchTimelineCard({
 
   const needsReviewItems = useMemo(() => {
     if (!whatChanged) return [];
-    return whatChanged.items.filter(i => i.confirmation === 'UNCONFIRMED');
+    return whatChanged.items.filter(
+      i => i.confirmation === 'UNCONFIRMED' ||
+        (i.domain === 'DATA_CORRECTION' && i.confirmation !== 'CONFIRMED')
+    );
   }, [whatChanged]);
 
   const researchCoverageItems = useMemo(() => {
     if (!whatChanged) return [];
     return whatChanged.items.filter(
-      i => i.confirmation === 'RESEARCH_ONLY' ||
-        (i.domain === 'RESEARCH_COVERAGE_CHANGE' && i.confirmation !== 'UNCONFIRMED')
+      i => i.confirmation !== 'UNCONFIRMED' &&
+        (i.confirmation === 'RESEARCH_ONLY' ||
+         i.domain === 'ANALYSIS_DRIFT' ||
+         i.domain === 'RESEARCH_COVERAGE_CHANGE' ||
+         i.domain === 'SOURCE_UPGRADE' ||
+         (i.domain === 'DATA_CORRECTION' && i.confirmation === 'SUPPORTED'))
     );
   }, [whatChanged]);
 
@@ -228,8 +257,10 @@ export function ResearchTimelineCard({
         <div className={`p-4 rounded-2xl border flex flex-col gap-2.5 ${
           decisionContext.stance === 'THESIS_CONDITION_TRIGGERED'
             ? 'bg-rose-50/80 border-rose-200 text-rose-950'
-            : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED'
+            : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'NEW_EVIDENCE_REEVALUATION' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED'
             ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+            : decisionContext.stance === 'DATA_CORRECTION_REVIEW' || decisionContext.stance === 'MODEL_ASSUMPTION_REVIEW'
+            ? 'bg-blue-50/80 border-blue-200 text-blue-950'
             : decisionContext.stance === 'THESIS_STABLE'
             ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
             : 'bg-stone-50 border-stone-200 text-stone-900'
@@ -238,8 +269,10 @@ export function ResearchTimelineCard({
             <div className="flex items-center gap-2">
               {decisionContext.stance === 'THESIS_CONDITION_TRIGGERED' ? (
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              ) : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED' ? (
+              ) : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'NEW_EVIDENCE_REEVALUATION' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED' ? (
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              ) : decisionContext.stance === 'DATA_CORRECTION_REVIEW' || decisionContext.stance === 'MODEL_ASSUMPTION_REVIEW' ? (
+                <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
               ) : decisionContext.stance === 'THESIS_STABLE' ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               ) : (
@@ -253,8 +286,10 @@ export function ResearchTimelineCard({
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
               decisionContext.stance === 'THESIS_CONDITION_TRIGGERED'
                 ? 'bg-rose-100 text-rose-800 border-rose-300'
-                : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED'
+                : decisionContext.stance === 'RE_EVALUATION_WARRANTED' || decisionContext.stance === 'NEW_EVIDENCE_REEVALUATION' || decisionContext.stance === 'EXPECTATIONS_REVIEW_NEEDED' || decisionContext.stance === 'VALUATION_REVISION_NOTED'
                 ? 'bg-amber-100 text-amber-800 border-amber-300'
+                : decisionContext.stance === 'DATA_CORRECTION_REVIEW' || decisionContext.stance === 'MODEL_ASSUMPTION_REVIEW'
+                ? 'bg-blue-100 text-blue-800 border-blue-300'
                 : decisionContext.stance === 'THESIS_STABLE'
                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                 : 'bg-stone-200 text-stone-700 border-stone-300'
@@ -369,45 +404,62 @@ export function ResearchTimelineCard({
                 )}
               </p>
 
-              {/* GROUP 1: Confirmed Changes */}
-              <div className="flex flex-col gap-2 pt-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 font-mono">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#0b5a4b]" />
-                  <span>{isThai ? '1. การเปลี่ยนแปลงที่ยืนยันแล้ว (Confirmed Changes)' : '1. Confirmed Changes'}</span>
-                  <span className="text-[10px] text-stone-400">({confirmedItems.length})</span>
+              {/* GROUP 1: Confirmed Report & Model Changes */}
+              <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800 font-mono">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#0b5a4b]" />
+                    <span>
+                      {isThai
+                        ? '1. การเปลี่ยนแปลงที่ยืนยันแล้วในรายงาน / แบบจำลอง (Confirmed Report & Model Changes)'
+                        : '1. Confirmed Report & Model Changes'}
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-sans">({confirmedItems.length})</span>
+                  </div>
+                  <span className="text-[10px] text-stone-400 pl-5 font-sans leading-tight">
+                    {isThai
+                      ? 'รวมข้อมูลจริง แบบจำลอง ตลาด และผลลัพธ์ที่คำนวณได้'
+                      : 'Includes evidence, model, market, and derived-output changes.'}
+                  </span>
                 </div>
 
                 {confirmedItems.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {confirmedItems.map(ch => (
-                      <div key={ch.id} className="p-2.5 bg-white rounded-xl border border-stone-200/80 text-xs flex flex-col gap-1 shadow-2xs">
-                        <div className="flex items-center justify-between gap-1 flex-wrap">
-                          <span className="font-bold text-stone-900">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
-                          <div className="flex items-center gap-1">
-                            <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
-                              ch.materiality === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                              ch.materiality === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                              'bg-stone-100 text-stone-600'
-                            }`}>
-                              {ch.materiality}
-                            </span>
-                            <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              {formatConfirmationLabel(ch.confirmation, isThai)}
+                    {confirmedItems.map(ch => {
+                      const categoryBadge = getSemanticCategoryBadge(ch, isThai);
+                      return (
+                        <div key={ch.id} className="p-2.5 bg-white rounded-xl border border-stone-200/80 text-xs flex flex-col gap-1 shadow-2xs">
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <span className="font-bold text-stone-900">{isThai ? ch.metricLabelTh : ch.metricLabel}</span>
+                            <div className="flex items-center gap-1">
+                              <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border uppercase ${categoryBadge.className}`}>
+                                {categoryBadge.label}
+                              </span>
+                              <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                                ch.materiality === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                ch.materiality === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                'bg-stone-100 text-stone-600'
+                              }`}>
+                                {ch.materiality}
+                              </span>
+                              <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {formatConfirmationLabel(ch.confirmation, isThai)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="font-mono text-stone-700 text-[11px]">
+                            {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
+                            <span className="ml-1.5 font-bold text-stone-900">
+                              ({formatDeltaDisplay(ch.deltaDisplay, isThai)})
                             </span>
                           </div>
+                          <span className="text-[11px] text-stone-600 leading-relaxed font-sans">{isThai ? ch.explanationTh : ch.explanation}</span>
+                          {ch.provenance && (
+                            <span className="text-[9px] font-mono text-stone-400 mt-0.5">{ch.provenance}</span>
+                          )}
                         </div>
-                        <div className="font-mono text-stone-700 text-[11px]">
-                          {ch.previousValue ?? '—'} → <strong>{ch.currentValue ?? '—'}</strong>
-                          <span className="ml-1.5 font-bold text-stone-900">
-                            ({formatDeltaDisplay(ch.deltaDisplay, isThai)})
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-stone-600 leading-relaxed font-sans">{isThai ? ch.explanationTh : ch.explanation}</span>
-                        {ch.provenance && (
-                          <span className="text-[9px] font-mono text-stone-400 mt-0.5">{ch.provenance}</span>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="p-3 bg-white/70 rounded-xl border border-stone-200/60 text-xs text-stone-500 font-sans italic">
@@ -528,7 +580,11 @@ export function ResearchTimelineCard({
                       {isThai ? 'การแจกแจงสาเหตุมูลค่า DCF ที่เปลี่ยนไป (Valuation Attribution)' : 'Valuation Change Attribution'}
                     </span>
                     <span className="font-mono font-bold text-[#0b5a4b] text-[11px]">
-                      {whatChanged.valuationAttribution.primaryDriver}
+                      {formatValuationDriverLabel(
+                        whatChanged.valuationAttribution.primaryDriver,
+                        isThai,
+                        delta?.fairValueDelta?.deltaPct
+                      )}
                     </span>
                   </div>
                   <p className="text-xs text-stone-700 leading-relaxed font-sans">

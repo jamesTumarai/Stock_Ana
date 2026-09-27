@@ -85,7 +85,16 @@ export const SECTOR_EXTENSION_SPECS: ExtensionMetricSpec[] = [
   {
     statement: 'balance_sheet',
     metric: 'tier1_capital_ratio',
-    concepts: ['Tier1CapitalRatio', 'CommonEquityTier1RiskBasedCapitalRatio', 'CapitalRatioTier1'],
+    concepts: ['Tier1CapitalRatio', 'CapitalRatioTier1'],
+    unit: 'pure',
+    canonicalUnit: 'percent',
+    factKind: 'instant',
+    sector: 'banking',
+  },
+  {
+    statement: 'balance_sheet',
+    metric: 'cet1_ratio',
+    concepts: ['CommonEquityTier1RiskBasedCapitalRatio'],
     unit: 'pure',
     canonicalUnit: 'percent',
     factKind: 'instant',
@@ -96,7 +105,7 @@ export const SECTOR_EXTENSION_SPECS: ExtensionMetricSpec[] = [
   {
     statement: 'income_statement',
     metric: 'ffo',
-    concepts: ['FundsFromOperations', 'FundsFromOperationsPerDilutedShare'],
+    concepts: ['FundsFromOperations'],
     unit: 'USD',
     canonicalUnit: 'USD_M',
     factKind: 'duration',

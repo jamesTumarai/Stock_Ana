@@ -2,7 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractMemorySnapshot } from './investmentMemory';
 import { TrackedExpectation } from './thesisExpectations';
-import { computeWhatChanged } from './whatChangedEngine';
+import {
+  computeWhatChanged,
+  getSemanticCategoryBadge,
+  formatValuationDriverLabel
+} from './whatChangedEngine';
+import { buildDecisionContext } from './decisionContextEngine';
 
 describe('whatChangedEngine', () => {
   const basePrevReport: any = {
@@ -10,6 +15,7 @@ describe('whatChangedEngine', () => {
     id: 'rep_prev',
     schema_version: 2,
     generated_at: '2026-01-15T00:00:00Z',
+    company_profile: { shares_outstanding: 1000 },
     intrinsic_value: {
       current_price: 400.0,
       summary: { base_case_fair_value: 450.0 },
@@ -29,7 +35,7 @@ describe('whatChangedEngine', () => {
     },
     sec_verification: {
       financialDataSource: 'sec_verified',
-      sec_period_statements: [{ period: 'Q2 2026', revenue: 50000, operating_income: 20000, accession: '0000950170-26-000100' }],
+      sec_period_statements: [{ period: 'Q2 2026', revenue: 50000, operating_income: 20000, accession: '0000950170-26-000100', diluted_shares: 1000 }],
       submissions: { recentFilings: [{ accessionNumber: '0000950170-26-000100', filingDate: '2026-01-20' }] }
     }
   };
@@ -39,6 +45,7 @@ describe('whatChangedEngine', () => {
     id: 'rep_curr',
     schema_version: 2,
     generated_at: '2026-04-15T00:00:00Z',
+    company_profile: { shares_outstanding: 1000 },
     intrinsic_value: {
       current_price: 460.0, // +15%
       summary: { base_case_fair_value: 500.0 }, // +11.1%
@@ -58,7 +65,7 @@ describe('whatChangedEngine', () => {
     },
     sec_verification: {
       financialDataSource: 'sec_verified',
-      sec_period_statements: [{ period: 'Q3 2026', revenue: 58000, operating_income: 25520, accession: '0000950170-26-000200' }],
+      sec_period_statements: [{ period: 'Q3 2026', revenue: 58000, operating_income: 25520, accession: '0000950170-26-000200', diluted_shares: 1000 }],
       submissions: { recentFilings: [{ accessionNumber: '0000950170-26-000200', filingDate: '2026-04-20' }] }
     }
   };
@@ -419,6 +426,10 @@ describe('whatChangedEngine', () => {
         financial_statements: {
           periods: ['Q1 2026'],
           income_statement: { revenue: [50000], yoy_revenue_growth_pct: [10.0] }
+        },
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [{ period: 'Q1 2026', revenue: 50000 }]
         }
       };
 
@@ -430,6 +441,10 @@ describe('whatChangedEngine', () => {
         financial_statements: {
           periods: ['Q2 2026'],
           income_statement: { revenue: [58000], yoy_revenue_growth_pct: [16.0] } // +6.0% pts -> HIGH
+        },
+        sec_verification: {
+          financialDataSource: 'sec_verified',
+          sec_period_statements: [{ period: 'Q2 2026', revenue: 58000 }]
         }
       };
 
@@ -715,6 +730,10 @@ describe('whatChangedEngine', () => {
           financial_statements: {
             periods: ['Q1 2026'],
             income_statement: { revenue: [85000], operating_margin_pct: [15.0] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q1 2026', revenue: 85000, operating_income: 12750 }]
           }
         };
         const currCyclical = {
@@ -726,6 +745,10 @@ describe('whatChangedEngine', () => {
           financial_statements: {
             periods: ['Q2 2026'],
             income_statement: { revenue: [92000], operating_margin_pct: [19.0] } // Margin +4.0% pts -> HIGH
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', revenue: 92000, operating_income: 17480 }]
           }
         };
 
@@ -752,6 +775,10 @@ describe('whatChangedEngine', () => {
             periods: ['Q1 2026'],
             income_statement: { revenue: [1200] },
             cash_flow: { free_cash_flow: [-1500] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q1 2026', revenue: 1200, operating_cash_flow: -1000, capital_expenditure: 500 }]
           }
         };
         const currEarly = {
@@ -763,7 +790,11 @@ describe('whatChangedEngine', () => {
           financial_statements: {
             periods: ['Q2 2026'],
             income_statement: { revenue: [1400] },
-            cash_flow: { free_cash_flow: [-1000] } // Cash burn improved by 33.3%
+            cash_flow: { free_cash_flow: [-1000] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', revenue: 1400, operating_cash_flow: -700, capital_expenditure: 300 }]
           }
         };
 
@@ -776,7 +807,7 @@ describe('whatChangedEngine', () => {
         assert.ok(fcfItem);
         assert.equal(fcfItem?.domain, 'EVIDENCE_CHANGE');
         assert.equal(fcfItem?.confirmation, 'CONFIRMED');
-        assert.equal(fcfItem?.deltaDisplay, '+33.3%');
+        assert.equal(fcfItem?.deltaDisplay, 'DEFICIT NARROWED (+$500M)');
       });
     });
 
@@ -1151,6 +1182,642 @@ describe('whatChangedEngine', () => {
         const energyRes = computeWhatChanged(energyCurr, energyPrev, []);
         assert.equal(energyRes.items.length, 1);
         assert.equal(energyRes.items[0].deltaDisplay, 'POSSIBLE RISK CHANGE');
+      });
+    });
+
+    describe('Sections 25-30, 36: Research Timeline Change Semantics, Evidence Identity & Valuation Attribution Tests', () => {
+      it('Section 25: Same period + same accession FCF unverified -> verified is SOURCE_UPGRADE (not confirmed business change)', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'TSLA', id: 'rep_1', schema_version: 2,
+          generated_at: '2026-06-15T10:43:00Z',
+          intrinsic_value: { current_price: 372.11, summary: { base_case_fair_value: 209.16 }, assumptions: { discount_rate: 9.5 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            income_statement: { revenue: [25000], operating_margin_pct: [1.41] },
+            cash_flow: { free_cash_flow: [1264] }
+          },
+          sec_verification: {
+            financialDataSource: 'unverified',
+            sec_period_statements: [],
+            submissions: { recentFilings: [{ accessionNumber: '0000950170-26-000100', filingDate: '2026-06-15' }] }
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'TSLA', id: 'rep_2', schema_version: 2,
+          generated_at: '2026-06-15T11:36:00Z',
+          intrinsic_value: { current_price: 372.11, summary: { base_case_fair_value: 99.78 }, assumptions: { discount_rate: 10.5 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            income_statement: { revenue: [25000], operating_margin_pct: [1.41] },
+            cash_flow: { free_cash_flow: [-1092] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', revenue: 25000, operating_income: 352, accession: '0000950170-26-000100' }],
+            submissions: { recentFilings: [{ accessionNumber: '0000950170-26-000100', filingDate: '2026-06-15' }] }
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        const fcfItem = res.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfItem, 'FCF item must exist');
+        assert.equal(fcfItem?.domain, 'SOURCE_UPGRADE');
+        assert.equal(fcfItem?.confirmation, 'SUPPORTED');
+        assert.equal(fcfItem?.semanticType, 'SOURCE_UPGRADE');
+        assert.equal(fcfItem?.deltaDisplay, 'SOURCE UPGRADE');
+        assert.notEqual(fcfItem?.confirmation, 'CONFIRMED');
+        assert.ok(fcfItem?.explanation.includes('Prior value +1,264M was replaced by verified Q2 FCF -1,092M.'));
+        assert.ok(fcfItem?.explanation.includes('Current research replaced prior unverified value with filing-verified value'));
+
+        // Must NOT be counted as a confirmed company evidence change
+        const confirmedEvidenceItems = res.items.filter(i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'RESTATED_EVIDENCE') && i.confirmation === 'CONFIRMED');
+        assert.equal(confirmedEvidenceItems.length, 0, 'No company evidence change should be confirmed');
+        assert.ok(!confirmedEvidenceItems.some(i => i.id === 'change_fcf'), 'FCF must not appear under confirmed evidence');
+      });
+
+      it('Section 26: New-quarter FCF positive -> negative is NEW_REAL_WORLD_EVIDENCE with DETERIORATION semantics', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'TSLA', id: 'rep_1', schema_version: 2,
+          intrinsic_value: { current_price: 300, summary: { base_case_fair_value: 300 } },
+          financial_statements: {
+            periods: ['Q1 2026'],
+            cash_flow: { free_cash_flow: [1444] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q1 2026', accession: '0000950170-26-000050' }]
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'TSLA', id: 'rep_2', schema_version: 2,
+          intrinsic_value: { current_price: 300, summary: { base_case_fair_value: 300 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            cash_flow: { free_cash_flow: [-1092] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', accession: '0000950170-26-000100' }]
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        const fcfItem = res.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfItem, 'FCF item must exist');
+        assert.equal(fcfItem?.domain, 'EVIDENCE_CHANGE');
+        assert.equal(fcfItem?.confirmation, 'CONFIRMED');
+        assert.equal(fcfItem?.semanticType, 'NEW_REAL_WORLD_EVIDENCE');
+        assert.equal(fcfItem?.deltaDisplay, 'DETERIORATION (Pos → Neg)');
+        assert.equal(fcfItem?.materiality, 'HIGH');
+        assert.ok(res.summary.confirmedMaterial >= 1);
+      });
+
+      it('Section 27: Restatement with later accession is classified as RESTATED_EVIDENCE, not analysis drift', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'AAPL', id: 'rep_1', schema_version: 2,
+          intrinsic_value: { current_price: 200, summary: { base_case_fair_value: 200 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            cash_flow: { free_cash_flow: [1264] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', accession: '0000320193-26-000050' }]
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'AAPL', id: 'rep_2', schema_version: 2,
+          intrinsic_value: { current_price: 200, summary: { base_case_fair_value: 200 } },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            cash_flow: { free_cash_flow: [1100] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', accession: '0000320193-26-000080' }] // Later accession for same period
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        const fcfItem = res.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfItem);
+        assert.equal(fcfItem?.domain, 'RESTATED_EVIDENCE');
+        assert.equal(fcfItem?.confirmation, 'CONFIRMED');
+        assert.equal(fcfItem?.semanticType, 'RESTATED_OR_AMENDED_EVIDENCE');
+        assert.equal(fcfItem?.deltaDisplay, 'RESTATED');
+        assert.notEqual(fcfItem?.semanticType, 'ANALYSIS_OUTPUT_DRIFT');
+      });
+
+      it('Section 28: Provenance contradiction guard: unverified financial fact CANNOT have confirmation = CONFIRMED', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'NVDA', id: 'rep_1', schema_version: 2,
+          intrinsic_value: { current_price: 120, summary: { base_case_fair_value: 120 } },
+          financial_statements: { periods: ['Q1 2026'], cash_flow: { free_cash_flow: [5000] } },
+          sec_verification: { financialDataSource: 'unverified', sec_period_statements: [] }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'NVDA', id: 'rep_2', schema_version: 2,
+          intrinsic_value: { current_price: 120, summary: { base_case_fair_value: 120 } },
+          financial_statements: { periods: ['Q2 2026'], cash_flow: { free_cash_flow: [8000] } },
+          sec_verification: { financialDataSource: 'unverified', sec_period_statements: [] }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        const fcfItem = res.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfItem);
+        assert.equal(fcfItem?.confirmation, 'UNCONFIRMED');
+        assert.notEqual(fcfItem?.confirmation, 'CONFIRMED');
+        assert.equal(res.summary.confirmedMaterial, 0);
+        assert.ok(res.summary.needsReview >= 1);
+      });
+
+      it('Section 29: Valuation attribution executes deterministic counterfactual replay or falls back truthfully', () => {
+        // 29A: Deterministic replay with complete inputs
+        const prevFull = extractMemorySnapshot({
+          ticker: 'MSFT', id: '1', schema_version: 2,
+          company_profile: { shares_outstanding: 1000 },
+          intrinsic_value: {
+            current_price: 400,
+            summary: { base_case_fair_value: 450 },
+            assumptions: { discount_rate: 8.5, terminal_growth_rate: 2.5 }
+          },
+          financial_statements: {
+            periods: ['Q2 2026'],
+            income_statement: { revenue: [50000], yoy_revenue_growth_pct: [12.0], operating_margin_pct: [40.0] },
+            cash_flow: { free_cash_flow: [20000] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', revenue: 50000, operating_income: 20000, accession: '001', diluted_shares: 1000 }]
+          }
+        })!;
+
+        const currFull = extractMemorySnapshot({
+          ticker: 'MSFT', id: '2', schema_version: 2,
+          company_profile: { shares_outstanding: 1000 },
+          intrinsic_value: {
+            current_price: 400,
+            summary: { base_case_fair_value: 410 },
+            assumptions: { discount_rate: 9.5, terminal_growth_rate: 2.5 }
+          },
+          financial_statements: {
+            periods: ['Q3 2026'],
+            income_statement: { revenue: [52000], yoy_revenue_growth_pct: [12.0], operating_margin_pct: [40.0] },
+            cash_flow: { free_cash_flow: [20800] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q3 2026', revenue: 52000, operating_income: 20800, accession: '002', diluted_shares: 1000 }]
+          }
+        })!;
+
+        const resFull = computeWhatChanged(currFull, prevFull, []);
+        assert.ok(resFull.valuationAttribution);
+        assert.equal(resFull.valuationAttribution?.isDeterministic, true);
+        assert.ok(resFull.valuationAttribution?.waterfall);
+        assert.equal(resFull.valuationAttribution?.primaryDriver, 'DISCOUNT_RATE');
+        assert.ok(resFull.valuationAttribution?.impactDescription.includes('Deterministic counterfactual replay'));
+
+        // 29B: Incomplete inputs fallback does NOT claim isDeterministic: true
+        const prevIncomplete = extractMemorySnapshot({
+          ticker: 'MSFT', id: '1', schema_version: 2,
+          intrinsic_value: { current_price: 400, summary: { base_case_fair_value: 450 } }
+        })!;
+        const currIncomplete = extractMemorySnapshot({
+          ticker: 'MSFT', id: '2', schema_version: 2,
+          intrinsic_value: { current_price: 400, summary: { base_case_fair_value: 380 } }
+        })!;
+        const resIncomplete = computeWhatChanged(currIncomplete, prevIncomplete, []);
+        assert.ok(resIncomplete.valuationAttribution);
+        assert.equal(resIncomplete.valuationAttribution?.isDeterministic, false);
+        assert.equal(resIncomplete.valuationAttribution?.primaryDriver, 'HEURISTIC_ASSOCIATION');
+      });
+
+      it('Section 30: Conviction score is treated as derived output, avoiding double counting in Decision Context', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'GOOGL', id: '1', schema_version: 2,
+          intrinsic_value: { current_price: 150, summary: { base_case_fair_value: 180 }, assumptions: { discount_rate: 8.0 } },
+          verdict: { conviction_score: 85 }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'GOOGL', id: '2', schema_version: 2,
+          intrinsic_value: { current_price: 150, summary: { base_case_fair_value: 155 }, assumptions: { discount_rate: 9.0 } },
+          verdict: { conviction_score: 75 }
+        })!;
+
+        const whatChanged = computeWhatChanged(curr, prev, []);
+        const convItem = whatChanged.items.find(i => i.id === 'change_conviction');
+        assert.ok(convItem);
+        assert.equal(convItem?.semanticType, 'DERIVED_OUTPUT_CHANGE');
+        // Confirmed material count must NOT count conviction score as a separate independent reason
+        assert.equal(whatChanged.summary.confirmedMaterial, 2);
+
+        const decContext = buildDecisionContext(curr, prev, null, whatChanged, []);
+        const convReason = decContext.reasons.find(r => r.id === 'dec_change_conviction');
+        assert.ok(convReason);
+        assert.equal(convReason?.severity, 'INFO');
+        assert.ok(convReason?.title.includes('Derived Output'));
+        assert.ok(convReason?.detail.includes('Conviction score is a downstream derivation and not an independent evidence source'));
+      });
+
+      it('Section 36: Cross-sector test matrix across 10 business archetypes', () => {
+        // 1. Operating company (MSFT) -> Standard DCF replay allowed
+        const s1_prev = extractMemorySnapshot({ ticker: 'MSFT', id: '1', schema_version: 2, company_profile: { sector: 'Technology' }, intrinsic_value: { current_price: 400, summary: { base_case_fair_value: 450 } } })!;
+        const s1_curr = extractMemorySnapshot({ ticker: 'MSFT', id: '2', schema_version: 2, company_profile: { sector: 'Technology' }, intrinsic_value: { current_price: 400, summary: { base_case_fair_value: 440 } } })!;
+        const r1 = computeWhatChanged(s1_curr, s1_prev, []);
+        assert.notEqual(r1.valuationAttribution?.primaryDriver, 'SECTOR_MODEL_SWITCH');
+
+        // 2. SaaS (CRM)
+        const s2_prev = extractMemorySnapshot({ ticker: 'CRM', id: '1', schema_version: 2, company_profile: { sector: 'Technology', industry: 'Software—Application' }, intrinsic_value: { current_price: 250, summary: { base_case_fair_value: 280 } } })!;
+        const s2_curr = extractMemorySnapshot({ ticker: 'CRM', id: '2', schema_version: 2, company_profile: { sector: 'Technology', industry: 'Software—Application' }, intrinsic_value: { current_price: 250, summary: { base_case_fair_value: 270 } } })!;
+        const r2 = computeWhatChanged(s2_curr, s2_prev, []);
+        assert.ok(r2);
+
+        // 3. Semiconductor (NVDA)
+        const s3_prev = extractMemorySnapshot({ ticker: 'NVDA', id: '1', schema_version: 2, company_profile: { sector: 'Technology', industry: 'Semiconductors' }, intrinsic_value: { current_price: 120, summary: { base_case_fair_value: 130 } } })!;
+        const s3_curr = extractMemorySnapshot({ ticker: 'NVDA', id: '2', schema_version: 2, company_profile: { sector: 'Technology', industry: 'Semiconductors' }, intrinsic_value: { current_price: 120, summary: { base_case_fair_value: 125 } } })!;
+        const r3 = computeWhatChanged(s3_curr, s3_prev, []);
+        assert.ok(r3);
+
+        // 4. Bank (JPM) -> Archetype guard prevents generic FCFF attribution
+        const s4_prev = extractMemorySnapshot({ ticker: 'JPM', id: '1', schema_version: 2, company_profile: { sector: 'Financial Services', industry: 'Banks—Diversified' }, intrinsic_value: { model_type: 'dividend_discount', current_price: 200, summary: { base_case_fair_value: 210 } } })!;
+        const s4_curr = extractMemorySnapshot({ ticker: 'JPM', id: '2', schema_version: 2, company_profile: { sector: 'Financial Services', industry: 'Banks—Diversified' }, intrinsic_value: { model_type: 'dividend_discount', current_price: 200, summary: { base_case_fair_value: 205 } } })!;
+        const r4 = computeWhatChanged(s4_curr, s4_prev, []);
+        assert.equal(r4.valuationAttribution?.primaryDriver, 'UNAVAILABLE');
+        assert.ok(r4.valuationAttribution?.impactDescription.includes('dividend_discount'));
+
+        // 5. FinTech (PYPL)
+        const s5_prev = extractMemorySnapshot({ ticker: 'PYPL', id: '1', schema_version: 2, company_profile: { sector: 'Financial Services', industry: 'Credit Services' }, intrinsic_value: { current_price: 70, summary: { base_case_fair_value: 80 } } })!;
+        const s5_curr = extractMemorySnapshot({ ticker: 'PYPL', id: '2', schema_version: 2, company_profile: { sector: 'Financial Services', industry: 'Credit Services' }, intrinsic_value: { current_price: 70, summary: { base_case_fair_value: 75 } } })!;
+        const r5 = computeWhatChanged(s5_curr, s5_prev, []);
+        assert.ok(r5);
+
+        // 6. Insurer (PGR) -> Archetype guard
+        const s6_prev = extractMemorySnapshot({ ticker: 'PGR', id: '1', schema_version: 2, company_profile: { sector: 'Financial Services', industry: 'Insurance—Property & Casualty' }, intrinsic_value: { model_type: 'excess_return', current_price: 240, summary: { base_case_fair_value: 260 } } })!;
+        const s6_curr = extractMemorySnapshot({ ticker: 'PGR', id: '2', schema_version: 2, company_profile: { sector: 'Financial Services', industry: 'Insurance—Property & Casualty' }, intrinsic_value: { model_type: 'excess_return', current_price: 240, summary: { base_case_fair_value: 250 } } })!;
+        const r6 = computeWhatChanged(s6_curr, s6_prev, []);
+        assert.equal(r6.valuationAttribution?.primaryDriver, 'UNAVAILABLE');
+
+        // 7. REIT (PLD) -> Archetype guard
+        const s7_prev = extractMemorySnapshot({ ticker: 'PLD', id: '1', schema_version: 2, company_profile: { sector: 'Real Estate' }, intrinsic_value: { model_type: 'nav_affo', current_price: 120, summary: { base_case_fair_value: 130 } } })!;
+        const s7_curr = extractMemorySnapshot({ ticker: 'PLD', id: '2', schema_version: 2, company_profile: { sector: 'Real Estate' }, intrinsic_value: { model_type: 'nav_affo', current_price: 120, summary: { base_case_fair_value: 125 } } })!;
+        const r7 = computeWhatChanged(s7_curr, s7_prev, []);
+        assert.equal(r7.valuationAttribution?.primaryDriver, 'UNAVAILABLE');
+
+        // 8. Pre-profit (RIVN) -> Archetype guard
+        const s8_prev = extractMemorySnapshot({ ticker: 'RIVN', id: '1', schema_version: 2, company_profile: { sector: 'Consumer Cyclical' }, intrinsic_value: { model_type: 'ev_sales_relative', current_price: 12, summary: { base_case_fair_value: 15 } } })!;
+        const s8_curr = extractMemorySnapshot({ ticker: 'RIVN', id: '2', schema_version: 2, company_profile: { sector: 'Consumer Cyclical' }, intrinsic_value: { model_type: 'ev_sales_relative', current_price: 12, summary: { base_case_fair_value: 14 } } })!;
+        const r8 = computeWhatChanged(s8_curr, s8_prev, []);
+        assert.equal(r8.valuationAttribution?.primaryDriver, 'UNAVAILABLE');
+
+        // 9. Energy (CVX)
+        const s9_prev = extractMemorySnapshot({ ticker: 'CVX', id: '1', schema_version: 2, company_profile: { sector: 'Energy' }, intrinsic_value: { current_price: 150, summary: { base_case_fair_value: 160 } } })!;
+        const s9_curr = extractMemorySnapshot({ ticker: 'CVX', id: '2', schema_version: 2, company_profile: { sector: 'Energy' }, intrinsic_value: { current_price: 150, summary: { base_case_fair_value: 155 } } })!;
+        const r9 = computeWhatChanged(s9_curr, s9_prev, []);
+        assert.ok(r9);
+
+        // 10. Utility (NEE)
+        const s10_prev = extractMemorySnapshot({ ticker: 'NEE', id: '1', schema_version: 2, company_profile: { sector: 'Utilities' }, intrinsic_value: { current_price: 75, summary: { base_case_fair_value: 82 } } })!;
+        const s10_curr = extractMemorySnapshot({ ticker: 'NEE', id: '2', schema_version: 2, company_profile: { sector: 'Utilities' }, intrinsic_value: { current_price: 75, summary: { base_case_fair_value: 80 } } })!;
+        const r10 = computeWhatChanged(s10_curr, s10_prev, []);
+        assert.ok(r10);
+      });
+    });
+
+    describe('Lumina Minor Research Timeline Semantic Polish Tests (Tests A-E)', () => {
+      it('TEST A: WACC changes & Fair Value changes +0.6% -> primaryDriver is NO_MATERIAL_ATTRIBUTION (not plain UNCHANGED)', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'TSLA', id: 'rep_1', schema_version: 2,
+          intrinsic_value: {
+            current_price: 372.11,
+            summary: { base_case_fair_value: 99.78 },
+            assumptions: { discount_rate: 10.5 }
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'TSLA', id: 'rep_2', schema_version: 2,
+          intrinsic_value: {
+            current_price: 372.11,
+            summary: { base_case_fair_value: 100.34 }, // +0.56% (~ +0.6%)
+            assumptions: { discount_rate: 9.5 } // WACC -1.0%
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        assert.ok(res.valuationAttribution);
+        assert.notEqual(res.valuationAttribution?.primaryDriver, 'UNCHANGED');
+        assert.equal(res.valuationAttribution?.primaryDriver, 'NO_MATERIAL_ATTRIBUTION');
+        assert.ok(res.valuationAttribution?.impactDescription.includes('Fair value changed modestly'));
+        assert.ok(res.valuationAttribution?.impactDescription.includes('below the threshold for assigning a material primary driver'));
+
+        // Formatted display label checks
+        const enLabel = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, false, 0.56);
+        const thLabel = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, true, 0.56);
+        assert.equal(enLabel, 'NO MATERIAL ATTRIBUTION');
+        assert.equal(thLabel, 'ไม่มีสาเหตุหลักที่มีนัยสำคัญ');
+      });
+
+      it('TEST B: Fair Value exactly identical -> primaryDriver is UNCHANGED and displays UNCHANGED', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'MSFT', id: 'rep_1', schema_version: 2,
+          intrinsic_value: {
+            current_price: 400.0,
+            summary: { base_case_fair_value: 450.0 },
+            assumptions: { discount_rate: 8.5 }
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'MSFT', id: 'rep_2', schema_version: 2,
+          intrinsic_value: {
+            current_price: 400.0,
+            summary: { base_case_fair_value: 450.0 }, // 0.00% delta
+            assumptions: { discount_rate: 8.5 }
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        assert.ok(res.valuationAttribution);
+        assert.equal(res.valuationAttribution?.primaryDriver, 'UNCHANGED');
+        const enLabel = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, false, 0);
+        const thLabel = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, true, 0);
+        assert.equal(enLabel, 'UNCHANGED');
+        assert.equal(thLabel, 'ไม่เปลี่ยนแปลง');
+      });
+
+      it('TEST C: Confirmed WACC change -> category/badge indicates MODEL ASSUMPTION (never EVIDENCE)', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'AAPL', id: 'rep_1', schema_version: 2,
+          intrinsic_value: {
+            current_price: 200,
+            summary: { base_case_fair_value: 200 },
+            assumptions: { discount_rate: 8.0 }
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'AAPL', id: 'rep_2', schema_version: 2,
+          intrinsic_value: {
+            current_price: 200,
+            summary: { base_case_fair_value: 200 },
+            assumptions: { discount_rate: 9.0 }
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        const waccItem = res.items.find(i => i.id === 'change_wacc');
+        assert.ok(waccItem);
+        const badge = getSemanticCategoryBadge(waccItem!, false);
+        const badgeTh = getSemanticCategoryBadge(waccItem!, true);
+        assert.equal(badge.badgeType, 'MODEL_ASSUMPTION');
+        assert.equal(badge.label, 'MODEL ASSUMPTION');
+        assert.equal(badgeTh.label, 'สมมติฐานแบบจำลอง');
+        assert.notEqual(badge.badgeType, 'EVIDENCE');
+      });
+
+      it('TEST D: Verified revenue / margin change from a new filing -> category/badge indicates EVIDENCE', () => {
+        const prev = extractMemorySnapshot({
+          ticker: 'MSFT', id: 'rep_1', schema_version: 2,
+          financial_statements: {
+            periods: ['Q2 2026'],
+            income_statement: { revenue: [50000], yoy_revenue_growth_pct: [10.0] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q2 2026', accession: '001', revenue: 50000 }]
+          }
+        })!;
+
+        const curr = extractMemorySnapshot({
+          ticker: 'MSFT', id: 'rep_2', schema_version: 2,
+          financial_statements: {
+            periods: ['Q3 2026'],
+            income_statement: { revenue: [55000], yoy_revenue_growth_pct: [15.0] }
+          },
+          sec_verification: {
+            financialDataSource: 'sec_verified',
+            sec_period_statements: [{ period: 'Q3 2026', accession: '002', revenue: 55000 }]
+          }
+        })!;
+
+        const res = computeWhatChanged(curr, prev, []);
+        const revItem = res.items.find(i => i.id === 'change_revenue_yoy');
+        assert.ok(revItem);
+        const badge = getSemanticCategoryBadge(revItem!, false);
+        const badgeTh = getSemanticCategoryBadge(revItem!, true);
+        assert.equal(badge.badgeType, 'EVIDENCE');
+        assert.equal(badge.label, 'EVIDENCE');
+        assert.equal(badgeTh.label, 'ข้อมูลจริง');
+      });
+
+      it('TEST E: Data correction / source upgrade -> category indicates DATA CORRECTION / SOURCE UPGRADE', () => {
+        // Source upgrade item
+        const prevUnverified = extractMemorySnapshot({
+          ticker: 'NVDA', id: 'rep_1', schema_version: 2,
+          financial_statements: { periods: ['Q2 2026'], cash_flow: { free_cash_flow: [5000] } },
+          sec_verification: { financialDataSource: 'unverified', sec_period_statements: [] }
+        })!;
+        const currVerified = extractMemorySnapshot({
+          ticker: 'NVDA', id: 'rep_2', schema_version: 2,
+          financial_statements: { periods: ['Q2 2026'], cash_flow: { free_cash_flow: [4800] } },
+          sec_verification: { financialDataSource: 'sec_verified', sec_period_statements: [{ period: 'Q2 2026', accession: '001' }] }
+        })!;
+        const resSourceUpgrade = computeWhatChanged(currVerified, prevUnverified, []);
+        const fcfUpgrade = resSourceUpgrade.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfUpgrade);
+        const upgradeBadge = getSemanticCategoryBadge(fcfUpgrade!, false);
+        const upgradeBadgeTh = getSemanticCategoryBadge(fcfUpgrade!, true);
+        assert.equal(upgradeBadge.badgeType, 'SOURCE_UPGRADE');
+        assert.equal(upgradeBadge.label, 'SOURCE UPGRADE');
+        assert.equal(upgradeBadgeTh.label, 'อัปเกรดแหล่งข้อมูล');
+
+        // Data correction under identical verified filing
+        const prevCorr = extractMemorySnapshot({
+          ticker: 'NVDA', id: 'rep_3', schema_version: 2,
+          financial_statements: { periods: ['Q2 2026'], cash_flow: { free_cash_flow: [5000] } },
+          sec_verification: { financialDataSource: 'sec_verified', sec_period_statements: [{ period: 'Q2 2026', accession: '001' }] }
+        })!;
+        const currCorr = extractMemorySnapshot({
+          ticker: 'NVDA', id: 'rep_4', schema_version: 2,
+          financial_statements: { periods: ['Q2 2026'], cash_flow: { free_cash_flow: [4900] } },
+          sec_verification: { financialDataSource: 'sec_verified', sec_period_statements: [{ period: 'Q2 2026', accession: '001' }] }
+        })!;
+        const resCorr = computeWhatChanged(currCorr, prevCorr, []);
+        const fcfCorr = resCorr.items.find(i => i.id === 'change_fcf');
+        assert.ok(fcfCorr);
+        const corrBadge = getSemanticCategoryBadge(fcfCorr!, false);
+        const corrBadgeTh = getSemanticCategoryBadge(fcfCorr!, true);
+        assert.equal(corrBadge.badgeType, 'DATA_CORRECTION');
+        assert.equal(corrBadge.label, 'DATA CORRECTION');
+        assert.equal(corrBadgeTh.label, 'แก้ไขข้อมูล');
+      });
+    });
+
+    describe('Lumina Multi-Factor Heuristic Valuation Attribution Tests', () => {
+      it('WACC up, Revenue CAGR down, Terminal Margin down, Fair Value down -> MULTIPLE_MODEL_ASSUMPTIONS (not WACC alone)', () => {
+        const prevSnap: any = {
+          snapshotId: 'mem_MULTI_1',
+          reportId: 'rep_1',
+          ticker: 'MULTI_TEST',
+          asOfDate: '2026-01-01',
+          createdTimestamp: Date.now() - 30 * 24 * 3600 * 1000,
+          marketPrice: 200,
+          priceProvenance: 'MARKET_SNAPSHOT',
+          valuation: {
+            baseFairValue: 276.31,
+            modelType: 'dcf_standard',
+            isAvailable: true,
+            marginOfSafetyPct: 0,
+            assumptions: {
+              waccPct: 9.25,
+              revenueCagrPct: 20.5,
+              terminalMarginPct: 14.5,
+              terminalGrowthPct: 2.5
+            },
+            provenance: 'DETERMINISTIC_DERIVATION'
+          },
+          conviction: { score: 75, provenance: 'DETERMINISTIC_DERIVATION' },
+          financials: { revenue: null, freeCashFlow: null },
+          thesis: { keyRisks: [], catalysts: [] },
+          evidence: {},
+          engineVersion: { schemaVersion: 2, generatedByVersion: '1.0.0' },
+          isLegacy: false
+        };
+
+        const currSnap: any = {
+          ...prevSnap,
+          snapshotId: 'mem_MULTI_2',
+          reportId: 'rep_2',
+          asOfDate: '2026-02-01',
+          createdTimestamp: Date.now(),
+          valuation: {
+            ...prevSnap.valuation,
+            baseFairValue: 163.31,
+            assumptions: {
+              waccPct: 10.50,
+              revenueCagrPct: 16.5,
+              terminalMarginPct: 14.0,
+              terminalGrowthPct: 2.5
+            }
+          }
+        };
+
+        const res = computeWhatChanged(currSnap, prevSnap, []);
+        assert.ok(res.valuationAttribution);
+        assert.equal(res.valuationAttribution?.isDeterministic, false);
+        assert.equal(res.valuationAttribution?.primaryDriver, 'MULTIPLE_MODEL_ASSUMPTIONS');
+
+        const labelEn = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, false);
+        const labelTh = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, true);
+        assert.equal(labelEn, 'MULTIPLE MODEL ASSUMPTIONS');
+        assert.equal(labelTh, 'สมมติฐานหลายรายการ (Heuristic)');
+
+        // Verify that descriptions mention all consistent factors without claiming WACC alone
+        assert.ok(res.valuationAttribution?.impactDescription.includes('higher discount rate'));
+        assert.ok(res.valuationAttribution?.impactDescription.includes('lower growth expectations'));
+        assert.ok(res.valuationAttribution?.impactDescription.includes('lower terminal margin'));
+        assert.ok(!res.valuationAttribution?.impactDescription.includes('primarily driven by WACC'));
+
+        assert.ok(res.valuationAttribution?.impactDescriptionTh.includes('WACC ที่สูงขึ้น'));
+        assert.ok(res.valuationAttribution?.impactDescriptionTh.includes('อัตราการเติบโตที่ลดลง'));
+        assert.ok(res.valuationAttribution?.impactDescriptionTh.includes('Terminal Margin ที่ลดลง'));
+      });
+
+      it('Conflicting assumptions (WACC up + Revenue CAGR up, Fair Value down) -> MIXED_MODEL_ASSUMPTIONS', () => {
+        const prevSnap: any = {
+          snapshotId: 'mem_MIX_1',
+          reportId: 'rep_m1',
+          ticker: 'MIX_TEST',
+          asOfDate: '2026-01-01',
+          createdTimestamp: Date.now() - 30 * 24 * 3600 * 1000,
+          marketPrice: 200,
+          valuation: {
+            baseFairValue: 250,
+            modelType: 'dcf_standard',
+            assumptions: {
+              waccPct: 9.0,
+              revenueCagrPct: 15.0
+            }
+          },
+          conviction: { score: 75 },
+          financials: { revenue: null, freeCashFlow: null },
+          thesis: { keyRisks: [], catalysts: [] },
+          evidence: {}
+        };
+
+        const currSnap: any = {
+          ...prevSnap,
+          snapshotId: 'mem_MIX_2',
+          reportId: 'rep_m2',
+          asOfDate: '2026-02-01',
+          createdTimestamp: Date.now(),
+          valuation: {
+            ...prevSnap.valuation,
+            baseFairValue: 200,
+            assumptions: {
+              waccPct: 10.5, // implies DOWN
+              revenueCagrPct: 20.0 // implies UP
+            }
+          }
+        };
+
+        const res = computeWhatChanged(currSnap, prevSnap, []);
+        assert.ok(res.valuationAttribution);
+        assert.equal(res.valuationAttribution?.isDeterministic, false);
+        assert.equal(res.valuationAttribution?.primaryDriver, 'MIXED_MODEL_ASSUMPTIONS');
+
+        const labelEn = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, false);
+        const labelTh = formatValuationDriverLabel(res.valuationAttribution!.primaryDriver, true);
+        assert.equal(labelEn, 'MIXED MODEL ASSUMPTION CHANGES');
+        assert.equal(labelTh, 'สมมติฐานเปลี่ยนทิศทางผสม (Mixed)');
+      });
+
+      it('Exactly one material assumption changed -> HEURISTIC_ASSOCIATION', () => {
+        const prevSnap: any = {
+          snapshotId: 'mem_SINGLE_1',
+          reportId: 'rep_s1',
+          ticker: 'SINGLE_TEST',
+          asOfDate: '2026-01-01',
+          createdTimestamp: Date.now() - 30 * 24 * 3600 * 1000,
+          marketPrice: 200,
+          valuation: {
+            baseFairValue: 200,
+            modelType: 'dcf_standard',
+            assumptions: {
+              waccPct: 9.0
+            }
+          },
+          conviction: { score: 75 },
+          financials: { revenue: null, freeCashFlow: null },
+          thesis: { keyRisks: [], catalysts: [] },
+          evidence: {}
+        };
+
+        const currSnap: any = {
+          ...prevSnap,
+          snapshotId: 'mem_SINGLE_2',
+          reportId: 'rep_s2',
+          asOfDate: '2026-02-01',
+          createdTimestamp: Date.now(),
+          valuation: {
+            ...prevSnap.valuation,
+            baseFairValue: 180,
+            assumptions: {
+              waccPct: 10.25
+            }
+          }
+        };
+
+        const res = computeWhatChanged(currSnap, prevSnap, []);
+        assert.ok(res.valuationAttribution);
+        assert.equal(res.valuationAttribution?.isDeterministic, false);
+        assert.equal(res.valuationAttribution?.primaryDriver, 'HEURISTIC_ASSOCIATION');
       });
     });
   });

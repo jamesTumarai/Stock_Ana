@@ -38,9 +38,10 @@ import {
   InvestmentThesisRecord,
   TrackedExpectation,
   extractDraftThesisFromReport,
-  evaluateExpectations
+  evaluateExpectations,
+  resolveActiveThesisForReport
 } from './domain/thesisExpectations';
-import { loadUserThesis, loadExpectations, evaluateAndPersistExpectations } from './services/thesisExpectationsService';
+import { loadUserThesis, loadThesisRevisions, loadExpectations, evaluateAndPersistExpectations } from './services/thesisExpectationsService';
 import { ReverseDcfCard } from './components/ReverseDcfCard';
 import { ScenarioAnalysisModal } from './components/ScenarioAnalysisModal';
 import { ValuationDecompositionModal } from './components/ValuationDecompositionModal';
@@ -67,41 +68,51 @@ interface Props {
 
 const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number | string, isThai: boolean, onOpenMethodology?: () => void }) => {
   const numScore = typeof score === 'number' ? score : parseInt(String(score), 10) || 0;
-  const radius = 38;
-  const strokeWidth = 7;
+  const radius = 64;
+  const strokeWidth = 10;
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(100, Math.max(0, numScore));
   const offset = circumference - (progress / 100) * circumference;
 
   let strokeColor = '#0b5a4b';
   let glowColor = 'rgba(11, 90, 75, 0.25)';
+  let verdictLabel = isThai ? 'ความเชื่อมั่นสูง' : 'High Conviction';
+  let verdictBadgeBg = 'bg-emerald-50 text-emerald-800 border-emerald-200/90';
+  let dotColor = 'bg-emerald-600';
+
   if (numScore < 50) {
     strokeColor = '#dc2626';
     glowColor = 'rgba(220, 38, 38, 0.25)';
+    verdictLabel = isThai ? 'ความเชื่อมั่นต่ำ' : 'Low Conviction';
+    verdictBadgeBg = 'bg-rose-50 text-rose-800 border-rose-200/90';
+    dotColor = 'bg-rose-500';
   } else if (numScore < 70) {
     strokeColor = '#d97706';
     glowColor = 'rgba(217, 119, 6, 0.25)';
+    verdictLabel = isThai ? 'ความเชื่อมั่นปานกลาง' : 'Moderate Conviction';
+    verdictBadgeBg = 'bg-amber-50 text-amber-800 border-amber-200/90';
+    dotColor = 'bg-amber-500';
   }
 
   return (
     <div 
       onClick={onOpenMethodology}
-      className="flex flex-col items-center justify-center my-1 cursor-pointer group w-full"
+      className="flex flex-col items-center justify-center cursor-pointer group w-full"
       title={isThai ? 'คลิกเพื่อดูวิธีคำนวณคะแนน' : 'Click to view scoring methodology'}
     >
-      <div className="relative flex items-center justify-center w-28 h-28">
-        <svg className="w-28 h-28 transform -rotate-90">
+      <div className="relative flex items-center justify-center w-38 h-38 sm:w-40 sm:h-40">
+        <svg className="w-38 h-38 sm:w-40 sm:h-40 transform -rotate-90">
           <circle
-            cx="56"
-            cy="56"
+            cx="80"
+            cy="80"
             r={radius}
             stroke="#e7e5e4"
             strokeWidth={strokeWidth}
             fill="transparent"
           />
           <circle
-            cx="56"
-            cy="56"
+            cx="80"
+            cy="80"
             r={radius}
             stroke={strokeColor}
             strokeWidth={strokeWidth}
@@ -110,20 +121,26 @@ const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number |
             strokeLinecap="round"
             fill="transparent"
             className="transition-all duration-1000 ease-out"
-            style={{ filter: `drop-shadow(0 0 6px ${glowColor})` }}
+            style={{ filter: `drop-shadow(0 0 8px ${glowColor})` }}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-bold font-['Nunito',sans-serif] tabular-nums group-hover:scale-105 transition-transform" style={{ color: strokeColor }}>
+          <span className="text-4xl sm:text-5xl font-black font-['Nunito',sans-serif] tabular-nums tracking-tight group-hover:scale-105 transition-transform" style={{ color: strokeColor }}>
             {score || '-'}
           </span>
-          <span className="text-[10px] text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif]">
+          <span className="text-xs text-stone-500 font-bold tracking-wider font-['Prompt','Nunito',sans-serif] mt-1">
             {isThai ? 'เต็ม 100' : '/ 100'}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-stone-500 font-sans">
+      {/* Verdict Pill Badge */}
+      <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${verdictBadgeBg} mt-3.5 shadow-2xs group-hover:scale-105 transition-transform`}>
+        <span className={`w-2 h-2 rounded-full ${dotColor}`}></span>
+        <span>{verdictLabel}</span>
+      </div>
+
+      <div className="flex items-center justify-center gap-2 mt-2.5 text-[11px] text-stone-500 font-sans">
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>{isThai ? '<50 ต่ำ' : '<50 Low'}</span>
         <span className="text-stone-300">•</span>
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{isThai ? '50-69 กลาง' : '50-69 Med'}</span>
@@ -441,12 +458,26 @@ export default function ReportTemplate({
     let isMounted = true;
     async function loadData() {
       const storedThesis = await loadUserThesis(ticker, currentUser);
+      const revisions = await loadThesisRevisions(ticker, currentUser);
       const storedExps = await loadExpectations(ticker, currentUser);
 
       if (!isMounted) return;
 
       if (storedThesis) {
-        setActiveThesis(storedThesis);
+        const isHistoricalReport = Array.isArray(historyReports) && historyReports.some(h => {
+          const hid = h.id || h.reportId || h.data?.id;
+          const curId = (data as any).id || (data as any).reportId;
+          return hid && curId && hid === curId;
+        });
+        const resolvedHistorical = (revisions.length > 0 || isHistoricalReport)
+          ? resolveActiveThesisForReport(data, revisions, storedThesis)
+          : null;
+        const effectiveThesis = resolvedHistorical || (!isHistoricalReport ? storedThesis : null);
+        if (effectiveThesis) {
+          setActiveThesis(effectiveThesis);
+        } else {
+          setActiveThesis(extractDraftThesisFromReport(data, currentUser?.uid));
+        }
       } else {
         const draft = extractDraftThesisFromReport(data, currentUser?.uid);
         setActiveThesis(draft);
@@ -801,7 +832,7 @@ export default function ReportTemplate({
           <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-6 border-t md:border-t-0 md:border-l border-stone-100 pt-4 md:pt-0 md:pl-6 shrink-0 w-full sm:w-auto">
             {/* Current Price */}
             {(data.intrinsic_value?.current_price || data.company_profile?.stock_price) && (
-              <div className="flex flex-col">
+              <div className="flex flex-col" title={data.canonical_executive_snapshot?.facts?.currentPrice ? `${data.canonical_executive_snapshot.facts.currentPrice.source} · ${data.canonical_executive_snapshot.facts.currentPrice.period}` : undefined}>
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400 tracking-wider">
                   {isThai ? 'ราคาตลาด' : 'Market Price'}
                 </span>
@@ -812,20 +843,26 @@ export default function ReportTemplate({
             )}
 
             {/* DCF / Base Fair Value */}
-            {(data.intrinsic_value?.summary?.base_case_fair_value || data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share) && (
-              <div className="flex flex-col">
+            {(data.canonical_executive_snapshot?.canonicalValuation?.baseFairValue ?? data.canonical_executive_snapshot?.valuation?.fairValue ?? data.intrinsic_value?.summary?.base_case_fair_value ?? data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share) && (
+              <div className="flex flex-col" title={data.canonical_executive_snapshot?.valuation?.modelName ? `${data.canonical_executive_snapshot.valuation.modelName} · As of ${data.canonical_executive_snapshot.valuation.valuationAsOf || 'Report'}` : undefined}>
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400 tracking-wider">
-                  {isThai ? 'มูลค่าพื้นฐาน' : 'Fair Value'}
+                  {data.canonical_executive_snapshot?.canonicalValuation?.modelType === 'ddm'
+                    ? (isThai ? 'มูลค่าพื้นฐาน DDM' : 'DDM Fair Value')
+                    : data.canonical_executive_snapshot?.canonicalValuation?.modelType === 'reit_affo'
+                      ? (isThai ? 'มูลค่าพื้นฐาน AFFO' : 'AFFO Fair Value')
+                      : data.canonical_executive_snapshot?.canonicalValuation?.modelType === 'relative_only'
+                        ? (isThai ? 'มูลค่าประเมินเปรียบเทียบ' : 'Relative Valuation')
+                        : (isThai ? 'มูลค่าพื้นฐาน' : 'Fair Value')}
                 </span>
                 <span className="text-lg sm:text-xl font-bold font-mono text-[#0b5a4b]">
-                  {formatPrice(data.intrinsic_value?.summary?.base_case_fair_value || data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share)}
+                  {formatPrice(data.canonical_executive_snapshot?.canonicalValuation?.baseFairValue ?? data.canonical_executive_snapshot?.valuation?.fairValue ?? data.intrinsic_value?.summary?.base_case_fair_value ?? data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share)}
                 </span>
               </div>
             )}
 
             {/* Conviction Score Pill */}
             {typeof data.verdict?.conviction_score === 'number' && (
-              <div className="col-span-2 sm:col-span-1 flex flex-row sm:flex-col items-center justify-between sm:justify-center px-4 py-2 rounded-2xl bg-stone-900 text-white shadow-xs">
+              <div className="col-span-2 sm:col-span-1 flex flex-row sm:flex-col items-center justify-between sm:justify-center px-4 py-2 rounded-2xl bg-stone-900 text-white shadow-xs" title={data.canonical_executive_snapshot?.facts?.convictionScore ? `${data.canonical_executive_snapshot.facts.convictionScore.source} · ${data.canonical_executive_snapshot.facts.convictionScore.basis}` : 'Deterministic Conviction Model'}>
                 <span className="text-[10px] sm:text-[9px] font-mono uppercase font-bold tracking-wider opacity-75">
                   Conviction
                 </span>
@@ -873,20 +910,22 @@ export default function ReportTemplate({
               </div>
               
               <div className="md:col-span-3 flex flex-col md:h-full text-center md:border-l md:border-stone-100 md:pl-8 items-center justify-between order-first md:order-last bg-stone-50 md:bg-transparent p-4 md:p-0 rounded-2xl md:rounded-none border border-stone-100 md:border-none">
-                 <div className="w-full">
+                 <div className="w-full shrink-0">
                    <div className="flex items-center justify-center gap-1 mb-1">
-                     <h4 className="text-sm font-bold text-stone-700 uppercase tracking-wider">{isThai ? "คะแนนความเชื่อมั่น" : "Conviction Score"}</h4>
+                     <h4 className="text-sm font-bold text-stone-800 uppercase tracking-wider">{isThai ? "คะแนนความเชื่อมั่น" : "Conviction Score"}</h4>
                      <button
                        type="button"
                        onClick={() => setShowScoreModal(true)}
-                       className="text-stone-400 hover:text-stone-700 cursor-pointer"
+                       className="text-stone-400 hover:text-stone-700 cursor-pointer transition-colors"
                        title={isThai ? 'วิธีคิดคะแนน' : 'Scoring methodology'}
                      >
                        <HelpCircle className="w-3.5 h-3.5" />
                      </button>
                    </div>
-                   <p className="text-xs text-stone-500 mb-2">{isThai ? "อ้างอิงจากงบและเอกสารที่วิเคราะห์" : "Based on filings & model"}</p>
-                   
+                   <p className="text-xs text-stone-500 mb-1">{isThai ? "อ้างอิงจากงบและเอกสารที่วิเคราะห์" : "Based on filings & model"}</p>
+                 </div>
+
+                 <div className="w-full flex-1 flex flex-col items-center justify-center my-auto py-3">
                    <ConvictionGauge 
                      score={typeof data.verdict?.conviction_score === 'number' ? data.verdict.conviction_score : '-'}
                      isThai={isThai} 
@@ -894,52 +933,49 @@ export default function ReportTemplate({
                    />
                  </div>
                  
-                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 sm:gap-1 border-t border-stone-200 pt-3 sm:pt-4 mt-auto w-full">
-                   <div className="flex flex-col items-center">
-                     <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "เอกสาร" : "Docs"}</div>
-                     <div className="text-sm font-mono text-stone-800">{documentCount}</div>
-                   </div>
-                   <div className="flex flex-col items-center border-l border-stone-200">
-                     <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "เวลา" : "Time"}</div>
-                     <div className="text-sm font-mono text-stone-800">{durationSecs}s</div>
-                   </div>
-                   <div className="flex flex-col items-center border-l border-stone-200">
-                     <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "ทำงาน" : "Runs"}</div>
-                     <div className="text-sm font-mono text-stone-800">{toolRuns}</div>
-                   </div>
-                   <div className="flex flex-col items-center border-l border-stone-200">
-                     <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">{isThai ? "โทเค็น" : "Tokens"}</div>
-                     <div className="text-sm font-mono text-stone-800">
-                        {tokenCount > 0 ? (tokenCount / 1000).toFixed(1) + 'k' : '-'}
-                     </div>
-                   </div>
-                    <div
-                      className="col-span-4 sm:col-span-1 flex flex-col items-center border-t sm:border-t-0 sm:border-l border-stone-200 pt-2 sm:pt-0"
-                      title={
-                        !tokenCostEstimate.isAvailable
-                          ? (isThai ? `ไม่พร้อมใช้งาน: ${tokenCostEstimate.reason}` : `Unavailable: ${tokenCostEstimate.reason}`)
-                          : isThai
-                            ? `ประมาณการต้นทุน AI (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.formattedCostThb ? ` (~${tokenCostEstimate.formattedCostThb})` : ''}${tokenCostEstimate.approximationNoteTh ? ` • ${tokenCostEstimate.approximationNoteTh}` : ''}`
-                            : `Estimated AI inference cost (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.approximationNote ? ` • ${tokenCostEstimate.approximationNote}` : ''}`
-                      }
-                    >
-                      <div className="text-[10px] text-stone-600 uppercase font-bold tracking-wider mb-1">
-                        {isThai ? "ประมาณการต้นทุน AI" : "Estimated AI Cost"}
+                 <div className="w-full mt-auto pt-4 border-t border-stone-200/80">
+                    <div className="grid grid-cols-4 divide-x divide-stone-200/80 bg-white md:bg-stone-50/80 rounded-xl py-2.5 px-1 border border-stone-200/70 shadow-2xs">
+                      <div className="flex flex-col items-center justify-center px-1">
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-0.5">
+                          {isThai ? "เอกสาร" : "Docs"}
+                        </span>
+                        <span className="text-sm sm:text-base font-bold font-mono text-stone-800">
+                          {documentCount}
+                        </span>
                       </div>
-                      <div className={`text-xs font-mono font-bold ${tokenCostEstimate.isAvailable ? 'text-emerald-700' : 'text-stone-500'}`}>
-                        {tokenCount > 0
-                          ? (tokenCostEstimate.isAvailable
-                              ? (currencyMode === 'THB' && hasUsdThbRate && tokenCostEstimate.formattedCostThb
-                                  ? tokenCostEstimate.formattedCostThb
-                                  : tokenCostEstimate.formattedCostUsd)
-                              : (isThai ? 'ไม่พร้อมใช้งาน' : 'Unavailable'))
-                          : '-'}
+                      <div className="flex flex-col items-center justify-center px-1">
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-0.5">
+                          {isThai ? "เวลา" : "Time"}
+                        </span>
+                        <span className="text-sm sm:text-base font-bold font-mono text-stone-800">
+                          {durationSecs}s
+                        </span>
                       </div>
-                      {tokenCount > 0 && tokenCostEstimate.isAvailable && tokenCostEstimate.isEstimatedBreakdown && (
-                        <div className="text-[8px] font-sans text-stone-600 tracking-tight mt-0.5">
-                          {isThai ? "สมมติฐาน 75/25" : "Approx. 75/25"}
-                        </div>
-                      )}
+                      <div className="flex flex-col items-center justify-center px-1">
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-0.5">
+                          {isThai ? "ทำงาน" : "Runs"}
+                        </span>
+                        <span className="text-sm sm:text-base font-bold font-mono text-stone-800">
+                          {toolRuns}
+                        </span>
+                      </div>
+                      <div
+                        className="flex flex-col items-center justify-center px-1 cursor-default"
+                        title={
+                          tokenCostEstimate.isAvailable
+                            ? (isThai
+                                ? `ประมาณการต้นทุน AI (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.formattedCostThb ? ` (~${tokenCostEstimate.formattedCostThb})` : ''}${tokenCostEstimate.approximationNoteTh ? ` • ${tokenCostEstimate.approximationNoteTh}` : ''}`
+                                : `Estimated AI inference cost (${tokenCostEstimate.model}): ${tokenCostEstimate.formattedCostUsd}${tokenCostEstimate.approximationNote ? ` • ${tokenCostEstimate.approximationNote}` : ''}`)
+                            : undefined
+                        }
+                      >
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-0.5">
+                          {isThai ? "โทเค็น" : "Tokens"}
+                        </span>
+                        <span className="text-sm sm:text-base font-bold font-mono text-stone-800">
+                          {tokenCount > 0 ? (tokenCount / 1000).toFixed(1) + 'k' : '-'}
+                        </span>
+                      </div>
                     </div>
                   </div>
               </div>

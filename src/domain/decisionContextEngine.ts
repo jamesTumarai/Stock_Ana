@@ -9,6 +9,9 @@ import { WhatChangedResult } from './whatChangedEngine';
 
 export type ReEvaluationStance =
   | 'RE_EVALUATION_WARRANTED'
+  | 'NEW_EVIDENCE_REEVALUATION'
+  | 'MODEL_ASSUMPTION_REVIEW'
+  | 'DATA_CORRECTION_REVIEW'
   | 'REVIEW_SUGGESTED'
   | 'THESIS_CONDITION_TRIGGERED'
   | 'VALUATION_REVISION_NOTED'
@@ -240,7 +243,7 @@ export function buildDecisionContext(
   // 3. What Changed Material Deltas Check
   if (whatChanged) {
     for (const item of whatChanged.items) {
-      if (item.materiality === 'HIGH' && (item.domain === 'EVIDENCE_CHANGE' || item.domain === 'THESIS_MODEL_CHANGE') && item.confirmation === 'CONFIRMED') {
+      if (item.materiality === 'HIGH' && (item.domain === 'EVIDENCE_CHANGE' || item.domain === 'THESIS_MODEL_CHANGE' || item.domain === 'RESTATED_EVIDENCE') && item.confirmation === 'CONFIRMED') {
         let cat: DecisionReason['category'] = 'VALUATION';
         if (item.category === 'SEC_FILING') cat = 'SEC';
         else if (item.category === 'RISKS_AND_CATALYSTS') cat = 'RISK';
@@ -248,17 +251,42 @@ export function buildDecisionContext(
 
         // Avoid duplicate if already covered by expectation
         if (item.category !== 'EXPECTATIONS') {
-          reasons.push({
-            id: `dec_${item.id}`,
-            category: cat,
-            severity: item.category === 'SEC_FILING' ? 'INFO' : 'WARNING',
-            title: item.metricLabel,
-            titleTh: item.metricLabelTh,
-            detail: item.explanation,
-            detailTh: item.explanationTh,
-            evidenceRef: item.evidenceRef
-          });
+          // AVOID DOUBLE COUNTING: If item is change_conviction, it is downstream derived output
+          if (item.id === 'change_conviction') {
+            reasons.push({
+              id: `dec_${item.id}`,
+              category: 'VALUATION',
+              severity: 'INFO',
+              title: `${item.metricLabel} (Derived Output)`,
+              titleTh: `${item.metricLabelTh} (ผลลัพธ์ต่อเนื่อง)`,
+              detail: `${item.explanation} (Note: Conviction score is a downstream derivation and not an independent evidence source.)`,
+              detailTh: `${item.explanationTh} (หมายเหตุ: คะแนนความเชื่อมั่นเป็นผลลัพธ์ต่อเนื่อง ไม่ใช่หลักฐานอิสระใหม่)`,
+              evidenceRef: item.evidenceRef
+            });
+          } else {
+            reasons.push({
+              id: `dec_${item.id}`,
+              category: cat,
+              severity: item.category === 'SEC_FILING' ? 'INFO' : 'WARNING',
+              title: item.metricLabel,
+              titleTh: item.metricLabelTh,
+              detail: item.explanation,
+              detailTh: item.explanationTh,
+              evidenceRef: item.evidenceRef
+            });
+          }
         }
+      } else if (item.domain === 'DATA_CORRECTION' || item.domain === 'SOURCE_UPGRADE') {
+        reasons.push({
+          id: `dec_corr_${item.id}`,
+          category: 'VALUATION',
+          severity: 'INFO',
+          title: item.metricLabel,
+          titleTh: item.metricLabelTh,
+          detail: item.explanation,
+          detailTh: item.explanationTh,
+          evidenceRef: item.evidenceRef
+        });
       } else if (item.confirmation === 'UNCONFIRMED') {
         reasons.push({
           id: `dec_review_${item.id}`,
@@ -279,12 +307,28 @@ export function buildDecisionContext(
   let headline = `No New Evidence Currently Changes Thesis Status — Monitoring Continues for ${ticker}`;
   let headlineTh = `ยังไม่พบหลักฐานใหม่ที่เปลี่ยนสถานะสมมติฐาน — ติดตามต่อเนื่องสำหรับ ${ticker}`;
 
-  const qualifyingConfirmedChanges = whatChanged
+  const qualifyingConfirmedEvidenceChanges = whatChanged
     ? whatChanged.items.filter(
-        i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'THESIS_MODEL_CHANGE') &&
+        i => (i.domain === 'EVIDENCE_CHANGE' || i.domain === 'RESTATED_EVIDENCE') &&
           i.confirmation === 'CONFIRMED' &&
           (i.materiality === 'HIGH' || i.materiality === 'MEDIUM') &&
           i.category !== 'SEC_FILING'
+      )
+    : [];
+
+  const dataCorrectionChanges = whatChanged
+    ? whatChanged.items.filter(
+        i => (i.domain === 'DATA_CORRECTION' || i.domain === 'SOURCE_UPGRADE') &&
+          (i.materiality === 'HIGH' || i.materiality === 'MEDIUM')
+      )
+    : [];
+
+  const modelAssumptionChanges = whatChanged
+    ? whatChanged.items.filter(
+        i => (i.domain === 'THESIS_MODEL_CHANGE' || i.id === 'change_wacc' || i.id === 'change_fair_value') &&
+          i.confirmation === 'CONFIRMED' &&
+          (i.materiality === 'HIGH' || i.materiality === 'MEDIUM') &&
+          i.id !== 'change_conviction'
       )
     : [];
 
@@ -296,14 +340,18 @@ export function buildDecisionContext(
     stance = 'EXPECTATIONS_REVIEW_NEEDED';
     headline = `Expectations Missed — Fundamental Review Warranted for ${ticker}`;
     headlineTh = `ผลลัพธ์พลาดจากความคาดหวัง — ควรทบทวนปัจจัยพื้นฐานสำหรับ ${ticker}`;
-  } else if (qualifyingConfirmedChanges.length >= 1) {
+  } else if (qualifyingConfirmedEvidenceChanges.length >= 1) {
     stance = 'RE_EVALUATION_WARRANTED';
     headline = `Confirmed Material Changes Detected — Re-evaluation Warranted for ${ticker}`;
     headlineTh = `พบการเปลี่ยนแปลงที่ยืนยันแล้วและมีนัยสำคัญ — ควรประเมินความเชื่อมั่นซ้ำสำหรับ ${ticker}`;
-  } else if (whatChanged && whatChanged.items.some(i => i.id === 'change_fair_value' && i.materiality === 'HIGH' && i.confirmation === 'CONFIRMED')) {
-    stance = 'VALUATION_REVISION_NOTED';
-    headline = `Material Valuation Adjustment — Review Assumptions for ${ticker}`;
-    headlineTh = `มูลค่ายุติธรรมเปลี่ยนแปลงอย่างมีนัยสำคัญ — ควรทบทวนสมมติฐานสำหรับ ${ticker}`;
+  } else if (dataCorrectionChanges.length >= 1) {
+    stance = 'DATA_CORRECTION_REVIEW';
+    headline = `Prior Research Value Corrected — Review Dependent Valuation for ${ticker}`;
+    headlineTh = `พบการแก้ไขข้อมูลในงานวิเคราะห์เดิม — ควรทบทวนผลประเมินที่อาศัยค่าดังกล่าวสำหรับ ${ticker}`;
+  } else if (modelAssumptionChanges.length >= 1) {
+    stance = 'MODEL_ASSUMPTION_REVIEW';
+    headline = `Valuation Assumptions Adjusted — Model Review Warranted for ${ticker}`;
+    headlineTh = `สมมติฐานการประเมินมูลค่าเปลี่ยนแปลง — ควรทบทวนแบบจำลองสำหรับ ${ticker}`;
   } else if (whatChanged && whatChanged.summary.needsReview > 0) {
     stance = 'REVIEW_SUGGESTED';
     headline = `Review Items Detected — No Confirmed Material Change for ${ticker}`;
@@ -345,6 +393,12 @@ export function buildDecisionContext(
   } else if (stance === 'NO_NEW_EVIDENCE') {
     summaryNarrative = `No new material evidence or filings detected since the previous distinct research snapshot. Monitoring continues without altering thesis stance.`;
     summaryNarrativeTh = `ยังไม่พบหลักฐานใหม่หรือรายงานทางการเงินเพิ่มเติมที่มีผลต่อสถานะสมมติฐาน ติดตามต่อเนื่อง`;
+  } else if (stance === 'DATA_CORRECTION_REVIEW') {
+    summaryNarrative = `A prior research value was corrected or upgraded to authoritative filing figures. Company fundamentals did not change, but dependent valuation outputs should be reviewed.`;
+    summaryNarrativeTh = `พบการแก้ไขข้อมูลในงานวิเคราะห์เดิม ควรทบทวนผลประเมินที่อาศัยค่าดังกล่าว (ไม่ใช่การเปลี่ยนแปลงของผลการดำเนินงานจริง)`;
+  } else if (stance === 'MODEL_ASSUMPTION_REVIEW') {
+    summaryNarrative = `Valuation model inputs, projection horizon, or discount rates (WACC) were updated without new company evidence. Review model assumptions before altering thesis conviction.`;
+    summaryNarrativeTh = `สมมติฐานแบบจำลอง ระยะเวลาประมาณการ หรืออัตราคิดลด (WACC) มีการปรับเปลี่ยนโดยไม่มีหลักฐานใหม่จากบริษัท ควรทบทวนสมมติฐานก่อนปรับความเชื่อมั่น`;
   } else if (stance === 'REVIEW_SUGGESTED') {
     summaryNarrative = `Review items detected (${whatChanged?.summary.needsReview || 0} candidate(s)), but no confirmed material evidence change has occurred requiring thesis re-evaluation. Monitoring continues with targeted review suggested.`;
     summaryNarrativeTh = `พบประเด็นที่ควรตรวจสอบเพิ่มเติม แต่ยังไม่มีการเปลี่ยนแปลงเชิงหลักฐานที่ยืนยันแล้วซึ่งจำเป็นต้องประเมินสมมติฐานใหม่ ติดตามต่อเนื่อง`;

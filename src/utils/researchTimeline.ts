@@ -423,6 +423,21 @@ export function isMateriallyEquivalentSnapshot(
     if (Math.abs(priceA - priceB) / Math.max(priceA, priceB) >= 0.02) return false;
   }
 
+  // 7. Valuation model projection horizon (changes explicit forecast structure)
+  const projA = reportA.intrinsic_value?.dcf_model?.assumptions?.projection_years
+    ?? reportA.intrinsic_value?.dcf_model?.inputs?.projectionYears
+    ?? reportA.intrinsic_value?.assumptions?.projection_years
+    ?? reportA.intrinsic_value?.projection_years
+    ?? (reportA as any).valuation_input_snapshot?.projectionYears;
+  const projB = reportB.intrinsic_value?.dcf_model?.assumptions?.projection_years
+    ?? reportB.intrinsic_value?.dcf_model?.inputs?.projectionYears
+    ?? reportB.intrinsic_value?.assumptions?.projection_years
+    ?? reportB.intrinsic_value?.projection_years
+    ?? (reportB as any).valuation_input_snapshot?.projectionYears;
+  if (typeof projA === 'number' && typeof projB === 'number' && projA !== projB) {
+    return false;
+  }
+
   return true;
 }
 

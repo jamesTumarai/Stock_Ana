@@ -44,6 +44,7 @@ export interface PeerDataGapItem {
   periodNeeded?: string;
 }
 
+const ENRICHMENT_CACHE_VERSION = 'v2-canonical';
 const enrichmentCache = new Map<string, { timestamp: number; candidate: CandidateDefinition }>();
 const ENRICHMENT_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -83,30 +84,34 @@ export async function enrichPeerCandidate(
   const gaps: PeerDataGapItem[] = [];
 
   // Check cache
-  const cached = enrichmentCache.get(ticker);
+  const cacheKey = `${ticker}:${ENRICHMENT_CACHE_VERSION}`;
+  const cached = enrichmentCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < ENRICHMENT_CACHE_TTL_MS)) {
     return { candidate: cached.candidate, gaps };
   }
 
   // Normalize base CandidateDefinition
-  const baseCand: CandidateDefinition = 'metrics' in cand && typeof cand.metrics === 'object'
+  const isCandidateDef = (c: any): c is CandidateDefinition =>
+    typeof c === 'object' && c !== null && typeof c.companyName === 'string' && Array.isArray(c.revenueModels);
+
+  const baseCand: CandidateDefinition = isCandidateDef(cand)
     ? { ...cand }
     : {
         ticker,
-        companyName: (cand as PeerCompanyItem).company_name || ticker,
+        companyName: (cand as PeerCompanyItem).company_name || (cand as any).name || ticker,
         archetype: (cand as any).archetype || 'general_operating',
         sector: (cand as any).sector || 'Unknown',
         industry: (cand as any).industry || 'Unknown',
         subIndustry: (cand as any).subIndustry || 'general',
-        revenueModels: ['product_sales'],
-        majorBusinessLines: [(cand as any).industry || 'General'],
-        geography: 'US',
+        revenueModels: (cand as any).revenueModels || ['product_sales'],
+        majorBusinessLines: (cand as any).majorBusinessLines || [(cand as any).industry || 'General'],
+        geography: (cand as any).geography || 'US',
         lifecycle: (cand as any).lifecycle || 'mature',
         profitabilityState: (cand as any).profitabilityState || 'profitable',
-        capitalIntensity: 'moderate',
-        regulatoryType: 'standard',
+        capitalIntensity: (cand as any).capitalIntensity || 'moderate',
+        regulatoryType: (cand as any).regulatoryType || 'standard',
         scaleTier: (cand as any).scaleTier || 'mid',
-        metrics: {
+        metrics: (cand as any).metrics || {
           pe_trailing: {
             value: typeof (cand as PeerCompanyItem).pe_trailing === 'number' ? (cand as PeerCompanyItem).pe_trailing as number : null,
             unit: 'x',
@@ -153,7 +158,7 @@ export async function enrichPeerCandidate(
       ),
     ]);
 
-    if (!pkg?.canonicalFinancials || pkg.canonicalFinancials.provenanceStatus !== 'verified' || !/sec-xbrl/i.test(pkg.canonicalFinancials.generatedBy || '') || pkg.canonicalFinancials.periods.length === 0) {
+    if (!pkg?.canonicalFinancials || !/sec[-_]?xbrl/i.test(pkg.canonicalFinancials.generatedBy || '') || pkg.canonicalFinancials.periods.length === 0) {
       gaps.push({
         ticker,
         metric: 'canonical_financials',
@@ -161,7 +166,7 @@ export async function enrichPeerCandidate(
         attemptedSources: ['SEC EDGAR XBRL Company Facts'],
       });
       const finalCand: CandidateDefinition = { ...baseCand, metrics: metrics as any };
-      enrichmentCache.set(ticker, { timestamp: Date.now(), candidate: finalCand });
+      enrichmentCache.set(`${ticker}:${ENRICHMENT_CACHE_VERSION}`, { timestamp: Date.now(), candidate: finalCand });
       return { candidate: finalCand, gaps };
     }
 
@@ -467,10 +472,11 @@ export async function enrichPeerCandidate(
       };
     }
   } catch (error: any) {
+    const isConfigError = error?.code === 'SEC_USER_AGENT_MISSING' || /SEC_USER_AGENT/i.test(error?.message || '');
     gaps.push({
       ticker,
       metric: 'all_fundamentals',
-      reason: error?.message || 'SEC enrichment error',
+      reason: isConfigError ? 'SEC_RETRIEVAL_CONFIGURATION_ERROR' : (error?.message || 'SEC enrichment error'),
       attemptedSources: ['SEC EDGAR XBRL'],
     });
   }
@@ -480,7 +486,7 @@ export async function enrichPeerCandidate(
     metrics: metrics as any,
   };
 
-  enrichmentCache.set(ticker, { timestamp: Date.now(), candidate: finalCand });
+  enrichmentCache.set(`${ticker}:${ENRICHMENT_CACHE_VERSION}`, { timestamp: Date.now(), candidate: finalCand });
   return { candidate: finalCand, gaps };
 }
 
@@ -552,15 +558,27 @@ export async function enrichPeerCandidates(
  */
 export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompanyItem {
   const m = (cand.metrics || {}) as Record<string, EnrichedPeerMetricObservation>;
+  const sourceDoc = m.operating_margin_pct?.source
+    || m.revenue_growth_yoy_pct?.source
+    || m.roic_pct?.source
+    || m.pe_trailing?.source
+    || m.ev_ebitda?.source
+    || (cand as any).financial_source
+    || 'Market Data';
+
   return {
     ticker: cand.ticker,
     company_name: cand.companyName,
     pe_trailing: (m.pe_trailing?.reason === 'NEGATIVE_EARNINGS' || (m.pe_trailing?.value === null && cand.profitabilityState === 'pre_profit'))
       ? 'N/M'
       : (m.pe_trailing?.value !== undefined ? m.pe_trailing.value : null),
+    pe_trailing_verified: m.pe_trailing?.status === 'VERIFIED',
     pe_forward: m.pe_forward?.value !== undefined ? m.pe_forward.value : null,
+    pe_forward_verified: m.pe_forward?.status === 'VERIFIED',
     ev_ebitda: (m.ev_ebitda?.reason === 'NEGATIVE_EBITDA') ? 'N/M' : (m.ev_ebitda?.value !== undefined ? m.ev_ebitda.value : null),
+    ev_ebitda_verified: m.ev_ebitda?.status === 'VERIFIED',
     ev_sales: m.ev_sales?.value !== undefined ? m.ev_sales.value : null,
+    ev_sales_verified: m.ev_sales?.status === 'VERIFIED',
     revenue_growth_yoy_pct: m.revenue_growth_yoy_pct?.status === 'VERIFIED' && m.revenue_growth_yoy_pct.periodBasis === 'QUARTERLY' ? m.revenue_growth_yoy_pct.value : null,
     revenue_growth_yoy_pct_verified: m.revenue_growth_yoy_pct?.status === 'VERIFIED' && m.revenue_growth_yoy_pct.periodBasis === 'QUARTERLY',
     gross_margin_pct: m.gross_margin_pct?.value !== undefined ? m.gross_margin_pct.value : null,
@@ -574,8 +592,8 @@ export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompa
     total_equity: m.total_equity?.value !== undefined ? m.total_equity.value : null,
     cash_and_equivalents: m.cash_and_equivalents?.value !== undefined ? m.cash_and_equivalents.value : null,
     short_term_investments: m.short_term_investments?.value !== undefined ? m.short_term_investments.value : null,
-    financial_period: m.operating_margin_pct?.period || m.revenue_growth_yoy_pct?.period || m.roic_pct?.period || 'Latest',
-    financial_source: m.operating_margin_pct?.source || m.revenue_growth_yoy_pct?.source || m.roic_pct?.source || 'Unverified source',
+    financial_period: m.operating_margin_pct?.period || m.revenue_growth_yoy_pct?.period || m.roic_pct?.period || m.pe_trailing?.period || 'Latest',
+    financial_source: sourceDoc,
     status_label_en: cand.scaleTier ? `${cand.scaleTier} cap` : undefined,
     profitabilityState: cand.profitabilityState,
     lifecycle: cand.lifecycle,
@@ -591,5 +609,6 @@ export function candidateToPeerCompanyItem(cand: CandidateDefinition): PeerCompa
     operating_margin_pct_inputs_used: m.operating_margin_pct?.inputsUsed,
     roic_pct_period_basis: m.roic_pct?.periodBasis,
     roic_pct_basis: m.roic_pct?.basis,
+    metrics: cand.metrics as any,
   };
 }

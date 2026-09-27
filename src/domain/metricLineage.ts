@@ -185,9 +185,17 @@ export const METRIC_ALIASES: Record<string, string[]> = {
   tier1_capital_ratio: [
     'tier1_capital_ratio',
     'tier1_ratio',
-    'cet1_ratio',
-    'common_equity_tier_1',
+    'tier_1_capital_ratio',
+    'tier_1_ratio',
     'อัตราส่วนเงินกองทุนชั้นที่1'
+  ],
+  cet1_ratio: [
+    'cet1_ratio',
+    'cet1',
+    'common_equity_tier_1',
+    'common_equity_tier1',
+    'common_equity_tier_1_ratio',
+    'อัตราส่วนเงินกองทุนชั้นที่1ที่เป็นส่วนของผู้ถือหุ้นสามัญ'
   ],
   combined_ratio: [
     'combined_ratio',
