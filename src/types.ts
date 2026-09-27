@@ -88,6 +88,7 @@ export interface BalanceSheetData {
   allowance_for_loan_losses?: (number | null)[];
   investment_securities?: (number | null)[];
   tier1_capital_ratio?: (number | null)[];
+  cet1_ratio?: (number | null)[];
   // Insurance specific fields
   unearned_premium_reserve?: (number | null)[];
   loss_reserve?: (number | null)[];
@@ -451,6 +452,23 @@ export interface RelativeValuation {
   fair_value_per_share: number;
 }
 
+export interface SotpComponent {
+  name: string;
+  value: number;
+  methodology?: string;
+  source?: string;
+  assumptions?: string;
+}
+
+export interface SotpModel {
+  components: SotpComponent[];
+  corporateAdjustments?: number;
+  netDebtOrCash?: number;
+  equityValue?: number;
+  dilutedShares?: number;
+  valuePerShare?: number;
+}
+
 export interface ValuationValidationAlert {
   type: 'error' | 'warning' | 'info';
   code: string;
@@ -479,6 +497,7 @@ export interface IntrinsicValueData {
   cyclical_model?: CyclicalModel;
   relative_only_model?: RelativeOnlyModel;
   relative_valuation?: RelativeValuation;
+  sotp_model?: SotpModel;
   validation_alerts?: ValuationValidationAlert[];
   summary: IntrinsicValueSummary;
   disclaimer?: string;
@@ -702,7 +721,9 @@ export interface PeerCompanyItem {
   name?: string;
   market_cap?: string | number;
   pe_trailing?: number | null | string;
+  pe_trailing_verified?: boolean;
   pe_forward?: number | null;
+  pe_forward_verified?: boolean;
   revenue_growth_yoy_pct?: number | null;
   revenue_growth_yoy_pct_verified?: boolean;
   gross_margin_pct?: number | null;
@@ -719,7 +740,10 @@ export interface PeerCompanyItem {
   cash_and_equivalents?: number | null;
   short_term_investments?: number | null;
   ev_ebitda?: number | null | string;
+  ev_ebitda_verified?: boolean;
   ev_sales?: number | null;
+  ev_sales_verified?: boolean;
+  metrics?: Record<string, any>;
   pb_ratio?: number | null;
   ptbv_ratio?: number | null;
   roe_pct?: number | null;
@@ -1424,6 +1448,8 @@ export interface AnalysisReport {
   final_report?: string;
   chartImage?: string;
   data_completeness?: DataCompletenessSummary;
+  sotp_model?: SotpModel;
+  canonical_executive_snapshot?: any;
 }
 
 export interface RawAnalysisReport extends Partial<AnalysisReport> {}
@@ -1869,3 +1895,9 @@ export type {
   WatchlistAttentionFactor,
   WatchlistIntelligenceEntry
 } from './domain/watchlistIntelligence';
+
+export type {
+  NumericClaimFactStatus,
+  NumericClaimFact,
+  CanonicalExecutiveSnapshot
+} from './domain/canonicalExecutiveSnapshot';

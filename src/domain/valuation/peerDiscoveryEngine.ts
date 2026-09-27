@@ -601,7 +601,7 @@ export function isMarketGradeSource(source?: string | null): boolean {
 /**
  * Extracts normalized metric observations from a candidate.
  */
-function extractCandidateMetrics(
+export function extractCandidateMetrics(
   raw: CandidateDefinition | PeerCompanyItem,
   ticker: string,
   companyName: string,
@@ -689,9 +689,10 @@ function extractCandidateMetrics(
     }
   };
 
-  if ('metrics' in raw && raw.metrics && typeof raw.metrics === 'object') {
-    for (const [mKey, mData] of Object.entries((raw as CandidateDefinition).metrics)) {
-      let status: FactVerificationStatus = 'NOT_REPORTED';
+  const candMetrics = (raw as any).metrics;
+  if (candMetrics && typeof candMetrics === 'object' && Object.keys(candMetrics).length > 0) {
+    for (const [mKey, mData] of Object.entries(candMetrics as Record<string, any>)) {
+      let status: FactVerificationStatus = mData.status || 'NOT_REPORTED';
       if (mData.value !== null && Number.isFinite(mData.value)) {
         if (mKey === 'roic_pct') {
           status = isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
@@ -701,6 +702,8 @@ function extractCandidateMetrics(
         } else {
           status = isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
         }
+      } else if (mKey === 'pe_trailing' && (mData.reason === 'NEGATIVE_EARNINGS' || mData.value === null && (raw as any).profitabilityState === 'pre_profit')) {
+        status = 'VERIFIED';
       }
       metricObservations[mKey] = {
         ticker,
@@ -753,13 +756,17 @@ function extractCandidateMetrics(
           ? 'VERIFIED'
           : 'FOUND_UNVERIFIED';
       } else if (MARKET_METRICS.has(key)) {
-        const isUnverified = GENERATED_FALLBACK_SOURCE_REGEX.test(p.financial_source || '') || /unverified/i.test(p.financial_source || '');
+        const isVerifiedFlag = (p as any)[`${key}_verified`] === true;
+        const isUnverified = GENERATED_FALLBACK_SOURCE_REGEX.test(p.financial_source || '')
+          || (/unverified/i.test(p.financial_source || '') && !isVerifiedFlag && !p.pe_trailing_verified);
         status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
       } else {
         // Fundamental filing facts: strictly require genuine filing-grade provenance
         status = isFilingGradeSource(source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
       }
     } else if (key === 'pe_trailing' && (val === 'N/M' || p.profitabilityState === 'pre_profit' || (typeof p.net_margin_pct === 'number' && p.net_margin_pct < 0))) {
+      status = 'VERIFIED';
+    } else if (key === 'ev_ebitda' && val === 'N/M') {
       status = 'VERIFIED';
     }
     metricObservations[key] = {
@@ -774,9 +781,12 @@ function extractCandidateMetrics(
       reportedOrDerived: (p as any).reportedOrDerived || 'REPORTED',
       status,
       periodBasis: (p as any)[`${key}_period_basis`] || (p as any).periodBasis || (key === 'roic_pct' ? 'TTM' : /Q[1-4]/i.test(period) ? 'QUARTERLY' : undefined),
-      basis: (p as any)[`${key}_basis`] || (p as any).basis,
-      reason: (p as any)[`${key}_reason`],
-      reasonTh: (p as any)[`${key}_reason_th`],
+      reason: (p as any)[`${key}_reason`]
+        || (key === 'pe_trailing' && (val === 'N/M' || p.profitabilityState === 'pre_profit') ? 'NEGATIVE_EARNINGS' : undefined)
+        || (key === 'ev_ebitda' && val === 'N/M' ? 'NEGATIVE_EBITDA' : undefined),
+      reasonTh: (p as any)[`${key}_reason_th`]
+        || (key === 'pe_trailing' && (val === 'N/M' || p.profitabilityState === 'pre_profit') ? 'กำไรติดลบ (N/M)' : undefined)
+        || (key === 'ev_ebitda' && val === 'N/M' ? 'EBITDA ติดลบ (N/M)' : undefined),
     };
   };
 
@@ -949,7 +959,9 @@ export function discoverPeers(
       }
 
       const metrics = extractCandidateMetrics(raw, candTicker, candFingerprint.companyName, report.as_of_date);
-      const verifiedMetricCount = Object.values(metrics).filter(metric => metric.status === 'VERIFIED' && metric.value !== null).length;
+      const verifiedMetricCount = Object.values(metrics).filter(metric =>
+        metric.status === 'VERIFIED' && (metric.value !== null || metric.reason === 'NEGATIVE_EARNINGS' || metric.reason === 'NEGATIVE_EBITDA')
+      ).length;
       if (verifiedMetricCount === 0) {
         recordRejection('NO_VERIFIED_METRICS');
         continue;
@@ -1110,15 +1122,23 @@ export function discoverPeers(
     ticker: p.ticker,
     company_name: p.companyName,
     market_cap: p.metrics.market_cap?.value ? `$${p.metrics.market_cap.value}B` : undefined,
-    pe_trailing: p.metrics.pe_trailing?.value,
+    pe_trailing: (p.metrics.pe_trailing?.reason === 'NEGATIVE_EARNINGS' || (p.metrics.pe_trailing?.value === null && p.fingerprint.profitabilityState === 'pre_profit'))
+      ? 'N/M' : p.metrics.pe_trailing?.value,
+    pe_trailing_verified: p.metrics.pe_trailing?.status === 'VERIFIED',
     pe_forward: p.metrics.pe_forward?.value,
+    pe_forward_verified: p.metrics.pe_forward?.status === 'VERIFIED',
     revenue_growth_yoy_pct: p.metrics.revenue_growth_yoy_pct?.value,
+    revenue_growth_yoy_pct_verified: p.metrics.revenue_growth_yoy_pct?.status === 'VERIFIED',
     gross_margin_pct: p.metrics.gross_margin_pct?.value,
     operating_margin_pct: p.metrics.operating_margin_pct?.value,
+    operating_margin_pct_verified: p.metrics.operating_margin_pct?.status === 'VERIFIED',
     net_margin_pct: p.metrics.net_margin_pct?.value,
     roic_pct: p.metrics.roic_pct?.status === 'VERIFIED' ? p.metrics.roic_pct?.value : null,
-    ev_ebitda: p.metrics.ev_ebitda?.value,
+    roic_verified: p.metrics.roic_pct?.status === 'VERIFIED',
+    ev_ebitda: p.metrics.ev_ebitda?.reason === 'NEGATIVE_EBITDA' ? 'N/M' : p.metrics.ev_ebitda?.value,
+    ev_ebitda_verified: p.metrics.ev_ebitda?.status === 'VERIFIED',
     ev_sales: p.metrics.ev_sales?.value,
+    ev_sales_verified: p.metrics.ev_sales?.status === 'VERIFIED',
     pb_ratio: p.metrics.price_to_book?.value,
     ptbv_ratio: p.metrics.price_to_tbv?.value,
     roe_pct: p.metrics.roe_pct?.value,
@@ -1138,11 +1158,12 @@ export function discoverPeers(
     selection_rationale_th: p.selectionRationaleTh,
     as_of_date: p.metrics.pe_trailing?.period || report.as_of_date,
     financial_period: p.metrics.roic_pct?.period || p.metrics.operating_margin_pct?.period || report.as_of_date,
-    financial_source: p.metrics.roic_pct?.source || p.metrics.operating_margin_pct?.source,
+    financial_source: p.metrics.roic_pct?.source || p.metrics.operating_margin_pct?.source || p.metrics.pe_trailing?.source || p.metrics.ev_ebitda?.source || 'Verified Source',
     subIndustry: p.fingerprint.subIndustry,
     lifecycle: p.fingerprint.lifecycle,
     profitabilityState: p.fingerprint.profitabilityState,
     scaleTier: p.fingerprint.scaleTier,
+    metrics: p.metrics as any,
   }));
 
   // Add target row to peerCompanyItems for context

@@ -25,7 +25,14 @@ export interface CanonicalFinancialValue {
   value: number | null;
   unit: FinancialUnit;
   period: string;
+  periodStart?: string;
   periodEnd?: string;
+  fiscalYear?: number;
+  fiscalQuarter?: 1 | 2 | 3 | 4;
+  periodType?: 'standalone_quarter' | 'instant' | 'annual' | string;
+  form?: string;
+  accession?: string;
+  concept?: string;
   type: FinancialValueType;
   verification: FinancialVerificationStatus;
   source?: FinancialSourceMetadata;

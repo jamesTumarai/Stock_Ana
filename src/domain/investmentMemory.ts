@@ -20,6 +20,19 @@ export type MemorySourceType =
   | 'SYSTEM_METADATA'
   | 'MARKET_SNAPSHOT';
 
+export interface ValuationInputSnapshot {
+  modelType: string | null;
+  projectionYears: number | null;
+  discountRate: number | null;
+  terminalGrowth: number | null;
+  baseRevenueCagr: number | null;
+  terminalMargin: number | null;
+  normalizedBaseFcf: number | null;
+  netCashOrDebt: number | null;
+  dilutedShares: number | null;
+  additionalInputs?: Record<string, number | string | null>;
+}
+
 export interface ResearchMemoryValuation {
   baseFairValue: number | null;
   modelType: string | null;
@@ -30,16 +43,30 @@ export interface ResearchMemoryValuation {
     terminalGrowthPct: number | null;
     revenueCagrPct: number | null;
     fcfMarginPct: number | null;
+    projectionYears?: number | null;
+    terminalMarginPct?: number | null;
+    taxRatePct?: number | null;
+    costOfEquityPct?: number | null;
+    roePct?: number | null;
+    capRatePct?: number | null;
   };
+  inputSnapshot?: ValuationInputSnapshot;
   provenance: MemorySourceType;
 }
 
 export interface HistoricalPeriodFinancials {
   period: string;
   revenue: number | null;
+  revenueYoYPct: number | null;
   operatingMarginPct: number | null;
+  grossMarginPct: number | null;
   netIncome: number | null;
+  epsDiluted: number | null;
   freeCashFlow: number | null;
+  cashAndEquivalents?: number | null;
+  shortTermInvestments?: number | null;
+  totalDebt?: number | null;
+  netCash?: number | null;
 }
 
 export interface ResearchMemoryFinancials {
@@ -47,8 +74,12 @@ export interface ResearchMemoryFinancials {
   revenue: number | null;
   revenueYoYPct: number | null;
   operatingMarginPct: number | null;
+  grossMarginPct: number | null;
   netIncome: number | null;
+  epsDiluted: number | null;
   freeCashFlow: number | null;
+  cashAndEquivalents: number | null;
+  shortTermInvestments: number | null;
   totalDebt: number | null;
   netCash: number | null;
   /** @deprecated Explicitly represents current shares outstanding in millions. Use currentSharesOutstandingM or dilutedWeightedAverageSharesM */
@@ -117,6 +148,9 @@ export interface MemoryComparisonDelta {
     waccDeltaPoints: number | null;
     terminalGrowthDeltaPoints: number | null;
     revenueCagrDeltaPoints: number | null;
+    projectionYearsDelta: number | null;
+    terminalMarginDeltaPoints: number | null;
+    normalizedBaseFcfDeltaPct: number | null;
   };
   thesisChanged: boolean;
   newRisksCount: number;
@@ -171,10 +205,26 @@ export function extractMemorySnapshot(
   const dcfModel = data.intrinsic_value?.dcf_model;
   const assumptionsObj = (data.intrinsic_value as any)?.assumptions;
   const dcfAssumptions = dcfModel?.assumptions;
+  const dcfInputs = dcfModel?.inputs;
+  const costOfCapital = data.intrinsic_value?.cost_of_capital;
+  const ddmModel = data.intrinsic_value?.ddm_model;
+  const reitModel = data.intrinsic_value?.reit_model;
+
+  const explicitModelType = (data.intrinsic_value as any)?.model_type
+    || (data.intrinsic_value as any)?.modelType
+    || (data.intrinsic_value as any)?.selected_model?.model_type
+    || (data.intrinsic_value as any)?.selected_model
+    || detected?.model_type
+    || null;
 
   // Active DCF guard: only extract DCF assumptions if DCF model is actively selected and valid
-  const isDcfActive = (detected?.model_type === 'dcf_standard' || detected?.model_type === 'dcf_multistage')
-    && dcfModel?.inputs?.isValid !== false;
+  const isDcfActive = (
+    detected?.model_type === 'dcf_standard' ||
+    detected?.model_type === 'dcf_multistage' ||
+    detected?.model_type === 'dcf_cyclical' ||
+    detected?.model_type === 'dcf_gordon' ||
+    explicitModelType?.startsWith('dcf')
+  ) && dcfModel?.inputs?.isValid !== false;
 
   const wacc = isDcfActive
     ? (typeof assumptionsObj?.discount_rate === 'number'
@@ -204,21 +254,100 @@ export function extractMemorySnapshot(
             : null))
     : null;
 
+  // Models with explicit forecast horizons: DCF, DDM, residual-income, platform DCF, REIT cash flows
+  // Relative-only valuation models DO NOT have explicit forecast horizons (Section 7)
+  const hasExplicitForecastHorizon = explicitModelType !== 'relative_only';
+
+  const rawProjectionYears = typeof dcfAssumptions?.projection_years === 'number'
+    ? dcfAssumptions.projection_years
+    : (typeof dcfInputs?.projectionYears === 'number'
+        ? dcfInputs.projectionYears
+        : (typeof assumptionsObj?.projection_years === 'number'
+            ? assumptionsObj.projection_years
+            : (typeof assumptionsObj?.projectionYears === 'number'
+                ? assumptionsObj.projectionYears
+                : (typeof (data.intrinsic_value as any)?.projection_years === 'number'
+                    ? (data.intrinsic_value as any).projection_years
+                    : (typeof (data.intrinsic_value as any)?.projectionYears === 'number'
+                        ? (data.intrinsic_value as any).projectionYears
+                        : (typeof (data as any)?.valuation_input_snapshot?.projectionYears === 'number'
+                            ? (data as any).valuation_input_snapshot.projectionYears
+                            : (typeof (data as any)?.valuation?.assumptions?.projectionYears === 'number'
+                                ? (data as any).valuation.assumptions.projectionYears
+                                : (typeof (ddmModel?.assumptions as any)?.projection_years === 'number'
+                                    ? (ddmModel!.assumptions as any).projection_years
+                                    : (typeof (reitModel?.assumptions as any)?.projection_years === 'number'
+                                        ? (reitModel!.assumptions as any).projection_years
+                                        : null)))))))));
+
+  const projectionYears = (hasExplicitForecastHorizon && typeof rawProjectionYears === 'number' && rawProjectionYears > 0)
+    ? rawProjectionYears
+    : null;
+
+  const terminalMargin = isDcfActive
+    ? (typeof dcfModel?.scenarios?.base?.terminal_margin_pct === 'number'
+        ? dcfModel.scenarios.base.terminal_margin_pct
+        : (typeof assumptionsObj?.target_fcf_margin === 'number'
+            ? assumptionsObj.target_fcf_margin
+            : null))
+    : null;
+
+  const taxRate = typeof costOfCapital?.effective_tax_rate_pct === 'number'
+    ? costOfCapital.effective_tax_rate_pct
+    : (typeof (assumptionsObj as any)?.tax_rate === 'number' ? (assumptionsObj as any).tax_rate : null);
+
+  const costOfEquity = typeof ddmModel?.assumptions?.cost_of_equity_pct === 'number'
+    ? ddmModel.assumptions.cost_of_equity_pct
+    : (typeof costOfCapital?.cost_of_equity_pct === 'number' ? costOfCapital.cost_of_equity_pct : null);
+
+  const roe = typeof ddmModel?.assumptions?.current_roe_pct === 'number'
+    ? ddmModel.assumptions.current_roe_pct
+    : null;
+
+  const capRate = typeof reitModel?.assumptions?.cap_rate_pct === 'number'
+    ? reitModel.assumptions.cap_rate_pct
+    : null;
+
   const mosPct = (typeof marketPrice === 'number' && typeof fv === 'number' && marketPrice > 0)
     ? Number((((fv - marketPrice) / marketPrice) * 100).toFixed(1))
     : null;
 
+  const inputSnapshot: ValuationInputSnapshot = {
+    modelType: explicitModelType,
+    projectionYears,
+    discountRate: wacc ?? costOfEquity,
+    terminalGrowth,
+    baseRevenueCagr: revCagr,
+    terminalMargin,
+    normalizedBaseFcf: typeof dcfInputs?.startingRevenueM === 'number' ? dcfInputs.startingRevenueM : null,
+    netCashOrDebt: typeof dcfInputs?.netCashM === 'number' ? dcfInputs.netCashM : null,
+    dilutedShares: typeof dcfInputs?.sharesOutstandingM === 'number' ? dcfInputs.sharesOutstandingM : null,
+    additionalInputs: {
+      taxRatePct: taxRate,
+      costOfEquityPct: costOfEquity,
+      roePct: roe,
+      capRatePct: capRate,
+    }
+  };
+
   const valuation: ResearchMemoryValuation = {
     baseFairValue: fv,
-    modelType: detected?.model_type || null,
+    modelType: explicitModelType,
     marginOfSafetyPct: mosPct,
     isAvailable: typeof fv === 'number' && fv > 0,
     assumptions: {
       waccPct: wacc,
       terminalGrowthPct: terminalGrowth,
       revenueCagrPct: revCagr,
-      fcfMarginPct: fcfMargin
+      fcfMarginPct: fcfMargin,
+      projectionYears,
+      terminalMarginPct: terminalMargin,
+      taxRatePct: taxRate,
+      costOfEquityPct: costOfEquity,
+      roePct: roe,
+      capRatePct: capRate,
     },
+    inputSnapshot,
     provenance: 'DETERMINISTIC_DERIVATION'
   };
 
@@ -242,11 +371,20 @@ export function extractMemorySnapshot(
   let freeCashFlowPeriodBasis: 'QUARTER' | 'ANNUAL' | 'LTM' | 'UNKNOWN' = 'UNKNOWN';
   let totalDebt: number | null = null;
   let netCash: number | null = null;
+  let cashAndEquivalents: number | null = null;
+  let shortTermInvestments: number | null = null;
+  let grossMarginPct: number | null = null;
+  let epsDiluted: number | null = null;
   let sharesOutstanding: number | null = null;
   let currentSharesOutstandingM: number | null = null;
   let dilutedWeightedAverageSharesM: number | null = null;
   let periodHistory: HistoricalPeriodFinancials[] | undefined = undefined;
   let financialsProvenance: ResearchMemoryFinancials['provenance'] = 'unavailable';
+
+  const inc = data.financial_statements?.income_statement;
+  const bs = data.financial_statements?.balance_sheet;
+  const cf = data.financial_statements?.cash_flow;
+  const reportPeriods = data.financial_statements?.periods || [];
 
   if (secStatements.length > 0) {
     // Branch 1: SEC-Verified Statements
@@ -270,7 +408,10 @@ export function extractMemorySnapshot(
     if (comparablePrior && typeof latestSec.revenue === 'number' && typeof comparablePrior.revenue === 'number' && comparablePrior.revenue > 0) {
       revenueYoYPct = Number((((latestSec.revenue - comparablePrior.revenue) / comparablePrior.revenue) * 100).toFixed(2));
     } else {
-      revenueYoYPct = null;
+      const latestRevYoY = inc?.yoy_revenue_growth_pct && inc.yoy_revenue_growth_pct.length > 0
+        ? inc.yoy_revenue_growth_pct[inc.yoy_revenue_growth_pct.length - 1]
+        : null;
+      revenueYoYPct = typeof latestRevYoY === 'number' ? latestRevYoY : null;
     }
 
     const opInc = typeof latestSec.operating_income === 'number' ? latestSec.operating_income : null;
@@ -292,15 +433,57 @@ export function extractMemorySnapshot(
     } else if (typeof verifiedDcfInputs?.trailing_four_free_cash_flow_m === 'number') {
       freeCashFlow = verifiedDcfInputs.trailing_four_free_cash_flow_m;
       freeCashFlowPeriodBasis = 'LTM';
+    } else if (cf?.free_cash_flow && cf.free_cash_flow.length > 0 && typeof cf.free_cash_flow[cf.free_cash_flow.length - 1] === 'number') {
+      freeCashFlow = cf.free_cash_flow[cf.free_cash_flow.length - 1];
     }
 
     totalDebt = typeof latestSec.total_debt === 'number'
       ? latestSec.total_debt
       : (typeof verifiedDcfInputs?.total_debt_m === 'number' ? verifiedDcfInputs.total_debt_m : null);
 
+    // Cash & Short-Term Investments from verified DCF inputs or balance sheet
+    cashAndEquivalents = typeof verifiedDcfInputs?.cash_and_equivalents_m === 'number'
+      ? verifiedDcfInputs.cash_and_equivalents_m
+      : (bs?.cash_and_equivalents && bs.cash_and_equivalents.length > 0 && typeof bs.cash_and_equivalents[bs.cash_and_equivalents.length - 1] === 'number'
+          ? bs.cash_and_equivalents[bs.cash_and_equivalents.length - 1]
+          : null);
+
+    shortTermInvestments = typeof verifiedDcfInputs?.short_term_investments_m === 'number'
+      ? verifiedDcfInputs.short_term_investments_m
+      : (bs?.short_term_investments && bs.short_term_investments.length > 0 && typeof bs.short_term_investments[bs.short_term_investments.length - 1] === 'number'
+          ? bs.short_term_investments[bs.short_term_investments.length - 1]
+          : null);
+
     // Net cash strictly with SEC provenance
     if (typeof verifiedDcfInputs?.net_cash_m === 'number') {
       netCash = verifiedDcfInputs.net_cash_m;
+    } else if (typeof cashAndEquivalents === 'number' && typeof shortTermInvestments === 'number' && typeof totalDebt === 'number') {
+      netCash = (cashAndEquivalents + shortTermInvestments) - totalDebt;
+    }
+
+    // Gross margin
+    const latestGm = inc?.gross_margin_pct && inc.gross_margin_pct.length > 0
+      ? inc.gross_margin_pct[inc.gross_margin_pct.length - 1]
+      : null;
+    if (typeof latestGm === 'number') {
+      grossMarginPct = latestGm;
+    } else {
+      const latestGp = inc?.gross_profit && inc.gross_profit.length > 0
+        ? inc.gross_profit[inc.gross_profit.length - 1]
+        : null;
+      if (typeof latestGp === 'number' && typeof revenue === 'number' && revenue > 0) {
+        grossMarginPct = Number(((latestGp / revenue) * 100).toFixed(2));
+      }
+    }
+
+    // Diluted EPS
+    const latestEps = inc?.eps_diluted && inc.eps_diluted.length > 0
+      ? inc.eps_diluted[inc.eps_diluted.length - 1]
+      : null;
+    if (typeof latestEps === 'number') {
+      epsDiluted = latestEps;
+    } else if (typeof latestSec.net_income === 'number' && typeof latestSec.diluted_shares === 'number' && latestSec.diluted_shares > 0) {
+      epsDiluted = Number((latestSec.net_income / latestSec.diluted_shares).toFixed(2));
     }
 
     // Share-count semantics preservation:
@@ -311,13 +494,17 @@ export function extractMemorySnapshot(
     // Current shares outstanding strictly from verified DCF snapshot
     currentSharesOutstandingM = typeof verifiedDcfInputs?.current_shares_outstanding_m === 'number'
       ? verifiedDcfInputs.current_shares_outstanding_m
-      : null;
+      : (typeof data.company_profile?.shares_outstanding === 'number' ? data.company_profile.shares_outstanding : null);
     // sharesOutstanding explicitly maps to current shares
     sharesOutstanding = currentSharesOutstandingM;
 
     // Preserved historical SEC statement periods for durable cross-period expectation resolution
     periodHistory = sortedSec.map(s => {
       const sRev = typeof s.revenue === 'number' ? s.revenue : null;
+      const priorForS = findComparablePriorSecStatement(secStatements, s);
+      const sRevYoY = (priorForS && typeof s.revenue === 'number' && typeof priorForS.revenue === 'number' && priorForS.revenue > 0)
+        ? Number((((s.revenue - priorForS.revenue) / priorForS.revenue) * 100).toFixed(2))
+        : null;
       const sOpInc = typeof s.operating_income === 'number' ? s.operating_income : null;
       const sMargin = (typeof sRev === 'number' && typeof sOpInc === 'number' && sRev > 0)
         ? Number(((sOpInc / sRev) * 100).toFixed(2))
@@ -328,12 +515,46 @@ export function extractMemorySnapshot(
       const sFcf = (typeof sOcf === 'number' && typeof sCapex === 'number')
         ? sOcf - Math.abs(sCapex)
         : null;
+
+      const pIdx = reportPeriods.findIndex(p => p.toUpperCase().trim() === s.period.toUpperCase().trim());
+      const sGm = pIdx >= 0 && typeof inc?.gross_margin_pct?.[pIdx] === 'number'
+        ? inc.gross_margin_pct[pIdx]
+        : (pIdx >= 0 && typeof inc?.gross_profit?.[pIdx] === 'number' && typeof sRev === 'number' && sRev > 0
+            ? Number(((inc.gross_profit[pIdx]! / sRev) * 100).toFixed(2))
+            : null);
+
+      const sEps = pIdx >= 0 && typeof inc?.eps_diluted?.[pIdx] === 'number'
+        ? inc.eps_diluted[pIdx]
+        : (typeof s.net_income === 'number' && typeof s.diluted_shares === 'number' && s.diluted_shares > 0
+            ? Number((s.net_income / s.diluted_shares).toFixed(2))
+            : null);
+
+      const sCash = pIdx >= 0 && typeof bs?.cash_and_equivalents?.[pIdx] === 'number'
+        ? bs.cash_and_equivalents[pIdx]
+        : null;
+      const sSti = pIdx >= 0 && typeof bs?.short_term_investments?.[pIdx] === 'number'
+        ? bs.short_term_investments[pIdx]
+        : null;
+      const sDebt = typeof s.total_debt === 'number'
+        ? s.total_debt
+        : (pIdx >= 0 && typeof bs?.total_debt?.[pIdx] === 'number' ? bs.total_debt[pIdx] : null);
+      const sNetCash = (typeof sCash === 'number' && typeof sSti === 'number' && typeof sDebt === 'number')
+        ? (sCash + sSti) - sDebt
+        : null;
+
       return {
         period: s.period,
         revenue: sRev,
+        revenueYoYPct: sRevYoY,
         operatingMarginPct: sMargin,
+        grossMarginPct: sGm,
         netIncome: sNetInc,
-        freeCashFlow: sFcf
+        epsDiluted: sEps,
+        freeCashFlow: sFcf,
+        cashAndEquivalents: sCash,
+        shortTermInvestments: sSti,
+        totalDebt: sDebt,
+        netCash: sNetCash
       };
     });
   } else {
@@ -365,9 +586,19 @@ export function extractMemorySnapshot(
           ? stmts.income_statement.operating_margin_pct[latestIdx]
           : null);
 
+    if (latestIdx >= 0 && typeof stmts?.income_statement?.gross_margin_pct?.[latestIdx] === 'number') {
+      grossMarginPct = stmts.income_statement.gross_margin_pct[latestIdx];
+    } else if (latestIdx >= 0 && typeof stmts?.income_statement?.gross_profit?.[latestIdx] === 'number' && typeof revenue === 'number' && revenue > 0) {
+      grossMarginPct = Number(((stmts.income_statement.gross_profit[latestIdx]! / revenue) * 100).toFixed(2));
+    }
+
     netIncome = latestIdx >= 0 && typeof stmts?.income_statement?.net_income?.[latestIdx] === 'number'
       ? stmts.income_statement.net_income[latestIdx]
       : null;
+
+    if (latestIdx >= 0 && typeof stmts?.income_statement?.eps_diluted?.[latestIdx] === 'number') {
+      epsDiluted = stmts.income_statement.eps_diluted[latestIdx];
+    }
 
     freeCashFlow = latestIdx >= 0 && typeof stmts?.cash_flow?.free_cash_flow?.[latestIdx] === 'number'
       ? stmts.cash_flow.free_cash_flow[latestIdx]
@@ -383,24 +614,26 @@ export function extractMemorySnapshot(
       }
     }
 
-    const bs = stmts?.balance_sheet;
-    totalDebt = latestIdx >= 0 && typeof bs?.total_debt?.[latestIdx] === 'number'
-      ? bs.total_debt[latestIdx]
+    const currentBs = stmts?.balance_sheet;
+    totalDebt = latestIdx >= 0 && typeof currentBs?.total_debt?.[latestIdx] === 'number'
+      ? currentBs.total_debt[latestIdx]
       : null;
 
-    const cash = latestIdx >= 0 && typeof bs?.cash_and_equivalents?.[latestIdx] === 'number'
-      ? bs.cash_and_equivalents[latestIdx]
+    const cash = latestIdx >= 0 && typeof currentBs?.cash_and_equivalents?.[latestIdx] === 'number'
+      ? currentBs.cash_and_equivalents[latestIdx]
       : null;
 
-    // Blocker B: short_term_investments missing must NOT fall back to 0
-    const hasExplicitSti = latestIdx >= 0 && typeof bs?.short_term_investments?.[latestIdx] === 'number';
-    const sti = hasExplicitSti ? bs!.short_term_investments![latestIdx] : null;
+    const hasExplicitSti = latestIdx >= 0 && typeof currentBs?.short_term_investments?.[latestIdx] === 'number';
+    const sti = hasExplicitSti ? currentBs!.short_term_investments![latestIdx] : null;
 
     if (typeof cash === 'number' && typeof totalDebt === 'number' && hasExplicitSti && typeof sti === 'number') {
       netCash = (cash + sti) - totalDebt;
     } else {
       netCash = null;
     }
+
+    cashAndEquivalents = cash;
+    shortTermInvestments = sti;
 
     currentSharesOutstandingM = typeof data.company_profile?.shares_outstanding === 'number'
       ? data.company_profile.shares_outstanding
@@ -412,18 +645,50 @@ export function extractMemorySnapshot(
 
     periodHistory = periods.map((p, idx) => {
       const pRev = typeof stmts?.income_statement?.revenue?.[idx] === 'number' ? stmts.income_statement.revenue[idx] : null;
+      let pRevYoY: number | null = null;
+      if (typeof stmts?.income_statement?.yoy_revenue_growth_pct?.[idx] === 'number') {
+        pRevYoY = stmts.income_statement.yoy_revenue_growth_pct[idx];
+      } else if (idx >= 4 && typeof stmts?.income_statement?.revenue?.[idx - 4] === 'number' && typeof pRev === 'number' && stmts.income_statement.revenue[idx - 4]! > 0) {
+        const priorR = stmts.income_statement.revenue[idx - 4]!;
+        pRevYoY = Number((((pRev - priorR) / priorR) * 100).toFixed(2));
+      }
+
       const pOpInc = typeof stmts?.income_statement?.operating_income?.[idx] === 'number' ? stmts.income_statement.operating_income[idx] : null;
       const pMargin = (typeof pRev === 'number' && typeof pOpInc === 'number' && pRev > 0)
         ? Number(((pOpInc / pRev) * 100).toFixed(2))
         : (typeof stmts?.income_statement?.operating_margin_pct?.[idx] === 'number' ? stmts.income_statement.operating_margin_pct[idx] : null);
+
+      let pGrossMargin: number | null = null;
+      if (typeof stmts?.income_statement?.gross_margin_pct?.[idx] === 'number') {
+        pGrossMargin = stmts.income_statement.gross_margin_pct[idx];
+      } else if (typeof stmts?.income_statement?.gross_profit?.[idx] === 'number' && typeof pRev === 'number' && pRev > 0) {
+        pGrossMargin = Number(((stmts.income_statement.gross_profit[idx]! / pRev) * 100).toFixed(2));
+      }
+
       const pNetInc = typeof stmts?.income_statement?.net_income?.[idx] === 'number' ? stmts.income_statement.net_income[idx] : null;
+      const pEps = typeof stmts?.income_statement?.eps_diluted?.[idx] === 'number' ? stmts.income_statement.eps_diluted[idx] : null;
       const pFcf = typeof stmts?.cash_flow?.free_cash_flow?.[idx] === 'number' ? stmts.cash_flow.free_cash_flow[idx] : null;
+
+      const pCash = typeof currentBs?.cash_and_equivalents?.[idx] === 'number' ? currentBs.cash_and_equivalents[idx] : null;
+      const pSti = typeof currentBs?.short_term_investments?.[idx] === 'number' ? currentBs.short_term_investments[idx] : null;
+      const pDebt = typeof currentBs?.total_debt?.[idx] === 'number' ? currentBs.total_debt[idx] : null;
+      const pNetCash = (typeof pCash === 'number' && typeof pSti === 'number' && typeof pDebt === 'number')
+        ? (pCash + pSti) - pDebt
+        : null;
+
       return {
         period: p,
         revenue: pRev,
+        revenueYoYPct: pRevYoY,
         operatingMarginPct: pMargin,
+        grossMarginPct: pGrossMargin,
         netIncome: pNetInc,
-        freeCashFlow: pFcf
+        epsDiluted: pEps,
+        freeCashFlow: pFcf,
+        cashAndEquivalents: pCash,
+        shortTermInvestments: pSti,
+        totalDebt: pDebt,
+        netCash: pNetCash
       };
     });
   }
@@ -433,8 +698,12 @@ export function extractMemorySnapshot(
     revenue,
     revenueYoYPct,
     operatingMarginPct,
+    grossMarginPct,
     netIncome,
+    epsDiluted,
     freeCashFlow,
+    cashAndEquivalents,
+    shortTermInvestments,
     totalDebt,
     netCash,
     sharesOutstanding,
@@ -688,7 +957,6 @@ export function compareMemorySnapshots(
       }
     : null;
 
-  // Valuation Assumptions Delta
   const waccDelta = (typeof current.valuation.assumptions.waccPct === 'number' && typeof previous.valuation.assumptions.waccPct === 'number')
     ? Number((current.valuation.assumptions.waccPct - previous.valuation.assumptions.waccPct).toFixed(2))
     : null;
@@ -699,6 +967,24 @@ export function compareMemorySnapshots(
 
   const cagrDelta = (typeof current.valuation.assumptions.revenueCagrPct === 'number' && typeof previous.valuation.assumptions.revenueCagrPct === 'number')
     ? Number((current.valuation.assumptions.revenueCagrPct - previous.valuation.assumptions.revenueCagrPct).toFixed(2))
+    : null;
+
+  const curYears = current.valuation.assumptions.projectionYears ?? current.valuation.inputSnapshot?.projectionYears;
+  const prevYears = previous.valuation.assumptions.projectionYears ?? previous.valuation.inputSnapshot?.projectionYears;
+  const projectionYearsDelta = (typeof curYears === 'number' && typeof prevYears === 'number')
+    ? curYears - prevYears
+    : null;
+
+  const curTm = current.valuation.assumptions.terminalMarginPct ?? current.valuation.inputSnapshot?.terminalMargin;
+  const prevTm = previous.valuation.assumptions.terminalMarginPct ?? previous.valuation.inputSnapshot?.terminalMargin;
+  const terminalMarginDelta = (typeof curTm === 'number' && typeof prevTm === 'number')
+    ? Number((curTm - prevTm).toFixed(2))
+    : null;
+
+  const curBaseFcf = current.valuation.inputSnapshot?.normalizedBaseFcf;
+  const prevBaseFcf = previous.valuation.inputSnapshot?.normalizedBaseFcf;
+  const normalizedBaseFcfDeltaPct = (typeof curBaseFcf === 'number' && typeof prevBaseFcf === 'number' && prevBaseFcf !== 0)
+    ? Number((((curBaseFcf - prevBaseFcf) / Math.abs(prevBaseFcf)) * 100).toFixed(2))
     : null;
 
   // Risk changes
@@ -747,7 +1033,10 @@ export function compareMemorySnapshots(
     valuationAssumptionsDelta: {
       waccDeltaPoints: waccDelta,
       terminalGrowthDeltaPoints: tgDelta,
-      revenueCagrDeltaPoints: cagrDelta
+      revenueCagrDeltaPoints: cagrDelta,
+      projectionYearsDelta,
+      terminalMarginDeltaPoints: terminalMarginDelta,
+      normalizedBaseFcfDeltaPct,
     },
     thesisChanged,
     newRisksCount,

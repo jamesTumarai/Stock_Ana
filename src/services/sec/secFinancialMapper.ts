@@ -37,7 +37,7 @@ type MetricSpec = {
   type?: FinancialValueType;
 };
 
-const METRIC_SPECS: MetricSpec[] = [
+export const METRIC_SPECS: MetricSpec[] = [
   { statement: 'income_statement', metric: 'revenue', concepts: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'gross_profit', concepts: ['GrossProfit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'operating_income', concepts: ['OperatingIncomeLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
@@ -45,7 +45,7 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'income_statement', metric: 'income_before_tax', concepts: ['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'income_tax_expense', concepts: ['IncomeTaxExpenseBenefit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'net_income', concepts: ['NetIncomeLoss', 'ProfitLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'eps_diluted', concepts: ['EarningsPerShareDiluted'], unit: 'USD/shares', canonicalUnit: 'per_share', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'eps_diluted', concepts: ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'IncomeLossFromContinuingOperationsPerDilutedShare'], unit: 'USD/shares', canonicalUnit: 'per_share', factKind: 'duration' },
 
   // Restricted cash is not interchangeable with cash available for valuation/net-cash calculations.
   { statement: 'balance_sheet', metric: 'cash_and_equivalents', concepts: ['CashAndCashEquivalentsAtCarryingValue'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
@@ -61,7 +61,7 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'balance_sheet', metric: 'total_liabilities', concepts: ['Liabilities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'short_term_debt', concepts: ['DebtCurrent', 'ShortTermBorrowings', 'CommercialPaper', 'LongTermDebtCurrent', 'FinanceLeaseLiabilityCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'long_term_debt', concepts: ['LongTermDebtNoncurrent', 'LongTermDebt', 'FinanceLeaseLiabilityNoncurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_debt', concepts: ['DebtAndFinanceLeaseObligations', 'LongTermDebtAndCapitalLeaseObligations', 'LongTermDebtAndFinanceLeaseObligations', 'DebtInstrumentCarryingAmount'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'total_debt', concepts: ['DebtAndFinanceLeaseObligations', 'LongTermDebtAndCapitalLeaseObligations', 'LongTermDebtAndFinanceLeaseObligations'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'operating_lease_rou_assets', concepts: ['OperatingLeaseRightOfUseAsset'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'operating_lease_liabilities_current', concepts: ['OperatingLeaseLiabilityCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'operating_lease_liabilities_non_current', concepts: ['OperatingLeaseLiabilityNoncurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
@@ -88,10 +88,11 @@ const METRIC_SPECS: MetricSpec[] = [
   { statement: 'income_statement', metric: 'net_interest_margin_pct', concepts: ['NetInterestMargin', 'NetInterestMarginAnnualized'], unit: 'pure', canonicalUnit: 'percent', factKind: 'duration' },
   { statement: 'balance_sheet', metric: 'deposits', concepts: ['Deposits', 'InterestBearingDepositLiabilities', 'DepositsDomestic'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
   { statement: 'balance_sheet', metric: 'loans_held_for_investment', concepts: ['LoansAndLeasesReceivableNetReported', 'LoansAndLeasesReceivableGrossReported', 'FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss', 'LoansHeldForInvestment'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'tier1_capital_ratio', concepts: ['Tier1CapitalRatio', 'CommonEquityTier1RiskBasedCapitalRatio'], unit: 'pure', canonicalUnit: 'percent', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'tier1_capital_ratio', concepts: ['Tier1CapitalRatio', 'CapitalRatioTier1'], unit: 'pure', canonicalUnit: 'percent', factKind: 'instant' },
+  { statement: 'balance_sheet', metric: 'cet1_ratio', concepts: ['CommonEquityTier1RiskBasedCapitalRatio'], unit: 'pure', canonicalUnit: 'percent', factKind: 'instant' },
 
   // REITs
-  { statement: 'income_statement', metric: 'ffo', concepts: ['FundsFromOperations', 'FundsFromOperationsPerDilutedShare'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  { statement: 'income_statement', metric: 'ffo', concepts: ['FundsFromOperations'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'noi', concepts: ['NetOperatingIncome'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'rental_revenue', concepts: ['OperatingLeasesIncomeStatementLeaseRevenue', 'RentalIncome'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
 
@@ -198,7 +199,9 @@ export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike)
 }
 
 const normalizeConcept = (concept: SecCompanyConcept | undefined, spec: MetricSpec): NormalizedSecQuarterFact[] => {
-  const rawFacts = concept?.units?.[spec.unit] || (spec.unit === 'pure' ? concept?.units?.['pure'] : undefined);
+  const rawFacts = concept?.units?.[spec.unit]
+    || (spec.unit === 'USD/shares' ? concept?.units?.['USD/share'] || concept?.units?.['pure'] : undefined)
+    || (spec.unit === 'pure' ? concept?.units?.['pure'] : undefined);
   if (!Array.isArray(rawFacts)) return [];
   return spec.factKind === 'duration'
     ? normalizeDurationFactsToStandaloneQuarters(rawFacts)
@@ -286,6 +289,8 @@ const buildCanonicalValue = (
   }
 
   const { fact, concept } = entry;
+  const primaryAccession = fact.accessionNumbers[0];
+  const filing = primaryAccession ? submissionMap.get(primaryAccession) : undefined;
   const source = sourceForFact(identity, fact, submissionMap, retrievedAt);
   const sourceAccessions = fact.accessionNumbers.join(', ');
   const derivation = fact.derivation === 'reported_instant'
@@ -304,7 +309,14 @@ const buildCanonicalValue = (
     value: spec.canonicalUnit === 'USD_M' ? toMillions(fact.value, spec.unit) : fact.value,
     unit: spec.canonicalUnit,
     period,
+    periodStart: fact.start,
     periodEnd: fact.end,
+    fiscalYear: fact.fiscalYear,
+    fiscalQuarter: fact.fiscalQuarter,
+    periodType: fact.periodType,
+    form: filing?.form ?? fact.form,
+    accession: primaryAccession,
+    concept,
     type: fact.derivation === 'reported_instant' || fact.derivation === 'reported_ytd' || fact.derivation === 'reported_standalone' ? (spec.type ?? 'reported') : 'derived',
     verification: 'verified',
     source,
@@ -342,7 +354,11 @@ const deriveFreeCashFlow = (
       value: ocf.value - capexOutflow,
       unit: 'USD_M',
       period,
+      periodStart: ocf.periodStart ?? investment.periodStart,
       periodEnd: ocf.periodEnd ?? investment.periodEnd,
+      fiscalYear: ocf.fiscalYear ?? investment.fiscalYear,
+      fiscalQuarter: ocf.fiscalQuarter ?? investment.fiscalQuarter,
+      periodType: ocf.periodType ?? investment.periodType,
       type: 'derived',
       verification: ocf.verification === 'verified' && investment.verification === 'verified' ? 'verified' : 'unverified',
       source: ocf.source,
@@ -380,7 +396,11 @@ const deriveTotalDebt = (
         value: stdVal + ltdVal,
         unit: 'USD_M',
         period,
+        periodStart: std?.periodStart ?? ltd?.periodStart,
         periodEnd: std?.periodEnd ?? ltd?.periodEnd,
+        fiscalYear: std?.fiscalYear ?? ltd?.fiscalYear,
+        fiscalQuarter: std?.fiscalQuarter ?? ltd?.fiscalQuarter,
+        periodType: std?.periodType ?? ltd?.periodType,
         type: 'derived',
         verification: isVerified ? 'verified' : 'unverified',
         source: std?.source ?? ltd?.source,
@@ -429,7 +449,11 @@ const deriveTotalOperatingLeases = (
         value: curVal + nonCurVal,
         unit: 'USD_M',
         period,
+        periodStart: cur?.periodStart ?? nonCur?.periodStart,
         periodEnd: cur?.periodEnd ?? nonCur?.periodEnd,
+        fiscalYear: cur?.fiscalYear ?? nonCur?.fiscalYear,
+        fiscalQuarter: cur?.fiscalQuarter ?? nonCur?.fiscalQuarter,
+        periodType: cur?.periodType ?? nonCur?.periodType,
         type: 'derived',
         verification: isVerified ? 'verified' : 'unverified',
         source: cur?.source ?? nonCur?.source,

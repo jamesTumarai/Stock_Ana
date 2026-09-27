@@ -6,6 +6,12 @@ import { buildRigorousDCFModel } from './valuation/dcfMathEngine';
 import { calculateDeterministicConvictionScore } from './valuation/convictionScorer';
 import { resolveAdaptiveFivePillars } from '../domain/valuation/fivePillarsResolver';
 import { discoverPeers } from '../domain/valuation/peerDiscoveryEngine';
+import {
+  buildCanonicalExecutiveSnapshot,
+  reconcileExecutiveSummary,
+  reconcileKeyTakeaways
+} from '../domain/canonicalExecutiveSnapshot';
+import { detectValuationModel } from './valuation/modelSelector';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const rounded = (v: number) => Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * 100) / 100;
@@ -52,8 +58,12 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   // Build a non-destructive provenance view over the statement arrays. This does not
   // rewrite financial values and does not promote linked sources to independently verified data.
   const existingCanonical = result.canonical_financials;
-  const hasIndependentSecAuthority = existingCanonical?.provenanceStatus === 'verified'
-    && /sec-xbrl/i.test(existingCanonical.generatedBy || '');
+  const hasIndependentSecAuthority = Boolean(
+    existingCanonical
+    && /sec-xbrl/i.test(existingCanonical.generatedBy || '')
+    && Array.isArray(existingCanonical.periods)
+    && existingCanonical.periods.length > 0
+  );
   const canonicalFinancials = hasIndependentSecAuthority
     ? existingCanonical
     : buildCanonicalFinancialDataset(result);
@@ -137,70 +147,82 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
   // Preserve deterministic validation_summary when it was produced by the production validator.
   // Its filing_source remains unset unless real source metadata exists.
 
-  // Recalculate DCF from the disclosed four-quarter dataset. Historical AI price targets
-  // are never retained when the report cannot supply every required input.
+  // Recalculate DCF from the disclosed four-quarter dataset for standard DCF operating companies.
+  // Specialized models (DDM, REIT AFFO, Relative Only) retain their canonical model results.
   if (result.intrinsic_value) {
     const intrinsic = result.intrinsic_value;
-    const validationBlocksValuation = result.validation?.issues?.some(issue =>
-      issue.severity === 'critical'
-      && ['financial_statements', 'valuation', 'cross_section', 'market_data'].includes(issue.section)
-    ) ?? false;
+    const sym = (ticker || result.ticker || 'STOCK').toUpperCase();
+    const selectedModel = intrinsic.selected_model ?? detectValuationModel(result, sym);
+    const modelTypeStr = String(selectedModel?.model_type || '');
+    const isNonDcfModel = modelTypeStr === 'ddm'
+      || modelTypeStr === 'reit_affo'
+      || modelTypeStr === 'relative_only'
+      || modelTypeStr === 'residual_income'
+      || modelTypeStr === 'early_stage_scenario'
+      || modelTypeStr === 'fintech_pe';
 
-    const { dcfModel, inputs } = buildRigorousDCFModel(result, ticker || result.ticker);
-    intrinsic.dcf_model = dcfModel;
-    const base = dcfModel.scenarios.base.fair_value_per_share;
-    const bear = dcfModel.scenarios.bear.fair_value_per_share;
-    const bull = dcfModel.scenarios.bull.fair_value_per_share;
+    if (!isNonDcfModel) {
+      const validationBlocksValuation = result.validation?.issues?.some(issue =>
+        issue.severity === 'critical'
+        && ['financial_statements', 'valuation', 'cross_section', 'market_data'].includes(issue.section)
+      ) ?? false;
 
-    if (!validationBlocksValuation
-      && inputs.isValid
-      && finite(base)
-      && finite(bear)
-      && finite(bull)
-      && finite(inputs.currentPrice)
-      && inputs.currentPrice > 0) {
-      intrinsic.summary = {
-        ...intrinsic.summary,
-        fair_value_range_low: bear,
-        fair_value_range_high: bull,
-        base_case_fair_value: base,
-        margin_of_safety_pct: rounded((base - inputs.currentPrice) / inputs.currentPrice * 100),
-        verdict_text: 'Canonical DCF recalculated from the financial inputs disclosed in this report. Review the scenario assumptions and margin of safety shown above.',
-      };
-      intrinsic.validation_alerts = (intrinsic.validation_alerts || []).filter(alert =>
-        alert.code !== 'VALUATION_INPUTS_INCOMPLETE' && alert.code !== 'REPORT_VALIDATION_BLOCK'
-      );
-    } else {
-      intrinsic.summary = {
-        ...intrinsic.summary,
-        fair_value_range_low: null,
-        fair_value_range_high: null,
-        base_case_fair_value: null,
-        margin_of_safety_pct: null,
-        verdict_text: validationBlocksValuation
-          ? 'Valuation unavailable because critical data-validation checks failed.'
-          : 'Valuation unavailable until required filing inputs are supplied.',
-      };
-      intrinsic.relative_valuation = undefined;
-      intrinsic.relative_only_model = undefined;
-      intrinsic.validation_alerts = [
-        ...(intrinsic.validation_alerts || []).filter(alert =>
+      const { dcfModel, inputs } = buildRigorousDCFModel(result, sym);
+      intrinsic.dcf_model = dcfModel;
+      const base = dcfModel.scenarios.base.fair_value_per_share;
+      const bear = dcfModel.scenarios.bear.fair_value_per_share;
+      const bull = dcfModel.scenarios.bull.fair_value_per_share;
+
+      if (!validationBlocksValuation
+        && inputs.isValid
+        && finite(base)
+        && finite(bear)
+        && finite(bull)
+        && finite(inputs.currentPrice)
+        && inputs.currentPrice > 0) {
+        intrinsic.summary = {
+          ...intrinsic.summary,
+          fair_value_range_low: bear,
+          fair_value_range_high: bull,
+          base_case_fair_value: base,
+          margin_of_safety_pct: rounded((base - inputs.currentPrice) / inputs.currentPrice * 100),
+          verdict_text: 'Canonical DCF recalculated from the financial inputs disclosed in this report. Review the scenario assumptions and margin of safety shown above.',
+        };
+        intrinsic.validation_alerts = (intrinsic.validation_alerts || []).filter(alert =>
           alert.code !== 'VALUATION_INPUTS_INCOMPLETE' && alert.code !== 'REPORT_VALIDATION_BLOCK'
-        ),
-        {
-          type: 'error',
-          code: validationBlocksValuation ? 'REPORT_VALIDATION_BLOCK' : 'VALUATION_INPUTS_INCOMPLETE',
-          message_th: validationBlocksValuation
-            ? 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูลไม่ผ่านการตรวจสอบความสอดคล้องที่สำคัญ'
-            : 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูล DCF จากงบยังไม่ครบหรือไม่อยู่ในงวดเดียวกัน',
-          message_en: validationBlocksValuation
-            ? 'Valuation is unavailable because critical report-validation checks failed.'
-            : 'Valuation is unavailable because the required DCF inputs are missing or are not from the same reporting period.',
-          detail: validationBlocksValuation
-            ? result.validation?.issues?.filter(issue => issue.severity === 'critical').map(issue => issue.code).join('; ')
-            : inputs.missingFields?.join('; '),
-        },
-      ];
+        );
+      } else {
+        intrinsic.summary = {
+          ...intrinsic.summary,
+          fair_value_range_low: null,
+          fair_value_range_high: null,
+          base_case_fair_value: null,
+          margin_of_safety_pct: null,
+          verdict_text: validationBlocksValuation
+            ? 'Valuation unavailable because critical data-validation checks failed.'
+            : 'Valuation unavailable until required filing inputs are supplied.',
+        };
+        intrinsic.relative_valuation = undefined;
+        intrinsic.relative_only_model = undefined;
+        intrinsic.validation_alerts = [
+          ...(intrinsic.validation_alerts || []).filter(alert =>
+            alert.code !== 'VALUATION_INPUTS_INCOMPLETE' && alert.code !== 'REPORT_VALIDATION_BLOCK'
+          ),
+          {
+            type: 'error',
+            code: validationBlocksValuation ? 'REPORT_VALIDATION_BLOCK' : 'VALUATION_INPUTS_INCOMPLETE',
+            message_th: validationBlocksValuation
+              ? 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูลไม่ผ่านการตรวจสอบความสอดคล้องที่สำคัญ'
+              : 'ยังไม่แสดงมูลค่าหุ้น เพราะข้อมูล DCF จากงบยังไม่ครบหรือไม่อยู่ในงวดเดียวกัน',
+            message_en: validationBlocksValuation
+              ? 'Valuation is unavailable because critical report-validation checks failed.'
+              : 'Valuation is unavailable because the required DCF inputs are missing or are not from the same reporting period.',
+            detail: validationBlocksValuation
+              ? result.validation?.issues?.filter(issue => issue.severity === 'critical').map(issue => issue.code).join('; ')
+              : inputs.missingFields?.join('; '),
+          },
+        ];
+      }
     }
   }
 
@@ -213,5 +235,21 @@ export function normalizeReport(input?: ReportData, ticker?: string, live?: Reco
     if (conviction) result.verdict.conviction_breakdown = conviction.conviction_breakdown;
     else delete result.verdict.conviction_breakdown;
   }
+
+  // Section 1 Canonical Executive Snapshot & Post-Normalization Narrative Reconciliation
+  // All numeric statements in Section 1 (Header, Executive Summary, Key Takeaways, Conviction)
+  // must agree with the final canonical report state.
+  const executiveSnapshot = result.canonical_executive_snapshot || buildCanonicalExecutiveSnapshot(result, ticker || result.ticker);
+  result.canonical_executive_snapshot = executiveSnapshot;
+
+  if (result.verdict) {
+    if (result.verdict.summary) {
+      result.verdict.summary = reconcileExecutiveSummary(result.verdict.summary, executiveSnapshot);
+    }
+    if (Array.isArray(result.verdict.key_takeaways) && result.verdict.key_takeaways.length > 0) {
+      result.verdict.key_takeaways = reconcileKeyTakeaways(result.verdict.key_takeaways, executiveSnapshot);
+    }
+  }
+
   return result;
 }

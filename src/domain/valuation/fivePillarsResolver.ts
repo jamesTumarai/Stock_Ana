@@ -264,6 +264,8 @@ export function resolveAdaptiveFivePillars(
     quick_ratio: isFinancial ? undefined : (typeof resolvedMetrics.quickRatio.value === 'number' ? resolvedMetrics.quickRatio.value : undefined),
     cash_runway_months: typeof resolvedMetrics.cashRunwayMonths.value === 'number' ? resolvedMetrics.cashRunwayMonths.value : undefined,
     cash_burn_annual_b: typeof resolvedMetrics.cashBurnRate.value === 'number' ? resolvedMetrics.cashBurnRate.value : undefined,
+    cet1_ratio_pct: typeof resolvedMetrics.cet1Ratio?.value === 'number' ? resolvedMetrics.cet1Ratio.value : undefined,
+    tier1_capital_ratio_pct: typeof resolvedMetrics.tier1CapitalRatio?.value === 'number' ? resolvedMetrics.tier1CapitalRatio.value : undefined,
     solvency_score_label: solvencyScoreLabel,
   };
 
@@ -794,12 +796,12 @@ function buildAdaptivePillarSections(
         status: fmt(b.debt_to_equity).status,
       },
       {
-        key: 'coverage',
-        labelEn: 'Capital Structure Context:',
-        labelTh: 'โครงสร้างเงินทุน:',
-        value: null,
-        formattedValue: 'รองรับโดยเงินกองทุนและเงินฝาก',
-        status: DataGapState.NOT_APPLICABLE,
+        key: 'cet1_ratio',
+        labelEn: b.cet1_ratio_pct !== undefined ? 'CET1 Capital Ratio:' : b.tier1_capital_ratio_pct !== undefined ? 'Tier 1 Capital Ratio:' : 'Capital Structure Context:',
+        labelTh: b.cet1_ratio_pct !== undefined ? 'อัตราส่วนเงินกองทุนชั้นที่ 1 (CET1):' : b.tier1_capital_ratio_pct !== undefined ? 'อัตราส่วนเงินกองทุนชั้นที่ 1 (Tier 1):' : 'โครงสร้างเงินทุน:',
+        value: b.cet1_ratio_pct ?? b.tier1_capital_ratio_pct ?? null,
+        formattedValue: b.cet1_ratio_pct !== undefined ? `${b.cet1_ratio_pct}%` : b.tier1_capital_ratio_pct !== undefined ? `${b.tier1_capital_ratio_pct}%` : 'รองรับโดยเงินกองทุนและเงินฝาก',
+        status: b.cet1_ratio_pct !== undefined || b.tier1_capital_ratio_pct !== undefined ? DataGapState.VERIFIED_AVAILABLE : DataGapState.NOT_APPLICABLE,
       }
     );
   } else if (archetype === 'early_stage' && typeof b.cash_runway_months === 'number') {

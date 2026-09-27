@@ -12,7 +12,11 @@ import {
   getApplicableExpectationMetrics,
   EXPECTATION_METRIC_REGISTRY,
   InvestmentThesisRecord,
-  TrackedExpectation
+  TrackedExpectation,
+  isValidTargetPeriod,
+  createValuationSnapshot,
+  snapshotToValuationBasis,
+  reconstructValuationBasisFromLegacyThesis
 } from './thesisExpectations';
 import { extractMemorySnapshot } from './investmentMemory';
 
@@ -900,6 +904,789 @@ describe('thesisExpectations', () => {
         updatedAt: '2026-01-01T00:00:00Z'
       };
       assert.equal(expA.userId, 'user_A');
+    });
+  });
+
+  describe('Lumina — Semantic Integrity, Historical Evaluation & Cross-Sector Architecture', () => {
+    it('Section 35: Cash is strictly Cash & Equivalents and NEVER conflated with Net Cash', () => {
+      const snap: any = {
+        snapshotId: 'snap_cash_test',
+        reportId: 'rep_1',
+        ticker: 'AAPL',
+        asOfDate: '2026-06-30',
+        financials: {
+          latestPeriod: 'Q2 2026',
+          cashAndEquivalents: 15000,
+          shortTermInvestments: 28000,
+          totalDebt: 9000,
+          netCash: 34000,
+          provenance: 'sec_verified'
+        }
+      };
+
+      const cashExp: TrackedExpectation = {
+        expectationId: 'exp_cash',
+        ticker: 'AAPL',
+        metricOrEvent: 'cash_and_equivalents',
+        metricLabel: 'Cash & Equivalents ($M)',
+        targetValue: 20000,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const netCashExp: TrackedExpectation = {
+        expectationId: 'exp_net_cash',
+        ticker: 'AAPL',
+        metricOrEvent: 'net_cash',
+        metricLabel: 'Net Cash Cushion ($M)',
+        targetValue: 30000,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([cashExp, netCashExp], snap);
+
+      // cash_and_equivalents must resolve strictly to 15,000, NOT 34,000!
+      assert.equal(evaluated[0].actualValue, 15000);
+      assert.equal(evaluated[0].status, 'MISSED'); // 15,000 < 20,000
+
+      // net_cash must resolve strictly to 34,000
+      assert.equal(evaluated[1].actualValue, 34000);
+      assert.equal(evaluated[1].status, 'EXCEEDED'); // 34,000 >= 30,000 + 5%
+    });
+
+    it('Section 36: Diluted EPS auto-evaluates canonically and survives period transitions', () => {
+      const q2Snap: any = {
+        snapshotId: 'snap_q2',
+        reportId: 'rep_q2',
+        ticker: 'MSFT',
+        asOfDate: '2026-06-30',
+        financials: {
+          latestPeriod: 'Q2 2026',
+          epsDiluted: 0.32,
+          provenance: 'sec_verified'
+        }
+      };
+
+      const epsExp: TrackedExpectation = {
+        expectationId: 'exp_eps',
+        ticker: 'MSFT',
+        metricOrEvent: 'eps_diluted',
+        metricLabel: 'Diluted EPS ($/share)',
+        targetValue: 0.30,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      // 1. Evaluates on current Q2 report
+      const evaluatedQ2 = evaluateExpectations([epsExp], q2Snap);
+      assert.equal(evaluatedQ2[0].status, 'EXCEEDED'); // 0.32 >= 0.30 + 0.015 (5%)
+      assert.equal(evaluatedQ2[0].actualValue, 0.32);
+      assert.equal(evaluatedQ2[0].actualPeriodFound, 'Q2 2026');
+
+      // 2. Evaluates when Q3 arrives and Q2 is in periodHistory
+      const q3Snap: any = {
+        snapshotId: 'snap_q3',
+        reportId: 'rep_q3',
+        ticker: 'MSFT',
+        asOfDate: '2026-09-30',
+        financials: {
+          latestPeriod: 'Q3 2026',
+          epsDiluted: 0.40,
+          periodHistory: [
+            {
+              period: 'Q2 2026',
+              revenue: 60000,
+              revenueYoYPct: 15.0,
+              operatingMarginPct: 42.0,
+              grossMarginPct: 69.0,
+              netIncome: 20000,
+              epsDiluted: 0.32,
+              freeCashFlow: 18000
+            }
+          ],
+          provenance: 'sec_verified'
+        }
+      };
+
+      const freshEvaluatedAgainstQ3 = evaluateExpectations([epsExp], q3Snap);
+      assert.equal(freshEvaluatedAgainstQ3[0].status, 'EXCEEDED');
+      assert.equal(freshEvaluatedAgainstQ3[0].actualValue, 0.32);
+      assert.equal(freshEvaluatedAgainstQ3[0].actualPeriodFound, 'Q2 2026');
+    });
+
+    it('Section 37 & 38: Historical Revenue Growth and Gross Margin resolve correctly after newer periods arrive', () => {
+      const q3ReportWithQ2History: any = {
+        snapshotId: 'snap_q3',
+        reportId: 'rep_q3',
+        ticker: 'NVDA',
+        asOfDate: '2026-10-31',
+        financials: {
+          latestPeriod: 'Q3 2026',
+          revenueYoYPct: 35.0,
+          grossMarginPct: 75.0,
+          periodHistory: [
+            {
+              period: 'Q2 2026',
+              revenue: 30000,
+              revenueYoYPct: 22.5,
+              grossMarginPct: 74.2,
+              netIncome: 12000,
+              epsDiluted: 0.65,
+              freeCashFlow: 11000
+            }
+          ],
+          provenance: 'sec_verified'
+        }
+      };
+
+      const revGrowthExp: TrackedExpectation = {
+        expectationId: 'exp_rev_growth',
+        ticker: 'NVDA',
+        metricOrEvent: 'revenue_growth_yoy_pct',
+        metricLabel: 'Revenue Growth YoY (%)',
+        targetValue: 20.0,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const grossMarginExp: TrackedExpectation = {
+        expectationId: 'exp_gross_margin',
+        ticker: 'NVDA',
+        metricOrEvent: 'gross_margin_pct',
+        metricLabel: 'Gross Margin (%)',
+        targetValue: 70.0,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([revGrowthExp, grossMarginExp], q3ReportWithQ2History);
+
+      assert.equal(evaluated[0].status, 'EXCEEDED'); // 22.5 >= 20.0 + 1.0 (5%)
+      assert.equal(evaluated[0].actualValue, 22.5);
+      assert.equal(evaluated[0].actualPeriodFound, 'Q2 2026');
+
+      assert.equal(evaluated[1].status, 'EXCEEDED'); // 74.2 >= 70.0 + 3.5 (5%)
+      assert.equal(evaluated[1].actualValue, 74.2);
+      assert.equal(evaluated[1].actualPeriodFound, 'Q2 2026');
+    });
+
+    it('Section 39: User-confirmed thesis v2 freezes valuation assumptions and does NOT mutate when newer report loads', () => {
+      const reportA: any = {
+        ticker: 'XYZ',
+        financial_statements: { periods: ['Q1 2026'] },
+        intrinsic_value: {
+          current_price: 100,
+          summary: { base_case_fair_value: 120 },
+          assumptions: {
+            discount_rate: 9.0,
+            terminal_growth_rate: 3.0
+          }
+        },
+        comprehensive_analysis: {
+          beginner_summary: { top_3_risks: ['Risk 1'] }
+        },
+        verdict: {
+          summary: 'Thesis under Report A with 9% WACC and 3% Terminal Growth.'
+        }
+      };
+
+      const basisA = getActiveValuationAssumptions(reportA, false);
+      const draftA = extractDraftThesisFromReport(reportA, 'user_bob')!;
+      // User confirms Thesis v2 under Report A
+      const confirmedV2 = confirmUserThesis(draftA, undefined, 'user_bob', 'report_A', basisA);
+
+      assert.equal(confirmedV2.version, 2);
+      assert.equal(confirmedV2.confirmationStatus, 'USER_CONFIRMED');
+      assert.ok(confirmedV2.frozenValuationBasis);
+      const waccA = confirmedV2.frozenValuationBasis.assumptions.find(a => a.labelEn.includes('Discount rate') || a.labelEn.includes('WACC'));
+      const tgA = confirmedV2.frozenValuationBasis.assumptions.find(a => a.labelEn.includes('Terminal growth'));
+      assert.equal(waccA?.valueText, '9.0%');
+      assert.equal(tgA?.valueText, '3.0%');
+
+      // Now Report B arrives with WACC 10% and Terminal Growth 2.5%
+      const reportB: any = {
+        ticker: 'XYZ',
+        financial_statements: { periods: ['Q2 2026'] },
+        intrinsic_value: {
+          current_price: 105,
+          summary: { base_case_fair_value: 115 },
+          assumptions: {
+            discount_rate: 10.0,
+            terminal_growth_rate: 2.5
+          }
+        }
+      };
+
+      const basisB = getActiveValuationAssumptions(reportB, false);
+      const waccB = basisB.assumptions.find(a => a.labelEn.includes('Discount rate') || a.labelEn.includes('WACC'));
+      assert.equal(waccB?.valueText, '10.0%');
+
+      // Confirmed thesis v2 must remain historically frozen at 9.0% and 3.0%!
+      const frozenWacc = confirmedV2.frozenValuationBasis.assumptions.find(a => a.labelEn.includes('Discount rate') || a.labelEn.includes('WACC'));
+      const frozenTg = confirmedV2.frozenValuationBasis.assumptions.find(a => a.labelEn.includes('Terminal growth'));
+      assert.equal(frozenWacc?.valueText, '9.0%');
+      assert.equal(frozenTg?.valueText, '3.0%');
+    });
+
+    it('Section 32: Negative target tolerance operates on absolute magnitude (Math.abs)', () => {
+      const snap: any = {
+        snapshotId: 'snap_neg',
+        reportId: 'rep_neg',
+        ticker: 'GROW',
+        asOfDate: '2026-06-30',
+        financials: {
+          latestPeriod: 'Q2 2026',
+          operatingMarginPct: -9.8, // target -10%, within 5% tolerance of 10% (0.5%) => [-10.5, -9.5]
+          freeCashFlow: -490,       // target -500, within 5% tolerance of 500 (25) => [-525, -475]
+          provenance: 'sec_verified'
+        }
+      };
+
+      const marginExp: TrackedExpectation = {
+        expectationId: 'exp_margin_approx',
+        ticker: 'GROW',
+        metricOrEvent: 'operating_margin_pct',
+        metricLabel: 'Operating Margin (%)',
+        targetValue: -10.0,
+        condition: 'approx',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const fcfExp: TrackedExpectation = {
+        expectationId: 'exp_fcf_approx',
+        ticker: 'GROW',
+        metricOrEvent: 'free_cash_flow',
+        metricLabel: 'FCF ($M)',
+        targetValue: -500.0,
+        condition: 'approx',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        sourceReportId: null,
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([marginExp, fcfExp], snap);
+      assert.equal(evaluated[0].status, 'MET');
+      assert.equal(evaluated[1].status, 'MET');
+    });
+
+    it('Section 16: isValidTargetPeriod validates structured periods and rejects ambiguous text', () => {
+      // Valid periods
+      assert.equal(isValidTargetPeriod('Q1 2026'), true);
+      assert.equal(isValidTargetPeriod('Q4 2026'), true);
+      assert.equal(isValidTargetPeriod('FY2026'), true);
+      assert.equal(isValidTargetPeriod('FY26'), true);
+      assert.equal(isValidTargetPeriod('2026-Q3'), true);
+      assert.equal(isValidTargetPeriod('2026-10-31'), true);
+
+      // Invalid / ambiguous periods
+      assert.equal(isValidTargetPeriod(''), false);
+      assert.equal(isValidTargetPeriod('someday'), false);
+      assert.equal(isValidTargetPeriod('soon'), false);
+      assert.equal(isValidTargetPeriod('next year'), false);
+      assert.equal(isValidTargetPeriod('2026'), false);
+      assert.equal(isValidTargetPeriod('Q5 2026'), false);
+    });
+
+    it('Section 40: Cross-sector matrix enforces distinct policies across Bank, Insurer, SaaS, Energy, Pre-profit', () => {
+      // 1. Bank (e.g. Banking sector/template)
+      const bankReport: any = {
+        company_profile: { sector: 'Financial Services', industry: 'Banks - Diversified' },
+        financial_statements: { statement_template: 'banking' }
+      };
+      const bankMetrics = getApplicableExpectationMetrics(bankReport, 'JPM');
+      assert.ok(bankMetrics.some(m => m.id === 'deposits'));
+      assert.ok(bankMetrics.some(m => m.id === 'net_interest_margin'));
+      assert.ok(bankMetrics.some(m => m.id === 'tier_1_capital_ratio'));
+      assert.ok(!bankMetrics.some(m => m.id === 'free_cash_flow'));
+      assert.ok(!bankMetrics.some(m => m.id === 'combined_ratio_pct')); // Insurer only!
+
+      // 2. Insurer
+      const insurerReport: any = {
+        company_profile: { sector: 'Financial Services', industry: 'Insurance - Property & Casualty' }
+      };
+      const insurerMetrics = getApplicableExpectationMetrics(insurerReport, 'TRV');
+      assert.ok(insurerMetrics.some(m => m.id === 'combined_ratio_pct'));
+      // Invariant: Insurer must NOT receive deposits, NIM, Tier 1, NCO!
+      assert.ok(!insurerMetrics.some(m => m.id === 'deposits'), 'Insurer must NOT receive deposits');
+      assert.ok(!insurerMetrics.some(m => m.id === 'net_interest_margin'), 'Insurer must NOT receive NIM');
+      assert.ok(!insurerMetrics.some(m => m.id === 'tier_1_capital_ratio'), 'Insurer must NOT receive Tier 1');
+      assert.ok(!insurerMetrics.some(m => m.id === 'net_charge_off_rate'), 'Insurer must NOT receive NCO');
+
+      // 3. SaaS / Tech Operating Company
+      const saasReport: any = {
+        company_profile: { sector: 'Technology', industry: 'Software - Infrastructure' }
+      };
+      const saasMetrics = getApplicableExpectationMetrics(saasReport, 'MSFT');
+      assert.ok(saasMetrics.some(m => m.id === 'revenue'));
+      assert.ok(saasMetrics.some(m => m.id === 'gross_margin_pct'));
+      assert.ok(saasMetrics.some(m => m.id === 'free_cash_flow'));
+      assert.ok(saasMetrics.some(m => m.id === 'net_cash'));
+      assert.ok(!saasMetrics.some(m => m.id === 'deposits'));
+      assert.ok(!saasMetrics.some(m => m.id === 'combined_ratio_pct'));
+
+      // 4. Pre-profit / Early Stage
+      const earlyReport: any = {
+        company_profile: { sector: 'Healthcare', industry: 'Biotechnology' },
+        intrinsic_value: { model_type: 'relative_only' }
+      };
+      const earlyMetrics = getApplicableExpectationMetrics(earlyReport, 'MRNA');
+      assert.ok(earlyMetrics.some(m => m.id === 'cash_and_equivalents'));
+      assert.ok(earlyMetrics.some(m => m.id === 'net_cash'));
+      assert.ok(earlyMetrics.some(m => m.id === 'revenue'));
+    });
+
+    it('Section 19 & 20: Terminal evaluation preserves evaluationMode, unit, source, and provenance', () => {
+      const snap: any = {
+        snapshotId: 'snap_perm',
+        reportId: 'rep_perm',
+        ticker: 'GOOGL',
+        asOfDate: '2026-06-30',
+        evidence: { secAccession: '0001652044-26-000012' },
+        financials: {
+          latestPeriod: 'Q2 2026',
+          revenue: 85000,
+          provenance: 'sec_verified'
+        }
+      };
+
+      const exp: TrackedExpectation = {
+        expectationId: 'exp_goog',
+        ticker: 'GOOGL',
+        metricOrEvent: 'revenue',
+        metricLabel: 'Revenue ($M)',
+        targetValue: 80000,
+        condition: 'gte',
+        targetPeriod: 'Q2 2026',
+        status: 'PENDING',
+        origin: 'USER_EXPECTATION',
+        evaluationMode: 'AUTO',
+        unit: '$M',
+        sourceReportId: 'rep_perm',
+        actualValue: null,
+        evaluationDate: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z'
+      };
+
+      const evaluated = evaluateExpectations([exp], snap);
+      assert.equal(evaluated[0].status, 'EXCEEDED');
+      assert.equal(evaluated[0].evaluationMode, 'AUTO');
+      assert.equal(evaluated[0].unit, '$M');
+      assert.ok(evaluated[0].source?.includes('SEC 10-Q/10-K'));
+      assert.equal(evaluated[0].provenance, 'DETERMINISTIC_DERIVATION');
+    });
+  });
+
+  describe('Lumina — Confirmed Thesis Version Immutability & Assumption Leakage Prevention', () => {
+    const reportA: any = {
+      id: 'rep_A',
+      ticker: 'TEST',
+      as_of_date: '2026-03-01',
+      generated_at: '2026-03-01T10:00:00Z',
+      intrinsic_value: {
+        summary: { base_case_fair_value: 150.0 },
+        selected_model: { model_type: 'dcf_standard' },
+        assumptions: {
+          discount_rate: 9.0,
+          terminal_growth_rate: 3.0
+        },
+        dcf_model: {
+          inputs: { projectionYears: 5, isValid: true },
+          assumptions: {
+            wacc_pct: 9.0,
+            terminal_growth_pct: 3.0,
+            projection_years: 5
+          },
+          scenarios: {
+            base: {
+              revenue_cagr_pct: 14.5,
+              terminal_margin_pct: 13.5
+            }
+          }
+        }
+      },
+      verdict: {
+        conviction_score: 85,
+        summary: 'Strong core market dominance and resilient cash generation.',
+        key_takeaways: ['Core growth', 'Margin discipline']
+      },
+      comprehensive_analysis: {
+        beginner_summary: {
+          top_3_risks: ['Competitive pressure', 'Margin squeeze']
+        }
+      },
+      catalysts_and_events: {
+        items: [{ title: 'New product cycle launch' }]
+      }
+    };
+
+    const reportB: any = {
+      id: 'rep_B',
+      ticker: 'TEST',
+      as_of_date: '2026-06-01',
+      generated_at: '2026-06-01T10:00:00Z',
+      intrinsic_value: {
+        summary: { base_case_fair_value: 175.0 },
+        selected_model: { model_type: 'dcf_standard' },
+        assumptions: {
+          discount_rate: 9.5,
+          terminal_growth_rate: 3.0
+        },
+        dcf_model: {
+          inputs: { projectionYears: 10, isValid: true },
+          assumptions: {
+            wacc_pct: 9.5,
+            terminal_growth_pct: 3.0,
+            projection_years: 10
+          },
+          scenarios: {
+            base: {
+              revenue_cagr_pct: 18.5,
+              terminal_margin_pct: 14.0
+            }
+          }
+        }
+      },
+      verdict: {
+        conviction_score: 90,
+        summary: 'Accelerating top-line expansion with higher capital reinvestment.',
+        key_takeaways: ['Extended forecast horizon', 'Higher reinvestment']
+      },
+      comprehensive_analysis: {
+        beginner_summary: {
+          top_3_risks: ['Reinvestment execution risk', 'Valuation multiple contraction']
+        }
+      },
+      catalysts_and_events: {
+        items: [{ title: 'Annual general meeting' }]
+      }
+    };
+
+    it('Section 18: Confirmed Thesis v2 does NOT mutate when Report B arrives', () => {
+      // 1. Create AI draft from Report A
+      const draft = extractDraftThesisFromReport(reportA, 'usr_investor');
+      assert.ok(draft);
+      assert.equal(draft.version, 1);
+      assert.equal(draft.confirmationStatus, 'AI_DRAFT');
+
+      // 2. User confirms => Thesis v2 (USER_CONFIRMED)
+      const basisA = getActiveValuationAssumptions(reportA);
+      const snapA = createValuationSnapshot(reportA, reportA.id);
+      const thesisV2 = confirmUserThesis(draft, undefined, 'usr_investor', reportA.id, basisA, snapA);
+
+      assert.equal(thesisV2.version, 2);
+      assert.equal(thesisV2.confirmationStatus, 'USER_CONFIRMED');
+      assert.equal(thesisV2.sourceReportId, 'rep_A');
+
+      // Check frozen valuation snapshot on Thesis v2
+      assert.ok(thesisV2.valuationSnapshot);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.waccPct, 9.0);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.terminalGrowthPct, 3.0);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.projectionYears, 5);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.revenueCagrPct, 14.5);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.terminalMarginPct, 13.5);
+
+      // Check frozen valuation basis on Thesis v2
+      const frozenAssumptions = thesisV2.frozenValuationBasis?.assumptions || [];
+      const waccItem = frozenAssumptions.find(a => a.labelEn.includes('WACC'));
+      const termGrowthItem = frozenAssumptions.find(a => a.labelEn.includes('Terminal growth'));
+      const projItem = frozenAssumptions.find(a => a.labelEn.includes('forecast period'));
+      const cagrItem = frozenAssumptions.find(a => a.labelEn.includes('Revenue CAGR'));
+      const marginItem = frozenAssumptions.find(a => a.labelEn.includes('terminal margin'));
+
+      assert.equal(waccItem?.valueText, '9.0%');
+      assert.equal(termGrowthItem?.valueText, '3.0%');
+      assert.equal(projItem?.valueText, '5 Years');
+      assert.equal(cagrItem?.valueText, '14.5%');
+      assert.equal(marginItem?.valueText, '13.5%');
+
+      // 3. Report B arrives with new assumptions:
+      // WACC = 9.5%, Proj = 10y, CAGR = 18.5%, Margin = 14.0%
+      const basisB = getActiveValuationAssumptions(reportB);
+      assert.equal(basisB.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.5%');
+      assert.equal(basisB.assumptions.find(a => a.labelEn.includes('forecast period'))?.valueText, '10 Years');
+      assert.equal(basisB.assumptions.find(a => a.labelEn.includes('Revenue CAGR'))?.valueText, '18.5%');
+      assert.equal(basisB.assumptions.find(a => a.labelEn.includes('terminal margin'))?.valueText, '14.0%');
+
+      // INVARIANT: Thesis v2 must NOT change or leak Report B's assumptions!
+      const reconstructedV2 = reconstructValuationBasisFromLegacyThesis(thesisV2);
+      assert.equal(reconstructedV2.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.0%');
+      assert.equal(reconstructedV2.assumptions.find(a => a.labelEn.includes('forecast period'))?.valueText, '5 Years');
+      assert.equal(reconstructedV2.assumptions.find(a => a.labelEn.includes('Revenue CAGR'))?.valueText, '14.5%');
+      assert.equal(reconstructedV2.assumptions.find(a => a.labelEn.includes('terminal margin'))?.valueText, '13.5%');
+      assert.equal(thesisV2.sourceReportId, 'rep_A');
+      assert.equal(thesisV2.version, 2);
+    });
+
+    it('Section 19: Current report basis can differ separately from confirmed thesis basis', () => {
+      const snapA = createValuationSnapshot(reportA, reportA.id);
+      const basisA = getActiveValuationAssumptions(reportA);
+      const draft = extractDraftThesisFromReport(reportA, 'usr_investor')!;
+      const thesisV2 = confirmUserThesis(draft, undefined, 'usr_investor', reportA.id, basisA, snapA);
+
+      const basisB = getActiveValuationAssumptions(reportB);
+
+      // Thesis v2 is frozen at 9.0% WACC
+      assert.equal(thesisV2.frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.0%');
+      // Current report basis evaluates to 9.5% WACC
+      assert.equal(basisB.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.5%');
+      // They are distinct objects and do not cross-contaminate
+      assert.notEqual(
+        thesisV2.frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText,
+        basisB.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText
+      );
+    });
+
+    it('Section 20: Explicit acceptance of new assumptions creates Thesis v3 and preserves v2', () => {
+      const snapA = createValuationSnapshot(reportA, reportA.id);
+      const basisA = getActiveValuationAssumptions(reportA);
+      const draft = extractDraftThesisFromReport(reportA, 'usr_investor')!;
+      const thesisV2 = confirmUserThesis(draft, undefined, 'usr_investor', reportA.id, basisA, snapA);
+
+      // User accepts Report B's new assumptions
+      const basisB = getActiveValuationAssumptions(reportB);
+      const snapB = createValuationSnapshot(reportB, reportB.id);
+
+      const thesisV3 = confirmUserThesis(
+        thesisV2,
+        {
+          frozenValuationBasis: basisB,
+          valuationSnapshot: snapB
+        },
+        'usr_investor',
+        reportB.id,
+        basisB,
+        snapB
+      );
+
+      // Verify v3 created and has Report B's assumptions
+      assert.equal(thesisV3.version, 3);
+      assert.equal(thesisV3.confirmationStatus, 'USER_EDITED');
+      assert.equal(thesisV3.sourceReportId, 'rep_B');
+      assert.equal(thesisV3.valuationSnapshot?.assumptions.waccPct, 9.5);
+      assert.equal(thesisV3.valuationSnapshot?.assumptions.projectionYears, 10);
+      assert.equal(thesisV3.valuationSnapshot?.assumptions.revenueCagrPct, 18.5);
+      assert.equal(thesisV3.valuationSnapshot?.assumptions.terminalMarginPct, 14.0);
+
+      // Verify v2 remains unchanged
+      assert.equal(thesisV2.version, 2);
+      assert.equal(thesisV2.confirmationStatus, 'USER_CONFIRMED');
+      assert.equal(thesisV2.sourceReportId, 'rep_A');
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.waccPct, 9.0);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.projectionYears, 5);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.revenueCagrPct, 14.5);
+      assert.equal(thesisV2.valuationSnapshot?.assumptions.terminalMarginPct, 13.5);
+    });
+
+    it('Section 21: Invalidation conditions remain frozen per version', () => {
+      const draft = extractDraftThesisFromReport(reportA, 'usr_investor')!;
+      const basisA = getActiveValuationAssumptions(reportA);
+      const snapA = createValuationSnapshot(reportA, reportA.id);
+      const thesisV2 = confirmUserThesis(
+        draft,
+        {
+          invalidationConditions: ['Operating Margin drops below 1.1%']
+        },
+        'usr_investor',
+        reportA.id,
+        basisA,
+        snapA
+      );
+
+      assert.deepEqual(thesisV2.invalidationConditions, ['Operating Margin drops below 1.1%']);
+
+      // New report suggests "Operating Margin < 2.0%" in draft
+      const draftB = extractDraftThesisFromReport(reportB, 'usr_investor');
+      // Thesis v2 must NOT update its invalidation conditions from draftB
+      assert.deepEqual(thesisV2.invalidationConditions, ['Operating Margin drops below 1.1%']);
+
+      // User edits thesis summary to create v3 without changing invalidation condition
+      const thesisV3 = confirmUserThesis(
+        thesisV2,
+        {
+          summary: 'Updated summary for v3'
+        },
+        'usr_investor',
+        reportB.id
+      );
+
+      assert.equal(thesisV3.version, 3);
+      assert.deepEqual(thesisV3.invalidationConditions, ['Operating Margin drops below 1.1%']);
+      // v3 preserves frozen valuation basis of v2 because no new valuation was passed
+      assert.equal(thesisV3.valuationSnapshot?.assumptions.waccPct, 9.0);
+      assert.equal(thesisV3.valuationSnapshot?.assumptions.projectionYears, 5);
+    });
+
+    it('Section 22: Storage round trip reconstructs full thesis without source report', () => {
+      const basisA = getActiveValuationAssumptions(reportA);
+      const snapA = createValuationSnapshot(reportA, reportA.id);
+      const draft = extractDraftThesisFromReport(reportA, 'usr_investor')!;
+      const thesisV2 = confirmUserThesis(draft, undefined, 'usr_investor', reportA.id, basisA, snapA);
+
+      // Serialize to JSON (simulating Firestore / localStorage write)
+      const serialized = JSON.stringify(thesisV2);
+      // Deserialize (simulating fresh page load without reportA available)
+      const deserialized: InvestmentThesisRecord = JSON.parse(serialized);
+
+      assert.equal(deserialized.version, 2);
+      assert.equal(deserialized.confirmationStatus, 'USER_CONFIRMED');
+      assert.equal(deserialized.sourceReportId, 'rep_A');
+      assert.equal(deserialized.valuationSnapshot?.assumptions.waccPct, 9.0);
+      assert.equal(deserialized.valuationSnapshot?.assumptions.projectionYears, 5);
+      assert.equal(deserialized.valuationSnapshot?.provenance, 'FROZEN_CONFIRMATION_SNAPSHOT');
+
+      // Reconstruct valuation basis without source report
+      const reconstructed = reconstructValuationBasisFromLegacyThesis(deserialized);
+      assert.ok(reconstructed);
+      assert.equal(reconstructed.methodTitleEn, 'Valuation Approach: Discounted Cash Flow (FCFF DCF)');
+      assert.equal(reconstructed.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.0%');
+      assert.equal(reconstructed.assumptions.find(a => a.labelEn.includes('forecast period'))?.valueText, '5 Years');
+    });
+
+    it('Section 23: Cross-sector immutability across all business archetypes', () => {
+      // 1. Bank / Financial (DDM / Cost of Equity)
+      const bankReport: any = {
+        id: 'rep_bank',
+        ticker: 'JPM',
+        company_profile: { sector: 'Financial Services', industry: 'Banks - Diversified' },
+        intrinsic_value: {
+          selected_model: { model_type: 'ddm' },
+          assumptions: { cost_of_equity: 10.5, dividend_growth_rate: 4.0 }
+        },
+        financial_statements: {
+          periods: ['Q2 2026'],
+          balance_sheet: { deposits: [2400000] }
+        }
+      };
+      const bankDraft = extractDraftThesisFromReport(bankReport, 'usr_1')!;
+      const bankBasis = getActiveValuationAssumptions(bankReport);
+      const bankSnap = createValuationSnapshot(bankReport, bankReport.id);
+      const bankConfirmed = confirmUserThesis(bankDraft, undefined, 'usr_1', bankReport.id, bankBasis, bankSnap);
+
+      assert.equal(bankConfirmed.version, 2);
+      assert.equal(bankConfirmed.frozenValuationBasis?.modelType, 'ddm');
+      assert.ok(bankConfirmed.frozenValuationBasis?.isGuarded);
+      assert.ok(bankConfirmed.frozenValuationBasis?.guardStatusEn?.includes('Financial Sector Guard'));
+
+      // 2. Insurer (DDM / Financial Sector Guard)
+      const insurerReport: any = {
+        id: 'rep_ins',
+        ticker: 'TRV',
+        company_profile: { sector: 'Financial Services', industry: 'Insurance - Property & Casualty' }
+      };
+      const insDraft = extractDraftThesisFromReport(insurerReport, 'usr_1')!;
+      const insBasis = getActiveValuationAssumptions(insurerReport);
+      const insSnap = createValuationSnapshot(insurerReport, insurerReport.id);
+      const insConfirmed = confirmUserThesis(insDraft, undefined, 'usr_1', insurerReport.id, insBasis, insSnap);
+      assert.equal(insConfirmed.frozenValuationBasis?.modelType, 'ddm');
+      assert.ok(insConfirmed.frozenValuationBasis?.isGuarded);
+
+      // 3. Fintech (Multiples / Financial guard)
+      const fintechReport: any = {
+        id: 'rep_fintech',
+        ticker: 'SOFI',
+        company_profile: { sector: 'Financial Services', industry: 'Credit Services', description: 'Digital consumer fintech platform' }
+      };
+      const ftDraft = extractDraftThesisFromReport(fintechReport, 'usr_1')!;
+      const ftBasis = getActiveValuationAssumptions(fintechReport);
+      const ftSnap = createValuationSnapshot(fintechReport, fintechReport.id);
+      const ftConfirmed = confirmUserThesis(ftDraft, undefined, 'usr_1', fintechReport.id, ftBasis, ftSnap);
+      assert.equal(ftConfirmed.frozenValuationBasis?.modelType, 'fintech_pe');
+      assert.ok(ftConfirmed.frozenValuationBasis?.isGuarded);
+
+      // 3. REIT / AFFO
+      const reitReport: any = {
+        id: 'rep_reit',
+        ticker: 'PLD',
+        company_profile: { sector: 'Real Estate', industry: 'REIT - Industrial' },
+        intrinsic_value: {
+          selected_model: { model_type: 'reit_affo' },
+          assumptions: { cap_rate: 5.5 }
+        }
+      };
+      const reitDraft = extractDraftThesisFromReport(reitReport, 'usr_1')!;
+      const reitBasis = getActiveValuationAssumptions(reitReport);
+      const reitSnap = createValuationSnapshot(reitReport, reitReport.id);
+      const reitConfirmed = confirmUserThesis(reitDraft, undefined, 'usr_1', reitReport.id, reitBasis, reitSnap);
+      assert.equal(reitConfirmed.frozenValuationBasis?.modelType, 'reit_affo');
+
+      // 4. Pre-profit / Relative Only
+      const preProfitReport: any = {
+        id: 'rep_early',
+        ticker: 'RIVN',
+        company_profile: { sector: 'Consumer Cyclical', industry: 'Auto Manufacturers' },
+        intrinsic_value: {
+          selected_model: { model_type: 'relative_only' }
+        }
+      };
+      const earlyDraft = extractDraftThesisFromReport(preProfitReport, 'usr_1')!;
+      const earlyBasis = getActiveValuationAssumptions(preProfitReport);
+      const earlySnap = createValuationSnapshot(preProfitReport, preProfitReport.id);
+      const earlyConfirmed = confirmUserThesis(earlyDraft, undefined, 'usr_1', preProfitReport.id, earlyBasis, earlySnap);
+      assert.equal(earlyConfirmed.frozenValuationBasis?.modelType, 'relative_only');
+      assert.ok(earlyConfirmed.frozenValuationBasis?.isGuarded);
+    });
+
+    it('Section 24: Distinguishes frozen thesis assumptions from live market observations', () => {
+      const snapA = createValuationSnapshot(reportA, reportA.id);
+      const basisA = getActiveValuationAssumptions(reportA);
+      const draft = extractDraftThesisFromReport(reportA, 'usr_investor')!;
+      const thesisV2 = confirmUserThesis(draft, undefined, 'usr_investor', reportA.id, basisA, snapA);
+
+      // Thesis v2 assumptions contain model valuation inputs (e.g. WACC, terminal growth)
+      const labels = thesisV2.frozenValuationBasis?.assumptions.map(a => a.labelEn) || [];
+      assert.ok(labels.includes('Discount rate (WACC)'));
+      // Invariant: Live market price is NOT embedded as an assumption in frozenValuationBasis
+      assert.ok(!labels.includes('Current Market Price'));
+      assert.ok(!labels.includes('Live Quote'));
     });
   });
 });

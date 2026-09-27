@@ -4,9 +4,12 @@ import {
   saveExpectations,
   loadExpectations,
   createAndEvaluateExpectation,
-  evaluateAndPersistExpectations
+  evaluateAndPersistExpectations,
+  saveUserThesis,
+  loadUserThesis,
+  loadThesisRevisions
 } from './thesisExpectationsService';
-import { TrackedExpectation } from '../domain/thesisExpectations';
+import { TrackedExpectation, InvestmentThesisRecord } from '../domain/thesisExpectations';
 import { ResearchMemorySnapshot } from '../domain/investmentMemory';
 
 class MockStorage {
@@ -39,9 +42,13 @@ describe('thesisExpectationsService - Durable Persistence & Evaluation', () => {
     revenue: 62000,
     revenueYoYPct: 15.0,
     operatingMarginPct: 45.0,
+    grossMarginPct: 68.0,
     freeCashFlow: 19500,
     freeCashFlowBasis: 'QUARTER' as const,
     netIncome: 21900,
+    epsDiluted: 2.95,
+    cashAndEquivalents: 35000,
+    shortTermInvestments: 15000,
     totalDebt: 50000,
     netCash: null,
     sharesOutstanding: 100,
@@ -348,5 +355,201 @@ describe('thesisExpectationsService - Durable Persistence & Evaluation', () => {
 
     assert.equal(result.hasPersistedChanges, false, 'No terminal transition -> no persistence write');
     assert.equal(result.expectations[0].status, 'PENDING');
+  });
+
+  it('Section 19 & 20: evaluateAndPersistExpectations preserves evaluationMode, unit, source, and provenance on terminal transition', async () => {
+    const user = { uid: 'user_meta_test' } as any;
+    const initial: TrackedExpectation = {
+      expectationId: 'exp_meta_1',
+      ticker: 'MSFT',
+      metricOrEvent: 'revenue',
+      metricLabel: 'Revenue ($M)',
+      targetValue: 50000,
+      condition: 'gte',
+      targetPeriod: 'Q3 2026',
+      status: 'PENDING',
+      origin: 'USER_EXPECTATION',
+      evaluationMode: 'AUTO',
+      unit: '$M',
+      sourceReportId: 'rep_q3',
+      actualValue: null,
+      evaluationDate: null,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      userId: 'user_meta_test'
+    };
+
+    const result = await evaluateAndPersistExpectations(
+      'MSFT',
+      [initial],
+      q3Snapshot, // revenue is 55000 in q3Snapshot => MET / EXCEEDED
+      [],
+      user
+    );
+
+    assert.equal(result.hasPersistedChanges, true);
+    assert.equal(result.expectations[0].status, 'EXCEEDED');
+    assert.equal(result.expectations[0].evaluationMode, 'AUTO');
+    assert.equal(result.expectations[0].unit, '$M');
+    assert.ok(result.expectations[0].source);
+    assert.equal(result.expectations[0].provenance, 'DETERMINISTIC_DERIVATION');
+
+    // Reload from storage to verify persistent storage retained them
+    const loaded = await loadExpectations('MSFT', user);
+    assert.equal(loaded[0].status, 'EXCEEDED');
+    assert.equal(loaded[0].evaluationMode, 'AUTO');
+    assert.equal(loaded[0].unit, '$M');
+    assert.equal(loaded[0].provenance, 'DETERMINISTIC_DERIVATION');
+  });
+
+  it('Section 22: saveUserThesis & loadUserThesis round-trip preserves frozen valuation without source report', async () => {
+    const user = { uid: 'user_thesis_persist' } as any;
+    const thesisV2: InvestmentThesisRecord = {
+      thesisId: 'th_persist_1',
+      ticker: 'NVDA',
+      version: 2,
+      summary: 'Data center AI acceleration moat.',
+      keyDrivers: ['Hopper & Blackwell ramping'],
+      keyAssumptions: [
+        'Discount rate (WACC): 9.0%',
+        'Explicit forecast period: 5 Years',
+        'Terminal growth rate: 3.0%',
+        'Base Revenue CAGR: 14.5%',
+        'Target terminal margin: 13.5%'
+      ],
+      keyRisks: ['Export curbs'],
+      catalysts: ['Next gen architecture unveil'],
+      invalidationConditions: ['Operating Margin < 1.1%'],
+      status: 'ACTIVE',
+      confirmationStatus: 'USER_CONFIRMED',
+      sourceReportId: 'rep_A_nvda',
+      valuationSnapshot: {
+        modelType: 'dcf_standard',
+        methodTitleEn: 'Valuation Approach: Discounted Cash Flow (FCFF DCF)',
+        methodTitleTh: 'วิธีประเมิน: แบบจำลองคิดลดกระแสเงินสด (FCFF DCF)',
+        isGuarded: false,
+        assumptions: {
+          waccPct: 9.0,
+          terminalGrowthPct: 3.0,
+          projectionYears: 5,
+          revenueCagrPct: 14.5,
+          terminalMarginPct: 13.5
+        },
+        assumptionsList: [
+          { labelEn: 'Discount rate (WACC)', labelTh: 'อัตราคิดลด (WACC)', valueText: '9.0%', provenance: 'MODEL_ASSUMPTION' },
+          { labelEn: 'Terminal growth rate', labelTh: 'อัตราเติบโตระยะยาว (Terminal Growth)', valueText: '3.0%', provenance: 'MODEL_ASSUMPTION' },
+          { labelEn: 'Explicit forecast period', labelTh: 'ระยะเวลาประมาณการ', valueText: '5 Years', provenance: 'MODEL_ASSUMPTION' },
+          { labelEn: 'Base Revenue CAGR', labelTh: 'รายได้เติบโตเฉลี่ย (Base Revenue CAGR)', valueText: '14.5%', provenance: 'MODEL_ASSUMPTION' },
+          { labelEn: 'Target terminal margin', labelTh: 'อัตรากำไรเป้าหมาย (Terminal Margin)', valueText: '13.5%', provenance: 'MODEL_ASSUMPTION' }
+        ],
+        sourceReportId: 'rep_A_nvda',
+        capturedAt: '2026-03-01T10:00:00Z',
+        provenance: 'FROZEN_CONFIRMATION_SNAPSHOT'
+      },
+      createdAt: '2026-03-01T10:00:00Z',
+      updatedAt: '2026-03-01T10:00:00Z',
+      userId: 'user_thesis_persist'
+    };
+
+    // Save thesis v2
+    await saveUserThesis(thesisV2, user);
+
+    // Reload without any report context
+    const loaded = await loadUserThesis('NVDA', user);
+    assert.ok(loaded);
+    assert.equal(loaded?.version, 2);
+    assert.equal(loaded?.confirmationStatus, 'USER_CONFIRMED');
+    assert.equal(loaded?.sourceReportId, 'rep_A_nvda');
+    assert.equal(loaded?.valuationSnapshot?.assumptions.waccPct, 9.0);
+    assert.equal(loaded?.valuationSnapshot?.assumptions.projectionYears, 5);
+
+    // Verify frozen valuation basis is hydrated
+    assert.ok(loaded?.frozenValuationBasis);
+    assert.equal(loaded?.frozenValuationBasis?.assumptions.length, 5);
+    assert.equal(loaded?.frozenValuationBasis?.assumptions[0].valueText, '9.0%');
+    assert.equal(loaded?.frozenValuationBasis?.assumptions[2].valueText, '5 Years');
+  });
+
+  it('hydrates legacy thesis records lacking frozenValuationBasis or valuationSnapshot', async () => {
+    const user = { uid: 'user_legacy_test' } as any;
+    // Simulate legacy record saved before structured snapshot was introduced
+    const legacyThesis: InvestmentThesisRecord = {
+      thesisId: 'th_legacy_1',
+      ticker: 'AAPL',
+      version: 2,
+      summary: 'Ecosystem services expansion.',
+      keyDrivers: ['Services gross margin'],
+      keyAssumptions: [
+        'Discount rate (WACC): 8.5%',
+        'Explicit forecast period: 7 Years',
+        'Terminal growth rate: 2.5%'
+      ],
+      keyRisks: ['Antitrust in App Store'],
+      catalysts: ['WWDC keynote'],
+      invalidationConditions: ['Operating margin < 25%'],
+      status: 'ACTIVE',
+      confirmationStatus: 'USER_CONFIRMED',
+      sourceReportId: 'rep_legacy_aapl',
+      createdAt: '2025-10-01T00:00:00Z',
+      updatedAt: '2025-10-01T00:00:00Z',
+      userId: 'user_legacy_test'
+    };
+
+    await saveUserThesis(legacyThesis, user);
+
+    const loaded = await loadUserThesis('AAPL', user);
+    assert.ok(loaded);
+    // Legacy thesis must have frozenValuationBasis hydrated from keyAssumptions
+    assert.ok(loaded?.frozenValuationBasis);
+    assert.equal(loaded?.frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '8.5%');
+    assert.equal(loaded?.frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('forecast period'))?.valueText, '7 Years');
+    assert.equal(loaded?.frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('Terminal growth'))?.valueText, '2.5%');
+  });
+
+  it('loadThesisRevisions maintains immutable history of versions', async () => {
+    const user = { uid: 'user_rev_test' } as any;
+
+    const v2: InvestmentThesisRecord = {
+      thesisId: 'th_rev_1',
+      ticker: 'TSLA',
+      version: 2,
+      summary: 'Energy storage and autonomy inflection.',
+      keyDrivers: ['Megapack volume'],
+      keyAssumptions: ['Discount rate (WACC): 9.0%', 'Explicit forecast period: 5 Years'],
+      keyRisks: ['EV price competition'],
+      catalysts: ['Investor day'],
+      invalidationConditions: ['Operating Margin < 1.1%'],
+      status: 'ACTIVE',
+      confirmationStatus: 'USER_CONFIRMED',
+      sourceReportId: 'rep_1',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      userId: 'user_rev_test'
+    };
+
+    await saveUserThesis(v2, user);
+
+    // Now save v3 (from a newer report)
+    const v3: InvestmentThesisRecord = {
+      ...v2,
+      version: 3,
+      confirmationStatus: 'USER_EDITED',
+      sourceReportId: 'rep_2',
+      summary: 'Energy storage, autonomy inflection, and Cybercab ramp.',
+      keyAssumptions: ['Discount rate (WACC): 9.5%', 'Explicit forecast period: 10 Years'],
+      updatedAt: '2026-06-01T00:00:00Z'
+    };
+
+    await saveUserThesis(v3, user);
+
+    const revisions = await loadThesisRevisions('TSLA', user);
+    assert.equal(revisions.length, 2);
+    assert.equal(revisions[0].version, 2);
+    assert.equal(revisions[0].sourceReportId, 'rep_1');
+    assert.equal(revisions[0].frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.0%');
+
+    assert.equal(revisions[1].version, 3);
+    assert.equal(revisions[1].sourceReportId, 'rep_2');
+    assert.equal(revisions[1].frozenValuationBasis?.assumptions.find(a => a.labelEn.includes('WACC'))?.valueText, '9.5%');
   });
 });

@@ -4,10 +4,28 @@ import { db, firebaseDataAccessAllowed } from '../lib/firebase';
 import {
   InvestmentThesisRecord,
   TrackedExpectation,
-  evaluateExpectations
+  evaluateExpectations,
+  snapshotToValuationBasis,
+  reconstructValuationBasisFromLegacyThesis
 } from '../domain/thesisExpectations';
 import { ResearchMemorySnapshot } from '../domain/investmentMemory';
 import { sanitizeUndefinedForPersistence } from '../utils/firestorePersistence';
+
+export function hydrateLoadedThesis(record: InvestmentThesisRecord): InvestmentThesisRecord {
+  if (record.confirmationStatus === 'USER_CONFIRMED' || record.confirmationStatus === 'USER_EDITED') {
+    if (!record.frozenValuationBasis) {
+      if (record.valuationSnapshot) {
+        record.frozenValuationBasis = snapshotToValuationBasis(record.valuationSnapshot);
+      } else {
+        const reconstructed = reconstructValuationBasisFromLegacyThesis(record);
+        if (reconstructed) {
+          record.frozenValuationBasis = reconstructed;
+        }
+      }
+    }
+  }
+  return record;
+}
 
 const LEGACY_THESIS_PREFIX = 'lumina_user_thesis_';
 const LEGACY_EXPECTATIONS_PREFIX = 'lumina_user_expectations_';
@@ -57,11 +75,11 @@ export async function saveUserThesis(
 ): Promise<void> {
   const cleanTicker = thesis.ticker.toUpperCase().trim();
   const userId = user?.uid || thesis.userId || undefined;
-  const cleanThesis = {
+  const cleanThesis = hydrateLoadedThesis({
     ...thesis,
     ticker: cleanTicker,
     userId
-  };
+  });
 
   // 1. Save to local storage isolated by user UID or anonymous
   const storage = getStorage();
@@ -123,7 +141,7 @@ export async function loadThesisRevisions(
         snap.forEach(d => {
           const data = d.data() as InvestmentThesisRecord;
           if (!data.userId || data.userId === userId) {
-            list.push({ ...data, userId });
+            list.push(hydrateLoadedThesis({ ...data, userId }));
           }
         });
         list.sort((a, b) => a.version - b.version);
@@ -151,7 +169,7 @@ export async function loadThesisRevisions(
         if (raw) {
           const list = JSON.parse(raw) as InvestmentThesisRecord[];
           if (Array.isArray(list)) {
-            return list.filter(item => !item.userId || item.userId === userId);
+            return list.filter(item => !item.userId || item.userId === userId).map(hydrateLoadedThesis);
           }
         }
         return [];
@@ -159,7 +177,7 @@ export async function loadThesisRevisions(
         const raw = storage.getItem(getRevisionsLocalKey(cleanTicker, null));
         if (raw) {
           const list = JSON.parse(raw) as InvestmentThesisRecord[];
-          if (Array.isArray(list)) return list;
+          if (Array.isArray(list)) return list.map(hydrateLoadedThesis);
         }
       }
     } catch (e) {
@@ -186,7 +204,7 @@ export async function loadUserThesis(
         const data = snap.data() as InvestmentThesisRecord;
         // Verify owner ID
         if (!data.userId || data.userId === userId) {
-          const verifiedData = { ...data, userId };
+          const verifiedData = hydrateLoadedThesis({ ...data, userId });
           // Update user-scoped local cache
           const storage = getStorage();
           if (storage) {
@@ -212,7 +230,7 @@ export async function loadUserThesis(
         if (raw) {
           const parsed = JSON.parse(raw) as InvestmentThesisRecord;
           if (parsed && (!parsed.userId || parsed.userId === userId)) {
-            return { ...parsed, userId };
+            return hydrateLoadedThesis({ ...parsed, userId });
           }
         }
         // Never fall back to anonymous or another user's cache for authenticated users!
@@ -221,14 +239,14 @@ export async function loadUserThesis(
         // Anonymous user: read from anonymous key
         const raw = storage.getItem(getLocalKey('thesis', cleanTicker, null));
         if (raw) {
-          return JSON.parse(raw) as InvestmentThesisRecord;
+          return hydrateLoadedThesis(JSON.parse(raw) as InvestmentThesisRecord);
         }
         // Conservative legacy migration: only allow legacy cache if it has NO userId
         const legacyRaw = storage.getItem(`${LEGACY_THESIS_PREFIX}${cleanTicker}`);
         if (legacyRaw) {
           const parsed = JSON.parse(legacyRaw) as InvestmentThesisRecord;
           if (!parsed.userId) {
-            return parsed;
+            return hydrateLoadedThesis(parsed);
           }
         }
       }
@@ -433,10 +451,14 @@ export async function evaluateAndPersistExpectations(
         createdAt: original.createdAt,
         sourceReportId: original.sourceReportId,
         userId: user?.uid || original.userId || undefined,
+        evaluationMode: original.evaluationMode ?? evaluated.evaluationMode,
+        unit: original.unit ?? evaluated.unit,
         // Evaluation metadata fields
         status: evaluated.status,
         actualValue: evaluated.actualValue,
         actualPeriodFound: evaluated.actualPeriodFound ?? null,
+        source: evaluated.source ?? original.source,
+        provenance: evaluated.provenance ?? original.provenance,
         evaluationDate: evaluated.evaluationDate,
         evaluationNotes: evaluated.evaluationNotes,
         updatedAt: evaluated.updatedAt || new Date().toISOString()

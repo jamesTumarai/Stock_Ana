@@ -194,15 +194,14 @@ export async function fetchSecVerificationEnvelope(
     const canonicalShapeValid = canonicalPeriods.length > 0
       && canonicalPeriods.length <= 20
       && new Set(canonicalPeriods).size === canonicalPeriods.length
-      && canonicalPeriods.every((period: unknown) => typeof period === 'string' && /^Q[1-4] (?:20\d{2})$/.test(period))
+      && canonicalPeriods.every((period: unknown) => typeof period === 'string' && period.trim().length > 0)
       && canonicalSeries.length > 0
       && canonicalSeries.every(series => Array.isArray(series) && series.length === canonicalPeriods.length
         && series.every((item: unknown, index: number) => isRecord(item)
-          && item.period === canonicalPeriods[index]
+          && (item.period === canonicalPeriods[index] || !item.period)
           && (item.value === null || (finite(item.value) && item.verification === 'verified'))));
     const canonicalFinancials = isRecord(canonicalCandidate)
       && body.canonicalFinancials.ticker === normalizedTicker
-      && body.canonicalFinancials.provenanceStatus === 'verified'
       && /sec-xbrl/i.test(String(body.canonicalFinancials.generatedBy || ''))
       && canonicalShapeValid
       ? body.canonicalFinancials as SecVerificationEnvelope['canonical_financials']

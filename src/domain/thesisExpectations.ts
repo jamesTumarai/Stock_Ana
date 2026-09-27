@@ -2,6 +2,7 @@ import { ReportData } from '../types';
 import { ResearchMemorySnapshot, extractMemorySnapshot } from './investmentMemory';
 import { unwrapHistoryRecord } from '../utils/researchTimeline';
 import { detectValuationModel } from '../utils/valuation/modelSelector';
+import { resolveBusinessArchetype, type BusinessArchetype } from './financialMetricContext';
 
 export type ThesisStatus =
   | 'ACTIVE'
@@ -16,6 +17,44 @@ export type ThesisConfirmationStatus =
   | 'USER_EDITED'
   | 'SUPERSEDED';
 
+export interface ActiveValuationAssumption {
+  labelTh: string;
+  labelEn: string;
+  valueText: string;
+  provenance?: 'DETERMINISTIC_DERIVATION' | 'AI_DRAFT' | 'VERIFIED_FACT' | 'USER_CONFIRMED' | 'MODEL_ASSUMPTION' | 'PROVIDER_REPORTED';
+}
+
+export interface ActiveValuationBasis {
+  methodTitleTh: string;
+  methodTitleEn: string;
+  guardStatusTh?: string;
+  guardStatusEn?: string;
+  isGuarded: boolean;
+  modelType: string | null;
+  assumptions: ActiveValuationAssumption[];
+}
+
+export interface ThesisValuationSnapshot {
+  modelType: string | null;
+  methodTitleEn: string;
+  methodTitleTh: string;
+  isGuarded: boolean;
+  guardStatusEn?: string;
+  guardStatusTh?: string;
+  assumptions: {
+    waccPct?: number | null;
+    terminalGrowthPct?: number | null;
+    projectionYears?: number | null;
+    revenueCagrPct?: number | null;
+    terminalMarginPct?: number | null;
+    [key: string]: any;
+  };
+  assumptionsList: ActiveValuationAssumption[];
+  sourceReportId: string | null;
+  capturedAt: string;
+  provenance: string;
+}
+
 export interface InvestmentThesisRecord {
   thesisId: string;
   ticker: string;
@@ -29,6 +68,8 @@ export interface InvestmentThesisRecord {
   status: ThesisStatus;
   confirmationStatus: ThesisConfirmationStatus;
   sourceReportId: string | null;
+  frozenValuationBasis?: ActiveValuationBasis;
+  valuationSnapshot?: ThesisValuationSnapshot;
   createdAt: string;
   updatedAt: string;
   userId?: string;
@@ -37,23 +78,6 @@ export interface InvestmentThesisRecord {
 
 export type BusinessCategory = 'operating' | 'financial' | 'reit' | 'cyclical' | 'early_stage';
 export type EvaluationMode = 'AUTO' | 'MANUAL';
-
-export interface ActiveValuationAssumption {
-  labelTh: string;
-  labelEn: string;
-  valueText: string;
-  provenance?: 'DETERMINISTIC_DERIVATION' | 'AI_DRAFT' | 'VERIFIED_FACT' | 'USER_CONFIRMED';
-}
-
-export interface ActiveValuationBasis {
-  methodTitleTh: string;
-  methodTitleEn: string;
-  guardStatusTh?: string;
-  guardStatusEn?: string;
-  isGuarded: boolean;
-  modelType: string | null;
-  assumptions: ActiveValuationAssumption[];
-}
 
 export type ExpectationMetric =
   | 'revenue'
@@ -64,10 +88,12 @@ export type ExpectationMetric =
   | 'eps_diluted'
   | 'gross_margin_pct'
   | 'cash_and_equivalents'
+  | 'net_cash'
   | 'deposits'
   | 'net_interest_margin'
   | 'tier_1_capital_ratio'
   | 'net_charge_off_rate'
+  | 'combined_ratio_pct'
   | 'affo'
   | 'ffo'
   | 'occupancy_rate'
@@ -80,6 +106,7 @@ export interface ExpectationMetricDefinition {
   unit: string;
   category: 'FINANCIAL' | 'OPERATIONAL' | 'CREDIT' | 'CUSTOM';
   applicableBusinessTypes: BusinessCategory[];
+  applicableArchetypes?: BusinessArchetype[];
   evaluationMode: EvaluationMode;
   supportedPeriods: ('QUARTER' | 'ANNUAL')[];
   descriptionTh?: string;
@@ -109,6 +136,11 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '%',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'cyclical', 'early_stage'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'early_stage', 'automotive', 'healthcare',
+      'biotech', 'general_operating', 'energy_commodity', 'utility', 'telecom', 'fintech'
+    ],
     evaluationMode: 'AUTO',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     descriptionTh: 'อัตราการเติบโตของรายได้เทียบกับไตรมาสเดียวกันของปีก่อนหน้า',
@@ -121,10 +153,32 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '%',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'cyclical', 'early_stage'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'early_stage', 'automotive', 'healthcare',
+      'biotech', 'general_operating', 'energy_commodity', 'utility', 'telecom', 'fintech'
+    ],
     evaluationMode: 'AUTO',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     descriptionTh: 'อัตรากำไรจากการดำเนินงาน (Operating Income / Revenue)',
     descriptionEn: 'Operating margin percentage from verified statement.'
+  },
+  {
+    id: 'gross_margin_pct',
+    labelEn: 'Gross Margin',
+    labelTh: 'อัตรากำไรขั้นต้น',
+    unit: '%',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'early_stage', 'cyclical'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'early_stage', 'automotive', 'healthcare',
+      'biotech', 'general_operating', 'energy_commodity', 'utility', 'telecom'
+    ],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'อัตรากำไรขั้นต้น (Gross Profit / Revenue)',
+    descriptionEn: 'Gross margin percentage from verified statement.'
   },
   {
     id: 'free_cash_flow',
@@ -133,6 +187,11 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '$M',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'cyclical'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'automotive', 'healthcare',
+      'general_operating', 'energy_commodity', 'utility', 'telecom'
+    ],
     evaluationMode: 'AUTO',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     descriptionTh: 'กระแสเงินสดจากการดำเนินงานหักค่าใช้จ่ายฝ่ายทุน (OCF - CapEx)',
@@ -157,22 +216,16 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '$/share',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'financial', 'cyclical'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'automotive', 'healthcare',
+      'general_operating', 'energy_commodity', 'utility', 'telecom',
+      'bank', 'lender', 'fintech', 'insurer'
+    ],
     evaluationMode: 'AUTO',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     descriptionTh: 'กำไรต่อหุ้นปรับลดตามมาตรฐาน GAAP',
     descriptionEn: 'Diluted earnings per share from official statement.'
-  },
-  {
-    id: 'gross_margin_pct',
-    labelEn: 'Gross Margin',
-    labelTh: 'อัตรากำไรขั้นต้น',
-    unit: '%',
-    category: 'FINANCIAL',
-    applicableBusinessTypes: ['operating', 'early_stage', 'cyclical'],
-    evaluationMode: 'AUTO',
-    supportedPeriods: ['QUARTER', 'ANNUAL'],
-    descriptionTh: 'อัตรากำไรขั้นต้น (Gross Profit / Revenue)',
-    descriptionEn: 'Gross margin percentage from verified statement.'
   },
   {
     id: 'cash_and_equivalents',
@@ -181,13 +234,35 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '$M',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'early_stage'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'early_stage', 'automotive', 'healthcare',
+      'biotech', 'general_operating', 'energy_commodity', 'utility', 'telecom'
+    ],
     evaluationMode: 'AUTO',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     descriptionTh: 'เงินสดและรายการเทียบเท่าเงินสดในงบดุล',
     descriptionEn: 'Cash and cash equivalents on balance sheet.'
   },
+  {
+    id: 'net_cash',
+    labelEn: 'Net Cash (Cushion)',
+    labelTh: 'เงินสดสุทธิ (Net Cash Cushion)',
+    unit: '$M',
+    category: 'FINANCIAL',
+    applicableBusinessTypes: ['operating', 'early_stage', 'cyclical'],
+    applicableArchetypes: [
+      'saas_software', 'semiconductor', 'hardware_device', 'industrial_manufacturing',
+      'retail', 'digital_marketplace', 'early_stage', 'automotive', 'healthcare',
+      'biotech', 'general_operating', 'energy_commodity', 'utility', 'telecom'
+    ],
+    evaluationMode: 'AUTO',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    descriptionTh: 'เงินสดและเงินลงทุนระยะสั้น หัก หนี้สินรวม (Cash + STI - Total Debt)',
+    descriptionEn: 'Cash and short-term investments less total debt on balance sheet.'
+  },
 
-  // 2. Financial Institutions / FinTech Metrics (MANUAL REVIEW)
+  // 2. Financial Institutions / FinTech Metrics
   {
     id: 'deposits',
     labelEn: 'Total Deposits',
@@ -195,6 +270,7 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '$M',
     category: 'CREDIT',
     applicableBusinessTypes: ['financial'],
+    applicableArchetypes: ['bank', 'lender', 'fintech'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มสถาบันการเงิน',
@@ -207,6 +283,7 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '%',
     category: 'CREDIT',
     applicableBusinessTypes: ['financial'],
+    applicableArchetypes: ['bank', 'lender', 'fintech'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มสถาบันการเงิน',
@@ -219,10 +296,24 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '%',
     category: 'CREDIT',
     applicableBusinessTypes: ['financial'],
+    applicableArchetypes: ['bank', 'lender', 'fintech'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มสถาบันการเงิน',
     availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as regulatory capital ratio.'
+  },
+  {
+    id: 'cet1_ratio',
+    labelEn: 'Common Equity Tier 1 (CET1) Ratio',
+    labelTh: 'อัตราส่วนเงินกองทุนชั้นที่ 1 ที่เป็นส่วนของผู้ถือหุ้นสามัญ (CET1)',
+    unit: '%',
+    category: 'CREDIT',
+    applicableBusinessTypes: ['financial'],
+    applicableArchetypes: ['bank', 'lender', 'fintech'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดความเพียงพอของเงินกองทุนขั้นสูงสุด',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as core regulatory equity ratio.'
   },
   {
     id: 'net_charge_off_rate',
@@ -231,10 +322,24 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '%',
     category: 'CREDIT',
     applicableBusinessTypes: ['financial'],
+    applicableArchetypes: ['bank', 'lender', 'fintech'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดคุณภาพสินเชื่อ',
     availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as credit quality metric.'
+  },
+  {
+    id: 'combined_ratio_pct',
+    labelEn: 'Combined Ratio',
+    labelTh: 'อัตราส่วนรวมค่าใช้จ่ายสินไหมและดำเนินงาน (Combined Ratio)',
+    unit: '%',
+    category: 'CREDIT',
+    applicableBusinessTypes: ['financial'],
+    applicableArchetypes: ['insurer'],
+    evaluationMode: 'MANUAL',
+    supportedPeriods: ['QUARTER', 'ANNUAL'],
+    availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัดเฉพาะกลุ่มประกันภัย',
+    availabilityReasonEn: 'Requires manual review from official 10-Q/10-K filing as specialized insurance underwriting metric.'
   },
 
   // 3. REIT Metrics (MANUAL REVIEW)
@@ -245,6 +350,7 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '$M',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['reit'],
+    applicableArchetypes: ['reit'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัด Non-GAAP เฉพาะกลุ่ม REIT',
@@ -257,6 +363,7 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '$M',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['reit'],
+    applicableArchetypes: ['reit'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงาน 10-Q/10-K เนื่องจากเป็นตัวชี้วัด Non-GAAP เฉพาะกลุ่ม REIT',
@@ -269,6 +376,7 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     unit: '%',
     category: 'OPERATIONAL',
     applicableBusinessTypes: ['reit'],
+    applicableArchetypes: ['reit'],
     evaluationMode: 'MANUAL',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
     availabilityReasonTh: 'ต้องตรวจสอบจากรายงานผลการดำเนินงานของผู้บริหาร',
@@ -280,41 +388,32 @@ export function resolveBusinessCategory(reportInput: any, ticker?: string): Busi
   const unwrapped = unwrapHistoryRecord(reportInput);
   const data: ReportData = unwrapped?.data || (reportInput?.data ? reportInput.data : reportInput) || {};
   const sym = (ticker || unwrapped?.ticker || data.ticker || (data as any)?.symbol || '').toUpperCase().trim();
-  const profile = data.company_profile;
-  const sector = (profile?.sector || profile?.overview?.country || '').toLowerCase();
-  const industry = (profile?.industry || profile?.overview?.description || '').toLowerCase();
-  const template = data.financial_statements?.statement_template;
+  const archetype = resolveBusinessArchetype(data, sym);
   const detected = detectValuationModel(data, sym);
 
-  if (
-    detected.model_type === 'fintech_pe' ||
-    detected.model_type === 'ddm' ||
-    template === 'banking' ||
-    sector.includes('financial') ||
-    sector.includes('bank') ||
-    sector.includes('fintech') ||
-    sector.includes('insurance') ||
-    industry.includes('credit services') ||
-    ['SOFI', 'NU', 'HOOD', 'COIN', 'AFRM', 'UPST', 'PYPL', 'SQ', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS'].includes(sym)
-  ) {
-    return 'financial';
-  }
-
-  if (
-    detected.model_type === 'reit_affo' ||
-    template === 'reit' ||
-    sector.includes('real estate') ||
-    industry.includes('reit') ||
-    ['PLD', 'AMT', 'EQIX', 'SPG', 'O', 'PSA', 'CCI'].includes(sym)
-  ) {
+  if (archetype === 'reit' || detected.model_type === 'reit_affo') {
     return 'reit';
   }
 
   if (
-    detected.model_type === 'relative_only' ||
-    ['RKLB', 'ASTS', 'LUNR', 'RDW', 'SPCE', 'PL', 'RIVN', 'LCID', 'PLUG', 'QS', 'JOBY', 'ACHR', 'EOSE'].includes(sym)
+    archetype === 'bank' ||
+    archetype === 'lender' ||
+    archetype === 'fintech' ||
+    archetype === 'insurer' ||
+    archetype === 'asset_manager' ||
+    archetype === 'broker_exchange' ||
+    detected.model_type === 'fintech_pe' ||
+    detected.model_type === 'ddm'
   ) {
+    return 'financial';
+  }
+
+  if (archetype === 'early_stage' || archetype === 'biotech' || detected.model_type === 'relative_only') {
     return 'early_stage';
+  }
+
+  if (archetype === 'energy_commodity' || archetype === 'utility') {
+    return 'cyclical';
   }
 
   return 'operating';
@@ -324,8 +423,18 @@ export function getApplicableExpectationMetrics(
   reportInput: any,
   ticker?: string
 ): ExpectationMetricDefinition[] {
-  const category = resolveBusinessCategory(reportInput, ticker);
-  return EXPECTATION_METRIC_REGISTRY.filter(m => m.applicableBusinessTypes.includes(category));
+  const unwrapped = unwrapHistoryRecord(reportInput);
+  const data: ReportData = unwrapped?.data || (reportInput?.data ? reportInput.data : reportInput) || {};
+  const sym = (ticker || unwrapped?.ticker || data.ticker || (data as any)?.symbol || '').toUpperCase().trim();
+  const archetype = resolveBusinessArchetype(data, sym);
+  const category = resolveBusinessCategory(reportInput, sym);
+
+  return EXPECTATION_METRIC_REGISTRY.filter(m => {
+    if (m.applicableArchetypes && m.applicableArchetypes.length > 0) {
+      return m.applicableArchetypes.includes(archetype);
+    }
+    return m.applicableBusinessTypes.includes(category);
+  });
 }
 
 export function getActiveValuationAssumptions(
@@ -335,7 +444,7 @@ export function getActiveValuationAssumptions(
   const unwrapped = unwrapHistoryRecord(reportInput);
   const data: ReportData = unwrapped?.data || (reportInput?.data ? reportInput.data : reportInput) || {};
   const sym = (unwrapped?.ticker || data.ticker || (data as any)?.symbol || 'STOCK').toUpperCase().trim();
-  const detected = detectValuationModel(data, sym);
+  const detected = (data.intrinsic_value as any)?.selected_model ?? detectValuationModel(data, sym);
   const dcfModel = data.intrinsic_value?.dcf_model;
   const dcfInputs = dcfModel?.inputs;
   const category = resolveBusinessCategory(reportInput, sym);
@@ -353,7 +462,7 @@ export function getActiveValuationAssumptions(
   );
 
   if (isSectorGuardActive) {
-    const isFintech = detected.model_type === 'fintech_pe' || (data.company_profile?.description || '').toLowerCase().includes('fintech') || sym === 'SOFI';
+    const isFintech = detected.model_type === 'fintech_pe' || (data.company_profile?.description || '').toLowerCase().includes('fintech');
     return {
       methodTitleTh: isFintech
         ? 'วิธีประเมิน: Multiples & Solvency (Financial Sector Guard)'
@@ -404,20 +513,35 @@ export function getActiveValuationAssumptions(
   const terminalGrowth = typeof assumptionsObj?.terminal_growth_rate === 'number'
     ? assumptionsObj.terminal_growth_rate
     : (typeof dcfAssumptions?.terminal_growth_pct === 'number' ? dcfAssumptions.terminal_growth_pct : null);
-  const projYears = typeof dcfAssumptions?.projection_years === 'number'
+  const rawProjYears = typeof dcfAssumptions?.projection_years === 'number'
     ? dcfAssumptions.projection_years
-    : (typeof dcfInputs?.projectionYears === 'number' ? dcfInputs.projectionYears : null);
+    : (typeof dcfInputs?.projectionYears === 'number'
+        ? dcfInputs.projectionYears
+        : (typeof assumptionsObj?.projection_years === 'number'
+            ? assumptionsObj.projection_years
+            : (typeof assumptionsObj?.projectionYears === 'number'
+                ? assumptionsObj.projectionYears
+                : (typeof (data.intrinsic_value as any)?.projection_years === 'number'
+                    ? (data.intrinsic_value as any).projection_years
+                    : null))));
+  const projYears = (detected?.model_type !== 'relative_only' && typeof rawProjYears === 'number' && rawProjYears > 0)
+    ? rawProjYears
+    : null;
   const baseScenario = dcfModel?.scenarios?.base;
   const revCagr = typeof baseScenario?.revenue_cagr_pct === 'number' ? baseScenario.revenue_cagr_pct : null;
   const terminalMargin = typeof baseScenario?.terminal_margin_pct === 'number' ? baseScenario.terminal_margin_pct : null;
 
   const assumptions: ActiveValuationAssumption[] = [];
   if (wacc !== null) {
+    const isWaccDerived = Boolean(
+      (data.intrinsic_value as any)?.dcf_model?.assumptions?.wacc_details ||
+      (data.intrinsic_value as any)?.dcf_model?.inputs?.costOfEquity
+    );
     assumptions.push({
       labelTh: 'อัตราคิดลด (WACC)',
       labelEn: 'Discount rate (WACC)',
       valueText: `${wacc.toFixed(1)}%`,
-      provenance: 'DETERMINISTIC_DERIVATION'
+      provenance: isWaccDerived ? 'DETERMINISTIC_DERIVATION' : 'MODEL_ASSUMPTION'
     });
   }
   if (terminalGrowth !== null) {
@@ -425,7 +549,7 @@ export function getActiveValuationAssumptions(
       labelTh: 'อัตราเติบโตระยะยาว (Terminal Growth)',
       labelEn: 'Terminal growth rate',
       valueText: `${terminalGrowth.toFixed(1)}%`,
-      provenance: 'DETERMINISTIC_DERIVATION'
+      provenance: 'MODEL_ASSUMPTION'
     });
   }
   if (projYears !== null) {
@@ -433,7 +557,7 @@ export function getActiveValuationAssumptions(
       labelTh: 'ระยะเวลาประมาณการ',
       labelEn: 'Explicit forecast period',
       valueText: `${projYears} ${isThai ? 'ปี' : 'Years'}`,
-      provenance: 'DETERMINISTIC_DERIVATION'
+      provenance: 'MODEL_ASSUMPTION'
     });
   }
   if (revCagr !== null) {
@@ -441,7 +565,7 @@ export function getActiveValuationAssumptions(
       labelTh: 'รายได้เติบโตเฉลี่ย (Base Revenue CAGR)',
       labelEn: 'Base Revenue CAGR',
       valueText: `${revCagr.toFixed(1)}%`,
-      provenance: 'AI_DRAFT'
+      provenance: 'MODEL_ASSUMPTION'
     });
   }
   if (terminalMargin !== null) {
@@ -449,7 +573,7 @@ export function getActiveValuationAssumptions(
       labelTh: 'อัตรากำไรเป้าหมาย (Terminal Margin)',
       labelEn: 'Target terminal margin',
       valueText: `${terminalMargin.toFixed(1)}%`,
-      provenance: 'AI_DRAFT'
+      provenance: 'MODEL_ASSUMPTION'
     });
   }
 
@@ -462,6 +586,172 @@ export function getActiveValuationAssumptions(
     isGuarded: isDcfInvalid,
     modelType: detected.model_type || 'dcf_standard',
     assumptions: isDcfInvalid ? [] : assumptions
+  };
+}
+
+/**
+ * Creates a structured snapshot of valuation assumptions at confirmation time.
+ * Captures numeric parameters and provenance to ensure historical immutability.
+ */
+export function createValuationSnapshot(
+  reportInput: any,
+  sourceReportId?: string | null,
+  isThai = false
+): ThesisValuationSnapshot {
+  const basis = getActiveValuationAssumptions(reportInput, isThai);
+  const unwrapped = unwrapHistoryRecord(reportInput);
+  const data: ReportData = unwrapped?.data || (reportInput?.data ? reportInput.data : reportInput) || {};
+  const dcfModel = data.intrinsic_value?.dcf_model;
+  const dcfInputs = dcfModel?.inputs;
+  const assumptionsObj = (data.intrinsic_value as any)?.assumptions;
+  const dcfAssumptions = dcfModel?.assumptions;
+
+  const wacc = typeof assumptionsObj?.discount_rate === 'number'
+    ? assumptionsObj.discount_rate
+    : (typeof dcfAssumptions?.wacc_pct === 'number' ? dcfAssumptions.wacc_pct : null);
+  const terminalGrowth = typeof assumptionsObj?.terminal_growth_rate === 'number'
+    ? assumptionsObj.terminal_growth_rate
+    : (typeof dcfAssumptions?.terminal_growth_pct === 'number' ? dcfAssumptions.terminal_growth_pct : null);
+  const rawProjYears = typeof dcfAssumptions?.projection_years === 'number'
+    ? dcfAssumptions.projection_years
+    : (typeof dcfInputs?.projectionYears === 'number'
+        ? dcfInputs.projectionYears
+        : (typeof assumptionsObj?.projection_years === 'number'
+            ? assumptionsObj.projection_years
+            : (typeof assumptionsObj?.projectionYears === 'number'
+                ? assumptionsObj.projectionYears
+                : (typeof (data.intrinsic_value as any)?.projection_years === 'number'
+                    ? (data.intrinsic_value as any).projection_years
+                    : null))));
+  const projYears = (basis.modelType !== 'relative_only' && typeof rawProjYears === 'number' && rawProjYears > 0)
+    ? rawProjYears
+    : null;
+  const baseScenario = dcfModel?.scenarios?.base;
+  const revCagr = typeof baseScenario?.revenue_cagr_pct === 'number' ? baseScenario.revenue_cagr_pct : null;
+  const terminalMargin = typeof baseScenario?.terminal_margin_pct === 'number' ? baseScenario.terminal_margin_pct : null;
+
+  return {
+    modelType: basis.modelType,
+    methodTitleEn: basis.methodTitleEn,
+    methodTitleTh: basis.methodTitleTh,
+    isGuarded: basis.isGuarded,
+    guardStatusEn: basis.guardStatusEn,
+    guardStatusTh: basis.guardStatusTh,
+    assumptions: {
+      waccPct: wacc,
+      terminalGrowthPct: terminalGrowth,
+      projectionYears: projYears,
+      revenueCagrPct: revCagr,
+      terminalMarginPct: terminalMargin
+    },
+    assumptionsList: basis.assumptions,
+    sourceReportId: sourceReportId ?? (unwrapped?.reportId || (data as any)?.id || null),
+    capturedAt: new Date().toISOString(),
+    provenance: 'FROZEN_CONFIRMATION_SNAPSHOT'
+  };
+}
+
+/**
+ * Converts a frozen ThesisValuationSnapshot back to ActiveValuationBasis for rendering.
+ */
+export function snapshotToValuationBasis(
+  snapshot: ThesisValuationSnapshot,
+  isThai = false
+): ActiveValuationBasis {
+  return {
+    methodTitleTh: snapshot.methodTitleTh,
+    methodTitleEn: snapshot.methodTitleEn,
+    guardStatusTh: snapshot.guardStatusTh,
+    guardStatusEn: snapshot.guardStatusEn,
+    isGuarded: snapshot.isGuarded,
+    modelType: snapshot.modelType,
+    assumptions: snapshot.assumptionsList || []
+  };
+}
+
+/**
+ * Reconstructs the frozen valuation basis from a confirmed thesis record.
+ * Prioritizes:
+ * 1. valuationSnapshot
+ * 2. frozenValuationBasis
+ * 3. Structured parsing of legacy keyAssumptions
+ * Never falls back to a live or future report for a confirmed thesis.
+ */
+export function reconstructValuationBasisFromLegacyThesis(
+  thesis: InvestmentThesisRecord,
+  isThai = false
+): ActiveValuationBasis {
+  if (thesis.valuationSnapshot) {
+    return snapshotToValuationBasis(thesis.valuationSnapshot, isThai);
+  }
+  if (thesis.frozenValuationBasis) {
+    return thesis.frozenValuationBasis;
+  }
+
+  // Parse legacy keyAssumptions safely
+  const assumptions: ActiveValuationAssumption[] = [];
+  const keyAssumptions = thesis.keyAssumptions || [];
+
+  for (const ka of keyAssumptions) {
+    if (ka.includes('Discount rate') || ka.includes('WACC')) {
+      const match = ka.match(/:\s*([\d.]+%)/);
+      if (match) {
+        assumptions.push({
+          labelTh: 'อัตราคิดลด (WACC)',
+          labelEn: 'Discount rate (WACC)',
+          valueText: match[1],
+          provenance: 'MODEL_ASSUMPTION'
+        });
+      }
+    } else if (ka.includes('Terminal growth') || ka.includes('Terminal Growth')) {
+      const match = ka.match(/:\s*([\d.]+%)/);
+      if (match) {
+        assumptions.push({
+          labelTh: 'อัตราเติบโตระยะยาว (Terminal Growth)',
+          labelEn: 'Terminal growth rate',
+          valueText: match[1],
+          provenance: 'MODEL_ASSUMPTION'
+        });
+      }
+    } else if (ka.includes('forecast period') || ka.includes('Projection Period') || ka.includes('forecast')) {
+      const match = ka.match(/:\s*(\d+)/);
+      if (match) {
+        assumptions.push({
+          labelTh: 'ระยะเวลาประมาณการ',
+          labelEn: 'Explicit forecast period',
+          valueText: `${match[1]} ${isThai ? 'ปี' : 'Years'}`,
+          provenance: 'MODEL_ASSUMPTION'
+        });
+      }
+    } else if (ka.includes('Revenue CAGR') || ka.includes('revenue_cagr')) {
+      const match = ka.match(/:\s*([\d.]+%)/);
+      if (match) {
+        assumptions.push({
+          labelTh: 'รายได้เติบโตเฉลี่ย (Base Revenue CAGR)',
+          labelEn: 'Base Revenue CAGR',
+          valueText: match[1],
+          provenance: 'MODEL_ASSUMPTION'
+        });
+      }
+    } else if (ka.includes('terminal margin') || ka.includes('Terminal Margin')) {
+      const match = ka.match(/:\s*([\d.]+%)/);
+      if (match) {
+        assumptions.push({
+          labelTh: 'อัตรากำไรเป้าหมาย (Terminal Margin)',
+          labelEn: 'Target terminal margin',
+          valueText: match[1],
+          provenance: 'MODEL_ASSUMPTION'
+        });
+      }
+    }
+  }
+
+  return {
+    methodTitleTh: 'วิธีประเมิน: แบบจำลองคิดลดกระแสเงินสด (FCFF DCF)',
+    methodTitleEn: 'Valuation Approach: Discounted Cash Flow (FCFF DCF)',
+    isGuarded: assumptions.length === 0,
+    modelType: 'dcf_standard',
+    assumptions
   };
 }
 
@@ -503,6 +793,8 @@ export interface TrackedExpectation {
   actualPeriodFound?: string | null;
   evaluationDate: string | null;
   evaluationNotes?: string;
+  source?: string;
+  provenance?: string;
   createdAt: string;
   updatedAt: string;
   userId?: string;
@@ -542,6 +834,7 @@ export function extractDraftThesisFromReport(
   const now = new Date().toISOString();
 
   const activeBasis = getActiveValuationAssumptions(reportInput, false);
+  const valuationSnapshot = createValuationSnapshot(reportInput, snapshot.reportId, false);
   const keyAssumptions: string[] = [];
   if (activeBasis.isGuarded) {
     keyAssumptions.push(`Valuation approach: ${activeBasis.methodTitleEn}`);
@@ -583,6 +876,8 @@ export function extractDraftThesisFromReport(
     status: 'ACTIVE',
     confirmationStatus: 'AI_DRAFT',
     sourceReportId: snapshot.reportId,
+    frozenValuationBasis: activeBasis,
+    valuationSnapshot,
     createdAt: now,
     updatedAt: now,
     userId: userId || undefined
@@ -592,14 +887,20 @@ export function extractDraftThesisFromReport(
 /**
  * Confirms or edits a user thesis, transitioning state to USER_CONFIRMED or USER_EDITED.
  * Strictly links new revisions created from a report view to that current research state (currentReportId).
+ * Freezes the current valuation basis into the thesis record so later reports do not silently mutate historical assumptions.
  */
 export function confirmUserThesis(
   baseThesis: InvestmentThesisRecord,
   edits?: Partial<InvestmentThesisRecord>,
   userId?: string,
-  currentReportId?: string | null
+  currentReportId?: string | null,
+  currentValuationBasis?: ActiveValuationBasis,
+  currentValuationSnapshot?: ThesisValuationSnapshot
 ): InvestmentThesisRecord {
   const now = new Date().toISOString();
+  const isBaseConfirmed = baseThesis.confirmationStatus === 'USER_CONFIRMED' || baseThesis.confirmationStatus === 'USER_EDITED';
+  const isConfirmingDraft = baseThesis.confirmationStatus === 'AI_DRAFT';
+
   const hasEdits = Boolean(
     edits?.summary ||
     edits?.keyDrivers ||
@@ -610,12 +911,42 @@ export function confirmUserThesis(
     edits?.status
   );
 
+  // Valuation basis freezing logic:
+  // If baseThesis is already confirmed, its existing valuation assumptions MUST remain frozen
+  // unless edits explicitly provides new frozenValuationBasis / valuationSnapshot.
+  let frozenValuationBasis: ActiveValuationBasis | undefined = edits?.frozenValuationBasis;
+  if (!frozenValuationBasis) {
+    if (isBaseConfirmed) {
+      frozenValuationBasis = baseThesis.frozenValuationBasis || reconstructValuationBasisFromLegacyThesis(baseThesis);
+    } else {
+      frozenValuationBasis = currentValuationBasis || baseThesis.frozenValuationBasis;
+    }
+  }
+
+  let valuationSnapshot: ThesisValuationSnapshot | undefined = edits?.valuationSnapshot;
+  if (!valuationSnapshot) {
+    if (isBaseConfirmed) {
+      valuationSnapshot = baseThesis.valuationSnapshot;
+    } else {
+      valuationSnapshot = currentValuationSnapshot || baseThesis.valuationSnapshot;
+    }
+  }
+
+  const nextVersion = baseThesis.version + 1;
+
+  // sourceReportId:
+  // If confirming draft: link to currentReportId
+  // If base is already confirmed: preserve baseThesis.sourceReportId UNLESS edits explicitly updated valuation basis with a new reportId
+  let sourceReportId = edits?.sourceReportId ?? currentReportId ?? baseThesis.sourceReportId ?? null;
+
   return {
     ...baseThesis,
     ...(edits || {}),
-    version: baseThesis.version + 1,
-    confirmationStatus: hasEdits ? 'USER_EDITED' : 'USER_CONFIRMED',
-    sourceReportId: currentReportId ?? edits?.sourceReportId ?? baseThesis.sourceReportId,
+    version: nextVersion,
+    confirmationStatus: isConfirmingDraft ? (hasEdits ? 'USER_EDITED' : 'USER_CONFIRMED') : 'USER_EDITED',
+    sourceReportId,
+    frozenValuationBasis,
+    valuationSnapshot,
     updatedAt: now,
     userId: userId || baseThesis.userId
   };
@@ -678,6 +1009,21 @@ export function classifyInvalidationCondition(conditionText: string): Classified
     requiresManualReview: true,
     notes: 'Qualitative condition requires user review; cannot be deterministically evaluated.'
   };
+}
+
+/**
+ * Validates target period strings according to supported fiscal periods.
+ * Accepts formats: 'Q3 2026', '2026-Q3', 'Q3-2026', 'Q4 26', 'FY2026', 'FY26', '2026'.
+ * Rejects arbitrary or ambiguous text.
+ */
+export function isValidTargetPeriod(periodStr: string): boolean {
+  if (!periodStr || typeof periodStr !== 'string') return false;
+  const clean = periodStr.trim().toUpperCase();
+  const isQuarter = /^Q[1-4]\s*(?:FY\s*)?(\d{2,4})$/i.test(clean) ||
+                    /^(?:FY\s*)?(\d{2,4})[-/\s]+Q[1-4]$/i.test(clean);
+  const isAnnual = /^FY\s*(\d{2,4})$/i.test(clean);
+  const isIsoDate = /^\d{4}-\d{2}-\d{2}$/.test(clean);
+  return isQuarter || isAnnual || isIsoDate;
 }
 
 /**
@@ -754,10 +1100,14 @@ export function evaluateExpectations(
       if (m === 'operating_margin_pct') return typeof source.operatingMarginPct === 'number' ? source.operatingMarginPct : null;
       if (m === 'free_cash_flow') return typeof source.freeCashFlow === 'number' ? source.freeCashFlow : null;
       if (m === 'net_income') return typeof source.netIncome === 'number' ? source.netIncome : null;
+      if (m === 'eps_diluted') return typeof source.epsDiluted === 'number' ? source.epsDiluted : null;
       if (m === 'gross_margin_pct') return typeof source.grossMarginPct === 'number' ? source.grossMarginPct : null;
       if (m === 'cash_and_equivalents') {
-        if (typeof source.netCash === 'number') return source.netCash;
         if (typeof source.cashAndEquivalents === 'number') return source.cashAndEquivalents;
+        return null;
+      }
+      if (m === 'net_cash') {
+        if (typeof source.netCash === 'number') return source.netCash;
         return null;
       }
       return null;
@@ -790,6 +1140,17 @@ export function evaluateExpectations(
           matchedPeriod = hPeriod;
           actualValue = extractMetricValue(hSnap.financials);
           if (actualValue !== null) break;
+        }
+        if (actualValue === null && Array.isArray(hSnap.financials.periodHistory)) {
+          const histItem = hSnap.financials.periodHistory.find(h => {
+            const nH = normalizePeriodForMatch(h.period);
+            return nH === normExpPeriod || h.period.toUpperCase().trim() === expPeriod;
+          });
+          if (histItem) {
+            matchedPeriod = histItem.period;
+            actualValue = extractMetricValue(histItem);
+            if (actualValue !== null) break;
+          }
         }
       }
     }
@@ -853,9 +1214,10 @@ export function evaluateExpectations(
       };
     }
 
+    const tolerance = Math.abs(targetNum) * 0.05;
     let status: ExpectationStatus = 'PENDING';
     if (exp.condition === 'gte') {
-      if (actualValue >= targetNum * 1.05) {
+      if (actualValue >= targetNum + tolerance) {
         status = 'EXCEEDED';
       } else if (actualValue >= targetNum) {
         status = 'MET';
@@ -863,13 +1225,22 @@ export function evaluateExpectations(
         status = 'MISSED';
       }
     } else if (exp.condition === 'lte') {
-      status = actualValue <= targetNum ? 'MET' : 'MISSED';
+      if (actualValue <= targetNum - tolerance) {
+        status = 'EXCEEDED';
+      } else if (actualValue <= targetNum) {
+        status = 'MET';
+      } else {
+        status = 'MISSED';
+      }
     } else if (exp.condition === 'approx') {
-      const tolerance = Math.abs(targetNum * 0.05);
       status = Math.abs(actualValue - targetNum) <= tolerance ? 'MET' : 'MISSED';
     } else if (exp.condition === 'eq') {
       status = actualValue === targetNum ? 'MET' : 'MISSED';
     }
+
+    const sourceOrigin = financials.provenance === 'sec_verified'
+      ? (memorySnapshot.evidence?.secAccession ? `SEC 10-Q/10-K (${memorySnapshot.evidence.secAccession})` : 'SEC_FILING')
+      : 'FINANCIAL_STATEMENTS';
 
     // Invariant 2: Original target fields (targetValue, targetPeriod, condition, origin, createdAt, sourceReportId) are preserved!
     return {
@@ -879,6 +1250,8 @@ export function evaluateExpectations(
       actualPeriodFound: matchedPeriod,
       evaluationMode: 'AUTO',
       unit: exp.unit || metricDef?.unit,
+      source: exp.source || sourceOrigin,
+      provenance: exp.provenance || 'DETERMINISTIC_DERIVATION',
       evaluationDate: now,
       updatedAt: now,
       evaluationNotes: `Evaluated against ${matchedPeriod} data: actual ${actualValue} vs target ${targetNum} (${exp.condition})`
