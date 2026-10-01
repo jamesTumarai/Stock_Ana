@@ -1,7 +1,8 @@
-import type { CanonicalFinancialDataset, CanonicalFinancialValue } from '../../domain/financialValue';
+import type { CanonicalFinancialDataset } from '../../domain/financialValue';
 import type { SecDcfCoverageAssessment, SecDcfCoverageIssue } from './secLegacyAdapter';
 import type { SecShareSnapshot } from './secShareSnapshot';
-import { validTrailingFourQuarterLabels } from '../../domain/valuation/canonicalQuarterWindow';
+import { resolveCurrentBalanceSheetSnapshot } from '../../domain/currentBalanceSheetSnapshot';
+import { reconcileCanonicalTtmFlow, type TtmFlowReconciliation } from '../../domain/canonicalTtmFlow';
 
 export const SEC_DCF_FINANCIAL_INPUTS_VERSION = 1;
 
@@ -22,6 +23,7 @@ export interface SecDcfFinancialInputs {
   totalDebtM: number | null;
   netCashM: number | null;
   currentSharesOutstandingM: number | null;
+  ttmReconciliation?: { revenue: TtmFlowReconciliation; freeCashFlow: TtmFlowReconciliation } | null;
   issues: SecDcfCoverageIssue[];
 }
 
@@ -32,33 +34,6 @@ const round = (value: number, decimals = 8) => {
 };
 
 const issueKey = (issue: SecDcfCoverageIssue) => `${issue.code}:${issue.field}:${issue.message}`;
-
-const verifiedItemAt = (
-  dataset: CanonicalFinancialDataset,
-  key: string,
-  index: number,
-): CanonicalFinancialValue | null => {
-  const item = dataset.values[key]?.[index];
-  const period = dataset.periods[index];
-  if (!item || item.period !== period || item.verification !== 'verified' || !finite(item.value)) return null;
-  return item;
-};
-
-const lastFourVerified = (
-  dataset: CanonicalFinancialDataset,
-  key: string,
-  options: { positive?: boolean } = {},
-): CanonicalFinancialValue[] | null => {
-  if (dataset.periods.length < 4 || !validTrailingFourQuarterLabels(dataset.periods.slice(-4))) return null;
-  const offset = dataset.periods.length - 4;
-  const items: CanonicalFinancialValue[] = [];
-  for (let index = offset; index < dataset.periods.length; index += 1) {
-    const item = verifiedItemAt(dataset, key, index);
-    if (!item || (options.positive && (item.value as number) <= 0)) return null;
-    items.push(item);
-  }
-  return items;
-};
 
 const addIssue = (
   issues: Map<string, SecDcfCoverageIssue>,
@@ -111,38 +86,42 @@ export function buildSecDcfFinancialInputs(
   let totalDebtM: number | null = null;
   let netCashM: number | null = null;
   let latestBalanceSheetPeriodEnd: string | null = null;
+  let ttmReconciliation: SecDcfFinancialInputs['ttmReconciliation'] = null;
 
   if (dataset) {
-    const revenue = lastFourVerified(dataset, 'income_statement.revenue', { positive: true });
-    if (!revenue) {
+    const revenueTtm = reconcileCanonicalTtmFlow(dataset, 'income_statement.revenue');
+    const fcfTtm = reconcileCanonicalTtmFlow(dataset, 'cash_flow.free_cash_flow');
+    ttmReconciliation = { revenue: revenueTtm, freeCashFlow: fcfTtm };
+    const positiveRevenueQuarters = revenueTtm.canonicalValue !== null
+      && dataset.values['income_statement.revenue']?.slice(-4).every(item => finite(item.value) && item.value > 0);
+    if (!positiveRevenueQuarters || revenueTtm.canonicalValue === null) {
       addIssue(issues, {
         code: 'SEC_DCF_INPUT_REVENUE_INCOMPLETE',
         field: 'income_statement.revenue',
         message: 'Four verified positive quarterly revenue values are required.',
       });
     } else {
-      startingRevenueM = round(revenue.reduce((sum, item) => sum + (item.value as number), 0));
+      startingRevenueM = revenueTtm.canonicalValue;
     }
 
-    const fcf = lastFourVerified(dataset, 'cash_flow.free_cash_flow');
-    if (!fcf) {
+    if (fcfTtm.canonicalValue === null) {
       addIssue(issues, {
         code: 'SEC_DCF_INPUT_FCF_INCOMPLETE',
         field: 'cash_flow.free_cash_flow',
         message: 'Four verified quarterly free-cash-flow values are required.',
       });
     } else {
-      trailingFourFreeCashFlowM = round(fcf.reduce((sum, item) => sum + (item.value as number), 0));
+      trailingFourFreeCashFlowM = fcfTtm.canonicalValue;
     }
 
     if (startingRevenueM !== null && startingRevenueM > 0 && trailingFourFreeCashFlowM !== null) {
       historicalFcfMarginPct = round((trailingFourFreeCashFlowM / startingRevenueM) * 100, 6);
     }
 
-    const latestIndex = dataset.periods.length - 1;
-    const cash = latestIndex >= 0 ? verifiedItemAt(dataset, 'balance_sheet.cash_and_equivalents', latestIndex) : null;
-    const investments = latestIndex >= 0 ? verifiedItemAt(dataset, 'balance_sheet.short_term_investments', latestIndex) : null;
-    const debt = latestIndex >= 0 ? verifiedItemAt(dataset, 'balance_sheet.total_debt', latestIndex) : null;
+    const balanceSnapshot = resolveCurrentBalanceSheetSnapshot({ canonical_financials: dataset });
+    const cash = balanceSnapshot.facts.cash_and_equivalents;
+    const investments = balanceSnapshot.facts.short_term_investments;
+    const debt = balanceSnapshot.totalDebt;
 
     if (!cash) {
       addIssue(issues, {
@@ -162,28 +141,25 @@ export function buildSecDcfFinancialInputs(
     } else {
       shortTermInvestmentsM = investments.value as number;
     }
-    if (!debt) {
+    if (debt === null) {
       addIssue(issues, {
         code: 'SEC_DCF_INPUT_DEBT_UNAVAILABLE',
         field: 'balance_sheet.total_debt',
         message: 'Verified current-period total debt is required.',
       });
     } else {
-      totalDebtM = debt.value as number;
+      totalDebtM = debt;
     }
 
-    if (cash && investments && debt) {
-      const ends = [cash.periodEnd, investments.periodEnd, debt.periodEnd];
-      if (ends.some(end => !end) || new Set(ends).size !== 1) {
-        addIssue(issues, {
-          code: 'SEC_DCF_INPUT_BALANCE_SHEET_INSTANT_MISMATCH',
-          field: 'balance_sheet',
-          message: 'Cash, short-term investments, and total debt must share the exact same SEC balance-sheet period end.',
-        });
-      } else {
-        latestBalanceSheetPeriodEnd = ends[0] as string;
-        netCashM = round((cash.value as number) + (investments.value as number) - (debt.value as number));
-      }
+    if (cash && investments && debt !== null && balanceSnapshot.netCash !== null) {
+      latestBalanceSheetPeriodEnd = balanceSnapshot.periodEnd;
+      netCashM = round(balanceSnapshot.netCash);
+    } else if (cash || investments || debt !== null) {
+      addIssue(issues, {
+        code: 'SEC_DCF_INPUT_BALANCE_SHEET_INSTANT_MISMATCH',
+        field: 'balance_sheet',
+        message: 'Cash, short-term investments, and total debt must share the exact same current SEC balance-sheet period end.',
+      });
     }
   }
 
@@ -231,6 +207,7 @@ export function buildSecDcfFinancialInputs(
     currentSharesOutstandingM: finite(currentSharesOutstandingM) && currentSharesOutstandingM > 0
       ? currentSharesOutstandingM
       : null,
+    ttmReconciliation,
     issues: issueList,
   };
 }

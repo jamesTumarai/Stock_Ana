@@ -1,7 +1,9 @@
 import type { DCFModel, ReportData } from '../types';
 import type { SecVerificationEnvelope } from '../domain/secVerification';
-import { validateDcfAssumptionModel } from '../utils/valuation/dcfAssumptionProposal';
+import { resolveDcfAssumptionFinancialContext, validateDcfAssumptionModel } from '../utils/valuation/dcfAssumptionProposal';
 import { authenticatedFetch } from './authenticatedFetch';
+import { resolveBusinessArchetype } from '../domain/financialMetricContext';
+import { valuationMethodPolicy } from '../domain/valuation/adaptiveValuationPolicy';
 
 const text = (value: unknown, max = 1800) =>
   typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
@@ -12,8 +14,10 @@ export async function fetchDcfAssumptionProposal(
   secVerification: SecVerificationEnvelope | null | undefined,
   signal?: AbortSignal,
 ): Promise<DCFModel | null> {
-  const sec = secVerification?.dcf_financial_inputs;
-  if (secVerification?.status !== 'verified_eligible' || !sec?.eligible) return null;
+  // A missing financial-sector model is never repaired with industrial FCFF.
+  if (!valuationMethodPolicy(resolveBusinessArchetype(report)).includes('FCFF_DCF')) return null;
+  const verifiedFinancialContext = resolveDcfAssumptionFinancialContext(secVerification, ticker);
+  if (!verifiedFinancialContext) return null;
 
   const profile = report.company_profile as any;
   const comprehensive = report.comprehensive_analysis as any;
@@ -33,12 +37,7 @@ export async function fetchDcfAssumptionProposal(
         ticker: ticker.trim().toUpperCase(),
         companyName: text(profile?.company_name, 200) || text((report as any).company_name, 200) || ticker.trim().toUpperCase(),
         businessContext,
-        verifiedFinancialContext: {
-          sourcePeriod: sec.source_period,
-          startingRevenueM: sec.starting_revenue_m,
-          trailingFourFreeCashFlowM: sec.trailing_four_free_cash_flow_m,
-          historicalFcfMarginPct: sec.historical_fcf_margin_pct,
-        },
+        verifiedFinancialContext,
       }),
       signal,
     });

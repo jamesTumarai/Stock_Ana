@@ -127,7 +127,7 @@ assert.deepEqual(annualResult.income_statement.revenue, [4800]);
 assert.deepEqual(annualResult.income_statement.gross_profit, [2880]);
 assert.deepEqual(annualResult.income_statement.operating_income, [1440]);
 assert.deepEqual(annualResult.income_statement.net_income, [960]);
-assert.deepEqual(annualResult.income_statement.eps_diluted, [2.40]);
+assert.deepEqual(annualResult.income_statement.eps_diluted, [null], 'EPS is not additive across quarters');
 assert.deepEqual(annualResult.income_statement.gross_margin_pct, [60]);
 assert.deepEqual(annualResult.income_statement.operating_margin_pct, [30]);
 assert.deepEqual(annualResult.income_statement.net_margin_pct, [20]);

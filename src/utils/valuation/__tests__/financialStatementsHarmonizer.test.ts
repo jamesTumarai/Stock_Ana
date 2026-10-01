@@ -18,10 +18,8 @@ const sourced = {
   },
 };
 const preserved = harmonizeReportData(sourced as any, 'TEST');
-assert.deepEqual(
-  preserved.financial_statements,
-  sourced.financial_statements,
-  'Sourced statements must be preserved without synthetic periods or values',
-);
+assert.deepEqual(preserved.financial_statements?.periods, [], 'Unverified model arrays cannot become an accounting source package');
+assert.equal(preserved.financial_statements?.quality_status, 'unavailable');
+assert.deepEqual(sourced.financial_statements.periods, ['Q1 2026'], 'Input remains immutable');
 
 console.log('Financial statement missing-data policy checks passed');

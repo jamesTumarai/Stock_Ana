@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { ReportData } from '../types';
 import { buildReportProvenanceManifest } from './reportProvenance';
+import { verifiedFixtureFromStatements } from '../domain/__tests__/verifiedFixtureBuilder';
 
 const metadata = {
   generatedAt: '2026-09-10T00:00:00.000Z',
@@ -62,8 +63,9 @@ const baseReport = (): ReportData => ({
   assert.equal(manifest.version, 1);
   assert.equal(manifest.research_narrative.source, 'ai_research');
   assert.equal(manifest.research_narrative.source_verification, 'not_independently_verified');
-  assert.equal(manifest.financial_statements.source, 'report_snapshot');
-  assert.equal(manifest.financial_statements.source_verification, 'not_independently_verified');
+  assert.equal(manifest.financial_statements.source, 'unavailable');
+  assert.equal(manifest.financial_statements.source_verification, 'unavailable');
+  assert.equal(manifest.financial_statements.used_in_output, false);
   assert.equal(manifest.dcf_financial_inputs.source, 'report_snapshot');
   assert.equal(manifest.dcf_financial_inputs.used_in_output, true);
   assert.equal(manifest.sec_cross_check.status, 'not_run');
@@ -115,7 +117,7 @@ const baseReport = (): ReportData => ({
   const manifest = buildReportProvenanceManifest(report, metadata);
   assert.equal(manifest.dcf_financial_inputs.source, 'sec_verified');
   assert.equal(manifest.dcf_financial_inputs.source_verification, 'independently_verified');
-  assert.equal(manifest.financial_statements.source, 'report_snapshot', 'SEC DCF eligibility must not relabel displayed statements');
+  assert.equal(manifest.financial_statements.source, 'unavailable', 'SEC DCF eligibility must not certify unaccepted model statements');
   assert.equal(manifest.sec_cross_check.status, 'verified_eligible');
   assert.equal(manifest.sec_cross_check.filing_type, '10-Q');
 }
@@ -161,3 +163,14 @@ const baseReport = (): ReportData => ({
 }
 
 console.log('Report provenance manifest checks passed');
+
+{
+  const report = baseReport();
+  report.financial_statements!.verified_dataset = verifiedFixtureFromStatements(report.financial_statements!);
+  const manifest = buildReportProvenanceManifest(report, metadata);
+  assert.equal(manifest.financial_statements.source, 'sec_verified');
+  assert.equal(manifest.financial_statements.source_verification, 'independently_verified');
+  assert.match(manifest.financial_statements.note, /Missing cells remain unavailable/);
+  delete report.financial_statements!.verified_dataset!.mappingVersion;
+  assert.equal(buildReportProvenanceManifest(report, metadata).financial_statements.source, 'unavailable');
+}

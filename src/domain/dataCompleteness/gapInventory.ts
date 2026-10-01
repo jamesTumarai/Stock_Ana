@@ -116,6 +116,9 @@ export const ARCHETYPE_METRIC_RULES: Record<BusinessArchetype, MetricArchetypeRu
   ],
   asset_manager: [],
   broker_exchange: [],
+  // A conglomerate has segment-level inputs; generic issuer-wide operating
+  // ratios do not establish a component valuation.
+  conglomerate: [],
   semiconductor: [],
   hardware_device: [],
   industrial_manufacturing: [],

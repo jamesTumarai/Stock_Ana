@@ -9,9 +9,15 @@ import { normalizeReport } from './reportIntegrity';
 import { detectStatementTemplate, validateFinancialStatements } from './statementValidator';
 import { buildReportProvenanceManifest } from './reportProvenance';
 import { buildMarketSnapshot, type MarketQuoteLike } from '../domain/marketSnapshot';
+import { resolveReportTtmFlow, TTM_CURRENCY_ROUNDING_TOLERANCE_M } from '../domain/canonicalTtmFlow';
+import { resolveReportCompletion } from '../domain/reportCompletion';
+import {isDcfOnlyCriticalIssue} from '../domain/valuation/valuationDependencies';
+import {calculateDeterministicConvictionScore} from './valuation/convictionScorer';
+import { detectValuationModel } from './valuation/modelSelector';
+import { buildCanonicalExecutiveSnapshot, reconcileExecutiveSummary, reconcileKeyTakeaways, reconcileCurrentValuationProse, validateSection1Integrity } from '../domain/canonicalExecutiveSnapshot';
 
-export const CURRENT_REPORT_SCHEMA_VERSION = 2;
-export const CURRENT_GENERATED_BY_VERSION = 'lumina-phase3-provenance-v1';
+export const CURRENT_REPORT_SCHEMA_VERSION = 3;
+export const CURRENT_GENERATED_BY_VERSION = 'lumina-period-true-statements-v2';
 
 export interface PreparedReportResult {
   report: ReportData | null;
@@ -450,6 +456,11 @@ const addCrossSectionIssues = (
   issues: ReportValidationIssue[],
   hasCanonicalMarketSnapshot = false,
 ) => {
+  for (const code of report.technical_analysis?.snapshot_audit?.codes || []) {
+    issue(issues, code, 'warning', 'technical_analysis',
+      'Technical observations retain their original price basis; compatible source/timestamp/timeframe metadata is missing or conflicts.',
+      'technical_analysis.input_snapshot / section_basis');
+  }
   const profilePrice = report.company_profile?.stock_price;
   const intrinsicPrice = report.intrinsic_value?.current_price;
   if (isFiniteNumber(profilePrice) && isFiniteNumber(intrinsicPrice) && relativeDifference(profilePrice, intrinsicPrice) > 0.01) {
@@ -466,7 +477,11 @@ const addCrossSectionIssues = (
 
   const summaryBase = report.intrinsic_value?.summary?.base_case_fair_value;
   const modelBase = report.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share;
-  if (isFiniteNumber(summaryBase) && isFiniteNumber(modelBase) && relativeDifference(summaryBase, modelBase) > 0.01) {
+  const methodIsDcf = report.intrinsic_value?.canonical_run
+    ? report.intrinsic_value.canonical_run.primaryMethod === 'FCFF_DCF'
+    : detectValuationModel(report, report.ticker).model_type.startsWith('dcf_');
+  if (methodIsDcf && isFiniteNumber(summaryBase) && isFiniteNumber(modelBase)
+    && relativeDifference(summaryBase, modelBase) > 0.01) {
     issue(issues, 'DCF_SUMMARY_CONFLICT', 'critical', 'valuation',
       `DCF base fair value conflicts with intrinsic-value summary (${modelBase} vs ${summaryBase}).`,
       'intrinsic_value.summary.base_case_fair_value');
@@ -475,13 +490,12 @@ const addCrossSectionIssues = (
   const fs = report.financial_statements;
   const modelInputs = report.intrinsic_value?.dcf_model?.inputs;
   const periods = fs?.periods ?? [];
-  if (fs && modelInputs && periods.length >= 4) {
-    const revenues = fs.income_statement?.revenue?.slice(-4) ?? [];
-    if (revenues.length === 4 && revenues.every(isFiniteNumber) && isFiniteNumber(modelInputs.startingRevenueM)) {
-      const ttmRevenue = revenues.reduce((sum, value) => sum + value, 0);
-      if (relativeDifference(ttmRevenue, modelInputs.startingRevenueM) > 0.01) {
+  if (methodIsDcf && fs && modelInputs && periods.length >= 4) {
+    const ttmRevenue = resolveReportTtmFlow(report, 'income_statement.revenue');
+    if (ttmRevenue.canonicalValue !== null && isFiniteNumber(modelInputs.startingRevenueM)) {
+      if (Math.abs(ttmRevenue.canonicalValue - modelInputs.startingRevenueM) > TTM_CURRENCY_ROUNDING_TOLERANCE_M) {
         issue(issues, 'DCF_REVENUE_INPUT_CONFLICT', 'critical', 'valuation',
-          `DCF starting revenue (${modelInputs.startingRevenueM}M) does not match the disclosed four-quarter revenue sum (${ttmRevenue}M).`,
+          `DCF starting revenue (${modelInputs.startingRevenueM}M) does not match the canonical four-quarter revenue sum (${ttmRevenue.canonicalValue}M).`,
           'intrinsic_value.dcf_model.inputs.startingRevenueM');
       }
     }
@@ -514,10 +528,24 @@ const addStatementValidationIssues = (report: ReportData, issues: ReportValidati
 
   for (const guard of validation.failed_guards ?? []) {
     const code = guard.split(':')[0]?.trim() || 'STATEMENT_VALIDATION_FAILED';
+    // Keep archival balance failures in the statement diagnostics, but do not
+    // fail a current report for an instant outside its current/comparative
+    // dependency window. Two years of TTM return comparisons need nine quarter
+    // instants (or three annual instants), including the opening denominator.
+    // Unknown periods and legacy/model-only statements continue to fail closed.
+    const affectedPeriodIndex = fs.periods.findIndex(period =>
+      guard.startsWith(`${code}: ${period} Assets - `));
+    const currentInstantCount = fs.fiscal_period_type === 'annual' ? 3
+      : fs.fiscal_period_type === 'quarterly' ? 9 : fs.periods.length;
+    const archivalBalanceFailure = code === 'BALANCE_SHEET_IMBALANCE'
+      && Boolean(fs.verified_dataset)
+      && affectedPeriodIndex >= 0
+      && affectedPeriodIndex < fs.periods.length - currentInstantCount;
     const severity: ValidationSeverity = /BALANCE_SHEET_IMBALANCE|IMPOSSIBLE|CRITICAL|FCF_IDENTITY_MISMATCH|EXTRAPOLATION|DISCREPANCY/.test(code)
-      ? 'critical'
+      ? archivalBalanceFailure ? 'warning' : 'critical'
       : 'warning';
-    issue(issues, code, severity, 'financial_statements', guard, 'financial_statements.validation_summary');
+    issue(issues, archivalBalanceFailure ? 'HISTORICAL_BALANCE_SHEET_IMBALANCE' : code,
+      severity, 'financial_statements', guard, 'financial_statements.validation_summary');
   }
 };
 
@@ -579,13 +607,15 @@ const sanitizeCriticalScalars = (report: Record<string, any>, issues: ReportVali
 };
 
 const blockCriticalFinancialOutputs = (report: ReportData, validation: ReportValidationResult): ReportData => {
+  const critical=validation.issues.filter(item=>item.severity==='critical');
+  const dcfOnly=critical.length>0 && critical.every(isDcfOnlyCriticalIssue);
   const blockedSections = new Set(
     validation.issues
       .filter(item => item.severity === 'critical')
       .map(item => item.section),
   );
   const valuationBlocked = ['financial_statements', 'valuation', 'cross_section', 'market_data'].some(section => blockedSections.has(section));
-  const convictionBlocked = validation.status === 'invalid';
+  const convictionBlocked = validation.status === 'invalid' && !dcfOnly;
 
   if (convictionBlocked && report.verdict) {
     report.verdict.conviction_score = null;
@@ -594,7 +624,16 @@ const blockCriticalFinancialOutputs = (report: ReportData, validation: ReportVal
 
   if (valuationBlocked && report.intrinsic_value) {
     const intrinsic = report.intrinsic_value;
-    intrinsic.summary = {
+    if (intrinsic.canonical_run && (!dcfOnly || intrinsic.canonical_run.primaryMethod === 'FCFF_DCF')) {
+      intrinsic.canonical_run = {
+        ...intrinsic.canonical_run,
+        status: 'INSUFFICIENT_VERIFIED_DATA',
+        baseFairValue: null, bearFairValue: null, bullFairValue: null,
+        marginOfSafetyPct: null,
+        missingInputs: [...intrinsic.canonical_run.missingInputs, 'REPORT_VALIDATION_BLOCK'],
+      };
+    }
+    if (!dcfOnly || !intrinsic.selected_model || intrinsic.selected_model.model_type.startsWith('dcf_')) intrinsic.summary = {
       ...intrinsic.summary,
       fair_value_range_low: null,
       fair_value_range_high: null,
@@ -602,8 +641,15 @@ const blockCriticalFinancialOutputs = (report: ReportData, validation: ReportVal
       margin_of_safety_pct: null,
       verdict_text: 'Valuation unavailable because critical data-validation checks failed.',
     };
-    intrinsic.relative_valuation = undefined;
-    intrinsic.relative_only_model = undefined;
+    if (!dcfOnly) {
+      intrinsic.relative_valuation = undefined;
+      intrinsic.relative_only_model = undefined;
+    }
+    // The same quarantine covers every sector valuation; a bank/REIT base
+    // scenario must not survive merely because it isn't called dcf_model.
+    for (const model of dcfOnly ? [] : [intrinsic.ddm_model, intrinsic.reit_model, intrinsic.cyclical_model]) {
+      for (const scenario of Object.values(model?.scenarios ?? {})) scenario.fair_value_per_share = null;
+    }
     if (intrinsic.dcf_model) {
       intrinsic.dcf_model.inputs = {
         ...(intrinsic.dcf_model.inputs ?? {
@@ -638,6 +684,11 @@ const blockCriticalFinancialOutputs = (report: ReportData, validation: ReportVal
     ];
   }
 
+  if (dcfOnly && report.verdict) {
+    const score = calculateDeterministicConvictionScore(report, report.ticker);
+    report.verdict.conviction_score = score?.conviction_score ?? null;
+    report.verdict.conviction_breakdown = score?.conviction_breakdown;
+  }
   report.validation = validation;
   return report;
 };
@@ -681,6 +732,23 @@ export function validateAndPrepareReport(
     report.ticker = modelTicker;
   }
 
+  for (const [path, identity] of [
+    ['canonical_financials.ticker', report.canonical_financials?.ticker],
+    ['sec_verification.ticker', report.sec_verification?.ticker],
+  ]) if (typeof identity === 'string' && identity.trim().toUpperCase() !== report.ticker) {
+    issue(issues, 'SOURCE_COMPANY_IDENTITY_MISMATCH', 'critical', 'schema',
+      'Independent source identity does not match the requested report.', path);
+  }
+  const sourcePeriods = report.canonical_financials?.periods;
+  if (['SEC_COMPANY_IDENTITY_MISMATCH', 'SEC_RESPONSE_TICKER_MISMATCH'].includes(report.sec_verification?.error?.code)) {
+    issue(issues, 'SOURCE_COMPANY_IDENTITY_MISMATCH', 'critical', 'schema',
+      'Independent source verification detected a different company.', 'sec_verification.error');
+  }
+  if (Array.isArray(sourcePeriods) && new Set(sourcePeriods).size !== sourcePeriods.length) {
+    issue(issues, 'CORRUPTED_CANONICAL_PERIOD_MODEL', 'critical', 'financial_statements',
+      'Canonical source periods contain duplicate identities.', 'canonical_financials.periods');
+  }
+
   if (typeof report.generated_at !== 'string' || !report.generated_at.trim()) {
     issue(issues, 'MISSING_GENERATED_AT', 'warning', 'metadata',
       'generated_at was missing; the application timestamp was used.', 'generated_at');
@@ -700,7 +768,7 @@ export function validateAndPrepareReport(
   sanitizeFinancialStatements(report, issues);
   sanitizeCriticalScalars(report, issues);
 
-  const typedReport = report as ReportData;
+  let typedReport = report as ReportData;
   const marketQuote = typedReport.ticker
     ? options.marketQuotes?.[typedReport.ticker.toUpperCase()]
     : undefined;
@@ -708,8 +776,17 @@ export function validateAndPrepareReport(
     ? buildMarketSnapshot(typedReport.ticker, marketQuote)
     : null;
 
+  // Rebuild accounting authority before guards inspect any model-proposed numbers.
+  addCrossSectionIssues(typedReport, issues, Boolean(marketSnapshot));
+  typedReport = normalizeReport(typedReport, typedReport.ticker, options.marketQuotes);
   if (typedReport.financial_statements) addStatementValidationIssues(typedReport, issues);
   addCrossSectionIssues(typedReport, issues, Boolean(marketSnapshot));
+  const run = typedReport.intrinsic_value?.canonical_run;
+  if (run?.status === 'NON_DETERMINISTIC') {
+    issue(issues, 'VALUATION_NON_DETERMINISTIC_OUTPUT', 'critical', 'valuation',
+      'The same financial and assumption fingerprints produced different fair values.',
+      'intrinsic_value.canonical_run');
+  }
 
   if (options.requireMarketSnapshot && !marketSnapshot) {
     issue(issues, 'MARKET_SNAPSHOT_UNAVAILABLE', 'critical', 'market_data',
@@ -717,6 +794,10 @@ export function validateAndPrepareReport(
       'market_snapshot');
   }
 
+  for (const code of typedReport.research_integrity?.diagnostics ?? []) {
+    issue(issues, code.split(':')[0], 'warning', 'cross_section',
+      'Research evidence reconciliation requires review: ' + code, 'research_integrity');
+  }
   const validation: ReportValidationResult = {
     status: statusFromIssues(issues),
     issues,
@@ -731,6 +812,24 @@ export function validateAndPrepareReport(
   normalized.validation = validation;
 
   const prepared = blockCriticalFinancialOutputs(normalized, validation);
+  // Quarantine happens AFTER normalization. Rebuild current decision values now
+  // so header/history cannot resurrect a fair value or score blocked above.
+  prepared.canonical_executive_snapshot = buildCanonicalExecutiveSnapshot(prepared, prepared.ticker);
+  if (prepared.verdict?.summary) prepared.verdict.summary = reconcileExecutiveSummary(prepared.verdict.summary, prepared.canonical_executive_snapshot);
+  if (prepared.verdict?.key_takeaways) prepared.verdict.key_takeaways = reconcileKeyTakeaways(prepared.verdict.key_takeaways, prepared.canonical_executive_snapshot);
+  reconcileCurrentValuationProse(prepared,prepared.canonical_executive_snapshot);
+  if (prepared.current_narrative_audit?.length)
+    issue(issues,'CANONICAL_RATIO_NARRATIVE_RECONCILED','warning','cross_section',
+      'Current ratio prose was reconciled to the canonical period and denominator. Historical and external observations retain their original basis.',
+      'current_narrative_audit');
+  // Run the monetary prose invariant at the final boundary, not merely in
+  // tests. Other qualitative findings keep their existing evidence policies.
+  // An unresolved numeric contradiction cannot be published as a completed run.
+  const proseAudit=validateSection1Integrity(prepared,prepared.ticker);
+  for(const message of proseAudit.issues.filter(message=>/conflicts with canonical (?:Fair Value|Market Price|Margin of Safety)/.test(message)))
+    issue(issues,'NARRATIVE_CANONICAL_VALUE_MISMATCH','critical','cross_section',message,'verdict');
+  validation.status=statusFromIssues(issues);
+  prepared.report_completion = resolveReportCompletion(prepared, validation);
   prepared.report_provenance = buildReportProvenanceManifest(prepared, {
     generatedAt: checkedAt,
     schemaVersion: CURRENT_REPORT_SCHEMA_VERSION,
@@ -739,7 +838,7 @@ export function validateAndPrepareReport(
   return {
     report: prepared,
     validation,
-    canPersist: validation.status !== 'invalid',
+    canPersist: prepared.report_completion.executionStatus === 'COMPLETED',
   };
 }
 

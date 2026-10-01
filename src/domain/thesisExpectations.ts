@@ -229,8 +229,8 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
   },
   {
     id: 'cash_and_equivalents',
-    labelEn: 'Cash & Equivalents',
-    labelTh: 'เงินสดและรายการเทียบเท่า',
+    labelEn: 'Cash & Cash Equivalents',
+    labelTh: 'เงินสดและรายการเทียบเท่าเงินสด',
     unit: '$M',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'early_stage'],
@@ -246,8 +246,8 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
   },
   {
     id: 'net_cash',
-    labelEn: 'Net Cash (Cushion)',
-    labelTh: 'เงินสดสุทธิ (Net Cash Cushion)',
+    labelEn: 'Net Cash',
+    labelTh: 'สถานะเงินสดสุทธิ',
     unit: '$M',
     category: 'FINANCIAL',
     applicableBusinessTypes: ['operating', 'early_stage', 'cyclical'],
@@ -258,8 +258,8 @@ export const EXPECTATION_METRIC_REGISTRY: ExpectationMetricDefinition[] = [
     ],
     evaluationMode: 'AUTO',
     supportedPeriods: ['QUARTER', 'ANNUAL'],
-    descriptionTh: 'เงินสดและเงินลงทุนระยะสั้น หัก หนี้สินรวม (Cash + STI - Total Debt)',
-    descriptionEn: 'Cash and short-term investments less total debt on balance sheet.'
+    descriptionTh: 'สถานะเงินสดสุทธิ = เงินสดและรายการเทียบเท่าเงินสด + เงินลงทุนระยะสั้น - หนี้สินทางการเงินตามข้อมูล canonical',
+    descriptionEn: 'Net Cash = Cash & Cash Equivalents + Short-Term Investments - Canonical Debt.'
   },
 
   // 2. Financial Institutions / FinTech Metrics

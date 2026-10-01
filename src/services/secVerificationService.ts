@@ -4,6 +4,8 @@ import type {
   SecVerificationEnvelope,
   SecVerificationIssue,
 } from '../domain/secVerification';
+import { buildVerifiedStatementPeriods } from '../domain/verifiedFinancialStatements';
+import { unavailableResolutionAudit } from './sec/canonicalResolutionAudit';
 
 const isRecord = (value: unknown): value is Record<string, any> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -118,6 +120,7 @@ const normalizeDcfInputs = (value: unknown, expectedTicker: string): SecDcfFinan
 };
 
 const unavailableEnvelope = (ticker: string, code: string, message: string): SecVerificationEnvelope => ({
+  resolution_audit: unavailableResolutionAudit('SOURCE_FETCH_FAILED'),
   status: 'unavailable',
   ticker,
   retrieved_at: null,
@@ -134,15 +137,20 @@ const unavailableEnvelope = (ticker: string, code: string, message: string): Sec
  * compact, runtime-validated verification envelope on the report. This function never fabricates
  * missing SEC data and never upgrades a partial server response to eligible on the client.
  */
+// A cold server may retrieve multiple filing cohorts and earnings exhibits.
+// A 12-second client cutoff discarded valid data while that work continued.
+// Keep a bounded deadline independent of the parallel AI request, plus cancellation.
+export const SEC_VERIFICATION_TIMEOUT_MS = 60_000;
+
 export async function fetchSecVerificationEnvelope(
   ticker: string,
   parentSignal?: AbortSignal,
 ): Promise<SecVerificationEnvelope | null> {
   const normalizedTicker = ticker.trim().toUpperCase();
-  if (!normalizedTicker) return null;
+  if (!normalizedTicker || parentSignal?.aborted) return null;
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 12_000);
+  const timeout = window.setTimeout(() => controller.abort(), SEC_VERIFICATION_TIMEOUT_MS);
   const abortFromParent = () => controller.abort();
   parentSignal?.addEventListener('abort', abortFromParent, { once: true });
 
@@ -228,7 +236,9 @@ export async function fetchSecVerificationEnvelope(
       : undefined;
 
     return {
-      status: eligible ? 'verified_eligible' : provenanceStatus === 'verified' ? 'verified_partial' : 'unavailable',
+      status: eligible ? 'verified_eligible' : provenanceStatus === 'verified'
+        || canonicalFinancials && buildVerifiedStatementPeriods(canonicalFinancials).some(p => Object.keys(p.observations).length)
+        ? 'verified_partial' : 'unavailable',
       ticker: normalizedTicker,
       retrieved_at: textOrNull(body.retrievedAt),
       provenance_status: provenanceStatus,
@@ -238,6 +248,7 @@ export async function fetchSecVerificationEnvelope(
       latest_statements_source: latestSource,
       sec_period_statements: secPeriodStatements,
       canonical_financials: canonicalFinancials,
+      resolution_audit: canonicalFinancials?.resolutionAudit ?? (isRecord(body.resolutionAudit) ? body.resolutionAudit as unknown as SecVerificationEnvelope['resolution_audit'] : unavailableResolutionAudit('NO_SEMANTIC_MAPPING')),
       historical_annual_facts: historicalAnnualFacts,
     };
   } catch (error: any) {

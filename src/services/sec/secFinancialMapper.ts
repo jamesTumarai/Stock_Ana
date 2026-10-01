@@ -1,3 +1,6 @@
+import { STATEMENT_MAPPING_VERSION, STATEMENT_NORMALIZATION_VERSION } from '../../domain/verifiedFinancialStatements';
+import { workingCapitalCashEffect } from '../../domain/workingCapitalSemantics';
+import { auditCanonicalResolution } from './canonicalResolutionAudit';
 import {
   CANONICAL_FINANCIAL_GENERATOR,
   CANONICAL_FINANCIAL_SCHEMA_VERSION,
@@ -25,82 +28,13 @@ export interface SecCompanyBundleLike {
   submissions: SecSubmissionsResponse;
   companyFacts: SecCompanyFactsResponse;
   retrievedAt: string;
+  filingDocuments?: Array<{ html: string; documentUrl: string; accession: string; form: string; filingDate?: string }>;
+  completionAttempts?: Array<{documentUrl: string; status: 'retrieved' | 'unavailable'; reasonCode?: string}>;
+  completionConflicts?: Array<{metric: string; period: string; documentUrl: string; canonicalValue: number; presentationValue: number}>;
 }
 
-type MetricSpec = {
-  statement: FinancialStatementSection;
-  metric: string;
-  concepts: string[];
-  unit: string;
-  canonicalUnit: FinancialUnit;
-  factKind: 'duration' | 'instant';
-  type?: FinancialValueType;
-};
-
-export const METRIC_SPECS: MetricSpec[] = [
-  { statement: 'income_statement', metric: 'revenue', concepts: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'gross_profit', concepts: ['GrossProfit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'operating_income', concepts: ['OperatingIncomeLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'interest_expense', concepts: ['InterestExpense', 'InterestExpenseNonoperating', 'InterestExpenseDebt', 'InterestExpenseDebtExcludingAmortization', 'InterestAndDebtExpense'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'income_before_tax', concepts: ['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'income_tax_expense', concepts: ['IncomeTaxExpenseBenefit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'net_income', concepts: ['NetIncomeLoss', 'ProfitLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'eps_diluted', concepts: ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'IncomeLossFromContinuingOperationsPerDilutedShare'], unit: 'USD/shares', canonicalUnit: 'per_share', factKind: 'duration' },
-
-  // Restricted cash is not interchangeable with cash available for valuation/net-cash calculations.
-  { statement: 'balance_sheet', metric: 'cash_and_equivalents', concepts: ['CashAndCashEquivalentsAtCarryingValue'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'short_term_investments', concepts: ['ShortTermInvestments', 'MarketableSecuritiesCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_current_assets', concepts: ['AssetsCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'accounts_receivable', concepts: ['AccountsReceivableNetCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'inventory', concepts: ['InventoryNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'net_ppe', concepts: ['PropertyPlantAndEquipmentNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'goodwill', concepts: ['Goodwill'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_assets', concepts: ['Assets'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_current_liabilities', concepts: ['LiabilitiesCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'accounts_payable', concepts: ['AccountsPayableCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_liabilities', concepts: ['Liabilities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'short_term_debt', concepts: ['DebtCurrent', 'ShortTermBorrowings', 'CommercialPaper', 'LongTermDebtCurrent', 'FinanceLeaseLiabilityCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'long_term_debt', concepts: ['LongTermDebtNoncurrent', 'LongTermDebt', 'FinanceLeaseLiabilityNoncurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_debt', concepts: ['DebtAndFinanceLeaseObligations', 'LongTermDebtAndCapitalLeaseObligations', 'LongTermDebtAndFinanceLeaseObligations'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'operating_lease_rou_assets', concepts: ['OperatingLeaseRightOfUseAsset'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'operating_lease_liabilities_current', concepts: ['OperatingLeaseLiabilityCurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'operating_lease_liabilities_non_current', concepts: ['OperatingLeaseLiabilityNoncurrent'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'operating_lease_liabilities', concepts: ['OperatingLeaseLiability'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'total_equity', concepts: ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'common_stock', concepts: ['CommonStockValue', 'CommonStocksIncludingAdditionalPaidInCapital'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'retained_earnings', concepts: ['RetainedEarningsAccumulatedDeficit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-
-  { statement: 'cash_flow', metric: 'operating_cash_flow', concepts: ['NetCashProvidedByUsedInOperatingActivities'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'cash_flow', metric: 'depreciation', concepts: ['DepreciationDepletionAndAmortization', 'DepreciationAmortizationAndAccretionNet', 'DepreciationAndAmortization'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'cash_flow', metric: 'stock_based_compensation', concepts: ['AllocatedShareBasedCompensationExpense', 'ShareBasedCompensation'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  // PaymentsToAcquireProductiveAssets is an SEC standard-taxonomy capex concept that includes
-  // purchases/capital improvements of PPE, software and other productive intangible assets.
-  // It is a fallback only for fiscal periods where the narrower PPE concept is unavailable.
-  { statement: 'cash_flow', metric: 'capex', concepts: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'cash_flow', metric: 'dividends_paid', concepts: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'cash_flow', metric: 'repurchase_of_common_stock', concepts: ['PaymentsForRepurchaseOfCommonStock', 'PaymentsForRepurchaseOfEquity', 'PaymentsForRepurchaseOfInitialPublicOfferingShares'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'cash_flow', metric: 'issuance_of_common_stock', concepts: ['ProceedsFromIssuanceOfCommonStock', 'ProceedsFromStockOptionsExercised', 'ProceedsFromIssuanceOrSaleOfEquity', 'ProceedsFromStockIssuance', 'ProceedsFromIssuanceOfShares'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-
-  // Banking / FinTech
-  { statement: 'income_statement', metric: 'net_interest_income', concepts: ['NetInterestIncome', 'InterestIncomeExpenseNet', 'InterestAndDividendIncomeOperating'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'non_interest_income', concepts: ['NoninterestIncome', 'FeesAndCommissionsOtherThanFromSecuritiesTransactions'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'provision_for_credit_losses', concepts: ['ProvisionForLoanLeaseAndOtherLosses', 'ProvisionForCreditLosses'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'net_interest_margin_pct', concepts: ['NetInterestMargin', 'NetInterestMarginAnnualized'], unit: 'pure', canonicalUnit: 'percent', factKind: 'duration' },
-  { statement: 'balance_sheet', metric: 'deposits', concepts: ['Deposits', 'InterestBearingDepositLiabilities', 'DepositsDomestic'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'loans_held_for_investment', concepts: ['LoansAndLeasesReceivableNetReported', 'LoansAndLeasesReceivableGrossReported', 'FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss', 'LoansHeldForInvestment'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'tier1_capital_ratio', concepts: ['Tier1CapitalRatio', 'CapitalRatioTier1'], unit: 'pure', canonicalUnit: 'percent', factKind: 'instant' },
-  { statement: 'balance_sheet', metric: 'cet1_ratio', concepts: ['CommonEquityTier1RiskBasedCapitalRatio'], unit: 'pure', canonicalUnit: 'percent', factKind: 'instant' },
-
-  // REITs
-  { statement: 'income_statement', metric: 'ffo', concepts: ['FundsFromOperations'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'noi', concepts: ['NetOperatingIncome'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'rental_revenue', concepts: ['OperatingLeasesIncomeStatementLeaseRevenue', 'RentalIncome'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-
-  // Insurance
-  { statement: 'income_statement', metric: 'combined_ratio_pct', concepts: ['CombinedRatio', 'CombinedRatioPropertyAndCasualty'], unit: 'pure', canonicalUnit: 'percent', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'net_premiums_earned', concepts: ['PremiumsEarnedNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'balance_sheet', metric: 'loss_reserve', concepts: ['LiabilityForClaimsAndClaimsAdjustmentExpense', 'LossAndLossAdjustmentExpenseReserve'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'instant' },
-];
+import { METRIC_SPECS, type MetricSpec } from './canonicalMetricDefinitions';
+export { METRIC_SPECS } from './canonicalMetricDefinitions';
 
 const quarterKey = (fact: Pick<NormalizedSecQuarterFact, 'fiscalYear' | 'fiscalQuarter'>) => `${fact.fiscalYear}-Q${fact.fiscalQuarter}`;
 const periodLabel = (key: string) => {
@@ -116,17 +50,12 @@ const normalizedSort = (a: string, b: string) => {
   return parse(a) - parse(b);
 };
 
-const toMillions = (value: number, unit: string) => unit === 'USD' ? value / 1_000_000 : value;
+const toMillions = (value: number, unit: string) => unit === 'USD' ? Math.round(value / 1_000_000 * 1e8) / 1e8 : value;
 
 const getConcept = (facts: SecCompanyFactsResponse, conceptName: string): SecCompanyConcept | undefined => {
   if (!facts?.facts) return undefined;
   if (facts.facts['us-gaap']?.[conceptName]) return facts.facts['us-gaap'][conceptName];
   if (facts.facts['dei']?.[conceptName]) return facts.facts['dei'][conceptName];
-  for (const [ns, concepts] of Object.entries(facts.facts)) {
-    if (ns !== 'us-gaap' && ns !== 'dei' && concepts?.[conceptName]) {
-      return concepts[conceptName];
-    }
-  }
   return undefined;
 };
 
@@ -152,8 +81,8 @@ export interface SecAnnualRevenueFact {
  */
 export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike): SecAnnualRevenueFact[] {
   const submissionMap = submissionDocumentMap(bundle.identity, bundle.submissions);
-  const revenueConcepts = ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'];
-  let bestHistory: SecAnnualRevenueFact[] = [];
+  const revenueConcepts = METRIC_SPECS.find(spec => spec.statement === 'income_statement' && spec.metric === 'revenue')!.concepts;
+  const histories: SecAnnualRevenueFact[][] = [];
 
   for (const definition of revenueConcepts) {
     // Company Facts repeats comparative annual values in later filings. `fy`
@@ -191,30 +120,49 @@ export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike)
       }
     }
     const history = [...byPeriodEnd.values()].sort((a, b) => a.period_end.localeCompare(b.period_end));
-    if (history.length > bestHistory.length) bestHistory = history;
-    // Do not mix definitions. The highest-priority concept wins once it covers a true 3Y endpoint.
-    if (history.some((end, index) => history.slice(0, index).some(start => end.fiscal_year - start.fiscal_year === 3))) return history;
+    histories.push(history);
   }
-  return bestHistory;
+  // Never choose a stale legacy concept or a narrower subtotal merely because
+  // it offers a longer CAGR window. Equal-current-period histories preserve
+  // the shared total-revenue definition priority; missing older endpoints stay
+  // missing instead of mixing economic definitions.
+  return histories.sort((a, b) => String(b.at(-1)?.period_end ?? '').localeCompare(String(a.at(-1)?.period_end ?? '')))[0] ?? [];
 }
 
 const normalizeConcept = (concept: SecCompanyConcept | undefined, spec: MetricSpec): NormalizedSecQuarterFact[] => {
   const rawFacts = concept?.units?.[spec.unit]
-    || (spec.unit === 'USD/shares' ? concept?.units?.['USD/share'] || concept?.units?.['pure'] : undefined)
+    || (spec.unit === 'USD/shares' ? concept?.units?.['USD/share'] : undefined)
     || (spec.unit === 'pure' ? concept?.units?.['pure'] : undefined);
   if (!Array.isArray(rawFacts)) return [];
   return spec.factKind === 'duration'
-    ? normalizeDurationFactsToStandaloneQuarters(rawFacts)
+    ? normalizeDurationFactsToStandaloneQuarters(rawFacts, { additive: spec.canonicalUnit === 'USD_M' })
     : normalizeInstantFactsToFiscalQuarters(rawFacts);
 };
 
-const mergeConceptAliases = (facts: SecCompanyFactsResponse, spec: MetricSpec) => {
+const mergeConceptAliases = (facts: SecCompanyFactsResponse, spec: MetricSpec, expectedEnds?: Map<string,string>) => {
   const merged = new Map<string, { fact: NormalizedSecQuarterFact; concept: string }>();
+  if (spec.statement === 'income_statement' && spec.metric === 'revenue') {
+    // These families are not interchangeable aliases: customer-contract sales
+    // can exclude insurance and investment revenue. Select the freshest whole
+    // definition, with total-revenue priority on equal dates. Do not fill holes
+    // with a narrower subtotal and silently mix definitions in TTM or growth.
+    const candidates = spec.concepts.map(concept => ({
+      concept,
+      series: normalizeConcept(getConcept(facts, concept), spec)
+        .filter(fact => !expectedEnds?.has(quarterKey(fact)) || expectedEnds.get(quarterKey(fact)) === fact.end),
+    })).filter(candidate => candidate.series.length);
+    const latestEnd = (series: NormalizedSecQuarterFact[]) => series.reduce((latest, fact) => fact.end > latest ? fact.end : latest, '');
+    candidates.sort((a, b) => latestEnd(b.series).localeCompare(latestEnd(a.series)));
+    const selected = candidates[0];
+    for (const fact of selected?.series ?? []) merged.set(quarterKey(fact), { fact, concept: selected!.concept });
+    return merged;
+  }
   // Priority order is intentional. Earlier standard concepts win when two concepts disclose
   // the same fiscal quarter; lower-priority aliases fill only missing periods.
   for (const conceptName of spec.concepts) {
     for (const fact of normalizeConcept(getConcept(facts, conceptName), spec)) {
       const key = quarterKey(fact);
+      if (expectedEnds?.has(key) && expectedEnds.get(key) !== fact.end) continue;
       if (!merged.has(key)) merged.set(key, { fact, concept: conceptName });
     }
   }
@@ -256,10 +204,12 @@ const sourceForFact = (
 ) => {
   const primaryAccession = fact.accessionNumbers[0];
   const filing = primaryAccession ? submissionMap.get(primaryAccession) : undefined;
+  const presentation = fact.sourceFacts.find(f => typeof f.presentationDocumentUrl === 'string');
   return {
     provider: 'SEC EDGAR XBRL',
-    documentUrl: filing?.documentUrl,
-    documentType: filing?.form ?? fact.form,
+    accountingStandard: 'US_GAAP' as const, authorityTier: 1 as const,
+    documentUrl: (presentation?.presentationDocumentUrl as string) || filing?.documentUrl || (primaryAccession ? `https://www.sec.gov/Archives/edgar/data/${Number(identity.cik)}/${primaryAccession.replace(/-/g, '')}/${primaryAccession}-index.html` : undefined),
+    documentType: presentation?.presentationForm as string || filing?.form || fact.form,
     filingDate: filing?.filingDate ?? fact.filed,
     periodEnd: fact.end,
     accessionNumber: primaryAccession,
@@ -293,6 +243,21 @@ const buildCanonicalValue = (
   const filing = primaryAccession ? submissionMap.get(primaryAccession) : undefined;
   const source = sourceForFact(identity, fact, submissionMap, retrievedAt);
   const sourceAccessions = fact.accessionNumbers.join(', ');
+  const isWorkingCapital = spec.statement === 'cash_flow' && ['change_receivables','change_inventory','change_payables'].includes(spec.metric);
+  const semantics = new Set(fact.sourceFacts.map(source => source.valueSemantic || 'BALANCE_CHANGE'));
+  const cashEffect = isWorkingCapital && semantics.size === 1
+    ? workingCapitalCashEffect(concept, fact.value, fact.sourceFacts[0]?.valueSemantic) : null;
+  // Gross cost lines may be presented as positive expenses in one filing and
+  // negative income-statement contributions in another. Subtracting those raw
+  // conventions does not establish a standalone cost. Never repair this with
+  // abs(): a reported credit, tax benefit, loss or cash outflow may be legitimate.
+  const grossCost = spec.statement === 'income_statement' && [
+    'cogs', 'operating_expenses', 'research_and_development',
+    'research_and_development_excluding_acquired', 'selling_general_administrative',
+  ].includes(spec.metric);
+  const derivedCostSignConflict = grossCost && fact.derivation.startsWith('derived_')
+    && fact.sourceFacts.some(source => typeof source.val === 'number' && source.val < 0)
+    && fact.sourceFacts.some(source => typeof source.val === 'number' && source.val > 0);
   const derivation = fact.derivation === 'reported_instant'
     ? `SEC us-gaap:${concept} instant fact.`
     : fact.derivation === 'reported_standalone'
@@ -300,27 +265,46 @@ const buildCanonicalValue = (
     : fact.derivation === 'reported_ytd'
       ? `SEC us-gaap:${concept} Q1 duration fact.`
       : fact.derivation === 'derived_ytd_difference'
-        ? `Standalone quarter deterministically derived from cumulative SEC us-gaap:${concept} facts; accessions: ${sourceAccessions}.`
+        ? `Q${fact.fiscalQuarter} standalone = ${fact.fiscalQuarter * 3}M cumulative - ${(fact.fiscalQuarter - 1) * 3}M cumulative; compatible cumulative SEC us-gaap:${concept} facts; accessions: ${sourceAccessions}.`
         : `Fiscal Q4 deterministically derived as FY minus Q3 YTD from SEC us-gaap:${concept}; accessions: ${sourceAccessions}.`;
 
   return {
     metric: spec.metric,
     statement: spec.statement,
-    value: spec.canonicalUnit === 'USD_M' ? toMillions(fact.value, spec.unit) : fact.value,
+    value: derivedCostSignConflict || (isWorkingCapital && !cashEffect) ? null : spec.canonicalUnit === 'USD_M' ? toMillions(cashEffect?.value ?? fact.value, spec.unit) : spec.canonicalUnit === 'percent' && spec.unit === 'pure' ? fact.value * 100 : fact.value,
+    ...(derivedCostSignConflict ? { sourceComponents: fact.sourceFacts.map(raw => ({
+      metric: spec.metric, statement: spec.statement, value: toMillions(raw.val as number, spec.unit),
+      unit: spec.canonicalUnit, sourceUnit: spec.unit, currency: 'USD', type: 'reported' as const,
+      verification: 'verified' as const, period: raw.fp === 'FY' ? `FY ${raw.fy}` : `YTD ${raw.fp} ${raw.fy}`,
+      periodType: raw.fp === 'FY' ? 'annual' : 'ytd', periodStart: raw.start, periodEnd: raw.end,
+      sourceConcept: `us-gaap:${concept}`, derivation: 'Raw reported signed cost retained for source-convention reconciliation; not a standalone quarter.',
+      source: sourceForFact(identity, {...fact,start:raw.start,end:raw.end!,filed:raw.filed,form:raw.form,
+        accessionNumbers: raw.accn ? [raw.accn] : [], sourceFacts:[raw]},submissionMap,retrievedAt),
+    })) } : {}),
+    ...(isWorkingCapital ? { valueSemantic: 'CASH_FLOW_EFFECT' as const,
+      signNormalization: cashEffect ? { sourceSemantic: cashEffect.sourceSemantic, sourceValue: fact.value, multiplier: cashEffect.multiplier, concept } : undefined } : {}),
+    sourceUnit: spec.unit,
     unit: spec.canonicalUnit,
     period,
     periodStart: fact.start,
+    durationDays: fact.durationDays, currency: 'USD',
     periodEnd: fact.end,
     fiscalYear: fact.fiscalYear,
     fiscalQuarter: fact.fiscalQuarter,
     periodType: fact.periodType,
     form: filing?.form ?? fact.form,
     accession: primaryAccession,
-    concept,
+    concept: String(fact.sourceFacts[0]?.presentationConcept || concept),
+    sourceConcept: String(fact.sourceFacts[0]?.presentationConcept || `us-gaap:${concept}`),
+    canonicalMetric: `${spec.statement}.${spec.metric}`,
+    mappingEvidence: fact.sourceFacts[0]?.semanticEvidence as CanonicalFinancialValue['mappingEvidence'],
+    mappingType: fact.sourceFacts[0]?.presentationConcept && !String(fact.sourceFacts[0].presentationConcept).startsWith('us-gaap:')
+      ? 'ISSUER_EXTENSION' : spec.concepts.indexOf(concept) > 0
+        || (fact.sourceFacts[0]?.presentationConcept && fact.sourceFacts[0].presentationConcept !== `us-gaap:${spec.concepts[0]}`) ? 'ALIAS' : 'STANDARD',
     type: fact.derivation === 'reported_instant' || fact.derivation === 'reported_ytd' || fact.derivation === 'reported_standalone' ? (spec.type ?? 'reported') : 'derived',
-    verification: 'verified',
+    verification: derivedCostSignConflict || (isWorkingCapital && !cashEffect) ? 'unverified' : 'verified',
     source,
-    derivation,
+    derivation: `${derivation}${derivedCostSignConflict ? ' COST_SIGN_CONVENTION_MISMATCH: cumulative expense observations use opposite signs; standalone cost remains unavailable pending primary-statement sign reconciliation.' : ''}${fact.sourceFacts[0]?.compatibleInstantNote ? ' Exact-date authoritative note retained with identical assets/liabilities/equity anchors in the newer comparative filing; no period carry-forward.' : ''}${isWorkingCapital ? cashEffect ? ` CASH_FLOW_EFFECT = ${cashEffect.sourceSemantic} × ${cashEffect.multiplier}; normalized once after compatible standalone subtraction, never in UI/AI.` : ' Incompatible or unknown working-capital source semantics; unavailable.' : ''}`,
   };
 };
 
@@ -335,7 +319,11 @@ const deriveFreeCashFlow = (
   return periods.map((period, index) => {
     const ocf = operating[index];
     const investment = capex[index];
-    if (ocf?.value === null || ocf?.value === undefined || investment?.value === null || investment?.value === undefined) {
+    if (ocf?.value === null || ocf?.value === undefined || investment?.value === null || investment?.value === undefined
+      || ocf.period !== period || investment.period !== period
+      || ocf.periodType !== 'standalone_quarter' || investment.periodType !== 'standalone_quarter'
+      || (ocf.periodStart && investment.periodStart && ocf.periodStart !== investment.periodStart)
+      || (ocf.periodEnd && investment.periodEnd && ocf.periodEnd !== investment.periodEnd)) {
       return {
         metric: 'free_cash_flow',
         statement: 'cash_flow',
@@ -361,7 +349,7 @@ const deriveFreeCashFlow = (
       periodType: ocf.periodType ?? investment.periodType,
       type: 'derived',
       verification: ocf.verification === 'verified' && investment.verification === 'verified' ? 'verified' : 'unverified',
-      source: ocf.source,
+      source: ocf.source, sourceComponents: [ocf, investment],
       derivation: 'Lumina deterministic FCF = SEC operating cash flow - absolute SEC capital expenditures for the same standalone fiscal quarter.',
     };
   });
@@ -386,10 +374,11 @@ const deriveTotalDebt = (
     const ltd = longDebt?.[index];
     const hasStd = std?.value !== null && std?.value !== undefined;
     const hasLtd = ltd?.value !== null && ltd?.value !== undefined;
-    if (hasStd || hasLtd) {
-      const stdVal = hasStd ? (std?.value as number) : 0;
-      const ltdVal = hasLtd ? (ltd?.value as number) : 0;
-      const isVerified = (!hasStd || std?.verification === 'verified') && (!hasLtd || ltd?.verification === 'verified');
+    if (hasStd && hasLtd && std?.concept === 'DebtCurrent' && ltd?.concept === 'LongTermDebtNoncurrent' && std?.periodEnd && std.periodEnd === ltd?.periodEnd
+      && std.periodType === 'instant' && ltd?.periodType === 'instant') {
+      const stdVal = std.value as number;
+      const ltdVal = ltd.value as number;
+      const isVerified = std.verification === 'verified' && ltd.verification === 'verified';
       return {
         metric: 'total_debt',
         statement: 'balance_sheet',
@@ -401,6 +390,9 @@ const deriveTotalDebt = (
         fiscalYear: std?.fiscalYear ?? ltd?.fiscalYear,
         fiscalQuarter: std?.fiscalQuarter ?? ltd?.fiscalQuarter,
         periodType: std?.periodType ?? ltd?.periodType,
+        form: std?.form ?? ltd?.form,
+        accession: std?.accession ?? ltd?.accession,
+        concept: 'DebtCurrent + LongTermDebtNoncurrent',
         type: 'derived',
         verification: isVerified ? 'verified' : 'unverified',
         source: std?.source ?? ltd?.source,
@@ -439,7 +431,7 @@ const deriveTotalOperatingLeases = (
     const nonCur = nonCurrentLease?.[index];
     const hasCur = cur?.value !== null && cur?.value !== undefined;
     const hasNonCur = nonCur?.value !== null && nonCur?.value !== undefined;
-    if (hasCur || hasNonCur) {
+    if (hasCur && hasNonCur && cur?.periodEnd === nonCur?.periodEnd) {
       const curVal = hasCur ? (cur?.value as number) : 0;
       const nonCurVal = hasNonCur ? (nonCur?.value as number) : 0;
       const isVerified = (!hasCur || cur?.verification === 'verified') && (!hasNonCur || nonCur?.verification === 'verified');
@@ -485,16 +477,153 @@ export function mapSecBundleToCanonicalFinancials(
   const namespace = bundle.companyFacts.facts?.['us-gaap'];
   if (!namespace) return null;
 
+  const accessionAnchors = new Map<string, SecCompanyFact>();
+  const anchorConcepts = new Set(METRIC_SPECS.filter(s => ['revenue', 'total_assets'].includes(s.metric)).flatMap(s => s.concepts));
+  for (const concepts of Object.values(bundle.companyFacts.facts || {})) for (const [name, concept] of Object.entries(concepts)) {
+    if (!anchorConcepts.has(name)) continue;
+    for (const facts of Object.values(concept.units || {})) for (const fact of facts) {
+      if (!fact.accn || !fact.end || (fact.filed && fact.end > fact.filed) || !fact.fy || !['Q1', 'Q2', 'Q3', 'FY'].includes(fact.fp || '')
+        || !['10-Q', '10-Q/A', '10-K', '10-K/A'].includes(fact.form || '')) continue;
+      const prior = accessionAnchors.get(fact.accn);
+      if (!prior?.end || fact.end > prior.end) accessionAnchors.set(fact.accn, fact);
+    }
+  }
+  const calendar = new Map<string, SecCompanyFact>();
+  for (const fact of accessionAnchors.values()) {
+    const old = calendar.get(fact.end!);
+    // Earliest current-period filing wins calendar identity; subsequent amendments
+    // can restate values, but cannot turn its comparison into a new fiscal quarter.
+    if (!old || String(fact.filed || '') < String(old.filed || '')) calendar.set(fact.end!, {...fact});
+  }
+  // Some issuers label an annual companyfacts fy with the calendar start year,
+  // while their interim filings use the fiscal ending year. Resolve from the exact
+  // common fiscal start shared by that annual duration and independently filed YTDs.
+  const starts = new Map<string, Set<number>>();
+  const annuals: SecCompanyFact[] = [];
+  for (const concepts of Object.values(bundle.companyFacts.facts || {})) for (const concept of Object.values(concepts)) {
+    for (const facts of Object.values(concept.units || {})) for (const fact of facts) {
+      if (!fact.start || !fact.end) continue;
+      const anchor = fact.accn ? accessionAnchors.get(fact.accn) : undefined;
+      if (!anchor || anchor.end !== fact.end) continue;
+      const duration = (Date.parse(fact.end) - Date.parse(fact.start)) / 86400000 + 1;
+      if (fact.form?.startsWith('10-Q') && duration >= 60 && duration <= 300 && anchor.fy) {
+        const years = starts.get(fact.start) || new Set<number>(); years.add(anchor.fy); starts.set(fact.start, years);
+      } else if (fact.form?.startsWith('10-K') && duration >= 300 && duration <= 400) annuals.push(fact);
+    }
+  }
+  for (const annual of annuals) {
+    const years = starts.get(annual.start!);
+    const anchor = calendar.get(annual.end!);
+    if (years?.size === 1 && anchor) anchor.fy = [...years][0];
+  }
+  // A filing's fy can change convention at a new fiscal year. Use independently
+  // filed FY endpoints to anchor the *ending* fiscal year of intervening quarters.
+  // This also prevents Q1 after FY from colliding with the previous year's Q1.
+  const yearEnds = [...calendar.values()].filter(f => f.fp === 'FY')
+    .sort((a,b) => a.end!.localeCompare(b.end!));
+  for (const anchor of calendar.values()) {
+    if (anchor.fp === 'FY') continue;
+    const previous = [...yearEnds].reverse().find(f => f.end! < anchor.end!);
+    if (!previous?.fy) continue;
+    const days = (Date.parse(anchor.end!) - Date.parse(previous.end!)) / 86400000;
+    const range = anchor.fp === 'Q1' ? [60,110] : anchor.fp === 'Q2' ? [150,205] : [235,300];
+    if (days >= range[0] && days <= range[1]) anchor.fy = previous.fy + 1;
+  }
+  const correctedFacts = structuredClone(bundle.companyFacts);
+  for (const [namespace, concepts] of Object.entries(correctedFacts.facts || {})) for (const [conceptName, concept] of Object.entries(concepts)) {
+    for (const [unit, facts] of Object.entries(concept.units || {})) for (const fact of facts) {
+      const anchor = fact.end ? calendar.get(fact.end) : undefined;
+      if (anchor) { fact.fy = anchor.fy; fact.fp = anchor.fp; }
+      fact.sourceConcept = `${namespace}:${conceptName}`; fact.sourceUnit = unit;
+      fact.accountingStandard = namespace === 'ifrs-full' ? 'IFRS' : 'US_GAAP';
+    }
+  }
+  // A restated comparison is a filing cohort, not an independent override of one
+  // balance-sheet line. Select the newest accession disclosing the accounting
+  // anchors together, before normalizing any instant metric. Missing lines in
+  // that accession remain missing; older values cannot fill the restated snapshot.
+  const cohorts = new Map<string, Map<string, { filed: string; anchors: Set<string> }>>();
+  for (const name of ['Assets', 'Liabilities', 'StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest']) {
+    for (const fact of correctedFacts.facts['us-gaap']?.[name]?.units?.USD || []) {
+      if (fact.start || !fact.accn || !fact.end || !['10-Q','10-Q/A','10-K','10-K/A'].includes(fact.form || '')) continue;
+      const byAccession = cohorts.get(fact.end) || new Map();
+      const cohort = byAccession.get(fact.accn) || { filed: fact.filed || '', anchors: new Set<string>() };
+      cohort.anchors.add(name); byAccession.set(fact.accn, cohort); cohorts.set(fact.end, byAccession);
+    }
+  }
+  const chosenCohorts = new Map<string, string>();
+  for (const [end, candidates] of cohorts) {
+    const compatible = [...candidates].filter(([,c]) => c.anchors.has('Assets') && c.anchors.has('Liabilities')
+      && (c.anchors.has('StockholdersEquity') || c.anchors.has('StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest')))
+      .sort(([a,x],[b,y]) => y.filed.localeCompare(x.filed) || b.localeCompare(a));
+    if (compatible.length) chosenCohorts.set(end, compatible[0][0]);
+  }
+  const balanceFacts = structuredClone(correctedFacts);
+  const sameExactInstantAnchors = (end: string, earlier: string, latest: string): boolean => {
+    const pair = (name: string) => {
+      const facts = correctedFacts.facts['us-gaap']?.[name]?.units?.USD?.filter(f => !f.start && f.end === end) || [];
+      const a = [...new Set(facts.filter(f=>f.accn===earlier).map(f=>f.val))], b = [...new Set(facts.filter(f=>f.accn===latest).map(f=>f.val))];
+      return a.length===1 && b.length===1 && typeof a[0]==='number' && a[0]===b[0];
+    };
+    return pair('Assets') && pair('Liabilities') && (pair('StockholdersEquity') || pair('StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'));
+  };
+  for (const [name,concept] of Object.entries(balanceFacts.facts['us-gaap'] || {})) for (const unit of Object.keys(concept.units || {})) {
+    concept.units[unit] = concept.units[unit].filter(f => {
+      if(f.start || !chosenCohorts.has(f.end) || f.accn===chosenCohorts.get(f.end)) return true;
+      // Retain a separately tagged exact-date note only with identical accounting
+      // anchors. Restated totals or a different instant never allow a fill.
+      const compatible=name==='Goodwill' && unit==='USD' && !!f.end && !!f.accn
+        && sameExactInstantAnchors(f.end,f.accn,chosenCohorts.get(f.end)!);
+      if(compatible) f.compatibleInstantNote=true;
+      return compatible;
+    });
+  }
   const metricMaps = new Map<string, Map<string, { fact: NormalizedSecQuarterFact; concept: string }>>();
+  const expectedEnds = new Map([...calendar.values()].map(f => [`${f.fy}-Q${f.fp === 'FY' ? 4 : f.fp!.slice(1)}`,f.end!]));
   const quarterKeys = new Set<string>();
   for (const spec of METRIC_SPECS) {
-    const mapped = mergeConceptAliases(bundle.companyFacts, spec);
+    const mapped = mergeConceptAliases(spec.factKind === 'instant' ? balanceFacts : correctedFacts, spec, expectedEnds);
     metricMaps.set(`${spec.statement}.${spec.metric}`, mapped);
     for (const key of mapped.keys()) quarterKeys.add(key);
   }
 
+  // Preferred distributions/redemption allocations distinguish parent earnings
+  // from income available to common shareholders. Use the explicitly disclosed
+  // common allocation for those issuers, never the unadjusted parent fact.
+  const preferredSpecs = ['DividendsPreferredStock', 'PreferredStockDividends', 'PreferredStockRedemptionPremium'];
+  const preferredPeriods = new Set<string>();
+  for (const name of preferredSpecs) for (const [key, item] of mergeConceptAliases(correctedFacts,
+    {statement:'income_statement',metric:'preferred_allocation',concepts:[name],unit:'USD',canonicalUnit:'USD_M',factKind:'duration'})) {
+    if (item.fact.value !== 0) preferredPeriods.add(key);
+  }
+  const commonAllocation = mergeConceptAliases(correctedFacts,
+    {statement:'income_statement',metric:'net_income_common',concepts:['NetIncomeLossAvailableToCommonStockholdersBasic'],unit:'USD',canonicalUnit:'USD_M',factKind:'duration'});
+  const common = metricMaps.get('income_statement.net_income_common')!;
+  const parent = metricMaps.get('income_statement.net_income_parent')!;
+  const preferred = metricMaps.get('balance_sheet.preferred_equity')!;
+  const commonFromParent = new Set<string>();
+  for (const [key, entry] of parent) {
+    const preferredFact = preferred.get(key)?.fact;
+    // A disclosed zero is evidence; absence of a preferred-equity concept is not.
+    // Keep EPS/basic allocations separate when a preferred distribution exists.
+    if (preferredFact?.value === 0 && preferredFact.end === entry.fact.end && !preferredPeriods.has(key)) {
+      common.set(key, entry); commonFromParent.add(key);
+    }
+  }
+  for (const key of preferredPeriods) {
+    if (commonAllocation.has(key)) common.set(key, commonAllocation.get(key)!);
+    else common.delete(key); // Parent earnings are not a substitute for a missing common allocation.
+  }
+
   const maxQuarters = Math.max(4, Math.min(20, options.maxQuarters ?? 12));
-  const selectedKeys = Array.from(quarterKeys).sort(normalizedSort).slice(-maxQuarters);
+  const anchorMap = new Map<string, {fact: NormalizedSecQuarterFact; concept: string}>();
+  // Preserve known fiscal columns even when a revenue quarter is missing. Assets
+  // supply the actual quarter end; the absent duration cell stays null.
+  for (const metric of ['income_statement.revenue','balance_sheet.total_assets','income_statement.operating_income','cash_flow.operating_cash_flow','income_statement.net_income','income_statement.net_income_common']) {
+    for (const [key, entry] of metricMaps.get(metric) || []) if (!anchorMap.has(key)) anchorMap.set(key,entry);
+  }
+  if (!anchorMap.size) for (const mapped of metricMaps.values()) for (const [key,entry] of mapped) if (!anchorMap.has(key)) anchorMap.set(key,entry);
+  const selectedKeys = Array.from(anchorMap?.keys() || []).sort(normalizedSort).slice(-maxQuarters);
   if (selectedKeys.length === 0) return null;
   const periods = selectedKeys.map(periodLabel);
   const submissionMap = submissionDocumentMap(bundle.identity, bundle.submissions);
@@ -503,13 +632,53 @@ export function mapSecBundleToCanonicalFinancials(
   for (const spec of METRIC_SPECS) {
     const key = `${spec.statement}.${spec.metric}`;
     const mapped = metricMaps.get(key) ?? new Map();
-    const series = selectedKeys.map((quarter, index) =>
-      buildCanonicalValue(bundle.identity, spec, periods[index], mapped.get(quarter), submissionMap, bundle.retrievedAt));
+    const series = selectedKeys.map((quarter, index) => {
+      const value = buildCanonicalValue(bundle.identity, spec, periods[index], mapped.get(quarter)?.fact.end === anchorMap.get(quarter)?.fact.end ? mapped.get(quarter) : undefined, submissionMap, bundle.retrievedAt);
+      if (spec.metric === 'net_income_common' && commonFromParent.has(quarter) && value.value !== null) {
+        const preferredSpec = METRIC_SPECS.find(s=>s.metric==='preferred_equity')!;
+        const preferredValue = buildCanonicalValue(bundle.identity,preferredSpec,periods[index],preferred.get(quarter),submissionMap,bundle.retrievedAt);
+        value.type = 'derived'; value.sourceComponents = [{...value,metric:'net_income_parent'},preferredValue];
+        value.derivation = 'Common net income equals reported parent net income with explicitly reported zero preferred equity at this instant and no disclosed preferred allocation for this quarter.';
+      }
+      return value;
+    });
     if (series.some(item => item.value !== null)) values[key] = series;
   }
 
   const fcf = deriveFreeCashFlow(periods, values);
   if (fcf?.some(item => item.value !== null)) values['cash_flow.free_cash_flow'] = fcf;
+
+  // Some issuers disclose selling/marketing and administration separately.
+  // Derive the combined expense only from two exact, verified durations. An
+  // absent component is never zero and a directly reported total wins.
+  const selling = values['income_statement.selling_and_marketing'];
+  const administration = values['income_statement.general_and_administrative'];
+  if (selling && administration) {
+    const reported = values['income_statement.selling_general_administrative'];
+    values['income_statement.selling_general_administrative'] = periods.map((period, i) => {
+      if (reported?.[i]?.value != null) return reported[i];
+      const a = selling[i], b = administration[i];
+      const compatible = a?.verification === 'verified' && b?.verification === 'verified'
+        && a.value != null && b.value != null && a.periodStart === b.periodStart
+        && a.periodEnd === b.periodEnd && a.periodType === 'standalone_quarter'
+        && b.periodType === 'standalone_quarter' && a.unit === b.unit;
+      return { ...a, metric: 'selling_general_administrative', period,
+        value: compatible ? a.value! + b.value! : null, type: 'derived',
+        verification: compatible ? 'verified' : 'unverified',
+        sourceComponents: compatible ? [a, b] : undefined,
+        derivation: 'SG&A = same-period disclosed Selling and Marketing + General and Administrative; neither component is imputed.' };
+    });
+  }
+
+  const parentEquity = values['balance_sheet.stockholders_equity'];
+  const preferredEquity = values['balance_sheet.preferred_equity'];
+  if (parentEquity && preferredEquity) values['balance_sheet.common_equity'] = periods.map((period,i)=>{
+    const parent=parentEquity[i], preferred=preferredEquity[i];
+    const compatible=parent?.value!=null&&preferred?.value!=null&&parent.periodEnd===preferred.periodEnd;
+    return {...parent,metric:'common_equity',period,value:compatible?parent.value!-preferred.value!:null,
+      type:'derived',verification:compatible?'verified':'unverified',sourceComponents:compatible?[parent,preferred]:undefined,
+      derivation:'Common stockholders equity = same-instant parent stockholders equity - explicitly reported preferred equity; an undisclosed preferred component is not assumed zero.'};
+  });
 
   const derivedDebt = deriveTotalDebt(periods, values);
   if (derivedDebt?.some(item => item.value !== null)) values['balance_sheet.total_debt'] = derivedDebt;
@@ -522,19 +691,24 @@ export function mapSecBundleToCanonicalFinancials(
   const verifiedValues = flattened.filter(item => item.value !== null && item.verification === 'verified').length;
   const missingValues = flattened.length - nonNullValues;
 
-  return {
+  const dataset: CanonicalFinancialDataset = {
     schemaVersion: CANONICAL_FINANCIAL_SCHEMA_VERSION,
-    generatedBy: `${CANONICAL_FINANCIAL_GENERATOR}+sec-xbrl-v1`,
+    mappingVersion: STATEMENT_MAPPING_VERSION, normalizationVersion: STATEMENT_NORMALIZATION_VERSION,
+    generatedBy: `${CANONICAL_FINANCIAL_GENERATOR}+sec-xbrl-v2`,
     ticker: bundle.identity.ticker,
     currency: 'USD',
     periods,
     values,
     provenanceStatus: verifiedValues > 0 && verifiedValues === nonNullValues ? 'verified' : 'unverified',
     provenanceWarnings: [
+      ...(flattened.some(value => value.derivation?.includes('COST_SIGN_CONVENTION_MISMATCH')) ? [{
+        code: 'COST_SIGN_CONVENTION_MISMATCH', severity: 'warning' as const,
+        message: 'Some derived cost quarters have incompatible cumulative source signs. Raw observations are retained; those quarters are not certified or converted with absolute values.',
+      }] : []),
       {
         code: 'SEC_XBRL_STANDARD_TAXONOMY_SCOPE',
         severity: 'info',
-        message: 'Verified values come from SEC companyfacts standard us-gaap entity-wide XBRL facts; custom taxonomy facts are outside this mapper.',
+        message: 'Entity-wide SEC standard families and independently verified primary-statement extensions; scoped earnings and cash concepts remain separate.',
       },
       ...(missingValues > 0 ? [{
         code: 'SEC_METRIC_COVERAGE_PARTIAL',
@@ -550,4 +724,10 @@ export function mapSecBundleToCanonicalFinancials(
       totalValues: flattened.length,
     },
   };
+  for (const value of Object.values(values).flat()) value.mappingKind = value.value == null ? 'UNRESOLVED'
+    : value.type === 'derived' ? 'DERIVED' : value.mappingType === 'ISSUER_EXTENSION' ? 'ISSUER_EXTENSION_VERIFIED'
+    : value.mappingType === 'ALIAS' ? 'STANDARD_ALIAS' : 'STANDARD_EXACT';
+  dataset.resolutionAudit = auditCanonicalResolution(correctedFacts,dataset,'unclassified',balanceFacts);
+  if (dataset.resolutionAudit.health !== 'OK') dataset.provenanceWarnings.push({code:'CORE_SOURCE_COVERAGE_ANOMALY',severity:'warning',message:'Canonical core source coverage requires engineering review; inspect resolutionAudit first failing boundaries.'});
+  return dataset;
 }

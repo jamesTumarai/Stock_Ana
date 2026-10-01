@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Legend 
 } from 'recharts';
 import { BusinessAnalysisData, RevenueSegmentItem, OperationalEfficiencyItem } from '../types';
+import { resolveRevenueLevel } from '../domain/revenueHierarchy';
 
 interface BusinessAnalysisCardProps {
   data?: BusinessAnalysisData;
@@ -45,6 +46,8 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
   const [selectedPeriod, setSelectedPeriod] = useState<string>('Latest');
   const [isPeriodOpen, setIsPeriodOpen] = useState<boolean>(false);
   const [showYoY, setShowYoY] = useState<boolean>(true);
+  const [bizPath,setBizPath]=useState<string[]>([]);
+  const [regPath,setRegPath]=useState<string[]>([]);
 
   // Active hover states for Donut charts
   const [activeBizIndex, setActiveBizIndex] = useState<number | null>(0);
@@ -67,8 +70,8 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
     typeof item?.name === 'string'
     && hasMeaningfulText(item.name)
     && (hasObservedValue(item.revenue_usd) || hasObservedValue(item.ratio_pct));
-  const byBusiness: RevenueSegmentItem[] = (breakdown.by_business || []).filter(validSegment);
-  const byRegion: RevenueSegmentItem[] = (breakdown.by_region || []).filter(validSegment);
+  const businessItems=(breakdown.by_business || []).filter(validSegment);
+  const regionItems=(breakdown.by_region || []).filter(validSegment);
   const efficiency: OperationalEfficiencyItem[] = (data.operational_efficiency || []).filter(item =>
     typeof item?.period === 'string'
     && item.period.trim().length > 0
@@ -78,15 +81,26 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
       item.operating_profit_per_employee_k_usd,
       item.net_income_per_employee_k_usd,
     ].some(hasObservedValue)
-  );
+  ).map(item => item.headcount_basis === 'AVERAGE' && item.headcount_as_of && item.headcount_source
+    ? item : { ...item, revenue_per_employee_k_usd: null, operating_profit_per_employee_k_usd: null,
+      net_income_per_employee_k_usd: null, revenue_per_employee_yoy_pct: undefined,
+      operating_profit_per_employee_yoy_pct: undefined, net_income_per_employee_yoy_pct: undefined });
 
   const availablePeriods = Array.from(new Set([
     breakdown.period,
+    ...businessItems.map(item=>item.period),...regionItems.map(item=>item.period),
     ...efficiency.map(item => item.period),
   ].filter((period): period is string => typeof period === 'string' && period.trim().length > 0)));
   const displayedPeriod = availablePeriods.includes(selectedPeriod)
     ? selectedPeriod
     : (availablePeriods[0] || 'Latest');
+  const bizLevel=resolveRevenueLevel(businessItems,displayedPeriod,bizPath.at(-1)??null);
+  const regLevel=resolveRevenueLevel(regionItems,displayedPeriod,regPath.at(-1)??null);
+  const byBusiness=bizLevel.items,byRegion=regLevel.items;
+  const breadcrumb=(path:string[],setPath:React.Dispatch<React.SetStateAction<string[]>>)=><div className="mb-2 flex flex-wrap gap-1 text-xs text-stone-700">
+    <button type="button" onClick={()=>setPath([])} className="rounded px-2 py-1 hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-teal-700">{isThai?'รายได้รวม':'Total revenue'}</button>
+    {path.map((id,index)=><button key={id} type="button" onClick={()=>setPath(path.slice(0,index+1))} className="rounded px-2 py-1 hover:bg-stone-200 focus-visible:outline-2 focus-visible:outline-teal-700">› {businessItems.concat(regionItems).find(item=>(item.id??item.name)===id)?.name??id}</button>)}
+  </div>;
 
   const currentBiz = (activeBizIndex !== null && byBusiness[activeBizIndex]) ? byBusiness[activeBizIndex] : byBusiness[0];
   const currentReg = (activeRegIndex !== null && byRegion[activeRegIndex]) ? byRegion[activeRegIndex] : byRegion[0];
@@ -139,6 +153,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                     type="button"
                     onClick={() => {
                       setSelectedPeriod(p);
+                      setBizPath([]);setRegPath([]);setActiveBizIndex(0);setActiveRegIndex(0);
                       setIsPeriodOpen(false);
                     }}
                     className={`w-full text-left px-3 py-1.5 hover:bg-stone-50 transition-colors flex items-center justify-between ${
@@ -200,7 +215,8 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                 <Briefcase className="w-3.5 h-3.5 text-[#0b5a4b]" />
                 <span>{isThai ? 'สัดส่วนตามสายธุรกิจ (Business / Product Lines)' : 'Business Segments'}</span>
               </h4>
-
+              {breadcrumb(bizPath,setBizPath)}
+              {bizPath.length>0&&<p className="mb-2 text-[11px] text-stone-600">{isThai?'สัดส่วนเทียบกับรายได้ของ':'Shares within'} {bizLevel.parent?.name}{!bizLevel.reconciles&&' · Breakdown reconciliation unavailable'}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3">
                 {/* Donut with Center Highlight Box */}
                 <div className="relative h-48 w-full flex items-center justify-center">
@@ -261,6 +277,8 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       key={idx}
                       type="button"
                       onMouseEnter={() => setActiveBizIndex(idx)}
+                      onFocus={() => setActiveBizIndex(idx)}
+                      onClick={()=>{setActiveBizIndex(idx);if(entry.hasChildren&&!bizPath.includes(entry.id??entry.name)){setBizPath([...bizPath,entry.id??entry.name]);setActiveBizIndex(0);}}}
                       className={`flex items-center justify-between p-1.5 rounded-lg transition-colors text-left cursor-pointer ${
                         activeBizIndex === idx ? 'bg-stone-200/80 font-semibold' : 'hover:bg-stone-100'
                       }`}
@@ -270,7 +288,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                           className="w-2.5 h-2.5 rounded-xs shrink-0" 
                           style={{ backgroundColor: BUSINESS_COLORS[idx % BUSINESS_COLORS.length] }}
                         />
-                        <span className="text-stone-700 truncate">{entry.name}</span>
+                        <span className="text-stone-700 truncate">{entry.name}{entry.hasChildren?' ›':''}</span>
                       </div>
                       <div className="text-right shrink-0 ml-2 font-mono">
                         <span className="text-stone-900 font-bold block">{entry.ratio_pct}%</span>
@@ -288,7 +306,8 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                 <Globe className="w-3.5 h-3.5 text-blue-600" />
                 <span>{isThai ? 'สัดส่วนตามภูมิภาค (Geographic / Regional)' : 'Regional Markets'}</span>
               </h4>
-
+              {breadcrumb(regPath,setRegPath)}
+              {regPath.length>0&&<p className="mb-2 text-[11px] text-stone-600">{isThai?'สัดส่วนเทียบกับรายได้ของ':'Shares within'} {regLevel.parent?.name}{!regLevel.reconciles&&' · Breakdown reconciliation unavailable'}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-3">
                 {/* Donut with Center Highlight Box */}
                 <div className="relative h-48 w-full flex items-center justify-center">
@@ -349,6 +368,8 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                       key={idx}
                       type="button"
                       onMouseEnter={() => setActiveRegIndex(idx)}
+                      onFocus={() => setActiveRegIndex(idx)}
+                      onClick={()=>{setActiveRegIndex(idx);if(entry.hasChildren&&!regPath.includes(entry.id??entry.name)){setRegPath([...regPath,entry.id??entry.name]);setActiveRegIndex(0);}}}
                       className={`flex items-center justify-between p-1.5 rounded-lg transition-colors text-left cursor-pointer ${
                         activeRegIndex === idx ? 'bg-stone-200/80 font-semibold' : 'hover:bg-stone-100'
                       }`}
@@ -358,7 +379,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                           className="w-2.5 h-2.5 rounded-xs shrink-0" 
                           style={{ backgroundColor: REGION_COLORS[idx % REGION_COLORS.length] }}
                         />
-                        <span className="text-stone-700 truncate">{entry.name}</span>
+                        <span className="text-stone-700 truncate">{entry.name}{entry.hasChildren?' ›':''}</span>
                       </div>
                       <div className="text-right shrink-0 ml-2 font-mono">
                         <span className="text-stone-900 font-bold block">{entry.ratio_pct}%</span>
@@ -392,6 +413,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                   </span>
                 )}
               </div>
+              <p className="mt-1 text-[10px] text-stone-600">{latestEff?.headcount_basis ?? (isThai?'ฐานข้อมูลยังไม่ยืนยัน':'Basis unconfirmed')} · {latestEff?.headcount_as_of ?? '—'}</p>
             </div>
 
             <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100 flex flex-col justify-between">
@@ -524,7 +546,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                 <thead>
                   <tr className="border-b border-stone-200 bg-stone-50/70 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
                     <th className="py-2.5 px-3">{isThai ? 'ปีงบประมาณ' : 'Period'}</th>
-                    <th className="py-2.5 px-3 text-right">{isThai ? 'พนักงาน (Headcount)' : 'Headcount'}</th>
+                    <th className="py-2.5 px-3 text-right">{isThai ? 'พนักงาน / ฐานข้อมูล' : 'Headcount / basis'}</th>
                     <th className="py-2.5 px-3 text-right">{isThai ? 'รายได้ต่อพนักงาน' : 'Revenue/Emp'}</th>
                     <th className="py-2.5 px-3 text-right">{isThai ? 'กำไรดำเนินงาน/คน' : 'Op Profit/Emp'}</th>
                     <th className="py-2.5 px-3 text-right">{isThai ? 'กำไรสุทธิ/คน' : 'Net Income/Emp'}</th>
@@ -538,6 +560,7 @@ export const BusinessAnalysisCard: React.FC<BusinessAnalysisCardProps> = ({
                         <span className="text-stone-900 font-bold block">
                           {formatHeadcount(row.headcount)}
                         </span>
+                        <span className="block text-[10px] text-stone-500">{row.headcount_basis ?? 'UNCONFIRMED'} · {row.headcount_as_of ?? '—'}</span>
                         {showYoY && row.headcount_yoy_pct !== undefined && (
                           <span className={`text-[10px] ${row.headcount_yoy_pct >= 0 ? 'text-emerald-700' : 'text-stone-500'}`}>
                             {row.headcount_yoy_pct >= 0 ? '+' : ''}{row.headcount_yoy_pct}%

@@ -1,3 +1,4 @@
+import { observedPeerFixtures } from '../../__tests__/observedPeerFixture';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ReportData, PeerCompanyItem } from '../../../types';
@@ -157,7 +158,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
       } as any,
       peer_comparison: {
         as_of_date: '2026-03-01',
-        peers: [
+        peers: observedPeerFixtures([
           {
             ticker: 'COMP_A',
             company_name: 'EV Peer A',
@@ -191,7 +192,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
             net_margin_pct: 6.0,
             ev_ebitda: 15.0,
           },
-        ],
+        ]),
       },
     };
 
@@ -232,7 +233,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
       },
     ];
 
-    const result = discoverPeers(ipoReport, 'NEW_IPO_2026', { candidates: dynamicCandidates });
+    const result = discoverPeers(ipoReport, 'NEW_IPO_2026', { candidates: observedPeerFixtures(dynamicCandidates) });
     assert.equal(result.peerCount, 2);
     assert.equal(result.isLimitedSample, true);
     assert.equal(result.peers[0].ticker, 'SAT_1');
@@ -255,7 +256,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
       { ticker: 'CHIP_MAKER', company_name: 'Semiconductor Fab', industry: 'Semiconductors', sector: 'Technology', pe_trailing: 30.0 },
     ];
 
-    const result = discoverPeers(autoReport, 'AUTO_X', { candidates });
+    const result = discoverPeers(autoReport, 'AUTO_X', { candidates:observedPeerFixtures(candidates) });
     assert.equal(result.peerCount, 1, 'Only the automaker should be admitted');
     assert.equal(result.peers[0].ticker, 'AUTO_PEER');
   });
@@ -308,9 +309,9 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
       company_profile: { sector: 'Financial Services', industry: 'Banks—Diversified' } as any,
       financial_statements: { statement_template: 'banking' } as any,
     }, 'BANK_CO', {
-      candidates: [
+      candidates: observedPeerFixtures([
         { ticker: 'INS_CO', company_name: 'Insurer Co', sector: 'Financial Services', industry: 'Insurance—Property & Casualty' },
-      ],
+      ]),
       disableFixtureFallback: true,
     });
     assert.equal(result.peerCount, 0, 'Insurer must be rejected for bank');
@@ -333,7 +334,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
       { ticker: 'BROAD_2', company_name: 'Tech Giant 2', sector: 'Technology', industry: 'Semiconductors', pe_trailing: 28.0 },
     ];
 
-    const result = discoverPeers(target, 'NICHE_CO', { candidates });
+    const result = discoverPeers(target, 'NICHE_CO', { candidates:observedPeerFixtures(candidates) });
     assert.ok(result.peerCount > 0, 'Must not fail the section when broader comparables exist');
     assert.equal(result.benchmarkRows.length > 0, true, 'Benchmark rows must be generated');
   });
@@ -349,7 +350,7 @@ describe('Business Archetype Integrity & Dynamic Peer Discovery', () => {
       } as any,
     };
 
-    const result = discoverPeers(target, 'ALIEN_CO', { candidates: [], disableFixtureFallback: true });
+    const result = discoverPeers(target, 'ALIEN_CO', { candidates: observedPeerFixtures([]), disableFixtureFallback: true });
     assert.equal(result.peerCount, 0);
     assert.equal(result.unavailableReason, 'SOURCE_GAP');
     assert.equal(result.benchmarkRows.length, 0);

@@ -63,7 +63,7 @@ describe('Adaptive Five Pillars Resolver', () => {
     // Must match Key Indicators exactly without becoming N/A
     assert.equal(data.profitability.roe_pct, 20.0, 'ROE must match Key Indicators');
     assert.equal(data.profitability.roic_pct, 17.2, 'ROIC must match Key Indicators');
-    assert.equal(data.balance_sheet.debt_to_equity, 0.35, 'Debt/Equity must match Key Indicators');
+    assert.equal(data.balance_sheet.debt_to_equity, undefined, 'Unverified model ratio is not an accepted canonical D/E');
     assert.equal(data.growth.revenue_growth_yoy_pct, 20.0, 'Revenue Growth YoY must match');
     assert.equal(data.profitability.net_margin_pct, 16.67, 'Net Margin must match');
   });

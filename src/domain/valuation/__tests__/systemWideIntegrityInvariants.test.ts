@@ -137,6 +137,7 @@ console.log('🚀 Running Universal System-Wide Integrity & Invariant Property T
         short_term_debt: [2000],
         long_term_debt: [13000],    // Total Debt = 2000 + 13000 = $15B
         cash_and_equivalents: [8000],
+        short_term_investments: [0], // Explicit zero, not an inferred missing component.
         total_equity: [55000],
       } as any,
     } as any,
@@ -144,7 +145,7 @@ console.log('🚀 Running Universal System-Wide Integrity & Invariant Property T
 
   const resolved = resolveFundamentalMetrics(reportWithDebtAndLiabilities);
   // Net cash/debt is (8000 - 15000) / 1000 = -7B (Net Debt of $7B)
-  assert.equal(resolved.netCashOrDebt.basis, 'Net Debt (Total Debt - Total Cash)', 'Basis must be Net Debt');
+  assert.equal(resolved.netCashOrDebt.basis, 'Net Debt (Canonical Debt - Cash - Short-Term Investments)', 'Basis must explicitly distinguish Net Debt from cash and investments');
   assert.equal(resolved.netCashOrDebt.value, 7, 'Net debt amount must be 7 ($7B), NOT 37 ($45B liabilities - $8B cash)');
 
   // Missing total debt must NOT fall back to total liabilities

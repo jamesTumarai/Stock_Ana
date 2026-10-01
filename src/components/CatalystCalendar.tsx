@@ -5,21 +5,25 @@ import {
   UserCheck, Shield, AlertCircle, ArrowUpRight, ArrowDownRight 
 } from 'lucide-react';
 import { CatalystsData, InsiderActivityData } from '../types';
+import type { CanonicalResearchEvent } from '../domain/reportResearchIntegrity';
 
 interface Props {
   catalysts?: CatalystsData;
   insiderActivity?: InsiderActivityData;
   isThai: boolean;
   ticker?: string;
+  events?: CanonicalResearchEvent[];
 }
 
 export function CatalystCalendar({ 
   catalysts, 
   insiderActivity, 
   isThai,
-  ticker = 'STOCK' 
+  ticker = 'STOCK',
+  events,
 }: Props) {
-  const items = catalysts?.items || [];
+  const items = events ? events.map(event => ({ title:event.title,description:event.description,date:event.eventDate,
+    date_type:event.eventDateType,source:event.source,issuer_confirmed:event.issuerConfirmed,expected_impact:undefined })) : catalysts?.items || [];
   const hasCatalysts = items.length > 0;
   const hasInsiders = !!insiderActivity;
 
@@ -72,6 +76,7 @@ export function CatalystCalendar({
                     {cat.date && (
                       <span className="text-[11px] text-stone-500 font-mono flex items-center gap-1.5 mt-1.5 font-medium">
                         <Calendar className="w-3.5 h-3.5 text-amber-600/70" /> {cat.date}
+                        <span>{cat.issuer_confirmed ? cat.date_type : (isThai ? 'ประมาณการ / ยังไม่ยืนยัน' : 'Estimated / Unconfirmed')}</span>
                       </span>
                     )}
                     <p className="text-xs text-stone-600 leading-relaxed font-sans mt-2">

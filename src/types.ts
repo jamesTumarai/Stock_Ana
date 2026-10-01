@@ -5,6 +5,14 @@ import type { DataCompletenessSummary } from './domain/dataCompleteness/types';
 export type { SecPeriodStatement, SecHistoricalAnnualFact, DataCompletenessSummary };
 
 export interface IncomeStatementData {
+  net_income_parent?: (number | null)[];
+  net_income_common?: (number | null)[];
+  research_and_development?: (number | null)[];
+  selling_general_administrative?: (number | null)[];
+  selling_and_marketing?: (number | null)[];
+  general_and_administrative?: (number | null)[];
+  research_and_development_excluding_acquired?: (number | null)[];
+  interest_income?: (number | null)[];
   revenue: (number | null)[];
   cogs?: (number | null)[];
   gross_profit?: (number | null)[];
@@ -45,6 +53,15 @@ export interface IncomeStatementData {
 }
 
 export interface BalanceSheetData {
+  preferred_equity?: (number | null)[];
+  common_equity?: (number | null)[];
+  cash_and_restricted_cash?: (number | null)[];
+  stockholders_equity?: (number | null)[];
+  noncontrolling_interest?: (number | null)[];
+  redeemable_noncontrolling_interest?: (number | null)[];
+  additional_paid_in_capital?: (number | null)[];
+  prepaid_and_other_current_assets?: (number | null)[];
+  accrued_and_other_current_liabilities?: (number | null)[];
   cash_and_equivalents?: (number | null)[];
   short_term_investments?: (number | null)[];
   total_current_assets?: (number | null)[];
@@ -62,8 +79,13 @@ export interface BalanceSheetData {
   accounts_payable?: (number | null)[];
   tax_payable?: (number | null)[];
   short_term_debt?: (number | null)[];
+  current_debt_and_finance_leases?: (number | null)[];
+  noncurrent_debt_and_finance_leases?: (number | null)[];
   current_deferred_liabilities?: (number | null)[];
   long_term_debt?: (number | null)[];
+  long_term_debt_and_finance_leases?: (number | null)[];
+  finance_lease_liabilities_current?: (number | null)[];
+  finance_lease_liabilities_non_current?: (number | null)[];
   total_debt?: (number | null)[];
   operating_lease_rou_assets?: (number | null)[];
   operating_lease_liabilities_current?: (number | null)[];
@@ -101,6 +123,11 @@ export interface BalanceSheetData {
 }
 
 export interface CashFlowData {
+  issuance_of_common_stock?: (number | null)[];
+  repurchase_of_common_stock?: (number | null)[];
+  option_exercise_proceeds?: (number | null)[];
+  equity_compensation_and_option_proceeds?: (number | null)[];
+  exchange_rate_effect?: (number | null)[];
   operating_cash_flow?: (number | null)[];
   depreciation?: (number | null)[];
   stock_based_compensation?: (number | null)[];
@@ -117,6 +144,15 @@ export interface CashFlowData {
   other_investing?: (number | null)[];
   financing_cash_flow?: (number | null)[];
   debt_issuance_payments?: (number | null)[];
+  debt_issuance?: (number | null)[];
+  debt_repayments?: (number | null)[];
+  finance_lease_payments?: (number | null)[];
+  distributions_to_noncontrolling_interests?: (number | null)[];
+  depreciation_amortization_and_impairment?: (number | null)[];
+  depreciation_amortization_and_accretion?: (number | null)[];
+  distributions_to_noncontrolling_and_redeemable_interests?: (number | null)[];
+  equity_issuance_proceeds?: (number | null)[];
+  dividends_to_noncontrolling_interests?: (number | null)[];
   stock_issuance_repurchase?: (number | null)[];
   dividends_paid?: (number | null)[];
   other_financing?: (number | null)[];
@@ -184,6 +220,9 @@ export interface ReportValidationResult {
 
 
 export interface StatementValidationSummary {
+  reconciliation_status?: 'passed' | 'failed' | 'partial' | 'unavailable';
+  source_reconciliation_status?: 'verified' | 'partial' | 'unavailable';
+  reconciliation_components?: Record<string, number | null>[];
   is_balanced: boolean; // Total Assets = Total Liabilities + Total Equity within tolerance
   discrepancy_pct?: (number | null)[];
   discrepancy_amount?: (number | null)[];
@@ -198,6 +237,12 @@ export interface StatementValidationSummary {
 }
 
 export interface FinancialStatementsData {
+  /** Accepted observation history. Arrays below are a presentation adapter, never authority. */
+  verified_dataset?: import('./domain/financialValue').CanonicalFinancialDataset;
+  period_snapshots?: import('./domain/verifiedFinancialStatements').VerifiedStatementPeriod[];
+  indicator_details?: Record<string, import('./domain/verifiedKeyIndicators').VerifiedIndicator[]>;
+  quality_status?: 'verified' | 'partial' | 'unavailable';
+  unit?: 'USD_M' | 'CURRENCY_M';
   currency?: string;
   fiscal_period_type?: 'quarterly' | 'annual' | string;
   as_of_date?: string;
@@ -220,6 +265,10 @@ export interface FinancialStatementsData {
 }
 
 export interface ValuationRatioItem {
+  status?: string;
+  rawValue?: number | null;
+  source?: string;
+  reason?: string;
   name: string;
   formula?: string;
   value: number | null;
@@ -458,6 +507,15 @@ export interface SotpComponent {
   methodology?: string;
   source?: string;
   assumptions?: string;
+  /** Historical dependency must resolve from canonical source evidence. */
+  financialMetric?: string;
+  segmentId?: string;
+  inputBasis?: 'TTM' | 'INSTANT';
+  valuationMultiple?: number;
+  /** Explicit model case assumptions, never inferred from market targets. */
+  bearValuationMultiple?: number;
+  bullValuationMultiple?: number;
+  valuationBasis?: 'EQUITY' | 'ENTERPRISE';
 }
 
 export interface SotpModel {
@@ -488,6 +546,8 @@ export interface IntrinsicValueSummary {
 
 export interface IntrinsicValueData {
   current_price: number | null;
+  /** One deterministic method-local run; older saved reports may lack it. */
+  canonical_run?: import('./domain/valuation/adaptiveValuationPolicy').CanonicalValuationRun;
   as_of_date?: string;
   selected_model?: ModelSelectorResult;
   cost_of_capital?: CostOfCapitalResult;
@@ -514,6 +574,7 @@ export interface PastEarningsItem {
   revenue_actual_musd?: number;
   revenue_surprise_pct?: number;
   stock_reaction_1d_pct?: number;
+  reaction_observation?: { reportDate: string; value: number | null; reason?: string; provider: string; sourceUrl?: string; retrievedAt: string; basis: string; beforeDate?: string; afterDate?: string; beforeClose?: number; afterClose?: number };
   guidance_change?: 'raised' | 'lowered' | 'maintained' | string;
   beat_or_miss?: 'beat_both' | 'beat_eps' | 'beat_revenue' | 'miss_both' | string;
 }
@@ -795,6 +856,13 @@ export interface PeerComparisonData {
 }
 
 export interface CatalystItem {
+  event_id?: string;
+  date_type?: import('./domain/reportResearchIntegrity').EventDateType;
+  source?: string;
+  source_confidence?: 'ISSUER_CONFIRMED' | 'SOURCE_LINKED' | 'UNCONFIRMED';
+  issuer_confirmed?: boolean;
+  published_at?: string;
+  filing_date?: string;
   title: string;
   date?: string;
   expected_impact?: 'high' | 'medium' | 'low' | string;
@@ -867,6 +935,9 @@ export interface QuarterlyInstitutionalRecord {
 }
 
 export interface SmartMoneyData {
+  source?: string;
+  methodology?: string;
+  share_count_as_of?: string;
   as_of_date?: string;
   institution_overview?: InstitutionOverview;
   holder_type_breakdown?: { type: string; pct: number }[];
@@ -980,6 +1051,10 @@ export interface CompanyProfileData {
 }
 
 export interface RevenueSegmentItem {
+  id?: string;
+  parent_id?: string | null;
+  period?: string;
+  source?: string;
   name: string;
   revenue_usd: string | number;
   ratio_pct: number;
@@ -993,15 +1068,18 @@ export interface RevenueBreakdownData {
 }
 
 export interface OperationalEfficiencyItem {
+  headcount_basis?: 'POINT_IN_TIME' | 'AVERAGE' | 'PROVIDER_ESTIMATE';
+  headcount_as_of?: string;
+  headcount_source?: string;
   period: string;
   headcount: number | string;
   headcount_yoy_pct?: number;
-  revenue_per_employee_k_usd: number;
+  revenue_per_employee_k_usd: number | null;
   revenue_per_employee_yoy_pct?: number;
-  operating_profit_per_employee_k_usd: number;
+  operating_profit_per_employee_k_usd: number | null;
   operating_profit_per_employee_yoy_pct?: number;
   op_profit_per_employee_yoy_pct?: number;
-  net_income_per_employee_k_usd: number;
+  net_income_per_employee_k_usd: number | null;
   net_income_per_employee_yoy_pct?: number;
 }
 
@@ -1336,6 +1414,10 @@ export interface ComprehensiveAnalysis {
 }
 
 export interface TechnicalAnalysis {
+  input_snapshot?: import('./domain/technicalSnapshotIntegrity').TechnicalInputSnapshot;
+  section_basis?: Partial<Record<'key_levels' | 'trade_plan' | 'trend_indicators' | 'momentum_indicators' | 'relative_strength',
+    import('./domain/technicalSnapshotIntegrity').TechnicalInputSnapshot & { benchmark?: string | null }>>;
+  snapshot_audit?: import('./domain/technicalSnapshotIntegrity').TechnicalSnapshotAudit;
   signal_summary: {
     status: string;
     trend_weekly: string;
@@ -1386,19 +1468,27 @@ export interface TechnicalAnalysis {
 }
 
 export interface ConvictionPillarScore {
-  score: number;
+  score: number | null;
   maxScore: number;
-  pct: number;
+  pct: number | null;
+  status?: 'AVAILABLE' | 'PARTIAL' | 'NOT_APPLICABLE' | 'INSUFFICIENT_DATA';
+  coveragePct?: number;
+  availableInputWeight?: number;
+  missingInputs?: string[];
   reasonTh: string;
   reasonEn: string;
 }
 
 export interface ConvictionBreakdown {
+  /** Verified accounting/market capacity only; excludes attributed AI risk. */
+  verified_input_coverage_pct?: number;
   growth: ConvictionPillarScore;
   financial_health: ConvictionPillarScore;
   valuation: ConvictionPillarScore;
   moat_and_risk: ConvictionPillarScore;
-  total_score: number;
+  total_score: number | null;
+  coverage_pct?: number;
+  status?: 'AVAILABLE' | 'PARTIAL' | 'INSUFFICIENT_DATA';
 }
 
 export interface AnalysisReport {
@@ -1412,6 +1502,7 @@ export interface AnalysisReport {
   validation?: ReportValidationResult;
   sec_verification?: SecVerificationEnvelope;
   canonical_financials?: any;
+  ttm_flow_reconciliation?: Partial<Record<import('./domain/canonicalTtmFlow').TtmFlowMetric, import('./domain/canonicalTtmFlow').TtmFlowReconciliation>>;
   market_snapshot?: any;
   report_provenance?: ReportProvenanceManifest;
   verdict?: {
@@ -1450,6 +1541,13 @@ export interface AnalysisReport {
   data_completeness?: DataCompletenessSummary;
   sotp_model?: SotpModel;
   canonical_executive_snapshot?: any;
+  report_completion?: import('./domain/reportCompletion').ReportCompletion;
+  /** Execution of optional AI review, distinct from independent fact verification. */
+  generation_review?: {status:'VALIDATOR_COMPLETED'|'PRIMARY_ONLY';reason:string|null};
+  current_narrative_audit?: Array<{metric: string; claimedValue: number; canonicalValue: number | null; period: string}>;
+  /** Source observations remain distinct from model prose and derived panels. */
+  management_guidance_history?: import('./domain/reportResearchIntegrity').ManagementGuidanceObservation[];
+  research_integrity?: import('./domain/reportResearchIntegrity').ResearchIntegritySummary;
 }
 
 export interface RawAnalysisReport extends Partial<AnalysisReport> {}

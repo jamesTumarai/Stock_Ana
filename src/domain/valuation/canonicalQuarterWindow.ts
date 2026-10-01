@@ -69,6 +69,11 @@ export function parseFiscalQuarterOrdinalFromLabel(label: string): number {
     return NaN;
   }
 
+  const shortFiscalQFirst = trimmed.match(/^Q([1-4])[\s\-_/]+FY\s*(\d{2})$/i);
+  const shortFiscalYFirst = trimmed.match(/^FY\s*(\d{2})[\s\-_/]+Q([1-4])$/i);
+  if (shortFiscalQFirst) return (2000 + Number(shortFiscalQFirst[2])) * 4 + Number(shortFiscalQFirst[1]) - 1;
+  if (shortFiscalYFirst) return (2000 + Number(shortFiscalYFirst[1])) * 4 + Number(shortFiscalYFirst[2]) - 1;
+
   // 1. Q[1-4] followed by year, e.g. 'Q2 2026', 'Q2 FY2026', 'Q2-2026', 'Q2_2026', 'Q2/2026'
   const matchQFirst = trimmed.match(/^Q([1-4])[\s\-_/]+(?:FY)?((?:19|20)\d{2})$/i);
   if (matchQFirst) {

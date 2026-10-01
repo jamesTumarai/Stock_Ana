@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { normalizeReport } from '../../../utils/reportIntegrity';
+import { normalizeReport as normalizeAcceptedReport } from '../../../utils/reportIntegrity';
+import { verifiedFixtureFromStatements } from '../../__tests__/verifiedFixtureBuilder';
 import { calculateDeterministicConvictionScore } from '../../../utils/valuation/convictionScorer';
 import {
   buildCanonicalExecutiveSnapshot,
@@ -15,6 +16,27 @@ import { compareMemorySnapshots, extractMemorySnapshot, type ResearchMemorySnaps
 import type { ReportData } from '../../../types';
 
 console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Conviction Test Suite...');
+
+// Narrative-sync cases use explicit synthetic source fixtures. Zero CapEx below
+// is an assumption of these FCF-only fixtures, never a production fallback.
+const normalizeReport = (input: any, ticker?: string, live?: any) => {
+  const report = structuredClone(input), fs = report.financial_statements;
+  if (fs?.periods?.every((p: string) => /Q[1-4]/.test(p)) && !report.canonical_financials) {
+    if (fs.cash_flow?.free_cash_flow && !fs.cash_flow.operating_cash_flow) {
+      fs.cash_flow.operating_cash_flow = [...fs.cash_flow.free_cash_flow];
+      fs.cash_flow.capex = fs.cash_flow.free_cash_flow.map(() => 0);
+    }
+    report.canonical_financials = verifiedFixtureFromStatements(fs);
+    report.canonical_financials.ticker = ticker || report.ticker;
+    // Explicit synthetic current-share provenance, separate from diluted EPS shares.
+    const shares = Number(String(report.company_profile?.shares_outstanding ?? '').replace(/M$/, ''));
+    const shareAsOf=Object.values(report.canonical_financials.values).flat()
+      .map((fact:any)=>fact.periodEnd as string).filter(Boolean).sort().at(-1);
+    if (shares > 0) report.sec_verification = { ticker: ticker || report.ticker,
+      dcf_financial_inputs: { generated_by:'sec-verified-financial-inputs-v1',ticker:ticker || report.ticker,share_as_of:shareAsOf,current_shares_outstanding_m: shares } };
+  }
+  return normalizeAcceptedReport(report, ticker, live);
+};
 
 // =========================================================================
 // 1. TEST — DCF NARRATIVE SYNCHRONIZATION (Section 64)
@@ -113,7 +135,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     },
     company_profile: { stock_price: 300, sector: 'Technology' },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [1000, 1100, 1200, 1300],
         yoy_revenue_growth_pct: [10, 12, 14, 15],
@@ -224,7 +246,11 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
         net_margin_pct: [10, 10, 10, 10, 10.7, 11, 11.2, 11.5]
       },
       balance_sheet: {
-        total_debt: [500], cash_and_equivalents: [1000], current_ratio: [2.5], debt_to_equity: [0.3]
+        total_debt: [null, null, null, null, null, null, null, 500],
+        cash_and_equivalents: [null, null, null, null, null, null, null, 1000],
+        short_term_investments: [null, null, null, null, null, null, null, 0],
+        current_ratio: [null, null, null, null, null, null, null, 2.5],
+        debt_to_equity: [null, null, null, null, null, null, null, 0.3]
       },
       cash_flow: { free_cash_flow: [120], fcf_margin_pct: [8] }
     },
@@ -290,12 +316,13 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     ticker: 'MOS',
     company_profile: { stock_price: 372.11, sector: 'Technology' },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [1000, 1100, 1200, 1300], yoy_revenue_growth_pct: [10, 12, 14, 15], net_income: [100, 110, 120, 130], net_margin_pct: [10, 10, 10, 10]
       },
       balance_sheet: {
-        total_debt: [100], cash_and_equivalents: [500], current_ratio: [2.5], debt_to_equity: [0.2]
+        total_debt: [null, null, null, 100], cash_and_equivalents: [null, null, null, 500],
+        short_term_investments: [null, null, null, 0], current_ratio: [null, null, null, 2.5], debt_to_equity: [null, null, null, 0.2]
       },
       cash_flow: { free_cash_flow: [100], fcf_margin_pct: [8] }
     },
@@ -374,12 +401,13 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     ticker: 'MOATTEST',
     company_profile: { stock_price: 100, sector: 'Technology' },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [1000, 1100, 1200, 1300], yoy_revenue_growth_pct: [20, 22, 25, 28], net_income: [200, 230, 260, 300], net_margin_pct: [20, 21, 22, 23]
       },
       balance_sheet: {
-        total_debt: [100], cash_and_equivalents: [800], current_ratio: [3.0], debt_to_equity: [0.1]
+        total_debt: [null, null, null, 100], cash_and_equivalents: [null, null, null, 800],
+        short_term_investments: [null, null, null, 0], current_ratio: [null, null, null, 3.0], debt_to_equity: [null, null, null, 0.1]
       },
       cash_flow: { free_cash_flow: [200], fcf_margin_pct: [15] }
     },
@@ -435,16 +463,18 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     company_profile: { stock_price: 200, sector: 'Financial Services', industry: 'Commercial Banking' },
     financial_statements: {
       statement_template: 'banking',
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [10000, 10500, 11000, 11500],
         yoy_revenue_growth_pct: [8, 9, 10, 11],
         net_income: [3000, 3200, 3400, 3600],
-        net_margin_pct: [30, 30.5, 31, 31.3]
+        net_margin_pct: [30, 30.5, 31, 31.3],
+        net_interest_margin_pct: [3.5,3.5,3.6,3.6]
       },
       balance_sheet: {
         deposits: [200000, 210000, 220000, 230000],
-        total_equity: [30000, 31000, 32000, 33000]
+        total_equity: [30000, 31000, 32000, 33000],
+        cet1_ratio: [12,12,12,12]
       },
       cash_flow: {}
     },
@@ -462,6 +492,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
   const bankScore = calculateDeterministicConvictionScore(bankReport, 'JPM_MOCK');
   assert.ok(bankScore, 'Bank fixture must produce conviction score without corporate FCF');
   assert.ok(bankScore.conviction_breakdown.financial_health.score >= 20, 'Bank health score should be healthy');
+  assert.equal(bankScore.conviction_breakdown.financial_health.availableInputWeight,15,'NIM and CET1 own their observed weights; AI strength cannot fill missing compatible ROE');
   console.log(`   Bank Policy PASSED (Score: ${bankScore.conviction_score}/100)`);
 
   // Insurer Fixture
@@ -470,7 +501,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     company_profile: { stock_price: 220, sector: 'Financial Services', industry: 'Property & Casualty Insurance' },
     financial_statements: {
       statement_template: 'insurance',
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [8000, 8200, 8500, 8800],
         yoy_revenue_growth_pct: [6, 7, 8, 9],
@@ -499,7 +530,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     ticker: 'PLD_MOCK',
     company_profile: { stock_price: 120, sector: 'Real Estate', industry: 'Industrial REIT' },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [1500, 1600, 1700, 1800],
         yoy_revenue_growth_pct: [8, 9, 10, 11],
@@ -704,7 +735,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     verdict: { summary: rawSummary, key_takeaways: rawTakeaways, conviction_score: 75 },
     intrinsic_value: { current_price: 375.00, summary: { base_case_fair_value: 225.50, margin_of_safety_pct: -39.9 } },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: { revenue: [1000, 1100, 1200, 1300], yoy_revenue_growth_pct: [10, 12, 14, 16], net_income: [100, 110, 120, 130], net_margin_pct: [10, 10, 10, 10] },
       balance_sheet: { total_debt: [100], cash_and_equivalents: [500], current_ratio: [2.0], debt_to_equity: [0.2] },
       cash_flow: { free_cash_flow: [100], fcf_margin_pct: [8] }
@@ -742,14 +773,17 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
       ticker: item.ticker,
       company_profile: { stock_price: 100, sector: item.sector, industry: item.industry },
       financial_statements: {
-        periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+        periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
         income_statement: {
           revenue: [1000, 1100, 1200, 1300],
           yoy_revenue_growth_pct: [10, 10, 10, 10],
           net_income: [item.netIncome ?? 100],
           net_margin_pct: [item.netIncome ? item.netIncome / 10 : 10]
         },
-        balance_sheet: { total_debt: [200], cash_and_equivalents: [500], current_ratio: [2.0] },
+        balance_sheet: {
+          total_debt: [null, null, null, 200], cash_and_equivalents: [null, null, null, 500],
+          short_term_investments: [null, null, null, 0], current_ratio: [null, null, null, 2.0],
+        },
         cash_flow: { free_cash_flow: [100] }
       },
       intrinsic_value: { current_price: 100, summary: { base_case_fair_value: 120, margin_of_safety_pct: 20 } }
@@ -761,7 +795,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     if (snapshot.identity.archetype === 'bank' || snapshot.identity.archetype === 'lender') {
       // Banks must not emphasize corporate FCF or Current Ratio as valid corporate facts
       assert.equal(snapshot.cashFlow.status, 'NOT_APPLICABLE', `Bank ${item.ticker} corporate FCF must be NOT_APPLICABLE`);
-      assert.equal(snapshot.balanceSheet.status, 'SEC_VERIFIED');
+      assert.equal(snapshot.balanceSheet.status, 'FOUND_UNVERIFIED');
     }
 
     if (snapshot.identity.archetype === 'early_stage') {
@@ -1146,7 +1180,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
       ticker: sc.ticker,
       company_profile: { stock_price: 100, sector: sc.sector, industry: sc.industry },
       financial_statements: {
-        periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+        periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
         income_statement: {
           revenue: [1000, 1100, 1200, 1300],
           yoy_revenue_growth_pct: [10, 10, 10, 10],
@@ -1189,10 +1223,10 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
 }
 
 // =========================================================================
-// 21. TEST — DRAFT DCF 136.08 VS CANONICAL DCF 148.67 ELIMINATION
+// 21. TEST — DRAFT DCF VS RECOMPUTED CANONICAL DCF ELIMINATION
 // =========================================================================
 {
-  console.log('➡️ Testing Draft DCF (136.08) vs Final Canonical DCF (148.67) elimination...');
+  console.log('➡️ Testing draft DCF against a recomputed canonical valuation...');
 
   const reportFixture: any = {
     ticker: 'AAPL_TEST',
@@ -1214,11 +1248,11 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
         net_margin_pct: [25, 24.7, 24.4, 25.2]
       },
       balance_sheet: {
-        total_debt: [100000],
-        cash_and_equivalents: [60000],
-        short_term_investments: [30000],
-        debt_to_equity: [1.2],
-        current_ratio: [1.1]
+        total_debt: [null, null, null, 100000],
+        cash_and_equivalents: [null, null, null, 60000],
+        short_term_investments: [null, null, null, 30000],
+        debt_to_equity: [null, null, null, 1.2],
+        current_ratio: [null, null, null, 1.1]
       },
       cash_flow: {
         free_cash_flow: [22000, 23000, 24000, 26000],
@@ -1238,11 +1272,14 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
       },
       dcf_model: {
         scenarios: {
-          base: { fair_value_per_share: 148.67 }
+          bear: { revenue_cagr_pct: 5, terminal_margin_pct: 20, fair_value_per_share: 100 },
+          base: { revenue_cagr_pct: 10, terminal_margin_pct: 25, fair_value_per_share: 148.67 },
+          bull: { revenue_cagr_pct: 15, terminal_margin_pct: 30, fair_value_per_share: 200 }
         },
         assumptions: {
           wacc_pct: 8.5,
-          terminal_growth_pct: 2.5
+          terminal_growth_pct: 2.5,
+          projection_years: 5
         }
       }
     },
@@ -1265,32 +1302,46 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
 
   const normalized = normalizeReport(reportFixture, 'AAPL_TEST');
   const snapshot = normalized.canonical_executive_snapshot;
+  const canonicalFv = normalized.intrinsic_value?.canonical_run?.baseFairValue;
 
-  // 1. Exactly one canonical base valuation value
-  assert.equal(snapshot.canonicalValuation.baseFairValue, 148.67, 'Canonical baseFairValue must be exactly 148.67');
-  assert.equal(snapshot.valuation.fairValue, 148.67, 'Header Fair Value snapshot must be exactly 148.67');
+  // A cached Section 1 price and model-supplied scenario price have no
+  // authority over a newly recalculated, source-backed valuation run.
+  assert.ok(typeof canonicalFv === 'number' && canonicalFv > 0);
+  assert.equal(snapshot.canonicalValuation.baseFairValue, canonicalFv);
+  assert.equal(snapshot.valuation.fairValue, canonicalFv);
+  assert.equal(normalized.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share, canonicalFv);
 
   // 2. Draft DCF 136.08 must NOT survive
   assert.ok(!normalized.verdict.summary.includes('136.08'), 'Draft DCF 136.08 must not survive in normalized summary');
   assert.ok(!normalized.verdict.key_takeaways[1].includes('136.08'), 'Draft DCF 136.08 must not survive in normalized takeaways');
 
-  // 3. Final canonical DCF 148.67 must be present
-  assert.ok(normalized.verdict.summary.includes('148.67'), `Summary must contain canonical 148.67, got: ${normalized.verdict.summary}`);
-  assert.ok(normalized.verdict.key_takeaways[1].includes('148.67'), `Takeaway must contain canonical 148.67, got: ${normalized.verdict.key_takeaways[1]}`);
+  // 3. The final calculated value must be present in every Section 1 consumer.
+  assert.ok(normalized.verdict.summary.includes(canonicalFv.toFixed(2)));
+  assert.ok(normalized.verdict.key_takeaways[1].includes(canonicalFv.toFixed(2)));
+
+  // Real Thai report phrasing that previously left a different AI DCF price
+  // and its derived Margin of Safety beside the canonical header value.
+  const thaiTakeaway = 'การประเมินมูลค่าผ่าน DCF บ่งชี้มูลค่าพื้นฐานกรณีฐานที่ 480.74 ดอลลาร์ คิดเป็น Margin of Safety สูงถึง 106.18% จากราคาตลาดปัจจุบันที่ 125.00 ดอลลาร์';
+  const syncedTakeaway = reconcileKeyTakeaways([thaiTakeaway], snapshot, true)[0];
+  const expectedMargin = ((canonicalFv - 125) / 125 * 100).toFixed(2);
+  assert.ok(syncedTakeaway.includes(canonicalFv.toFixed(2)), syncedTakeaway);
+  assert.ok(syncedTakeaway.includes(`Margin of Safety สูงถึง ${expectedMargin}%`), syncedTakeaway);
+  assert.ok(!syncedTakeaway.includes('480.74'), syncedTakeaway);
+  assert.ok(!syncedTakeaway.includes('106.18%'), syncedTakeaway);
 
   // 4. Also test Thai prose synchronization
   const rawThaiSummary = 'บริษัทมีปัจจัยพื้นฐานแข็งแกร่ง โดย DCF base case = $136.08 เทียบกับราคาปัจจุบัน $125.00';
   const reconciledTh = reconcileExecutiveSummary(rawThaiSummary, snapshot, true);
   assert.ok(!reconciledTh.includes('136.08'), 'Draft 136.08 must not survive in Thai summary');
-  assert.ok(reconciledTh.includes('148.67'), `Thai summary must contain canonical 148.67, got: ${reconciledTh}`);
+  assert.ok(reconciledTh.includes(canonicalFv.toFixed(2)));
 
   // 5. Section 1 Integrity validation
   const integrity = validateSection1Integrity(normalized, 'AAPL_TEST');
   assert.equal(integrity.isValid, true, `Integrity validation should pass, issues: ${integrity.issues.join(', ')}`);
-  assert.equal(integrity.details.canonicalBaseFairValue, 148.67);
-  assert.equal(integrity.details.baseDcfMentionedValue, 148.67);
+  assert.equal(integrity.details.canonicalBaseFairValue, canonicalFv);
+  assert.equal(integrity.details.baseDcfMentionedValue, canonicalFv);
 
-  console.log('✅ Draft DCF 136.08 vs Final Canonical DCF 148.67 elimination PASSED');
+  console.log('✅ Draft DCF vs recomputed canonical DCF elimination PASSED');
 }
 
 // =========================================================================
@@ -1372,7 +1423,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
       ticker: item.ticker,
       company_profile: { stock_price: 120.00, sector: item.sector, industry: item.industry },
       financial_statements: {
-        periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+        periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
         income_statement: {
           revenue: [1000, 1100, 1200, 1300],
           yoy_revenue_growth_pct: [10, 10, 10, 10],
@@ -1419,9 +1470,12 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     assert.ok(!summaryEn.includes('136.08'), `Stale 136.08 must not survive in summary for ${item.ticker}, got: ${summaryEn}`);
     assert.ok(!takeawayEn.includes('136.08'), `Stale 136.08 must not survive in takeaway for ${item.ticker}`);
 
-    // 2. Verify 148.67 is present
-    assert.ok(summaryEn.includes('148.67'), `Canonical 148.67 must be present in summary for ${item.ticker}, got: ${summaryEn}`);
-    assert.ok(takeawayEn.includes('148.67'), `Canonical 148.67 must be present in takeaway for ${item.ticker}`);
+    // These fixtures intentionally omit method inputs. A model-authored price
+    // and an old Section 1 snapshot cannot manufacture a canonical fair value.
+    assert.equal(normalized.intrinsic_value?.canonical_run?.baseFairValue, null);
+    assert.equal(normalized.canonical_executive_snapshot.canonicalValuation.baseFairValue, null);
+    assert.ok(!summaryEn.includes('148.67'), `Unverified 148.67 must not survive for ${item.ticker}`);
+    assert.ok(!takeawayEn.includes('148.67'), `Unverified 148.67 must not survive for ${item.ticker}`);
 
     // 3. For non-DCF archetypes, must NOT manufacture or retain DCF label
     for (const forbidden of item.mustNotContainLabel) {
@@ -1431,7 +1485,7 @@ console.log('🚀 Running Canonical Section 1 Integrity & Cross-Sector Convictio
     // 4. Test Thai prose reconciliation
     const summaryTh = reconcileExecutiveSummary(item.draftProseTh, normalized.canonical_executive_snapshot, true);
     assert.ok(!summaryTh.includes('136.08'), `Stale 136.08 must not survive in Thai summary for ${item.ticker}`);
-    assert.ok(summaryTh.includes('148.67'), `Canonical 148.67 must be present in Thai summary for ${item.ticker}, got: ${summaryTh}`);
+    assert.ok(!summaryTh.includes('148.67'), `Unverified 148.67 must not survive in Thai summary for ${item.ticker}`);
     for (const forbidden of item.mustNotContainLabel) {
       assert.ok(!summaryTh.includes(forbidden), `Non-DCF ${item.ticker} Thai summary must not contain '${forbidden}', got: ${summaryTh}`);
     }

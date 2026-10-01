@@ -74,3 +74,18 @@ assert.notEqual(
 }
 
 console.log('SEC share-count distinction checks passed');
+
+{
+  const old=structuredClone(companyFacts);
+  const shares=old.facts!.dei!.EntityCommonStockSharesOutstanding!.units!.shares!;
+  for(const fact of shares){fact.end='2011-04-29';fact.filed='2011-05-06';}
+  old.facts!.dei!.EntityCommonStockSharesOutstanding!.units!.shares=[shares[0]];
+  const snapshot=buildSecShareSnapshot(identity,submissions,old,'2026-08-02T00:00:00Z');
+  assert.equal(snapshot.currentCommonSharesOutstanding,null);
+  assert.equal(snapshot.historicalCommonSharesOutstanding?.at(-1)?.end,'2011-04-29');
+}
+{
+  const recent={...submissions,filings:{recent:{form:['10-Q'],reportDate:['2026-12-31']}}};
+  // The retrieval is later than this filing; July's old count is not December's.
+  assert.equal(buildSecShareSnapshot(identity,recent,companyFacts,'2027-02-01T00:00:00Z').currentCommonSharesOutstanding,null);
+}

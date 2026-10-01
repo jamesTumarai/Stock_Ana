@@ -4,6 +4,7 @@ import { compareSecCanonicalToReport } from '../src/services/sec/secReportCompar
 import { SecDataError } from '../src/services/sec/secClient';
 import { adaptFinancialStatementsToSecPeriodStatements, diffSecFinancialStatements } from '../src/utils/secFilingDiffEngine';
 import { mapSecBundleToAnnualRevenueHistory } from '../src/services/sec/secFinancialMapper';
+import { unavailableResolutionAudit } from '../src/services/sec/canonicalResolutionAudit';
 
 const normalizeTicker = (value: unknown) => typeof value === 'string' ? value.trim().toUpperCase() : '';
 const validTicker = (ticker: string) => /^[A-Z0-9.-]{1,12}$/.test(ticker);
@@ -14,6 +15,7 @@ const requireSecConfiguration = (res: any) => {
     error: 'SEC_USER_AGENT is not configured on the server.',
     code: 'SEC_USER_AGENT_MISSING',
     secConfigured: false,
+    resolutionAudit: unavailableResolutionAudit('SOURCE_FETCH_FAILED'),
   });
   return false;
 };
@@ -25,10 +27,11 @@ const secErrorResponse = (res: any, error: unknown, route: string) => {
       error: error.message,
       code: error.code,
       secConfigured: true,
+      resolutionAudit: unavailableResolutionAudit('SOURCE_FETCH_FAILED'),
     });
   }
   console.error(`[${route}] Unexpected error:`, error);
-  return res.status(500).json({ error: 'Unexpected SEC diagnostics error.', code: 'SEC_PREVIEW_ERROR' });
+  return res.status(500).json({ error: 'Unexpected SEC diagnostics error.', code: 'SEC_PREVIEW_ERROR', resolutionAudit: unavailableResolutionAudit('SOURCE_FETCH_FAILED') });
 };
 
 const presentCoverageDiagnostics = (diagnostics: any) => diagnostics ? {
@@ -76,6 +79,7 @@ export async function handleSecPreview(req: any, res: any) {
       sourceCoverage: pkg.canonicalFinancials?.sourceCoverage ?? null,
       provenanceStatus: pkg.canonicalFinancials?.provenanceStatus ?? null,
       canonicalFinancials: pkg.canonicalFinancials ?? null,
+      resolutionAudit: pkg.resolutionAudit ?? null,
       provenanceWarnings: pkg.canonicalFinancials?.provenanceWarnings ?? [],
       dcfCoverage: pkg.dcfCoverage,
       dcfFinancialInputs,

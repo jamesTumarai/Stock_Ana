@@ -60,7 +60,7 @@ export function calculateCanonicalRoic(input: CanonicalRoicInput): CanonicalRoic
     source,
   } = input;
 
-  const formula = 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash)';
+  const formula = 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash - Short-Term Investments)';
 
   // 1. Invested Capital validation
   let avgIC: number | null = null;
@@ -129,7 +129,7 @@ export function calculateCanonicalRoic(input: CanonicalRoicInput): CanonicalRoic
     periodBasis,
     period: periodLabel,
     formula,
-    taxRateUsed: rounded(taxRateUsed),
+    taxRateUsed,
     taxRateMethod,
     averageInvestedCapital: avgIC,
     investedCapitalBeginning: beginningInvestedCapital,

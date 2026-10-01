@@ -3,10 +3,10 @@ import type { FinancialStatementsData, ReportData } from '../types';
 export type FinancialStatementSection = 'income_statement' | 'balance_sheet' | 'cash_flow';
 export type FinancialValueType = 'reported' | 'derived' | 'estimated' | 'unclassified';
 export type FinancialVerificationStatus = 'unverified' | 'source_linked' | 'verified';
-export type FinancialUnit = 'USD_M' | 'percent' | 'per_share' | 'shares_M' | 'x' | 'count' | 'unknown';
+export type FinancialUnit = 'USD_M' | 'CURRENCY_M' | 'percent' | 'per_share' | 'shares_M' | 'x' | 'count' | 'unknown';
 export type FinancialProvenanceStatus = 'unverified' | 'partially_source_linked' | 'source_linked' | 'verified';
 
-export const CANONICAL_FINANCIAL_SCHEMA_VERSION = 1;
+export const CANONICAL_FINANCIAL_SCHEMA_VERSION = 2;
 export const CANONICAL_FINANCIAL_GENERATOR = 'lumina-financial-provenance-v1';
 
 export interface FinancialSourceMetadata {
@@ -17,9 +17,14 @@ export interface FinancialSourceMetadata {
   periodEnd?: string;
   accessionNumber?: string;
   retrievedAt?: string;
+  accountingStandard?: 'US_GAAP' | 'IFRS';
+  authorityTier?: 1 | 2 | 3 | 4;
 }
 
 export interface CanonicalFinancialValue {
+  valueSemantic?: 'CASH_FLOW_EFFECT' | 'BALANCE_CHANGE';
+  signNormalization?: { sourceSemantic: 'CASH_FLOW_EFFECT' | 'BALANCE_CHANGE'; sourceValue: number; multiplier: number; concept: string };
+  sourceUnit?: string;
   metric: string;
   statement: FinancialStatementSection;
   value: number | null;
@@ -33,10 +38,20 @@ export interface CanonicalFinancialValue {
   form?: string;
   accession?: string;
   concept?: string;
+  sourceConcept?: string;
+  canonicalMetric?: string;
+  mappingType?: 'STANDARD' | 'ALIAS' | 'ISSUER_EXTENSION';
+  mappingKind?: 'STANDARD_EXACT' | 'STANDARD_ALIAS' | 'ISSUER_EXTENSION_VERIFIED' | 'DERIVED' | 'UNRESOLVED';
+  /** Compact primary-statement evidence; retain after raw filings are stripped. */
+  mappingEvidence?: { definition: string; statementLocation: string; entityCik: string; consolidated: boolean; unit: string; contextId: string; periodStart?: string; periodEnd: string; policy: string };
+  balancePresentation?: {classification: 'INCLUDED_IN_NCI' | 'SEPARATE_MEZZANINE'; evidence: string; documentUrl: string; contextId: string};
   type: FinancialValueType;
   verification: FinancialVerificationStatus;
   source?: FinancialSourceMetadata;
   derivation?: string;
+  currency?: string;
+  durationDays?: number;
+  sourceComponents?: CanonicalFinancialValue[];
 }
 
 export interface FinancialProvenanceWarning {
@@ -46,10 +61,23 @@ export interface FinancialProvenanceWarning {
 }
 
 export interface CanonicalFinancialDataset {
+  commonShareObservations?: Array<{sharesM:number;end:string;filed?:string;source:FinancialSourceMetadata}>;
+  verifiedBusinessKpis?: Array<{key:string;label:string;value:number;unit:'USD_M'|'%'|'x'|'months';period:string;periodEnd:string;basis:string;source:string}>;
+  verifiedResearchEvents?: import('./reportResearchIntegrity').CanonicalResearchEvent[];
+  verifiedManagementGuidance?: import('./reportResearchIntegrity').ManagementGuidanceObservation[];
+  /** Dimensional operating-segment facts are separate from consolidated truth. */
+  operatingSegments?: Array<{ id: string; name: string; axis: string; member: string;
+    values: Record<string, CanonicalFinancialValue[]> }>;
+  resolutionAudit?: import('../services/sec/canonicalResolutionAudit').CanonicalResolutionAudit;
+  completionAudit?: Array<{metric: string; period: string; reasonCode: string; sourcePathsAttempted: string[]}>;
+  issuerReportedNonGaap?: Array<{metric: string; value: number; unit: string; period: string; periodStart?: string; periodEnd: string; source: FinancialSourceMetadata; verification: 'ISSUER_REPORTED_NON_GAAP'}>;
+  cashFlowCashBalances?: Array<{period: string; startDate: string; endDate: string; beginning: number; ending: number; basis: 'CASH_AND_RESTRICTED_CASH' | 'CASH_AND_RESTRICTED_CASH_INCLUDING_DISPOSAL_GROUP'; beginningSource: FinancialSourceMetadata; endingSource: FinancialSourceMetadata}>;
   schemaVersion: number;
   generatedBy: string;
   ticker?: string;
   currency?: string;
+  mappingVersion?: string;
+  normalizationVersion?: string;
   periods: string[];
   values: Record<string, CanonicalFinancialValue[]>;
   provenanceStatus: FinancialProvenanceStatus;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { CanonicalFinancialDataset, CanonicalFinancialValue } from '../../domain/financialValue';
 import { adaptSecCanonicalToFinancialStatements, assessSecDcfCoverage } from './secLegacyAdapter';
 import type { SecShareSnapshot } from './secShareSnapshot';
+import { upgradeCanonicalTestFixture } from '../../domain/__tests__/verifiedFixtureBuilder';
 
 const periods = ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'];
 const source = {
@@ -24,7 +25,10 @@ const series = (
   value: values[index],
   unit: metric === 'eps_diluted' ? 'per_share' : 'USD_M',
   period,
-  periodEnd: index === 3 ? '2026-12-31' : undefined,
+  periodEnd: new Date(Date.UTC(2026, (index + 1) * 3, 0)).toISOString().slice(0, 10),
+  periodType: statement === 'balance_sheet' ? 'instant' : 'standalone_quarter',
+  fiscalYear: 2026,
+  fiscalQuarter: (index + 1) as 1 | 2 | 3 | 4,
   type: metric === 'free_cash_flow' ? 'derived' : 'reported',
   verification: values[index] === null ? 'unverified' : 'verified',
   source: values[index] === null ? undefined : source,
@@ -43,7 +47,7 @@ const dataset = (): CanonicalFinancialDataset => {
     'cash_flow.free_cash_flow': series('free_cash_flow', 'cash_flow', [15, 17, 18, 20]),
   };
   const flat = Object.values(values).flat();
-  return {
+  return upgradeCanonicalTestFixture({
     schemaVersion: 1,
     generatedBy: 'lumina-financial-provenance-v1+sec-xbrl-v1',
     ticker: 'TEST',
@@ -59,7 +63,7 @@ const dataset = (): CanonicalFinancialDataset => {
     },
     provenanceStatus: 'verified',
     provenanceWarnings: [],
-  };
+  });
 };
 
 const shares: SecShareSnapshot = {

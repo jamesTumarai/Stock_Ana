@@ -62,6 +62,7 @@ export type PeerUnavailableReason =
   | 'SOURCE_GAP';
 
 export interface PeerDiscoveryResult {
+  metricEligibility?: Record<string,{candidatePeers:string[];eligiblePeers:string[];excludedPeers:Array<{ticker:string;reason:string}>;sampleSize:number;median:number|null}>;
   targetTicker: string;
   targetFingerprint: PeerBusinessFingerprint;
   peers: PeerCandidate[];

@@ -1,3 +1,6 @@
+import { validateFinancialStatements } from '../../utils/statementValidator';
+import { reconcileVerifiedDataset, buildVerifiedStatementPeriods } from '../../domain/verifiedFinancialStatements';
+import { calculateVerifiedKeyIndicators } from '../../domain/verifiedKeyIndicators';
 import type { CanonicalFinancialDataset, CanonicalFinancialValue } from '../../domain/financialValue';
 import type {
   BalanceSheetData,
@@ -6,7 +9,8 @@ import type {
   IncomeStatementData,
 } from '../../types';
 import type { SecShareSnapshot } from './secShareSnapshot';
-import { validTrailingFourQuarterLabels } from '../../domain/valuation/canonicalQuarterWindow';
+import { reconcileCanonicalTtmFlow, type TtmFlowMetric } from '../../domain/canonicalTtmFlow';
+import { resolveCurrentBalanceSheetSnapshot } from '../../domain/currentBalanceSheetSnapshot';
 
 export interface SecDcfCoverageIssue {
   code: string;
@@ -59,108 +63,70 @@ const assignSeries = <T extends Record<string, unknown>>(
  * Converts SEC canonical values into the legacy FinancialStatementsData shape used by existing UI.
  * This is an adapter only: it never fills a missing SEC metric from AI/report data.
  */
-export function adaptSecCanonicalToFinancialStatements(dataset: CanonicalFinancialDataset): FinancialStatementsData | null {
-  if (!dataset.periods.length || !dataset.values || !/sec-xbrl/i.test(dataset.generatedBy)) return null;
-
+export function adaptSecCanonicalToFinancialStatements(input: CanonicalFinancialDataset): FinancialStatementsData | null {
+  const dataset = reconcileVerifiedDataset(input);
+  if (!dataset) return null;
+  const snapshots = buildVerifiedStatementPeriods(dataset);
+  // Absence of a total-income disclosure is a data gap, not a malformed series.
+  // Parent/common earnings remain separate; never copy them into total income.
   const income: IncomeStatementData = {
-    revenue: seriesValues(dataset, 'income_statement.revenue') ?? dataset.periods.map(() => null),
-    net_income: seriesValues(dataset, 'income_statement.net_income') ?? dataset.periods.map(() => null),
+    revenue: dataset.periods.map(() => null),
+    net_income: dataset.periods.map(() => null),
   };
-  assignSeries(income as unknown as Record<string, unknown>, 'gross_profit', seriesValues(dataset, 'income_statement.gross_profit'));
-  assignSeries(income as unknown as Record<string, unknown>, 'operating_income', seriesValues(dataset, 'income_statement.operating_income'));
-  assignSeries(income as unknown as Record<string, unknown>, 'interest_expense', seriesValues(dataset, 'income_statement.interest_expense'));
-  assignSeries(income as unknown as Record<string, unknown>, 'income_before_tax', seriesValues(dataset, 'income_statement.income_before_tax'));
-  assignSeries(income as unknown as Record<string, unknown>, 'income_tax_expense', seriesValues(dataset, 'income_statement.income_tax_expense'));
-  assignSeries(income as unknown as Record<string, unknown>, 'eps_diluted', seriesValues(dataset, 'income_statement.eps_diluted'));
-  assignSeries(income as unknown as Record<string, unknown>, 'net_interest_income', seriesValues(dataset, 'income_statement.net_interest_income'));
-  assignSeries(income as unknown as Record<string, unknown>, 'non_interest_income', seriesValues(dataset, 'income_statement.non_interest_income'));
-  assignSeries(income as unknown as Record<string, unknown>, 'provision_for_credit_losses', seriesValues(dataset, 'income_statement.provision_for_credit_losses'));
-  assignSeries(income as unknown as Record<string, unknown>, 'net_interest_margin_pct', seriesValues(dataset, 'income_statement.net_interest_margin_pct'));
-  assignSeries(income as unknown as Record<string, unknown>, 'ffo', seriesValues(dataset, 'income_statement.ffo'));
-  assignSeries(income as unknown as Record<string, unknown>, 'noi', seriesValues(dataset, 'income_statement.noi'));
-  assignSeries(income as unknown as Record<string, unknown>, 'rental_revenue', seriesValues(dataset, 'income_statement.rental_revenue'));
-  assignSeries(income as unknown as Record<string, unknown>, 'combined_ratio_pct', seriesValues(dataset, 'income_statement.combined_ratio_pct'));
-  assignSeries(income as unknown as Record<string, unknown>, 'net_premiums_earned', seriesValues(dataset, 'income_statement.net_premiums_earned'));
-
   const balance: BalanceSheetData = {};
-  const balanceKeys: Array<[keyof BalanceSheetData, string]> = [
-    ['cash_and_equivalents', 'balance_sheet.cash_and_equivalents'],
-    ['short_term_investments', 'balance_sheet.short_term_investments'],
-    ['total_current_assets', 'balance_sheet.total_current_assets'],
-    ['accounts_receivable', 'balance_sheet.accounts_receivable'],
-    ['inventory', 'balance_sheet.inventory'],
-    ['net_ppe', 'balance_sheet.net_ppe'],
-    ['goodwill', 'balance_sheet.goodwill'],
-    ['total_assets', 'balance_sheet.total_assets'],
-    ['total_current_liabilities', 'balance_sheet.total_current_liabilities'],
-    ['accounts_payable', 'balance_sheet.accounts_payable'],
-    ['total_liabilities', 'balance_sheet.total_liabilities'],
-    ['total_equity', 'balance_sheet.total_equity'],
-    ['total_debt', 'balance_sheet.total_debt'],
-    ['deposits', 'balance_sheet.deposits'],
-    ['loans_held_for_investment', 'balance_sheet.loans_held_for_investment'],
-    ['tier1_capital_ratio', 'balance_sheet.tier1_capital_ratio'],
-    ['loss_reserve', 'balance_sheet.loss_reserve'],
-  ];
-  for (const [legacyKey, canonicalKey] of balanceKeys) {
-    const values = seriesValues(dataset, canonicalKey);
-    if (values) (balance as Record<string, unknown>)[legacyKey] = values;
-  }
-
   const cashFlow: CashFlowData = {};
-  assignSeries(cashFlow as unknown as Record<string, unknown>, 'operating_cash_flow', seriesValues(dataset, 'cash_flow.operating_cash_flow'));
-  assignSeries(
-    cashFlow as unknown as Record<string, unknown>,
-    'capex',
-    seriesValues(dataset, 'cash_flow.capex', value => -Math.abs(value)),
-  );
-  assignSeries(
-    cashFlow as unknown as Record<string, unknown>,
-    'dividends_paid',
-    seriesValues(dataset, 'cash_flow.dividends_paid', value => -Math.abs(value)),
-  );
-  assignSeries(cashFlow as unknown as Record<string, unknown>, 'free_cash_flow', seriesValues(dataset, 'cash_flow.free_cash_flow'));
-
-  const latestSourceValue = latestVerifiedSource(dataset);
-  const source = latestSourceValue?.source;
-  const latestPeriodEnd = latestSourceValue?.periodEnd ?? source?.periodEnd;
-
-  return {
-    currency: dataset.currency ?? 'USD',
-    fiscal_period_type: 'quarterly',
-    as_of_date: latestPeriodEnd,
-    periods: [...dataset.periods],
-    income_statement: income,
-    balance_sheet: balance,
-    cash_flow: cashFlow,
-    source: source ? {
-      document_url: source.documentUrl,
-      document_type: source.documentType,
-      filing_date: source.filingDate,
-      period_end: source.periodEnd,
-      units: 'USD millions unless per-share',
-    } : undefined,
+  const sections = { income_statement: income, balance_sheet: balance, cash_flow: cashFlow };
+  for (const [key, series] of Object.entries(dataset.values)) {
+    const [section, metric] = key.split('.') as [keyof typeof sections, string];
+    const outflow = section === 'cash_flow' && ['capex', 'dividends_paid', 'repurchase_of_common_stock', 'debt_repayments', 'finance_lease_payments','dividends_to_noncontrolling_interests', 'distributions_to_noncontrolling_interests','distributions_to_noncontrolling_and_redeemable_interests'].includes(metric);
+    (sections[section] as Record<string, unknown>)[metric] = dataset.periods.map(period => {
+      const item = series.find(v => v.period === period);
+      return item?.verification === 'verified' && finite(item.value) ? outflow ? -Math.abs(item.value) : item.value : null;
+    });
+  }
+  // Cash-flow reconciliation uses the explicit restricted-cash basis. A missing
+  // restricted-cash observation is never replaced with ordinary balance-sheet cash.
+  cashFlow.ending_cash = dataset.periods.map(p => {
+    const s=snapshots.find(s=>s.label===p);
+    return dataset.cashFlowCashBalances?.find(b=>b.period===p)?.ending
+      ?? s?.observations['balance_sheet.cash_and_restricted_cash']?.value
+      ?? s?.observations['balance_sheet.cash_and_restricted_cash_including_disposal_group']?.value ?? null;
+  });
+  cashFlow.beginning_cash = snapshots.map((p, i) => {
+    const exact = dataset.cashFlowCashBalances?.find(b => b.period===p.label&&b.startDate===p.startDate&&b.endDate===p.endDate);
+    if (exact) return exact.beginning;
+    const prior = snapshots[i - 1];
+    const endingKey=p.observations['balance_sheet.cash_and_restricted_cash']?'balance_sheet.cash_and_restricted_cash':'balance_sheet.cash_and_restricted_cash_including_disposal_group';
+    return prior && p.startDate && Date.parse(p.startDate) - Date.parse(prior.endDate) === 86400000
+      ? prior.observations[endingKey]?.value ?? null : null;
+  });
+  // A net debt-flow row is derived only when both compatible gross components are disclosed.
+  cashFlow.debt_issuance_payments = dataset.periods.map((_,i)=>{
+    const issuance=(cashFlow as any).debt_issuance?.[i],repayment=(cashFlow as any).debt_repayments?.[i];
+    return finite(issuance)&&finite(repayment)?issuance-Math.abs(repayment):null;
+  });
+  const template = income.net_interest_income && balance.deposits ? 'banking'
+    : income.net_premiums_earned && balance.loss_reserve ? 'insurance'
+    : income.ffo || income.noi ? 'reit' : 'standard';
+  const latest = snapshots.at(-1);
+  const source = latest && Object.values(latest.observations).find(v => v.source?.documentUrl)?.source;
+  const result: FinancialStatementsData = {
+    currency: dataset.currency, unit: dataset.currency==='USD'?'USD_M':'CURRENCY_M', statement_template: template, fiscal_period_type: snapshots.every(p=>p.periodType==='annual')?'annual':'quarterly',
+    as_of_date: latest?.endDate, periods: dataset.periods, income_statement: income,
+    balance_sheet: balance, cash_flow: cashFlow, verified_dataset: dataset, period_snapshots: snapshots,
+    quality_status: dataset.sourceCoverage.missingValues ? 'partial' : 'verified',
+    source: source ? { document_url: source.documentUrl, document_type: source.documentType,
+      filing_date: source.filingDate, period_end: latest?.endDate, units: `${dataset.currency} millions unless per-share` } : undefined,
   };
+  result.validation_summary = validateFinancialStatements(result, template);
+  result.indicator_details = calculateVerifiedKeyIndicators(result);
+  return result;
 }
 
-const lastFourVerified = (dataset: CanonicalFinancialDataset, key: string, options: { positive?: boolean } = {}) => {
-  const series = dataset.values[key];
-  if (!series || dataset.periods.length < 4 || !validTrailingFourQuarterLabels(dataset.periods.slice(-4))) return false;
-  const lastFourPeriods = dataset.periods.slice(-4);
-  const offset = dataset.periods.length - 4;
-  return lastFourPeriods.every((period, index) => {
-    const item = series[offset + index];
-    return item?.period === period
-      && item.verification === 'verified'
-      && finite(item.value)
-      && (!options.positive || item.value > 0);
-  });
-};
-
-const latestVerified = (dataset: CanonicalFinancialDataset, key: string) => {
-  const series = dataset.values[key];
-  const item = series?.[dataset.periods.length - 1];
-  return item?.verification === 'verified' && finite(item.value);
+const lastFourVerified = (dataset: CanonicalFinancialDataset, key: TtmFlowMetric, options: { positive?: boolean } = {}) => {
+  const value = reconcileCanonicalTtmFlow(dataset, key).canonicalValue;
+  return value !== null && (!options.positive || (value > 0
+    && dataset.values[key]?.slice(-4).every(item => finite(item.value) && item.value > 0)));
 };
 
 /**
@@ -178,6 +144,7 @@ export function assessSecDcfCoverage(
   }
 
   const periods = dataset.periods.slice(-4);
+  if(dataset.currency!=='USD') issues.push({code:'SEC_NON_USD_VALUATION_UNAVAILABLE',field:'currency',message:'Foreign reported-currency statements require an explicit verified FX valuation contract; no USD relabeling.'});
   if (periods.length !== 4) {
     issues.push({ code: 'SEC_FOUR_QUARTERS_REQUIRED', field: 'periods', message: 'Four SEC-backed fiscal quarters are required for DCF.' });
   }
@@ -187,13 +154,14 @@ export function assessSecDcfCoverage(
   if (!lastFourVerified(dataset, 'cash_flow.free_cash_flow')) {
     issues.push({ code: 'SEC_FCF_INCOMPLETE', field: 'cash_flow.free_cash_flow', message: 'Four verified quarterly free-cash-flow values are required.' });
   }
-  if (!latestVerified(dataset, 'balance_sheet.cash_and_equivalents')) {
+  const currentBalance = resolveCurrentBalanceSheetSnapshot({ canonical_financials: dataset });
+  if (currentBalance.cashAndEquivalents === null) {
     issues.push({ code: 'SEC_CASH_UNAVAILABLE', field: 'balance_sheet.cash_and_equivalents', message: 'Verified current-period cash and cash equivalents are required.' });
   }
-  if (!latestVerified(dataset, 'balance_sheet.short_term_investments')) {
+  if (currentBalance.shortTermInvestments === null) {
     issues.push({ code: 'SEC_SHORT_TERM_INVESTMENTS_UNAVAILABLE', field: 'balance_sheet.short_term_investments', message: 'Verified current-period short-term investments are required; missing is not assumed to be zero.' });
   }
-  if (!latestVerified(dataset, 'balance_sheet.total_debt')) {
+  if (currentBalance.totalDebt === null) {
     issues.push({ code: 'SEC_TOTAL_DEBT_UNAVAILABLE', field: 'balance_sheet.total_debt', message: 'Verified current-period total debt is required; debt components are not guessed or double-counted.' });
   }
 

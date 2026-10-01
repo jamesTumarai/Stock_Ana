@@ -397,8 +397,17 @@ export function buildDecisionContext(
     summaryNarrative = `A prior research value was corrected or upgraded to authoritative filing figures. Company fundamentals did not change, but dependent valuation outputs should be reviewed.`;
     summaryNarrativeTh = `พบการแก้ไขข้อมูลในงานวิเคราะห์เดิม ควรทบทวนผลประเมินที่อาศัยค่าดังกล่าว (ไม่ใช่การเปลี่ยนแปลงของผลการดำเนินงานจริง)`;
   } else if (stance === 'MODEL_ASSUMPTION_REVIEW') {
-    summaryNarrative = `Valuation model inputs, projection horizon, or discount rates (WACC) were updated without new company evidence. Review model assumptions before altering thesis conviction.`;
-    summaryNarrativeTh = `สมมติฐานแบบจำลอง ระยะเวลาประมาณการ หรืออัตราคิดลด (WACC) มีการปรับเปลี่ยนโดยไม่มีหลักฐานใหม่จากบริษัท ควรทบทวนสมมติฐานก่อนปรับความเชื่อมั่น`;
+    const changedInputs = modelAssumptionChanges
+      .filter(item => item.semanticType === 'MODEL_ASSUMPTION_CHANGE' || item.semanticType === 'VALUATION_MODEL_SWITCH')
+      .map(item => ({ en: item.metricLabel, th: item.metricLabelTh }));
+    const labelsEn = changedInputs.map(item => item.en).join(', ');
+    const labelsTh = changedInputs.map(item => item.th).join(', ');
+    summaryNarrative = labelsEn
+      ? `${labelsEn} changed without new company evidence. Review the affected model assumptions before altering thesis conviction.`
+      : `Valuation output changed without new company evidence. Review its underlying model inputs before altering thesis conviction.`;
+    summaryNarrativeTh = labelsTh
+      ? `${labelsTh} เปลี่ยนแปลงโดยไม่มีหลักฐานใหม่จากบริษัท ควรทบทวนสมมติฐานที่เกี่ยวข้องก่อนปรับความเชื่อมั่น`
+      : `ผลประเมินมูลค่าเปลี่ยนแปลงโดยไม่มีหลักฐานใหม่จากบริษัท ควรทบทวนปัจจัยที่ทำให้เปลี่ยนก่อนปรับความเชื่อมั่น`;
   } else if (stance === 'REVIEW_SUGGESTED') {
     summaryNarrative = `Review items detected (${whatChanged?.summary.needsReview || 0} candidate(s)), but no confirmed material evidence change has occurred requiring thesis re-evaluation. Monitoring continues with targeted review suggested.`;
     summaryNarrativeTh = `พบประเด็นที่ควรตรวจสอบเพิ่มเติม แต่ยังไม่มีการเปลี่ยนแปลงเชิงหลักฐานที่ยืนยันแล้วซึ่งจำเป็นต้องประเมินสมมติฐานใหม่ ติดตามต่อเนื่อง`;

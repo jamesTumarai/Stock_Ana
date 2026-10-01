@@ -446,7 +446,7 @@ describe('secFilingDiffEngine', () => {
       facts: {
         'us-gaap': {
           Revenues: usd([...durationFacts(rev2025, 'rev', 2025, 2025), ...durationFacts(rev2026, 'rev', 2026, 2026)]),
-          NetIncomeLoss: usd([...durationFacts(ni2025, 'ni', 2025, 2025), ...durationFacts(ni2026, 'ni', 2026, 2026)]),
+          ProfitLoss: usd([...durationFacts(ni2025, 'ni', 2025, 2025), ...durationFacts(ni2026, 'ni', 2026, 2026)]),
           NetCashProvidedByUsedInOperatingActivities: usd([...durationFacts(ocf2025, 'ocf', 2025, 2025), ...durationFacts(ocf2026, 'ocf', 2026, 2026)]),
           PaymentsToAcquirePropertyPlantAndEquipment: usd([...durationFacts(capex2025, 'capex', 2025, 2025), ...durationFacts(capex2026, 'capex', 2026, 2026)]),
           Assets: usd([...instantFacts([500e6, 500e6, 500e6, 500e6], 'ast', 2025, 2025), ...instantFacts([600e6, 600e6, 600e6, 600e6], 'ast', 2026, 2026)]),
@@ -646,23 +646,9 @@ describe('secFilingDiffEngine', () => {
       // 3. Run report through normalizeReport() which automatically creates report.canonical_financials from report.financial_statements
       const normalizedReport = normalizeReport(rawReport as ReportData);
 
-      // 4. Assert that the automatically generated canonical_financials is NOT treated as SEC verified
-      assert.ok(normalizedReport.canonical_financials, 'normalizeReport should build canonical_financials');
-      assert.equal(
-        normalizedReport.canonical_financials.generatedBy,
-        'lumina-financial-provenance-v1',
-        'Auto-generated canonical dataset must be from lumina-financial-provenance-v1'
-      );
-      assert.notEqual(
-        normalizedReport.canonical_financials.provenanceStatus,
-        'verified',
-        'Auto-generated canonical dataset from report statements must NEVER have verified status'
-      );
-      assert.equal(
-        /sec-xbrl/i.test(normalizedReport.canonical_financials.generatedBy),
-        false,
-        'Auto-generated canonical dataset must NOT have sec-xbrl in generatedBy'
-      );
+      // Model arrays no longer create any canonical accounting package.
+      assert.equal(normalizedReport.canonical_financials, undefined);
+      assert.equal(normalizedReport.financial_statements?.quality_status, 'unavailable');
 
       // 5. Call adaptFinancialStatementsToSecPeriodStatements(normalizedReport)
       const adapted = adaptFinancialStatementsToSecPeriodStatements(normalizedReport);

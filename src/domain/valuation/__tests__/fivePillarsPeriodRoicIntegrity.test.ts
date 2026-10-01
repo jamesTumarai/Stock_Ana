@@ -1,3 +1,4 @@
+import { observedPeerFixtures } from '../../__tests__/observedPeerFixture';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ReportData } from '../../../types.js';
@@ -95,7 +96,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     // TTM OpInc = 2600. Tax rate = 480 / 2400 = 20%. NOPAT = 2600 * 0.8 = 2080.
     // Average IC = (10000 + 12000) / 2 = 11000. ROIC = 2080 / 11000 * 100 = 18.91%
     assert.equal(metrics.roic.value, 18.91);
-    assert.equal(metrics.roic.formula, 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash)');
+    assert.equal(metrics.roic.formula, 'Operating Income × (1 - Tax Rate) / Invested Capital (Equity + Debt - Cash - Short-Term Investments)');
   });
 
   // SECTION 41: Do not treat YTD as standalone quarters
@@ -140,7 +141,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
       financial_statements: {
         periods: ['Q1 2026', 'Q2 2026'],
         income_statement: { operating_income: [100, 120] } as any,
-        balance_sheet: { total_equity: [2000, 2200], total_debt: [500, 500], cash_and_equivalents: [500, 500] } as any,
+        balance_sheet: { total_equity: [2000, 2200], total_debt: [500, 500], cash_and_equivalents: [500, 500], short_term_investments: [0, 0] } as any,
         cash_flow: {} as any,
       } as any,
     };
@@ -278,7 +279,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     };
 
     const discovery = discoverPeers(targetReport, 'TARGET_AUTO', {
-      candidates: [peerCandidate as any],
+      candidates: observedPeerFixtures([peerCandidate as any]),
     });
 
     const peer = discovery.peers.find(p => p.ticker === 'LOSS_PEER');
@@ -347,6 +348,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
       total_equity: 500,
       total_debt: 100,
       cash_and_equivalents: 50,
+      short_term_investments: 0,
     };
 
     const targetReport: Partial<ReportData> = {
@@ -356,7 +358,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     };
 
     const result = discoverPeers(targetReport, 'TARGET_SW', {
-      candidates: [candidateNoSource as any, candidateFallbackSource as any, candidateFilingSource as any],
+      candidates: observedPeerFixtures([candidateNoSource as any, candidateFallbackSource as any, candidateFilingSource as any]),
     });
 
     const pUnsourced = result.peers.find(p => p.ticker === 'UNSOURCED');
@@ -394,7 +396,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     };
 
     const result = discoverPeers(targetReport, 'TARGET_SW2', {
-      candidates: [rawCandidate as any],
+      candidates: observedPeerFixtures([rawCandidate as any]),
       disableFixtureFallback: true,
     });
 
@@ -411,17 +413,17 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
       sec_verification: {
         is_sec_verified: true,
         sec_period_statements: [
-          { period: 'Q2 2025', total_equity: 5000, total_debt: 1000, cash: 500 },
+          { period: 'Q2 2025', total_equity: 5000, total_debt: 1000, cash: 500, short_term_investments: 0 },
           { period: 'Q3 2025', operating_income: 100, income_before_tax: 90 },
           { period: 'Q4 2025', operating_income: 120, income_before_tax: 110 },
           { period: 'Q1 2026', operating_income: 130, income_before_tax: 120 },
-          { period: 'Q2 2026', operating_income: 150, income_before_tax: 140, total_equity: 6000, total_debt: 1000, cash: 500 },
+          { period: 'Q2 2026', operating_income: 150, income_before_tax: 140, total_equity: 6000, total_debt: 1000, cash: 500, short_term_investments: 0 },
         ],
       } as any,
       financial_statements: {
         periods: ['Q3 2025', 'Q4 2025', 'Q1 2026', 'Q2 2026'],
         income_statement: { operating_income: [100, 120, 130, 150] } as any,
-        balance_sheet: { total_equity: [5000, 5200, 5500, 6000], total_debt: [1000, 1000, 1000, 1000], cash_and_equivalents: [500, 500, 500, 500] } as any,
+        balance_sheet: { total_equity: [5000, 5200, 5500, 6000], total_debt: [1000, 1000, 1000, 1000], cash_and_equivalents: [500, 500, 500, 500], short_term_investments: [0, 0, 0, 0] } as any,
         cash_flow: {} as any,
       } as any,
     };
@@ -473,7 +475,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     };
 
     const discovery = discoverPeers(targetReport, 'TARGET_TTM', {
-      candidates: [peerTTM, peerQuarterly],
+      candidates: observedPeerFixtures([peerTTM, peerQuarterly]),
       targetMetrics,
       disableFixtureFallback: true,
     });
@@ -518,7 +520,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     };
 
     // Case 1: n=2 peers
-    const res2 = discoverPeers(targetReport, 'TARGET_SAMPLE', { candidates: [peerA, peerB], disableFixtureFallback: true });
+    const res2 = discoverPeers(targetReport, 'TARGET_SAMPLE', { candidates: observedPeerFixtures([peerA, peerB]), disableFixtureFallback: true });
     const peRow2 = res2.benchmarkRows.find(r => r.metric_key === 'pe_trailing');
     assert.ok(peRow2);
     assert.equal(peRow2.peer_sample_size, 2);
@@ -526,7 +528,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
     assert.equal(peRow2.sector_median, '25x'); // Median of 20 and 30 is 25
 
     // Case 2: n=1 peer
-    const res1 = discoverPeers(targetReport, 'TARGET_SAMPLE', { candidates: [peerA], disableFixtureFallback: true });
+    const res1 = discoverPeers(targetReport, 'TARGET_SAMPLE', { candidates: observedPeerFixtures([peerA]), disableFixtureFallback: true });
     const peRow1 = res1.benchmarkRows.find(r => r.metric_key === 'pe_trailing');
     assert.ok(peRow1);
     assert.equal(peRow1.peer_sample_size, 1);
@@ -567,7 +569,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
       },
     };
 
-    const discovery = discoverPeers(targetReport, 'TARGET_CORP', { candidates: [directPeer, otherPeer], disableFixtureFallback: true });
+    const discovery = discoverPeers(targetReport, 'TARGET_CORP', { candidates: observedPeerFixtures([directPeer, otherPeer]), disableFixtureFallback: true });
 
     // In every benchmark row, direct_peer_ticker must be PRIMARY_PEER
     for (const row of discovery.benchmarkRows) {
@@ -614,7 +616,7 @@ describe('Five Pillars Period Basis & Peer ROIC Integrity', () => {
       financial_statements: { periods: ['2024'], income_statement: { revenue: [1000] } as any, balance_sheet: {} as any, cash_flow: {} as any },
     };
 
-    const discovery = discoverPeers(targetReport, 'TARGET_TECH', { candidates: [marketOnlyPeer], disableFixtureFallback: true });
+    const discovery = discoverPeers(targetReport, 'TARGET_TECH', { candidates: observedPeerFixtures([marketOnlyPeer]), disableFixtureFallback: true });
     assert.ok(discovery.peers.some(p => p.ticker === 'MKT_PEER'), 'Company remains an eligible peer');
 
     const peRow = discovery.benchmarkRows.find(r => r.metric_key === 'pe_trailing');

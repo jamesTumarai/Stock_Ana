@@ -1,3 +1,4 @@
+import { observedPeerFixtures } from '../../__tests__/observedPeerFixture';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReportData } from '../../../types.js';
@@ -93,6 +94,7 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
           total_equity: [80000],
           total_debt: [25000],
           cash_and_equivalents: [5000],
+          short_term_investments: [0],
         } as any,
       } as any,
       valuation_ratios: [
@@ -100,9 +102,9 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
       ],
       peer_comparison: {
         industry_name: 'Auto Manufacturers',
-        peers: [
+        peers: observedPeerFixtures([
           { ticker: 'PEER_AUTO', company_name: 'Peer Auto', roic_pct: 12.5, pe_trailing: 15.0 } as any,
-        ],
+        ]),
       },
     };
 
@@ -139,14 +141,15 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
           total_equity: [80000],
           total_debt: [25000],
           cash_and_equivalents: [5000],
+          short_term_investments: [0],
         } as any,
       } as any,
       peer_comparison: {
         industry_name: 'Auto Manufacturers',
-        peers: [
+        peers: observedPeerFixtures([
           { ticker: 'PEER1', company_name: 'Peer 1', roic_pct: undefined, pe_trailing: 15.0 } as any,
           { ticker: 'PEER2', company_name: 'Peer 2', roic_pct: undefined, pe_trailing: 18.0 } as any,
-        ],
+        ]),
       },
     };
 
@@ -174,7 +177,7 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
       },
       peer_comparison: {
         industry_name: 'Auto Manufacturers',
-        peers: [
+        peers: observedPeerFixtures([
           {
             ticker: 'ABC',
             company_name: 'Auto Corp',
@@ -183,7 +186,7 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
             revenue_growth_yoy_pct: 5.0,
             relation_type: 'DIRECT_PEER',
           } as any,
-        ],
+        ]),
       },
     };
 
@@ -212,14 +215,14 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
       ticker: 'TARGET',
       peer_comparison: {
         industry_name: 'Specialty Industrial',
-        peers: [
+        peers: observedPeerFixtures([
           {
             ticker: 'XYZ',
             company_name: 'XYZ Corp',
             relation_type: 'CLOSE_COMPARABLE',
             pe_trailing: 18.0,
           } as any,
-        ],
+        ]),
       },
     };
 
@@ -352,7 +355,7 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
       },
       'SAAS_TARGET',
       {
-        candidates: mixedCandidates as any,
+        candidates: observedPeerFixtures(mixedCandidates as any),
       }
     );
 
@@ -615,7 +618,7 @@ describe('Final Five Pillars Metric & True Peer Discovery Repair (PR #158)', () 
       },
       'AMD_LIKE',
       {
-        candidates: candidates as any,
+        candidates: observedPeerFixtures(candidates as any),
       }
     );
 

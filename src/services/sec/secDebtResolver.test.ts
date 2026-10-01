@@ -176,7 +176,7 @@ const four = (values: [number, number, number, number], prefix: string) => [
     LongTermDebtNoncurrent: unit([fact(2026, 'FY', 77_000_000, 'a4')]),
     ShortTermBorrowings: unit([fact(2026, 'FY', 10_000_000, 'a4')]),
   }));
-  assert.equal(resolved.values['balance_sheet.total_debt'], undefined, 'Incomplete/overlapping components must not synthesize total debt');
+  assert.ok(resolved.values['balance_sheet.total_debt'].every(v => v.value === null), 'Incomplete/overlapping components must not synthesize total debt or retain an earlier estimate');
 }
 
 

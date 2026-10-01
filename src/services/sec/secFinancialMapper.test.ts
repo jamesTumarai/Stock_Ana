@@ -26,6 +26,7 @@ const companyFacts: SecCompanyFactsResponse = {
     'us-gaap': {
       Revenues: usd(duration([100_000_000, 120_000_000, 130_000_000, 150_000_000], 'rev')),
       NetIncomeLoss: usd(duration([10_000_000, 12_000_000, 13_000_000, 15_000_000], 'ni')),
+      NetIncomeLossAvailableToCommonStockholdersBasic: usd(duration([10_000_000, 12_000_000, 13_000_000, 15_000_000], 'common-ni')),
       InterestExpense: usd(duration([1_000_000, 1_200_000, 1_300_000, 1_500_000], 'interest')),
       EarningsPerShareDiluted: perShare(duration([0.10, 0.12, 0.13, 0.15], 'eps')),
       CashAndCashEquivalentsAtCarryingValue: usd(instant([50_000_000, 55_000_000, 60_000_000, 70_000_000], 'cash')),
@@ -89,12 +90,13 @@ assert.deepEqual(dataset?.periods, ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'])
 assert.equal(dataset?.ticker, 'TEST');
 assert.equal(dataset?.currency, 'USD');
 assert.equal(dataset?.provenanceStatus, 'verified');
-assert.match(dataset?.generatedBy || '', /sec-xbrl-v1/);
+assert.match(dataset?.generatedBy || '', /sec-xbrl-v2/);
 
 assert.deepEqual(dataset?.values['income_statement.revenue'].map(item => item.value), [100, 120, 130, 150]);
-assert.deepEqual(dataset?.values['income_statement.net_income'].map(item => item.value), [10, 12, 13, 15]);
+assert.deepEqual(dataset?.values['income_statement.net_income_common'].map(item => item.value), [10, 12, 13, 15]);
+assert.equal(dataset?.values['income_statement.net_income'], undefined, 'Parent-attributable NI is not silently renamed total NI including NCI');
 assert.deepEqual(dataset?.values['income_statement.interest_expense'].map(item => item.value), [1, 1.2, 1.3, 1.5]);
-assert.deepEqual(dataset?.values['income_statement.eps_diluted'].map(item => item.value), [0.10, 0.12, 0.13, 0.15]);
+assert.deepEqual(dataset?.values['income_statement.eps_diluted'].map(item => item.value), [0.10, null, null, null], 'YTD EPS is non-additive; standalone EPS requires reported standalone facts');
 assert.deepEqual(dataset?.values['balance_sheet.cash_and_equivalents'].map(item => item.value), [50, 55, 60, 70]);
 assert.deepEqual(dataset?.values['balance_sheet.common_stock'].map(item => item.value), [10, 10, 11, 12]);
 assert.deepEqual(dataset?.values['balance_sheet.retained_earnings'].map(item => item.value), [200, 212, 225, 240]);

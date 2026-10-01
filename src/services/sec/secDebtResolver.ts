@@ -50,9 +50,14 @@ const approximatelyEqual = (left: number, right: number) => {
 const conceptFacts = (bundle: SecCompanyBundleLike, concept: string): SecCompanyFact[] =>
   bundle.companyFacts.facts?.['us-gaap']?.[concept]?.units?.USD ?? [];
 
-const normalizedConceptMap = (bundle: SecCompanyBundleLike, concept: string) => {
+const normalizedConceptMap = (bundle: SecCompanyBundleLike, concept: string, dataset?: CanonicalFinancialDataset) => {
   const map = new Map<string, NormalizedSecQuarterFact>();
-  for (const fact of normalizeInstantFactsToFiscalQuarters(conceptFacts(bundle, concept))) {
+  const identities = new Map(Object.values(dataset?.values || {}).flat().filter(v => v.periodEnd && v.fiscalYear && v.fiscalQuarter)
+    .map(v => [v.periodEnd, { fy: v.fiscalYear!, fp: v.fiscalQuarter === 4 ? 'FY' : `Q${v.fiscalQuarter}` }]));
+  const cohorts = new Map((dataset?.values['balance_sheet.total_assets'] || []).filter(v=>v.periodEnd&&v.accession).map(v=>[v.periodEnd,v.accession]));
+  const facts = conceptFacts(bundle, concept).filter(f=>!cohorts.has(f.end)||f.accn===cohorts.get(f.end))
+    .map(f => ({ ...f, ...identities.get(f.end) }));
+  for (const fact of normalizeInstantFactsToFiscalQuarters(facts)) {
     map.set(quarterKey(fact), fact);
   }
   return map;
@@ -89,7 +94,7 @@ const sourceForFact = (bundle: SecCompanyBundleLike, fact: NormalizedSecQuarterF
   const filing = accession ? submissionDocumentMap(bundle).get(accession) : undefined;
   return {
     provider: 'SEC EDGAR XBRL',
-    documentUrl: filing?.documentUrl,
+    documentUrl: filing?.documentUrl || (accession ? `https://www.sec.gov/Archives/edgar/data/${Number(bundle.identity.cik)}/${accession.replace(/-/g, '')}/${accession}-index.html` : undefined),
     documentType: filing?.form ?? fact.form,
     filingDate: filing?.filingDate ?? fact.filed,
     periodEnd: fact.end,
@@ -101,9 +106,9 @@ const sourceForFact = (bundle: SecCompanyBundleLike, fact: NormalizedSecQuarterF
   } as any;
 };
 
-const directTotalDebtSeries = (bundle: SecCompanyBundleLike) => {
+const directTotalDebtSeries = (bundle: SecCompanyBundleLike, dataset: CanonicalFinancialDataset) => {
   for (const concept of DIRECT_TOTAL_DEBT_CONCEPTS) {
-    const map = normalizedConceptMap(bundle, concept);
+    const map = normalizedConceptMap(bundle, concept, dataset);
     if (map.size > 0) return { concept, map };
   }
   return null;
@@ -130,17 +135,18 @@ export function attachVerifiedTotalDebtFromSec(
   bundle: SecCompanyBundleLike,
 ): CanonicalFinancialDataset {
   const next = structuredClone(dataset) as CanonicalFinancialDataset;
-  const direct = directTotalDebtSeries(bundle);
-  const debtCurrent = normalizedConceptMap(bundle, SAFE_COMPONENT_FAMILY.current);
-  const debtNoncurrent = normalizedConceptMap(bundle, SAFE_COMPONENT_FAMILY.noncurrent);
+  const direct = directTotalDebtSeries(bundle, dataset);
+  const debtCurrent = normalizedConceptMap(bundle, SAFE_COMPONENT_FAMILY.current, dataset);
+  const debtNoncurrent = normalizedConceptMap(bundle, SAFE_COMPONENT_FAMILY.noncurrent, dataset);
 
-  const longTermCurrent = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermCurrent);
-  const longTermNoncurrent = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermNoncurrent);
-  const longTermAggregate = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate);
-  const commercialPaper = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.commercialPaper);
-  const shortTermBorrowings = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.shortTermBorrowings);
-  const financeLeaseCurrent = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.financeLeaseCurrent);
-  const financeLeaseNoncurrent = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.financeLeaseNoncurrent);
+  const longTermCurrent = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermCurrent, dataset);
+  const longTermNoncurrent = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermNoncurrent, dataset);
+  const longTermAggregate = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate, dataset);
+  const commercialPaper = normalizedConceptMap(bundle, RECONCILED_COMMERCIAL_PAPER_FAMILY.commercialPaper, dataset);
+  const shortTermBorrowings = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.shortTermBorrowings, dataset);
+  const warehouseBorrowings = normalizedConceptMap(bundle, 'WarehouseAgreementBorrowings', dataset);
+  const financeLeaseCurrent = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.financeLeaseCurrent, dataset);
+  const financeLeaseNoncurrent = normalizedConceptMap(bundle, EXCLUSION_CONCEPTS.financeLeaseNoncurrent, dataset);
 
   const series: CanonicalFinancialValue[] = next.periods.map(period => {
     const key = periodKey(period);
@@ -152,6 +158,7 @@ export function attachVerifiedTotalDebtFromSec(
     }
 
     const directFact = direct?.map.get(key);
+    const identity = { fiscalYear: Number(key.slice(0, 4)), fiscalQuarter: Number(key.at(-1)) as 1 | 2 | 3 | 4, periodType: 'instant' as const, currency: 'USD' };
     if (direct && directFact && finite(directFact.value)) {
       return {
         metric: 'total_debt',
@@ -160,6 +167,7 @@ export function attachVerifiedTotalDebtFromSec(
         unit: 'USD_M',
         period,
         periodEnd: directFact.end,
+        ...identity,
         type: 'reported',
         verification: 'verified',
         source: sourceForFact(bundle, directFact, direct.concept),
@@ -169,25 +177,30 @@ export function attachVerifiedTotalDebtFromSec(
 
     const current = debtCurrent.get(key);
     const noncurrent = debtNoncurrent.get(key);
+    const currentLease = financeLeaseCurrent.get(key), noncurrentLease = financeLeaseNoncurrent.get(key);
+    const leasesDisclosed = currentLease || noncurrentLease;
+    const leasesCompatible = !leasesDisclosed || (currentLease && noncurrentLease && samePeriodEnd(current, noncurrent, currentLease, noncurrentLease));
     if (
       current
       && noncurrent
       && finite(current.value)
       && finite(noncurrent.value)
       && samePeriodEnd(current, noncurrent)
+      && leasesCompatible
     ) {
       const accessions = Array.from(new Set([...current.accessionNumbers, ...noncurrent.accessionNumbers]));
       return {
         metric: 'total_debt',
         statement: 'balance_sheet',
-        value: round((current.value + noncurrent.value) / 1_000_000),
+        value: round((current.value + noncurrent.value + (leasesDisclosed ? currentLease!.value + noncurrentLease!.value : 0)) / 1_000_000),
         unit: 'USD_M',
         period,
         periodEnd: current.end,
+        ...identity,
         type: 'derived',
         verification: 'verified',
         source: sourceForFact(bundle, current, SAFE_COMPONENT_FAMILY.current),
-        derivation: `Deterministic SEC total debt = us-gaap:${SAFE_COMPONENT_FAMILY.current} + us-gaap:${SAFE_COMPONENT_FAMILY.noncurrent}; accessions: ${accessions.join(', ')}. No short-term borrowing alias was added separately.`,
+        derivation: `Deterministic SEC total debt = us-gaap:${SAFE_COMPONENT_FAMILY.current} + us-gaap:${SAFE_COMPONENT_FAMILY.noncurrent}${leasesDisclosed ? ' + same-instant FinanceLeaseLiabilityCurrent + FinanceLeaseLiabilityNoncurrent' : ' (borrowing aggregate; separate finance leases not disclosed)'}; accessions: ${accessions.join(', ')}. No short-term borrowing alias was added separately.`,
       };
     }
 
@@ -198,6 +211,49 @@ export function attachVerifiedTotalDebtFromSec(
     const overlappingShortTerm = shortTermBorrowings.get(key);
     const separateLeaseCurrent = financeLeaseCurrent.get(key);
     const separateLeaseNoncurrent = financeLeaseNoncurrent.get(key);
+
+    // Standard US-GAAP disjoint maturities: ShortTermBorrowings is not DebtCurrent
+    // and does not include current maturities of long-term debt. Its commercial
+    // paper/warehouse children are already inside the aggregate and are not added.
+    // If an overlapping aggregate or disclosed lease leg conflicts, fail closed.
+    const warehouse = warehouseBorrowings.get(key);
+    const separateBorrowingFamily = ltCurrent && ltNoncurrent && overlappingShortTerm
+      && [ltCurrent, ltNoncurrent, overlappingShortTerm].every(fact => finite(fact.value) && fact.value >= 0)
+      && samePeriodEnd(ltCurrent, ltNoncurrent, overlappingShortTerm)
+      // A separately reported LongTermDebt aggregate can already contain paper
+      // in current maturities. Retain the existing overlap rejection in that case.
+      && !ltAggregate
+      && (!current || (samePeriodEnd(current, ltCurrent)
+        && approximatelyEqual(current.value, ltCurrent.value + overlappingShortTerm.value)))
+      && (!paper || (samePeriodEnd(paper, overlappingShortTerm) && paper.value <= overlappingShortTerm.value))
+      && (!warehouse || (samePeriodEnd(warehouse, overlappingShortTerm) && warehouse.value <= overlappingShortTerm.value))
+      && (!(separateLeaseCurrent || separateLeaseNoncurrent)
+        || (separateLeaseCurrent && separateLeaseNoncurrent
+          && samePeriodEnd(ltCurrent, separateLeaseCurrent, separateLeaseNoncurrent)
+          && separateLeaseCurrent.value >= 0 && separateLeaseNoncurrent.value >= 0));
+    if (separateBorrowingFamily && ltCurrent && ltNoncurrent && overlappingShortTerm) {
+      const components: Array<[string, NormalizedSecQuarterFact]> = [
+        ['ShortTermBorrowings', overlappingShortTerm], ['LongTermDebtCurrent', ltCurrent],
+        ['LongTermDebtNoncurrent', ltNoncurrent],
+        ...(separateLeaseCurrent && separateLeaseNoncurrent
+          ? [['FinanceLeaseLiabilityCurrent', separateLeaseCurrent], ['FinanceLeaseLiabilityNoncurrent', separateLeaseNoncurrent]] as Array<[string, NormalizedSecQuarterFact]>
+          : []),
+      ];
+      const sourceComponents: CanonicalFinancialValue[] = components.map(([concept, fact]) => ({
+        metric: concept, statement: 'balance_sheet', value: round(fact.value / 1_000_000),
+        unit: 'USD_M', period, periodEnd: fact.end, ...identity, type: 'reported', verification: 'verified',
+        sourceConcept: `us-gaap:${concept}`, source: sourceForFact(bundle, fact, concept),
+      }));
+      return {
+        metric: 'total_debt', statement: 'balance_sheet', unit: 'USD_M', period,
+        periodEnd: ltCurrent.end, ...identity, type: 'derived', verification: 'verified',
+        value: round(components.reduce((total, [, fact]) => total + fact.value, 0) / 1_000_000),
+        source: sourceForFact(bundle, ltCurrent, 'LongTermDebtCurrent'), sourceComponents,
+        derivation: 'Canonical debt = same-instant ShortTermBorrowings + LongTermDebtCurrent + LongTermDebtNoncurrent'
+          + (separateLeaseCurrent ? ' + separately disclosed current and noncurrent finance leases' : ' (separate finance leases not disclosed)')
+          + '. Commercial paper and warehouse borrowing children are not counted twice; operating leases and total liabilities are excluded.',
+      };
+    }
 
     const familyEnd = ltAggregate?.end;
     const componentsShareInstant = Boolean(
@@ -281,6 +337,7 @@ export function attachVerifiedTotalDebtFromSec(
         unit: 'USD_M',
         period,
         periodEnd: ltAggregate.end,
+        ...identity,
         type: 'derived',
         verification: 'verified',
         source: sourceForFact(bundle, ltAggregate, RECONCILED_COMMERCIAL_PAPER_FAMILY.longTermAggregate),
@@ -300,7 +357,8 @@ export function attachVerifiedTotalDebtFromSec(
     };
   });
 
-  if (series.some(item => item.value !== null)) next.values['balance_sheet.total_debt'] = series;
+  // A mapper estimate must not survive a failed debt-family reconciliation.
+  next.values['balance_sheet.total_debt'] = series;
 
   const flattened = Object.values(next.values).flat();
   const nonNullValues = flattened.filter(item => item.value !== null).length;

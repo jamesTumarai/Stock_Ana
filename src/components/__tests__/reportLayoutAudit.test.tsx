@@ -37,6 +37,11 @@ const reportHtml = renderToStaticMarkup(
 );
 
 const heroIndex = reportHtml.indexOf('MSFT');
+const acceptedSource = structuredClone(sampleReport);
+acceptedSource.report_provenance!.financial_statements.source = 'sec_verified';
+const acceptedHtml = renderToStaticMarkup(<ReportTemplate data={acceptedSource} ticker="MSFT" onClose={() => undefined} language="English" />);
+assert.ok(acceptedHtml.includes('Accepted SEC Statement Observations'), 'Accepted source observations must not be mislabeled unavailable');
+assert.ok(acceptedHtml.includes('missing cells remain unavailable and AI interpretation is not certified'), 'Partial source verification does not certify the whole report');
 const provenanceIndex = reportHtml.indexOf('id="section-provenance"');
 
 assert.notEqual(heroIndex, -1, 'Report must render MSFT ticker in hero');

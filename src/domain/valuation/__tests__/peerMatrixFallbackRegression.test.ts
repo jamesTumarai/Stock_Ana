@@ -1,3 +1,4 @@
+import { observedPeerFixtures } from '../../__tests__/observedPeerFixture';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
@@ -72,11 +73,11 @@ const candidate = (
 describe('Peer Matrix truthful fallback regression', () => {
   it('keeps the matrix when no direct peer exists and labels the strongest close comparable truthfully', () => {
     const result = discoverPeers(targetReport(), 'AUTX', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('CLOSE1', 'CLOSE_COMPARABLE', { pe_trailing: 20, ev_ebitda: 12, revenue_growth_yoy_pct: 15 }),
         candidate('CLOSE2', 'CLOSE_COMPARABLE', { pe_trailing: 24, ev_ebitda: 14, revenue_growth_yoy_pct: 18 }),
         candidate('CLOSE3', 'CLOSE_COMPARABLE', { pe_trailing: 28, ev_ebitda: 16, revenue_growth_yoy_pct: 21 }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
 
@@ -88,11 +89,11 @@ describe('Peer Matrix truthful fallback regression', () => {
 
   it('calculates eligibility and medians independently for each metric', () => {
     const result = discoverPeers(targetReport(), 'AUTX', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('PEERA', 'CLOSE_COMPARABLE', { pe_trailing: 20, ev_ebitda: 10, revenue_growth_yoy_pct: 12 }),
         candidate('PEERB', 'CLOSE_COMPARABLE', { pe_trailing: 30, revenue_growth_yoy_pct: 18, roic_pct: 8 }),
         candidate('PEERC', 'CLOSE_COMPARABLE', { pe_trailing: 40, ev_ebitda: 20, revenue_growth_yoy_pct: 24, roic_pct: 12 }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
 
@@ -129,10 +130,10 @@ describe('Peer Matrix truthful fallback regression', () => {
       ticker: 'SHOPX',
       company_profile: { description: 'Physical stores selling consumer goods.', overview: { sector: 'Consumer Cyclical', industry: 'Retail Stores' } as any } as any,
     }, 'SHOPX', {
-      candidates: [candidate('MARKET', 'CLOSE_COMPARABLE', { pe_trailing: 30 }, {
+      candidates: observedPeerFixtures([candidate('MARKET', 'CLOSE_COMPARABLE', { pe_trailing: 30 }, {
         archetype: 'digital_marketplace', industry: 'Internet Retail', subIndustry: 'digital_marketplace',
         revenueModels: ['marketplace_fees'], majorBusinessLines: ['online marketplace'], capitalIntensity: 'asset_light',
-      })],
+      })]),
       disableFixtureFallback: true,
     });
     assert.equal(result.peerCount, 0);
@@ -141,11 +142,11 @@ describe('Peer Matrix truthful fallback regression', () => {
 
   it('uses broader industry references after the close-comparable tier without mislabeling them', () => {
     const result = discoverPeers(targetReport(), 'AUTX', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('CLOSE', 'CLOSE_COMPARABLE', { pe_trailing: 20, revenue_growth_yoy_pct: 12 }),
         candidate('REF1', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 30, revenue_growth_yoy_pct: 18 }),
         candidate('REF2', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 40, revenue_growth_yoy_pct: 24 }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
     assert.deepEqual(result.peers.map(peer => peer.relationType), [
@@ -155,10 +156,10 @@ describe('Peer Matrix truthful fallback regression', () => {
     assert.equal(result.benchmarkRows[0].direct_peer_relation, 'CLOSE_COMPARABLE');
 
     const broaderOnly = discoverPeers(targetReport({ ticker: 'AUTY' }), 'AUTY', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('REF3', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 25, revenue_growth_yoy_pct: 10 }),
         candidate('REF4', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 35, revenue_growth_yoy_pct: 20 }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
     assert.equal(broaderOnly.benchmarkRows[0].direct_peer_relation, 'BROADER_SECTOR_REFERENCE');
@@ -167,12 +168,12 @@ describe('Peer Matrix truthful fallback regression', () => {
 
   it('widens median coverage per metric instead of mixing broader references unconditionally', () => {
     const strongCloseSet = discoverPeers(targetReport({ ticker: 'AUTM' }), 'AUTM', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('CLOSEA', 'CLOSE_COMPARABLE', { pe_trailing: 20, ev_ebitda: 10 }),
         candidate('CLOSEB', 'CLOSE_COMPARABLE', { pe_trailing: 30 }),
         candidate('CLOSEC', 'CLOSE_COMPARABLE', { pe_trailing: 40 }),
         candidate('BROADOUTLIER', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 500, ev_ebitda: 20 }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
     assert.equal(strongCloseSet.medians.pe_trailing, 30);
@@ -188,11 +189,11 @@ describe('Peer Matrix truthful fallback regression', () => {
     assert.deepEqual(resolvePeerMetricCoverage(0), { status: 'INSUFFICIENT', canPublishMedian: false });
 
     const result = discoverPeers(targetReport({ ticker: 'AUTZ' }), 'AUTZ', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('NOROIC1', 'CLOSE_COMPARABLE', { pe_trailing: 20, ev_ebitda: 10, revenue_growth_yoy_pct: 12 }),
         candidate('NOROIC2', 'CLOSE_COMPARABLE', { pe_trailing: 30, ev_ebitda: 20, revenue_growth_yoy_pct: 18 }),
         candidate('NOROIC3', 'CLOSE_COMPARABLE', { pe_trailing: 40, ev_ebitda: 30, revenue_growth_yoy_pct: 24 }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
     assert.equal(result.benchmarkRows.find(row => row.metric_name === 'P/E (Trailing)')?.peer_coverage_status, 'SUFFICIENT');
@@ -229,7 +230,7 @@ describe('Peer Matrix truthful fallback regression', () => {
       },
     );
     const result = discoverPeers(insurerTarget, 'INSUREX', {
-      candidates: [insurerCandidate('INSA', 2, 12, 14, 90), insurerCandidate('INSB', 2.5, 14, 12, 94)],
+      candidates: observedPeerFixtures([insurerCandidate('INSA', 2, 12, 14, 90), insurerCandidate('INSB', 2.5, 14, 12, 94)]),
       disableFixtureFallback: true,
     });
     const names = result.benchmarkRows.map(row => row.metric_name);
@@ -248,7 +249,7 @@ describe('Peer Matrix truthful fallback regression', () => {
           overview: { sector: 'Technology', industry: 'Software—Infrastructure' } as any,
         } as any,
       }),
-      peer_comparison: { peers: [], industry_name: 'Software—Infrastructure' },
+      peer_comparison: { peers: observedPeerFixtures([]), industry_name: 'Software—Infrastructure' },
     } as ReportData, 'SAASORDER');
     assert.ok((normalized.peer_comparison?.peers.length || 0) > 0);
     assert.ok((normalized.five_pillars?.peer_matrix.length || 0) > 0);
@@ -264,7 +265,7 @@ describe('Peer Matrix truthful fallback regression', () => {
       peer_comparison: {
         industry_name: 'Automotive / Clean Energy & AI',
         as_of_date: '2026-09-23',
-        peers: [
+        peers: observedPeerFixtures([
           {
             ticker: 'AUTOA', company_name: 'Auto A', sector: 'Consumer Cyclical', industry: 'Auto Manufacturers',
             subIndustry: 'Integrated Automaker', pe_trailing: '21.6', ev_ebitda: '12.4x',
@@ -275,7 +276,7 @@ describe('Peer Matrix truthful fallback regression', () => {
             subIndustry: 'EV Startup', pe_trailing: '37.3', ev_ebitda: '18.2x',
             revenue_growth_yoy_pct: '8.5%', financial_period: 'Q2 2026', financial_source: 'Issuer filing and market snapshot',
           } as any,
-        ],
+        ]),
       },
     });
     const result = discoverPeers(productionPayload, 'PRODAUTO', { disableFixtureFallback: true });
@@ -287,13 +288,13 @@ describe('Peer Matrix truthful fallback regression', () => {
 
   it('keeps an unknown automotive subtype as broader context but rejects an explicit non-automotive model', () => {
     const result = discoverPeers(targetReport({ ticker: 'AUTOEDGE' }), 'AUTOEDGE', {
-      candidates: [
+      candidates: observedPeerFixtures([
         candidate('OEMX', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 18 }, { subIndustry: 'legacy_oem_platform' as any }),
         candidate('CHIPX', 'BROADER_SECTOR_REFERENCE', { pe_trailing: 24 }, {
           archetype: 'semiconductor', sector: 'Technology', industry: 'Semiconductors', subIndustry: 'fabless_accelerator',
           revenueModels: ['chip_sales'], majorBusinessLines: ['semiconductors'], capitalIntensity: 'asset_light',
         }),
-      ],
+      ]),
       disableFixtureFallback: true,
     });
     assert.deepEqual(result.peers.map(peer => peer.ticker), ['OEMX']);

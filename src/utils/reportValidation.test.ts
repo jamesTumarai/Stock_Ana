@@ -1,9 +1,30 @@
 import assert from 'node:assert/strict';
-import { isLegacyHistoryReport, validateAndPrepareReport } from './reportValidation';
+import { isLegacyHistoryReport, validateAndPrepareReport as validateSourceReport } from './reportValidation';
+import { verifiedFixtureFromStatements } from '../domain/__tests__/verifiedFixtureBuilder';
+import { buildReportProvenanceManifest } from './reportProvenance';
+
+// These are explicit synthetic independently-ingested source test doubles.
+// Production never promotes raw model arrays in this way.
+const validateAndPrepareReport: typeof validateSourceReport = (input: any, ticker, options) => {
+  const report = structuredClone(input);
+  if (report?.financial_statements) {
+    report.canonical_financials = verifiedFixtureFromStatements(report.financial_statements);
+    report.canonical_financials.ticker = report.ticker;
+  }
+  return validateSourceReport(report, ticker, options);
+};
 
 const makeValidReport = () => ({
   generated_at: '2026-09-09T12:00:00.000Z',
   ticker: 'TEST',
+  // Explicit independent share-source test double; the profile alone is not evidence.
+  sec_verification: {
+    ticker: 'TEST', status: 'verified_partial',
+    dcf_financial_inputs: {
+      ticker: 'TEST', generated_by: 'sec-verified-financial-inputs-v1', eligible: false,
+      current_shares_outstanding_m: 100, share_as_of: '2026-12-31',
+    },
+  },
   summary: 'Synthetic validation fixture only.',
   verdict: {
     summary: 'Synthetic fixture.',
@@ -67,13 +88,30 @@ const makeValidReport = () => ({
   assert.ok(prepared.report, 'Valid report should be prepared');
   assert.equal(prepared.validation.status, 'valid');
   assert.equal(prepared.canPersist, true);
-  assert.equal(prepared.report?.schema_version, 2);
-  assert.equal(prepared.report?.generated_by_version, 'lumina-phase3-provenance-v1');
+  assert.equal(prepared.report?.schema_version, 3);
+  assert.equal(prepared.report?.generated_by_version, 'lumina-period-true-statements-v2');
   assert.equal(prepared.report?.report_provenance?.research_narrative.source, 'ai_research');
-  assert.equal(prepared.report?.report_provenance?.financial_statements.source, 'report_snapshot');
-  assert.equal(prepared.report?.report_provenance?.dcf_financial_inputs.source, 'report_snapshot');
+  assert.equal(prepared.report?.report_provenance?.financial_statements.source, 'sec_verified');
+  assert.equal(prepared.report?.report_provenance?.dcf_financial_inputs.source, 'sec_verified');
   assert.equal(prepared.report?.financial_statements?.validation_summary?.is_balanced, true);
   assert.equal(prepared.report?.intrinsic_value?.dcf_model.inputs?.isValid, true);
+  const mismatched = structuredClone(prepared.report!);
+  mismatched.intrinsic_value!.dcf_model!.inputs!.sharesOutstandingM = 999;
+  const source = buildReportProvenanceManifest(mismatched, {
+    generatedAt: '2026-09-09T12:00:00Z', schemaVersion: 3, generatedByVersion: 'test-double',
+  });
+  assert.equal(source.dcf_financial_inputs.source, 'unavailable', 'A claimed SEC label cannot certify mismatching DCF inputs');
+}
+
+{
+  const withoutShareEvidence: any = makeValidReport();
+  delete withoutShareEvidence.sec_verification;
+  const prepared = validateAndPrepareReport(withoutShareEvidence, 'TEST');
+  assert.ok(prepared.report);
+  assert.equal(prepared.canPersist, true, 'An incomplete valuation does not block a completed report');
+  assert.equal(prepared.report?.intrinsic_value?.dcf_model.inputs?.sharesOutstandingM, null);
+  assert.equal(prepared.report?.intrinsic_value?.dcf_model.inputs?.isValid, false);
+  assert.equal(prepared.report?.intrinsic_value?.summary.base_case_fair_value, null);
 }
 
 {
@@ -106,6 +144,21 @@ const makeValidReport = () => ({
 }
 
 {
+  const source:any=makeValidReport();
+  source.intrinsic_value.dcf_model.assumptions.terminal_growth_pct=10;
+  source.comprehensive_analysis={current:'DCF base case = $123.45',history:[{summary:'DCF base case = $123.45'}]};
+  source.five_pillars={summary:'มูลค่า DCF กรณีฐานที่ $123.45'};
+  source.final_report='Base fair value: $123.45';
+  const prepared=validateAndPrepareReport(source,'TEST');
+  assert.equal(prepared.report?.intrinsic_value?.summary.base_case_fair_value,null);
+  const current=prepared.report as any;
+  assert.doesNotMatch(current.comprehensive_analysis.current,/123\.45/);
+  assert.doesNotMatch(JSON.stringify(current.five_pillars),/123\.45/);
+  assert.doesNotMatch(current.final_report,/123\.45/);
+  assert.equal(current.comprehensive_analysis.history[0].summary,'DCF base case = $123.45','Current quarantine must not rewrite recorded historical prose');
+}
+
+{
   const invalidGrowth: any = makeValidReport();
   invalidGrowth.intrinsic_value.dcf_model.assumptions.wacc_pct = 3;
   invalidGrowth.intrinsic_value.dcf_model.assumptions.terminal_growth_pct = 3;
@@ -127,8 +180,8 @@ const makeValidReport = () => ({
   const brokenFcf: any = makeValidReport();
   brokenFcf.financial_statements.cash_flow.free_cash_flow[2] = 80;
   const prepared = validateAndPrepareReport(brokenFcf, 'TEST');
-  assert.equal(prepared.validation.status, 'invalid');
-  assert.ok(prepared.validation.issues.some(item => item.code === 'FCF_IDENTITY_MISMATCH'));
+  assert.notEqual(prepared.validation.status, 'invalid');
+  assert.equal(prepared.report?.financial_statements?.cash_flow.free_cash_flow?.[2], 18, 'FCF is rebuilt from accepted OCF and CapEx instead of trusting an independent FCF override');
 }
 
 {
@@ -153,7 +206,8 @@ const makeValidReport = () => ({
 
 {
   assert.equal(isLegacyHistoryReport({ data: { ticker: 'TEST' } }), true);
-  assert.equal(isLegacyHistoryReport({ schemaVersion: 2, data: { schema_version: 2 } }), false);
+  assert.equal(isLegacyHistoryReport({ schemaVersion: 2, data: { schema_version: 2 } }), true);
+  assert.equal(isLegacyHistoryReport({ schemaVersion: 3, data: { schema_version: 3 } }), false);
 }
 
 
@@ -162,7 +216,8 @@ const makeValidReport = () => ({
   malformedIntrinsic.intrinsic_value = 'not-an-object';
   const prepared = validateAndPrepareReport(malformedIntrinsic, 'TEST');
   assert.equal(prepared.validation.status, 'invalid');
-  assert.equal(prepared.canPersist, false);
+  assert.equal(prepared.canPersist, true, 'Quarantined optional valuation does not discard completed research');
+  assert.equal(prepared.report?.report_completion?.coverageStatus, 'PARTIAL');
   assert.ok(prepared.validation.issues.some(item => item.code === 'INVALID_SECTION_SHAPE' && item.section === 'valuation'));
   assert.equal(prepared.report?.intrinsic_value, undefined);
 }
@@ -297,6 +352,7 @@ const makeEligibleSecEnvelope = () => ({
 {
   const report: any = makeValidReport();
   report.sec_verification = makeEligibleSecEnvelope();
+  report.company_profile.shares_outstanding = '80M';
   const prepared = validateAndPrepareReport(report, 'TEST', {
     marketQuotes: {
       TEST: {
@@ -314,9 +370,9 @@ const makeEligibleSecEnvelope = () => ({
   assert.equal(finalReport?.sec_verification?.status, 'verified_eligible');
   assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.financialDataSource, 'sec_verified');
   assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.priceSource, 'market_snapshot');
-  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.startingRevenueM, 1000);
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.startingRevenueM, 460, 'An eligible envelope cannot override the canonical four-quarter sum');
   assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.sharesOutstandingM, 80);
-  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.netCashM, 20);
+  assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.netCashM, -5, 'Current canonical instant governs net cash');
   assert.equal(finalReport?.intrinsic_value?.dcf_model?.inputs?.currentPrice, 55);
   assert.equal(finalReport?.report_provenance?.dcf_financial_inputs?.source, 'sec_verified');
   assert.equal(finalReport?.report_provenance?.market_price?.source, 'market_snapshot');
@@ -329,13 +385,34 @@ const makeEligibleSecEnvelope = () => ({
     requireMarketSnapshot: true,
   });
   assert.equal(prepared.validation.status, 'invalid');
-  assert.equal(prepared.canPersist, false);
+  assert.equal(prepared.canPersist, true, 'Missing provider quote quarantines valuation, not completed research');
   assert.ok(prepared.validation.issues.some(item => item.code === 'MARKET_SNAPSHOT_UNAVAILABLE'));
   assert.equal(prepared.report?.intrinsic_value?.dcf_model?.inputs?.isValid, false);
   assert.equal(prepared.report?.intrinsic_value?.summary.base_case_fair_value, null);
 }
 
 console.log('Runtime report validation checks passed');
+
+{
+  const invalidDcf:any=makeValidReport();
+  invalidDcf.intrinsic_value.dcf_model.assumptions.terminal_growth_pct=10;
+  invalidDcf.intrinsic_value.relative_valuation={source:'Independent relative valuation fixture'};
+  const prepared=validateAndPrepareReport(invalidDcf,'TEST');
+  assert.ok(prepared.validation.issues.some(i=>i.code==='TERMINAL_GROWTH_EXCEEDS_DISCOUNT_RATE'));
+  assert.ok(prepared.report?.intrinsic_value?.relative_valuation,'A DCF-only error must not quarantine independent relative methods');
+  assert.equal(prepared.report?.intrinsic_value?.dcf_model.inputs?.isValid,false);
+  assert.ok(prepared.report?.verdict?.conviction_breakdown?.growth!=null,'Other observed Conviction pillars survive DCF-only errors');
+}
+
+{
+  const unverified: any = makeValidReport();
+  unverified.sec_verification = makeEligibleSecEnvelope();
+  const prepared = validateSourceReport(unverified, 'TEST');
+  assert.equal(prepared.report?.financial_statements?.quality_status, 'unavailable');
+  assert.equal(prepared.report?.sec_verification?.status, 'unavailable');
+  assert.equal(prepared.report?.report_provenance?.financial_statements.used_in_output, false);
+  assert.equal(prepared.report?.intrinsic_value?.dcf_model.inputs?.isValid, false);
+}
 
 {
   const missingDcfAssumptions: any = makeValidReport();

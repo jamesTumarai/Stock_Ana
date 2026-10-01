@@ -1,4 +1,5 @@
 import type { FinancialSourceMetadata } from '../../domain/financialValue';
+import { hasDimensionalContext } from './xbrlNormalizer';
 import type {
   SecCompanyFact,
   SecCompanyFactsResponse,
@@ -17,6 +18,7 @@ export interface SecReportedShareValue {
 }
 
 export interface SecShareSnapshot {
+  historicalCommonSharesOutstanding?: SecReportedShareValue[];
   ticker: string;
   currentCommonSharesOutstanding: SecReportedShareValue | null;
   latestDilutedWeightedAverageShares: SecReportedShareValue | null;
@@ -40,12 +42,19 @@ const dateRank = (value?: string) => {
 
 const validShareFact = (fact: SecCompanyFact) =>
   finitePositive(fact.val)
+  && !hasDimensionalContext(fact)
   && typeof fact.end === 'string'
   && (!fact.form || VALID_FORMS.has(fact.form));
 
-const latestByAsOfThenFiled = (facts: SecCompanyFact[]) => [...facts]
-  .filter(validShareFact)
-  .sort((a, b) => dateRank(b.end) - dateRank(a.end) || dateRank(b.filed) - dateRank(a.filed))[0];
+const latestByAsOfThenFiled = (facts: SecCompanyFact[]) => {
+  const ranked = [...facts].filter(validShareFact)
+    .sort((a,b) => dateRank(b.end)-dateRank(a.end) || dateRank(b.filed)-dateRank(a.filed));
+  const first = ranked[0];
+  if (!first) return undefined;
+  // Ambiguous class counts without dimensions must not become aggregate shares.
+  // A later filed restatement is eligible; conflicting equally ranked facts are not.
+  return ranked.some(f => f.end === first.end && f.filed === first.filed && f.val !== first.val) ? undefined : first;
+};
 
 const latestDurationByEndThenFiled = (facts: SecCompanyFact[]) => [...facts]
   .filter(fact => validShareFact(fact) && typeof fact.start === 'string')
@@ -125,14 +134,31 @@ export function buildSecShareSnapshot(
   const currentFacts = companyFacts.facts?.dei?.EntityCommonStockSharesOutstanding?.units?.shares ?? [];
   const dilutedFacts = companyFacts.facts?.['us-gaap']?.WeightedAverageNumberOfDilutedSharesOutstanding?.units?.shares ?? [];
 
-  const current = toReportedShareValue(
-    latestByAsOfThenFiled(currentFacts),
+  const coverFact = latestByAsOfThenFiled(currentFacts.filter(f => !f.start));
+  // The standard dimensionless instant represents aggregate common shares;
+  // it never substitutes a diluted weighted-average duration or class-only count.
+  const balanceFact = latestByAsOfThenFiled((companyFacts.facts?.['us-gaap']?.CommonStockSharesOutstanding?.units?.shares ?? []).filter(f => !f.start));
+  const useCover = !!coverFact && (!balanceFact || coverFact.end! >= balanceFact.end!);
+  const candidate = toReportedShareValue(
+    useCover ? coverFact : balanceFact,
     identity,
     submissions,
     retrievedAt,
-    'dei',
-    'EntityCommonStockSharesOutstanding',
+    useCover ? 'dei' : 'us-gaap',
+    useCover ? 'EntityCommonStockSharesOutstanding' : 'CommonStockSharesOutstanding',
   );
+  const retrievedTime=Date.parse(retrievedAt);
+  const recent=submissions.filings?.recent;
+  const latestPeriodicEnd=(recent?.reportDate??[]).filter((date,index)=>
+    typeof date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(date)
+    && ['10-Q','10-K','20-F','40-F'].includes(String(recent?.form?.[index]??''))
+    && Date.parse(date)<=retrievedTime).sort().at(-1) as string|undefined;
+  const asOf=candidate?Date.parse(candidate.end):NaN;
+  // Old dimensionless counts (e.g. before class-specific reporting) remain
+  // historical observations; they cannot become a current valuation denominator.
+  const current=candidate&&Number.isFinite(retrievedTime)&&asOf<=retrievedTime+86_400_000
+    && retrievedTime-asOf<=400*86_400_000
+    && (!latestPeriodicEnd||asOf>=Date.parse(latestPeriodicEnd)-100*86_400_000)?candidate:null;
   const diluted = toReportedShareValue(
     latestDurationByEndThenFiled(dilutedFacts),
     identity,
@@ -150,12 +176,17 @@ export function buildSecShareSnapshot(
 
   return {
     ticker: identity.ticker,
+    historicalCommonSharesOutstanding: [...new Set(currentFacts.filter(f=>!f.start&&validShareFact(f)).map(f=>f.end!))].sort().flatMap(end=>{
+      const value=toReportedShareValue(latestByAsOfThenFiled(currentFacts.filter(f=>!f.start&&f.end===end)),identity,submissions,retrievedAt,'dei','EntityCommonStockSharesOutstanding');
+      return value?.source.documentUrl?[value]:[];
+    }),
     currentCommonSharesOutstanding: current,
     latestDilutedWeightedAverageShares: diluted,
     fullyDilutedSharesM: null,
     verification,
     caveats: [
-      'Current common shares outstanding is a point-in-time DEI cover-page fact and may be dated after the financial statement period end.',
+      'Current common shares outstanding uses a dimensionless DEI cover-page or standard CommonStockSharesOutstanding instant; cover dates may follow the statement end. Conflicting equally ranked counts are unavailable.',
+      'A count older than the latest periodic statement by more than one quarter, older than 400 days at retrieval, or future-dated is not current. Historical counts are retained separately.',
       'Diluted weighted-average shares is a period denominator and must not be treated as current shares outstanding.',
       'Fully diluted current shares are unavailable until options, RSUs, convertibles and treasury-stock effects are modeled from authoritative disclosures.',
     ],

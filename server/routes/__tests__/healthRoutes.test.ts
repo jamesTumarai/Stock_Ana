@@ -52,6 +52,8 @@ describe('Health & Observability Routes (P1-10)', () => {
     const data: any = await resp.json();
     assert.equal(typeof data.ok, 'boolean');
     assert.equal(data.service, 'lumina');
+    assert.equal(typeof data.metricAiConfigured, 'boolean');
+    assert.equal(data.metricAiProvider, 'Gemini');
     assert.ok(typeof data.timestamp === 'string');
     assert.ok(['healthy', 'degraded'].includes(data.status));
     assert.equal(data.services, undefined);

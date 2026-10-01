@@ -4,7 +4,13 @@ import {
   hasUsableDcfAssumptions,
   mergeStructuredValuationAssumptions,
   normalizeStructuredValuationAssumptions,
+  shouldExtractDcfAssumptions,
 } from '../../server/lib/valuationAssumptionBridge.ts';
+
+for(const [industry,sector] of [['Banks - Diversified','Financial Services'],['Credit Services','Financial Services'],['REIT - Retail','Real Estate'],['Diversified Holding Company','Financial Services']]){
+  assert.equal(shouldExtractDcfAssumptions({ticker:'UNSEEN',company_profile:{industry,sector}}),false);
+}
+assert.equal(shouldExtractDcfAssumptions({ticker:'UNSEEN',company_profile:{industry:'Software - Infrastructure',sector:'Technology'}}),true);
 
 const valid = {
   wacc_pct: 9.25,

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { classifyInsiderEvent,summarizeInsiderExecutions } from '../domain/insiderEventSemantics';
 import { 
   Landmark, Users, TrendingUp, TrendingDown, Activity, 
   ShieldCheck, ArrowUpRight, ArrowDownRight, Filter, Calendar, 
@@ -21,18 +22,6 @@ interface SmartMoneyCardProps {
 const HOLDER_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#475569', '#d97706', '#a8a29e'];
 const TYPE_COLORS = ['#0b5a4b', '#1e3a8a', '#334155', '#64748b', '#d97706', '#78716c'];
 
-const parseSharesToMillions = (value?: number | string): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value > 100_000 ? value / 1_000_000 : value;
-  }
-  if (typeof value !== 'string') return null;
-  const parsed = Number.parseFloat(value.replace(/,/g, ''));
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  if (/\bB\b/i.test(value)) return parsed * 1_000;
-  if (/\bM\b/i.test(value)) return parsed;
-  return parsed > 100_000 ? parsed / 1_000_000 : parsed;
-};
-
 export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   data,
   legacyInsiderData,
@@ -49,25 +38,18 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   // Active hover states for Donut charts
   const [activeHolderIndex, setActiveHolderIndex] = useState<number | null>(0);
   const [activeTypeIndex, setActiveTypeIndex] = useState<number | null>(0);
+  const unavailable=isThai?'ไม่มีข้อมูล':'Data unavailable';
 
-  const totalSharesM = parseSharesToMillions(companyProfile?.shares_outstanding);
-  const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
-
-  // Helper to format share counts cleanly (e.g. 2.98B, 661.7M)
-  const calcHolderShares = (pct: number): string | null => {
-    if (totalSharesM === null || !Number.isFinite(pct)) return null;
-    const sM = totalSharesM * (pct / 100);
-    return sM >= 1000 ? `${(sM / 1000).toFixed(2)}B` : `${sM.toFixed(1)}M`;
-  };
+  // Reported holdings are retained. Historical 13F shares cannot be
+  // reconstructed from AI dates/percentages and a current company share count.
 
   // Single Source of Truth for Institutional Ownership %
   const instPct = typeof data?.institution_overview?.pct_owned === 'number'
     ? data.institution_overview.pct_owned
     : (legacyInsiderData?.institutional_ownership_pct ?? null);
 
-  // Derive total institutional shares only when both disclosed inputs are present.
-  const formattedTotalInstShares = data?.institution_overview?.total_shares_held
-    ?? (instPct !== null ? calcHolderShares(instPct) : null);
+  // Preserve the disclosed aggregate; no percentage-to-share reconstruction.
+  const formattedTotalInstShares = data?.institution_overview?.total_shares_held ?? null;
 
   const instOverview = {
     pct_owned: instPct,
@@ -101,7 +83,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
       : null;
     let cleanShares = h.shares_held;
     if (typeof cleanShares === 'string' && cleanShares.endsWith('%')) {
-      cleanShares = pctOwned !== null ? (calcHolderShares(pctOwned) ?? unavailable) : unavailable;
+      cleanShares = unavailable;
     } else if (typeof cleanShares === 'number') {
       cleanShares = cleanShares >= 1_000_000_000 
         ? `${(cleanShares / 1_000_000_000).toFixed(2)}B` 
@@ -123,10 +105,9 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
     
   const keyInsiders = data?.insiders_overview?.key_insiders ?? [];
 
-  const bullishTransactions = recentTransactions.filter(t => !t.transaction_type?.toLowerCase().includes('sell'));
-  const bearishTransactions = recentTransactions.filter(t => t.transaction_type?.toLowerCase().includes('sell'));
-  const bullishCount = data?.insiders_overview?.bullish_insiders_count ?? (recentTransactions.length > 0 ? bullishTransactions.length : null);
-  const bearishCount = data?.insiders_overview?.bearish_insiders_count ?? (recentTransactions.length > 0 ? bearishTransactions.length : null);
+  const insiderExecutions=summarizeInsiderExecutions(recentTransactions);
+  const bullishCount = recentTransactions.length ? insiderExecutions.purchases : null;
+  const bearishCount = recentTransactions.length ? insiderExecutions.sales : null;
 
   // Donut chart data: Major Holders
   const topHoldersChartData = majorHolders.filter(h => h.pct_owned !== null).slice(0, 5).map(h => ({
@@ -142,7 +123,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
       name: isThai ? 'ผู้ถือหุ้นอื่น ๆ (Other)' : 'Other',
       fullName: isThai ? 'ผู้ถือหุ้นรายย่อยและสถาบันอื่น ๆ' : 'Other Holders',
       value: Number(otherPct.toFixed(2)),
-      shares: calcHolderShares(otherPct) ?? unavailable
+      shares: unavailable
     });
   }
 
@@ -168,9 +149,9 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
   });
 
   const filteredInsiders = recentTransactions.filter(tx => {
-    const isSell = tx.transaction_type?.toLowerCase().includes('sell') || tx.transaction_type?.toLowerCase().includes('disposition');
-    if (insiderFilter === 'sales') return isSell;
-    if (insiderFilter === 'buys') return !isSell;
+    const category=classifyInsiderEvent(tx);
+    if (insiderFilter === 'sales') return category==='EXECUTED_SALE';
+    if (insiderFilter === 'buys') return category==='PURCHASE';
     return true;
   });
 
@@ -197,7 +178,7 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               {isThai ? 'Smart Money: โครงสร้างผู้ถือหุ้น & กองทุนสถาบัน' : 'Smart Money & Institutional Ownership'}
             </h3>
             <span className="text-xs text-stone-500 font-sans">
-              {isThai ? 'สัดส่วนกองทุนสถาบัน (13F), ผู้ถือหุ้นรายใหญ่ และธุรกรรมซื้อขายของผู้บริหาร' : 'Institutional holdings (13F filings), major funds & executive insider transactions'}
+              {isThai ? '13F เป็นภาพการถือครอง ณ วันสิ้นไตรมาส ไม่ใช่บันทึกซื้อขาย · ธุรกรรมผู้บริหารแยกตาม Form 4' : '13F is a quarter-end holdings snapshot, not a transaction log. Insider transactions are separate Form 4 disclosures.'}
             </span>
           </div>
         </div>
@@ -244,6 +225,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
       </div>
 
       {/* KPI Overview Grid */}
+      <p className="mb-3 break-words text-xs text-stone-600">
+        {isThai?'วันที่ snapshot':'Snapshot date'}: {data?.as_of_date || '—'} · {isThai?'แหล่งข้อมูล':'Source'}: {data?.source || '—'}
+        {data?.methodology && <span className="block mt-1">{data.methodology}</span>}
+      </p>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-100 flex flex-col justify-between">
           <span className="text-[11px] text-stone-500 font-bold uppercase tracking-wider">
@@ -758,10 +743,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold font-mono flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5" /> {bullishCount ?? unavailable} Bullish
+                <TrendingUp className="w-3.5 h-3.5" /> {bullishCount ?? unavailable} Purchases
               </span>
               <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-xl text-xs font-bold font-mono flex items-center gap-1">
-                <TrendingDown className="w-3.5 h-3.5" /> {bearishCount ?? unavailable} Bearish / Planned
+                <TrendingDown className="w-3.5 h-3.5" /> {bearishCount ?? unavailable} Executed sales
               </span>
             </div>
           </div>
@@ -841,11 +826,10 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
               <tbody className="divide-y divide-stone-100 text-xs sm:text-sm">
                 {filteredInsiders.length > 0 ? (
                   filteredInsiders.map((tx, idx) => {
-                    const isSell = tx.transaction_type?.toLowerCase().includes('sell') || tx.transaction_type?.toLowerCase().includes('disposition');
-                    const isBuy = !isSell;
-                    const formattedShares = tx.shares_count 
-                      ? (isSell ? `-${tx.shares_count.toLocaleString()}` : `+${tx.shares_count.toLocaleString()}`)
-                      : '0';
+                    const eventType=classifyInsiderEvent(tx);
+                    const isSell=eventType==='EXECUTED_SALE',isBuy=eventType==='PURCHASE';
+                    const sharesKnown=typeof tx.shares_count==='number'&&Number.isFinite(tx.shares_count);
+                    const formattedShares=sharesKnown?`${isSell?'-':isBuy?'+':''}${tx.shares_count!.toLocaleString()}`:unavailable;
 
                     return (
                       <tr key={idx} className="hover:bg-stone-50/60 transition-colors">
@@ -863,14 +847,14 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
                               : 'bg-stone-100 text-stone-700'
                           }`}>
                             {isBuy ? (
-                              <><TrendingUp className="w-3 h-3" /> {tx.transaction_type || 'Acquisition / RSU'}</>
+                              <><TrendingUp className="w-3 h-3" /> {tx.transaction_type}</>
                             ) : (
-                              <><ShieldCheck className="w-3 h-3 text-blue-600" /> {tx.transaction_type?.includes('10b5-1') ? '10b5-1 Plan Sale' : 'Disposition'}</>
+                              <><ShieldCheck className="w-3 h-3 text-blue-600" /> {tx.transaction_type || (isThai?'ไม่ระบุประเภท':'Unclassified')}</>
                             )}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold">
-                          <span className={isBuy ? 'text-emerald-700' : 'text-rose-700'}>
+                          <span className={isBuy ? 'text-emerald-700' : isSell ? 'text-rose-700':'text-stone-700'}>
                             {formattedShares}
                           </span>
                         </td>
@@ -940,8 +924,8 @@ export const SmartMoneyCard: React.FC<SmartMoneyCardProps> = ({
             <span className="shrink-0 font-bold text-stone-700">💡 {isThai ? 'หมายเหตุการประเมินมูลค่า:' : 'Valuation Basis:'}</span>
             <span>
               {isThai 
-                ? 'มูลค่า USD ในการปรับพอร์ต 13F คำนวณจากราคาปิดของหุ้น ณ วันสิ้นสุดไตรมาสที่ยื่นแบบรายงานต่อ SEC (เช่น 30 มิ.ย.) ตามเกณฑ์การเปิดเผยข้อมูลทางการ มิใช่ราคาตลาด ณ วันปัจจุบัน' 
-                : 'USD transaction amounts in 13F disclosures are evaluated using the quarter-end closing price on the filing date per SEC disclosure requirements, not the current live market price.'}
+                ? '13F เป็นยอดถือครอง ณ สิ้นไตรมาส ไม่ใช่รายการซื้อขายในวันยื่นเอกสาร การเปลี่ยนยอดระหว่างไตรมาสไม่ยืนยันราคาหรือวันทำรายการ และต้องแยกจาก Form 4 ของผู้บริหาร'
+                : '13F reports quarter-end holdings, not transactions on the filing date. Quarter-over-quarter changes do not establish execution prices or dates and are separate from insider Form 4 events.'}
             </span>
           </div>
 

@@ -6,6 +6,10 @@ import {
   MACRO_TERMINAL_GROWTH_MIN_PCT,
 } from './constants';
 import { detectValuationModel } from './modelSelector';
+import { resolveCurrentBalanceSheetSnapshot } from '../../domain/currentBalanceSheetSnapshot';
+import { resolveReportTtmFlow } from '../../domain/canonicalTtmFlow';
+import { verifiedCurrentShares } from '../../domain/valuation/verifiedCurrentShares';
+import { sameShareClassTicker } from '../../domain/tickerIdentity';
 
 export interface DCFEngineInputs {
   ticker: string;
@@ -115,11 +119,15 @@ export function calculateStrictDCFValue(
   return Number(((enterpriseValueM + netCashM) / sharesOutstandingM).toFixed(2));
 }
 
-const unavailableScenario = (note: string) => ({
-  revenue_cagr_pct: null,
-  terminal_margin_pct: null,
+const unavailableScenario = (note: string, original?: DCFModel['scenarios']['base']) => ({
+  // Missing historical inputs invalidate the result, not valid forward assumptions.
+  // Keeping these distinct also prevents subsequent normalization from reporting
+  // false missing-growth diagnostics or changing an immutable assumption snapshot.
+  revenue_cagr_pct: finite(original?.revenue_cagr_pct) && original.revenue_cagr_pct > -100 ? original.revenue_cagr_pct : null,
+  terminal_margin_pct: finite(original?.terminal_margin_pct) && Math.abs(original.terminal_margin_pct) <= 100 ? original.terminal_margin_pct : null,
   fair_value_per_share: null,
-  key_assumption_note: note,
+  key_assumption_note: typeof original?.key_assumption_note === 'string' && original.key_assumption_note.trim()
+    ? original.key_assumption_note : note,
 });
 
 /**
@@ -129,8 +137,10 @@ const unavailableScenario = (note: string) => ({
  * input (revenue, net cash and current shares) comes from that envelope. A malformed eligible
  * envelope fails closed rather than silently falling back to AI/report statement values.
  *
- * If SEC coverage is partial/unavailable, the legacy validated report-statement path remains the
- * all-or-nothing fallback. The two financial sources are never mixed within one DCF calculation.
+ * A present independent SEC canonical dataset takes precedence even under partial coverage.
+ * Its exact TTM flows, current balance snapshot and verified common-share denominator are
+ * shared with the adaptive engine. Legacy report statements are used only without that
+ * dataset; missing canonical inputs cannot be filled from model/profile estimates.
  *
  * Model selection is a conservative eligibility gate only. Financial institutions / lending-heavy
  * businesses that route to `fintech_pe` or `ddm` are not valued with this operating-company FCFF
@@ -168,16 +178,48 @@ export function buildRigorousDCFModel(
     && secInputs?.eligible === true
     && validSecFinancialInputs(secInputs, sym);
 
-  if (secClaimsEligibility) {
+  if (data?.canonical_financials && /sec[-_]?xbrl/i.test(data.canonical_financials.generatedBy || '')) {
+    // The detailed DCF and adaptive result must consume the same verified facts,
+    // even when optional coverage keeps the overall SEC envelope partial.
+    financialDataSource = 'sec_verified';
+    if (!sameShareClassTicker(data.canonical_financials.ticker || '', sym)) missing.push('canonical financial ticker identity');
+    if (secClaimsEligibility && !useSecFinancials) missing.push('runtime-valid SEC verified DCF financial inputs');
+    const revenue = resolveReportTtmFlow(data, 'income_statement.revenue');
+    const fcf = resolveReportTtmFlow(data, 'cash_flow.free_cash_flow');
+    if (revenue.status !== 'verified' || revenue.canonicalValue === null || revenue.canonicalValue <= 0) {
+      missing.push('four verified standalone quarters of SEC revenue');
+    } else startingRevenueM = revenue.canonicalValue;
+    if (fcf.status !== 'verified' || fcf.canonicalValue === null
+      || revenue.periodsUsed.join('|') !== fcf.periodsUsed.join('|')) missing.push('four verified standalone quarters of SEC free cash flow');
+    const balance = resolveCurrentBalanceSheetSnapshot(data);
+    netCashM = balance.netCash;
+    if (netCashM === null) missing.push('canonical same-instant SEC net cash');
+    sharesOutstandingM = verifiedCurrentShares({ ...data, ticker: sym });
+    if (sharesOutstandingM === null) missing.push('verified current common shares outstanding');
+    sourcePeriod = revenue.periodsUsed.join('–') || undefined;
+    financialDataAsOf = balance.periodEnd || undefined;
+    sharesAsOf = secInputs?.share_as_of || undefined;
+  } else if (secClaimsEligibility) {
     if (!useSecFinancials || !secInputs) {
       // An envelope that claims eligibility is a trusted-source invariant violation. Do not hide it
       // by falling back to report/AI financials for this valuation.
       missing.push('runtime-valid SEC verified DCF financial inputs');
       financialDataSource = 'sec_verified';
     } else {
-      startingRevenueM = secInputs.starting_revenue_m;
+      const canonicalRevenue = resolveReportTtmFlow(data || {}, 'income_statement.revenue');
+      if (data?.canonical_financials && /sec[-_]?xbrl/i.test(data.canonical_financials.generatedBy || '')) {
+        if (canonicalRevenue.canonicalValue === null || canonicalRevenue.canonicalValue <= 0) {
+          missing.push('four verified standalone quarters of SEC revenue');
+        } else {
+          startingRevenueM = canonicalRevenue.canonicalValue;
+        }
+      } else {
+        startingRevenueM = secInputs.starting_revenue_m;
+      }
       sharesOutstandingM = secInputs.current_shares_outstanding_m;
-      netCashM = secInputs.net_cash_m;
+      const currentBalance = data?.canonical_financials ? resolveCurrentBalanceSheetSnapshot(data) : null;
+      if (currentBalance && currentBalance.netCash === null) missing.push('canonical same-instant SEC net cash');
+      netCashM = currentBalance ? currentBalance.netCash : secInputs.net_cash_m;
       sourcePeriod = secInputs.source_period ?? undefined;
       financialDataAsOf = secInputs.latest_balance_sheet_period_end ?? undefined;
       sharesAsOf = secInputs.share_as_of ?? undefined;
@@ -189,16 +231,15 @@ export function buildRigorousDCFModel(
     const lastFourPeriods = periods.slice(-4);
     const latestIndex = periods.length - 1;
     const inc = fs?.income_statement;
-    const bs = fs?.balance_sheet;
     const cf = fs?.cash_flow;
 
-    const isQuarterly = lastFourPeriods.length === 4 && lastFourPeriods.every(period => /^Q[1-4]\s+(?:FY\s*)?(?:20)?\d{2}$/i.test(period.trim()));
-    if (!isQuarterly) missing.push('four disclosed quarterly periods');
-    const revenues = isQuarterly ? (inc?.revenue || []).slice(-4) : [];
-    if (revenues.length !== 4 || revenues.some(value => typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) {
+    const revenueTtm = resolveReportTtmFlow(data || {}, 'income_statement.revenue');
+    const isQuarterly = revenueTtm.periodsUsed.length === 4;
+    if (!isQuarterly) missing.push('four disclosed consecutive quarterly periods');
+    if (revenueTtm.canonicalValue === null || revenueTtm.canonicalValue <= 0) {
       missing.push('quarterly revenue (USD millions)');
     } else {
-      startingRevenueM = revenues.reduce((sum, value) => sum + (value as number), 0);
+      startingRevenueM = revenueTtm.canonicalValue;
     }
 
     let freeCashFlows = isQuarterly ? (cf?.free_cash_flow || []).slice(-4) : [];
@@ -219,13 +260,11 @@ export function buildRigorousDCFModel(
       missing.push('quarterly free cash flow (USD millions)');
     }
 
-    const cash = numberAt(bs?.cash_and_equivalents, latestIndex);
-    const investments = numberAt(bs?.short_term_investments, latestIndex);
-    const debt = numberAt(bs?.total_debt, latestIndex);
-    if (cash === undefined || investments === undefined || debt === undefined) {
+    const balanceSnapshot = resolveCurrentBalanceSheetSnapshot(data || {});
+    if (balanceSnapshot.netCash === null) {
       missing.push('cash, short-term investments, and total debt for the latest period');
     } else {
-      netCashM = cash + investments - debt;
+      netCashM = balanceSnapshot.netCash;
     }
 
     let reportSharesOutstandingM = parseSharesToMillions(data?.company_profile?.shares_outstanding);
@@ -336,7 +375,11 @@ export function buildRigorousDCFModel(
           terminal_growth_policy_reason: terminalGrowthPolicyReason,
         },
         inputs,
-        scenarios: { bear: unavailableScenario(note), base: unavailableScenario(note), bull: unavailableScenario(note) },
+        scenarios: {
+          bear: unavailableScenario(note, scenarios?.bear),
+          base: unavailableScenario(note, scenarios?.base),
+          bull: unavailableScenario(note, scenarios?.bull),
+        },
       },
     };
   }

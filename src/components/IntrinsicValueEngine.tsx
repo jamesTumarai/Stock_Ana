@@ -9,7 +9,9 @@ import { IntrinsicValueData, ForecastDashboardData, DCFScenario } from '../types
 
 import { calculateStrictDCFValue } from '../utils/valuation/dcfMathEngine';
 import { describeDcfFinancialSource } from '../utils/valuation/dcfSourceDescriptor';
+import { resolveValuationPriceMetrics } from '../domain/valuation/valuationPriceMetrics';
 import { CalculationModal } from './CalculationModal';
+import { MethodSensitivity } from './MethodSensitivity';
 import { getMetricCalculationDetail, MetricCalculationDetail } from '../utils/metricCalculations';
 
 
@@ -22,7 +24,89 @@ interface Props {
   currencyRate?: number;
 }
 
-export function IntrinsicValueEngine({ 
+export function IntrinsicValueEngine(props: Props) {
+  const run = props.data?.canonical_run;
+  if (run && run.primaryMethod !== 'FCFF_DCF') {
+    return <AdaptiveValuationCard {...props} />;
+  }
+  return <><DcfIntrinsicValueEngine {...props} />{run&&<div className="rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-600">
+    <p>{props.isThai?'ข้อมูลรองรับวิธีประเมิน':'Method input coverage'}: {run.inputCoverage?`${run.inputCoverage.available} / ${run.inputCoverage.required}`:'—'} · {run.modelConfidence}</p>
+    <p className="mt-1 break-all font-mono text-[10px]">{run.valuationRunId} · {run.modelVersion}</p>
+    <MethodSensitivity run={run} isThai={props.isThai} />
+    {run.methodEligibility&&<details className="mt-2"><summary className="cursor-pointer focus-visible:outline-2 focus-visible:outline-teal-700">{props.isThai?'ความเหมาะสมของแต่ละวิธี':'Method eligibility'}</summary><ul className="mt-2 space-y-1">{run.methodEligibility.map(method=><li key={method.method}>{method.method}: {method.role} · {method.status} · {method.reason}</li>)}</ul></details>}
+  </div>}</>;
+}
+
+function AdaptiveValuationCard({ data, isThai, currencyMode = 'USD', currencyRate }: Props) {
+  const run = data?.canonical_run;
+  if (!run) return null;
+  const methodNames: Record<string, [string, string]> = {
+    RESIDUAL_INCOME: ['กำไรส่วนเกิน (Residual Income)', 'Residual Income'],
+    DIVIDEND_DISCOUNT: ['คิดลดเงินปันผล (DDM)', 'Dividend Discount Model'],
+    SOTP: ['ประเมินแยกส่วนธุรกิจ (SOTP)', 'Sum of the Parts'],
+    AFFO_MULTIPLE: ['AFFO Multiple สำหรับ REIT', 'REIT AFFO Multiple'],
+    PEER_EV_SALES: ['เทียบ EV/Sales กับบริษัทใกล้เคียง', 'Peer EV/Sales'],
+    UNAVAILABLE: ['ยังประเมินมูลค่าไม่ได้', 'Fair value unavailable'],
+  };
+  const name = methodNames[run.primaryMethod]?.[isThai ? 0 : 1] ?? run.primaryMethod;
+  const hasFx = currencyMode === 'THB' && typeof currencyRate === 'number' && currencyRate > 0;
+  const renderPrice = (value: number | null) => {
+    if (value === null || !Number.isFinite(value)) return '—';
+    return hasFx ? `฿${(value * currencyRate!).toFixed(2)}` : `$${value.toFixed(2)}`;
+  };
+  return (
+    <section className="rounded-2xl border border-stone-200 bg-white p-5 sm:p-6 shadow-sm" aria-label={isThai ? 'การประเมินมูลค่าพื้นฐาน' : 'Intrinsic valuation'}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-stone-900 font-bold">
+            <Calculator className="h-5 w-5 text-[#0b5a4b]" />
+            {isThai ? 'มูลค่าพื้นฐาน' : 'Intrinsic Fair Value'}
+          </div>
+          <p className="mt-1 text-sm text-stone-600">{name}</p>
+        </div>
+        <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-700">
+          {run.status === 'AVAILABLE' ? (isThai ? 'คำนวณแล้ว' : 'Calculated')
+            : isThai ? 'ข้อมูลยังไม่พอ' : 'Insufficient data'}
+        </span>
+      </div>
+      {run.status === 'AVAILABLE' ? (
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {([
+            [isThai ? 'ตลาด' : 'Market', run.currentPrice],
+            ['Bear', run.bearFairValue],
+            ['Base', run.baseFairValue],
+            ['Bull', run.bullFairValue],
+          ] as const).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+              <div className="text-xs text-stone-500">{label}</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-stone-900">{renderPrice(value)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          {isThai ? 'ยังไม่มีข้อมูลที่ตรวจสอบได้ครบสำหรับวิธีประเมินหลัก' : 'Verified inputs for the primary method are incomplete.'}
+          {run.missingInputs.length > 0 && <span className="mt-1 block font-mono text-xs">{run.missingInputs.join(', ')}</span>}
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-stone-600">
+        {run.marginOfSafetyPct !== null && <span>Margin of Safety: <strong>{run.marginOfSafetyPct.toFixed(1)}%</strong></span>}
+        <span>{isThai ? 'งบการเงิน' : 'Financials'}: {run.provenance.financialInputs === 'SEC_OR_ISSUER_VERIFIED' ? 'SEC / issuer' : 'unverified'}</span>
+        <span>{isThai ? 'ราคา' : 'Price'}: {run.provenance.marketInputs === 'PROVIDER' ? 'market provider' : 'unavailable'}</span>
+        <span>{isThai ? 'สมมติฐาน' : 'Assumptions'}: Lumina model</span>
+        <span>{isThai?'ความเชื่อมั่นของแบบจำลอง':'Model confidence'}: {run.modelConfidence}</span>
+        {run.inputCoverage&&<span>{isThai?'ข้อมูลรองรับวิธีประเมิน':'Method input coverage'}: {run.inputCoverage.available} / {run.inputCoverage.required}</span>}
+      </div>
+      <p className="mt-2 break-all font-mono text-[10px] text-stone-500">
+        {isThai ? 'รุ่นการประเมิน' : 'Valuation run'}: {run.valuationRunId} · {run.modelVersion}
+      </p>
+      <MethodSensitivity run={run} isThai={isThai} />
+      {run.methodEligibility&&<details className="mt-3 text-xs text-stone-600"><summary className="cursor-pointer focus-visible:outline-2 focus-visible:outline-teal-700">{isThai?'ความเหมาะสมของแต่ละวิธี':'Method eligibility'}</summary><ul className="mt-2 space-y-1">{run.methodEligibility.map(method=><li key={method.method} className="break-words">{method.method}: {method.role} · {method.status} · {method.reason}</li>)}</ul></details>}
+    </section>
+  );
+}
+
+function DcfIntrinsicValueEngine({
   data, 
   ticker,
   forecastDashboard,
@@ -131,23 +215,12 @@ export function IntrinsicValueEngine({
     );
   }
 
-  const currSym = currencyMode === 'THB' ? '฿' : '$';
-  const hasFxRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
-  const multiplier = currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
-
-  const formatPrice = (val: number | null | undefined): string => {
-    if (val === null || val === undefined || !Number.isFinite(val)) return isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
-    if (currencyMode === 'THB' && !hasFxRate) return isThai ? 'FX ไม่พร้อมใช้งาน' : 'FX unavailable';
-    return `${currSym}${(val * multiplier).toFixed(2)}`;
-  };
-
   const dcf = data.dcf_model;
   const rawBear = dcf.scenarios.bear;
   const rawBase = dcf.scenarios.base;
   const rawBull = dcf.scenarios.bull;
   const rawAssumptions = dcf.assumptions;
   const requiredValuationNumbers = [
-    data.current_price,
     rawAssumptions.wacc_pct,
     rawAssumptions.terminal_growth_pct,
     rawAssumptions.projection_years,
@@ -179,7 +252,29 @@ export function IntrinsicValueEngine({
     );
   }
 
-  const currentPrice = data.current_price as number;
+  // Mount the interactive calculator only once its input contract is complete.
+  // Streaming from missing to valid data must never change the parent's hook order.
+  return <VerifiedDcfCalculator {...{data, ticker, forecastDashboard, isThai, currencyMode, currencyRate, dcfSourceBadge}} data={data as VerifiedDcfData} />;
+}
+
+type VerifiedDcfData = IntrinsicValueData & { dcf_model: NonNullable<IntrinsicValueData['dcf_model']> };
+function VerifiedDcfCalculator({data, ticker, forecastDashboard, isThai, currencyMode='USD', currencyRate, dcfSourceBadge}: Omit<Props, 'data'> & {data: VerifiedDcfData; dcfSourceBadge: React.ReactNode}) {
+  const currSym = currencyMode === 'THB' ? '฿' : '$';
+  const hasFxRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
+  const multiplier = currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
+
+  const formatPrice = (val: number | null | undefined): string => {
+    if (val === null || val === undefined || !Number.isFinite(val)) return isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
+    if (currencyMode === 'THB' && !hasFxRate) return isThai ? 'FX ไม่พร้อมใช้งาน' : 'FX unavailable';
+    return `${currSym}${(val * multiplier).toFixed(2)}`;
+  };
+
+  const dcf = data.dcf_model;
+  const rawBear = dcf.scenarios.bear;
+  const rawBase = dcf.scenarios.base;
+  const rawBull = dcf.scenarios.bull;
+  const rawAssumptions = dcf.assumptions;
+  const currentPrice = typeof data.current_price==='number' && data.current_price>0 ? data.current_price : Number.NaN;
   const assumptions = rawAssumptions as typeof rawAssumptions & {
     wacc_pct: number;
     terminal_growth_pct: number;
@@ -216,34 +311,8 @@ export function IntrinsicValueEngine({
 
   // Exact closed-form live calculation based on user adjustments
   const recalculatedBaseFairValue = useMemo(() => {
-    // 1. If stock uses specialized sector models (FinTech Forward P/E, Bank DDM, REIT AFFO, Cyclical Normalized, Space Relative):
-    // Adjust the grounded Base Target dynamically using financial sensitivity factors!
-    const isSpecializedModel = modelSelector?.model_type === 'relative_only' 
-      || modelSelector?.model_type === 'fintech_pe'
-      || modelSelector?.model_type === 'ddm'
-      || modelSelector?.model_type === 'reit_affo'
-      || modelSelector?.model_type === 'dcf_cyclical'
-      || (data.selected_model?.model_type === 'relative_only')
-      || (data.selected_model?.model_type === 'fintech_pe')
-      || (data.selected_model?.model_type === 'ddm')
-      || (data.selected_model?.model_type === 'reit_affo')
-      || (data.selected_model?.model_type === 'dcf_cyclical')
-      || (base.fair_value_per_share > 0 && assumptions.wacc_pct > 14 && base.revenue_cagr_pct > 40);
-
-    if (isSpecializedModel) {
-      const baseCagr = base.revenue_cagr_pct;
-      const baseWacc = effectiveWacc;
-      // Revenue CAGR sensitivity (2-year growth compound)
-      const cagrFactor = Math.pow((1 + (simCagr / 100)) / (1 + (baseCagr / 100)), 2);
-      // WACC discount sensitivity
-      const waccFactor = (1 + (baseWacc / 100)) / (1 + (simWacc / 100));
-      // Terminal growth sensitivity
-      const gDiff = (simGrowth - effectiveGrowth) * 0.02;
-      const totalFactor = Math.max(0.2, Math.min(4.0, cagrFactor * waccFactor * (1 + gDiff)));
-      return Number((base.fair_value_per_share * totalFactor).toFixed(2));
-    }
-
-    // 2. Standard DCF Model
+    // This simulator is FCFF-only. Other methods expose their own exact
+    // sensitivity model; scaling a saved target by arbitrary factors is invalid.
     const margin = base.terminal_margin_pct;
 
     const dcfVal = calculateStrictDCFValue(
@@ -260,28 +329,19 @@ export function IntrinsicValueEngine({
     return Number.isFinite(dcfVal) && dcfVal > 0 ? dcfVal : Number.NaN;
   }, [simWacc, simGrowth, simCagr, base, dcf, startingRevM, sharesM, netCashM, modelSelector, data.selected_model, effectiveWacc, effectiveGrowth, currentPrice]);
 
-  // When simulator is open, synchronize Base price, Upside, and Margin of Safety dynamically!
+  // Each simulated case is recomputed by the same exact FCFF formula;
+  // no proportional scaling of saved targets or inferred scenario growth.
   const effectiveBasePrice = showSimulator ? recalculatedBaseFairValue : base.fair_value_per_share;
-  const effectiveBaseUpside = ((effectiveBasePrice - currentPrice) / currentPrice) * 100;
-  const effectiveMarginOfSafety = ((effectiveBasePrice - currentPrice) / currentPrice) * 100;
-
-  // Dynamic scaling for Bear and Bull based on simulation adjustment
-  const simMultiplier = base.fair_value_per_share > 0 ? (effectiveBasePrice / base.fair_value_per_share) : 1;
-  const effectiveBearPrice = showSimulator ? Number((bear.fair_value_per_share * simMultiplier).toFixed(2)) : bear.fair_value_per_share;
-  const effectiveBullPrice = showSimulator ? Number((bull.fair_value_per_share * simMultiplier).toFixed(2)) : bull.fair_value_per_share;
-  const scenarioCagr = (value: number | null | undefined): number | null => {
-    if (!showSimulator) return typeof value === 'number' ? value : null;
-    if (typeof value !== 'number' || typeof base.revenue_cagr_pct !== 'number' || base.revenue_cagr_pct === 0) return null;
-    return Number((simCagr * (value / base.revenue_cagr_pct)).toFixed(0));
-  };
-  const bearCagr = scenarioCagr(bear.revenue_cagr_pct);
-  const bullCagr = scenarioCagr(bull.revenue_cagr_pct);
-
-  // Upside/Downside calculations for 3 Scenario Cards
-  const bearUpside = ((effectiveBearPrice - currentPrice) / currentPrice) * 100;
-  const baseUpside = effectiveBaseUpside;
-  const bullUpside = ((effectiveBullPrice - currentPrice) / currentPrice) * 100;
-
+  const effectiveBaseUpside = resolveValuationPriceMetrics(effectiveBasePrice,currentPrice).upsidePct;
+  const effectiveMarginOfSafety = resolveValuationPriceMetrics(effectiveBasePrice,currentPrice).marginOfSafetyPct;
+  const simulateCase=(scenario:typeof bear)=>calculateStrictDCFValue(startingRevM,sharesM,netCashM,simWacc,simGrowth,scenario.revenue_cagr_pct,scenario.terminal_margin_pct,assumptions.projection_years);
+  const effectiveBearPrice=showSimulator?simulateCase(bear):bear.fair_value_per_share;
+  const effectiveBullPrice=showSimulator?simulateCase(bull):bull.fair_value_per_share;
+  const bearCagr=bear.revenue_cagr_pct,bullCagr=bull.revenue_cagr_pct;
+  const bearUpside=resolveValuationPriceMetrics(effectiveBearPrice,currentPrice).upsidePct;
+  const baseUpside=effectiveBaseUpside;
+  const bullUpside=resolveValuationPriceMetrics(effectiveBullPrice,currentPrice).upsidePct;
+  const formatPct=(value:number|null)=>value===null?'—':`${value>0?'+':''}${value.toFixed(1)}%`;
   // Wall Street Consensus vs DCF Divergence Metrics
   const consensusMean = forecastDashboard?.price_target?.mean;
   const consensusTotalAnalysts = forecastDashboard?.total_analysts;
@@ -299,12 +359,18 @@ export function IntrinsicValueEngine({
     ? Number((((effectiveBasePrice - consensusMean) / consensusMean) * 100).toFixed(1))
     : null;
 
-  const shouldShowDivergenceAlert = consensusMean !== undefined && (baseUpside < -20 || (valuationGapMultiple !== null && valuationGapMultiple >= 1.5));
+  const shouldShowDivergenceAlert = consensusMean !== undefined && ((baseUpside!==null && baseUpside < -20) || (valuationGapMultiple !== null && valuationGapMultiple >= 1.5));
 
-  const rangeMin = Math.min(effectiveBearPrice * 0.85, currentPrice * 0.85, effectiveBasePrice * 0.85);
-  const rangeMax = Math.max(effectiveBullPrice * 1.15, currentPrice * 1.15, effectiveBasePrice * 1.15);
+  const rangeValues=[effectiveBearPrice,currentPrice,effectiveBasePrice,effectiveBullPrice].filter(Number.isFinite);
+  // Invalid simulator assumptions (for example g >= WACC) must not place
+  // a credible-looking marker or emit NaN/Infinity into CSS. Empty bounds
+  // are presentation-only; no bound participates in valuation calculations.
+  const rangeMin=rangeValues.length?Math.min(...rangeValues)*0.85:0;
+  const rangeMax=rangeValues.length?Math.max(...rangeValues)*1.15:1;
   const totalSpan = rangeMax - rangeMin || 1;
-  const getPos = (val: number) => `${Math.max(2, Math.min(98, ((val - rangeMin) / totalSpan) * 100))}%`;
+  const markerStyle = (val: number) => Number.isFinite(val)
+    ? { left: `${Math.max(2, Math.min(98, ((val - rangeMin) / totalSpan) * 100))}%` }
+    : { display: 'none' };
 
   const minCagrLimit = 0.0;
   const maxCagrLimit = Math.max(200.0, Math.ceil(Math.max(bull.revenue_cagr_pct, base.revenue_cagr_pct * 2, 120) / 10) * 10);
@@ -335,7 +401,7 @@ export function IntrinsicValueEngine({
           </div>
 
           <div className="flex items-center gap-3 bg-stone-50 border border-stone-200 px-4 py-2.5 rounded-2xl shrink-0 self-start md:self-auto">
-            {effectiveMarginOfSafety >= 0 ? (
+            {effectiveMarginOfSafety === null ? <Info className="w-6 h-6 text-stone-500 shrink-0" /> : effectiveMarginOfSafety >= 0 ? (
               <ShieldCheck className="w-6 h-6 text-[#0b5a4b] shrink-0" />
             ) : (
               <ShieldAlert className="w-6 h-6 text-red-600 shrink-0" />
@@ -363,10 +429,10 @@ export function IntrinsicValueEngine({
                   <Calculator className="w-3 h-3" />
                 </button>
               </div>
-              <span className={`text-base sm:text-lg font-bold font-mono ${effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                {effectiveMarginOfSafety > 0 ? `+${effectiveMarginOfSafety.toFixed(1)}%` : `${effectiveMarginOfSafety.toFixed(1)}%`}
+              <span className={`text-base sm:text-lg font-bold font-mono ${effectiveMarginOfSafety !== null && effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                {formatPct(effectiveMarginOfSafety)}
                 <span className="text-xs font-sans font-normal ml-1 text-stone-500">
-                  ({effectiveMarginOfSafety >= 0 ? (isThai ? 'ต่ำกว่ามูลค่า' : 'Undervalued') : (isThai ? 'สูงกว่ามูลค่า Base' : 'Premium to Base')})
+                  ({effectiveMarginOfSafety === null ? (isThai ? 'ไม่มีราคาตลาด' : 'Market quote unavailable') : effectiveMarginOfSafety >= 0 ? (isThai ? 'ต่ำกว่ามูลค่า' : 'Undervalued') : (isThai ? 'สูงกว่ามูลค่า Base' : 'Premium to Base')})
                 </span>
               </span>
             </div>
@@ -440,14 +506,14 @@ export function IntrinsicValueEngine({
             <div className="h-4 rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500 w-full relative shadow-inner">
               <div 
                 className="absolute top-0 bottom-0 w-1 bg-stone-900 z-10 -translate-x-1/2"
-                style={{ left: getPos(effectiveBasePrice) }}
+                style={markerStyle(effectiveBasePrice)}
                 title={`Base Case: ${formatPrice(effectiveBasePrice)}`}
               />
             </div>
 
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-              style={{ left: getPos(effectiveBearPrice) }}
+              style={markerStyle(effectiveBearPrice)}
             >
               <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider mb-0.5">BEAR CASE</span>
               <div className="bg-red-50 text-red-800 text-xs font-mono font-bold px-2 py-0.5 rounded-md border border-red-200 shadow-xs">
@@ -457,7 +523,7 @@ export function IntrinsicValueEngine({
 
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-              style={{ left: getPos(effectiveBasePrice) }}
+              style={markerStyle(effectiveBasePrice)}
             >
               <span className="text-[10px] font-bold text-stone-800 uppercase tracking-wider mb-0.5">BASE CASE (TARGET)</span>
               <div className="bg-stone-900 text-white text-xs font-mono font-bold px-2.5 py-0.5 rounded-md shadow-md">
@@ -467,7 +533,7 @@ export function IntrinsicValueEngine({
 
             <div 
               className="absolute top-1 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-              style={{ left: getPos(effectiveBullPrice) }}
+              style={markerStyle(effectiveBullPrice)}
             >
               <span className="text-[10px] font-bold text-[#0b5a4b] uppercase tracking-wider mb-0.5">BULL CASE</span>
               <div className="bg-emerald-50 text-[#0b5a4b] text-xs font-mono font-bold px-2 py-0.5 rounded-md border border-emerald-200 shadow-xs">
@@ -475,16 +541,16 @@ export function IntrinsicValueEngine({
               </div>
             </div>
 
-            <div 
+            {Number.isFinite(currentPrice) && <div
               className="absolute bottom-0 -translate-x-1/2 flex flex-col items-center z-30"
-              style={{ left: getPos(currentPrice) }}
+              style={markerStyle(currentPrice)}
             >
               <div className="w-2.5 h-2.5 bg-blue-600 rotate-45 -mb-1 shadow-sm" />
               <div className="bg-blue-600 text-white text-xs font-bold font-mono px-3 py-1 rounded-full shadow-lg whitespace-nowrap flex items-center gap-1.5 ring-2 ring-white">
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                 <span>{isThai ? 'ราคาตลาด' : 'Market Price'}: {formatPrice(currentPrice)}</span>
               </div>
-            </div>
+            </div>}
           </div>
 
           <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-sm text-stone-700 leading-relaxed font-sans mt-2">
@@ -501,8 +567,8 @@ export function IntrinsicValueEngine({
                 <TrendingDown className="w-3.5 h-3.5" />
                 {isThai ? 'กรณีแย่ที่สุด (BEAR CASE)' : 'Bear Case'}
               </span>
-              <span className={`text-xs font-mono font-bold ${bearUpside >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                {bearUpside >= 0 ? `+${bearUpside.toFixed(1)}%` : `${bearUpside.toFixed(1)}%`}
+              <span className={`text-xs font-mono font-bold ${bearUpside !== null && bearUpside >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                {formatPct(bearUpside)}
               </span>
             </div>
 
@@ -535,8 +601,8 @@ export function IntrinsicValueEngine({
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 {isThai ? 'กรณีฐาน (BASE CASE)' : 'Base Case'}
               </span>
-              <span className={`text-xs font-mono font-bold ${baseUpside >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                {baseUpside >= 0 ? `+${baseUpside.toFixed(1)}%` : `${baseUpside.toFixed(1)}%`}
+              <span className={`text-xs font-mono font-bold ${baseUpside !== null && baseUpside >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                {formatPct(baseUpside)}
               </span>
             </div>
 
@@ -565,8 +631,8 @@ export function IntrinsicValueEngine({
                 <TrendingUp className="w-3.5 h-3.5" />
                 {isThai ? 'กรณีเติบโตสูง (BULL CASE)' : 'Bull Case'}
               </span>
-              <span className={`text-xs font-mono font-bold ${bullUpside >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                {bullUpside >= 0 ? `+${bullUpside.toFixed(1)}%` : `${bullUpside.toFixed(1)}%`}
+              <span className={`text-xs font-mono font-bold ${bullUpside !== null && bullUpside >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                {formatPct(bullUpside)}
               </span>
             </div>
 
@@ -633,7 +699,7 @@ export function IntrinsicValueEngine({
                   {isThai ? 'แบบจำลอง DCF (Base Case)' : 'DCF Model (Base Case)'}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-mono">
-                  {baseUpside >= 0 ? `+${baseUpside.toFixed(1)}%` : `${baseUpside.toFixed(1)}%`}
+                  {formatPct(baseUpside)}
                 </span>
               </div>
               <div>
@@ -992,8 +1058,8 @@ export function IntrinsicValueEngine({
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <span className="text-[10px] text-stone-400 uppercase font-bold block">{isThai ? 'ส่วนเผื่อความปลอดภัยจำลอง' : 'Simulated Margin of Safety'}</span>
-                  <span className={`text-base font-mono font-bold ${effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
-                    {effectiveMarginOfSafety > 0 ? `+${effectiveMarginOfSafety.toFixed(1)}%` : `${effectiveMarginOfSafety.toFixed(1)}%`}
+                  <span className={`text-base font-mono font-bold ${effectiveMarginOfSafety !== null && effectiveMarginOfSafety >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
+                    {formatPct(effectiveMarginOfSafety)}
                   </span>
                 </div>
               </div>

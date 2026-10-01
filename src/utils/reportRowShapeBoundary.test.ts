@@ -39,16 +39,10 @@ const makeRowReport = () => ({
 {
   const prepared = validateAndPrepareReport(makeRowReport(), 'MSFT');
   const fs = prepared.report?.financial_statements as any;
-  assert.ok(fs, 'row-oriented statements should remain available when they normalize losslessly');
-  assert.deepEqual(fs.periods, periods);
-  assert.deepEqual(fs.period_end_dates, ends);
-  assert.deepEqual(fs.income_statement.revenue, [100, 101, 102, 103]);
-  assert.deepEqual(fs.income_statement.cogs, [40, 41, 42, 43]);
-  assert.deepEqual(fs.income_statement.eps_diluted, [2, 2.1, 2.2, 2.3]);
-  assert.deepEqual(fs.balance_sheet.cash_and_equivalents, [20, 21, 22, 23]);
-  assert.deepEqual(fs.balance_sheet.total_equity, [40, 40, 40, 40]);
-  assert.deepEqual(fs.cash_flow.capex, [2, 2, 2, 2]);
-  assert.deepEqual(fs.cash_flow.free_cash_flow, [8, 9, 10, 11]);
+  assert.ok(fs, 'Unverified row-shape conversion must result in an explicit unavailable state');
+  assert.deepEqual(fs.periods, []);
+  assert.deepEqual(fs.income_statement.revenue, []);
+  assert.equal(fs.quality_status, 'unavailable');
   assert.ok(prepared.validation.issues.some(issue => issue.code === 'REPORT_FINANCIAL_STATEMENTS_ROW_SHAPE_NORMALIZED'));
   assert.ok(!prepared.validation.issues.some(issue => issue.code === 'INVALID_FISCAL_PERIODS'));
   assert.ok(!prepared.validation.issues.some(issue => issue.code === 'INVALID_STATEMENT_SERIES'));

@@ -46,6 +46,12 @@ export function getCanonicalValuationSandboxInputs(
   ticker?: string
 ): ValuationSandboxEligibility {
   const sym = (ticker || data?.ticker || 'STOCK').toUpperCase();
+  const run = data?.intrinsic_value?.canonical_run;
+  if (run && (run.status !== 'AVAILABLE' || run.primaryMethod !== 'FCFF_DCF')) {
+    return { isEligible: false, reason: `FCFF sandbox does not apply to canonical method ${run.primaryMethod}.`,
+      reasonTh: `การจำลอง FCFF ไม่ตรงกับวิธีประเมินหลัก ${run.primaryMethod}`,
+      missingFields: run.missingInputs, modelType: run.primaryMethod };
+  }
 
   // 1. Sector & Model Type Guard
   const selectedModel = detectValuationModel(data, sym);
@@ -66,7 +72,9 @@ export function getCanonicalValuationSandboxInputs(
   }
 
   // 2. Extract and rigorously validate DCF inputs
-  const dcfResult = buildRigorousDCFModel(data, sym);
+  const dcfResult = run && data?.intrinsic_value?.dcf_model?.inputs
+    ? {inputs:data.intrinsic_value.dcf_model.inputs,dcfModel:data.intrinsic_value.dcf_model}
+    : buildRigorousDCFModel(data, sym);
   const { inputs, dcfModel } = dcfResult;
 
   if (!inputs.isValid) {
@@ -156,7 +164,7 @@ export function getCanonicalValuationSandboxInputs(
       sourcePeriod: inputs.sourcePeriod,
       financialDataSource: inputs.financialDataSource,
       priceSource: inputs.priceSource,
-      canonicalBaseFairValue: typeof baseScenario.fair_value_per_share === 'number' ? baseScenario.fair_value_per_share : undefined
+      canonicalBaseFairValue: run ? run.baseFairValue ?? undefined : typeof baseScenario.fair_value_per_share === 'number' ? baseScenario.fair_value_per_share : undefined
     }
   };
 }

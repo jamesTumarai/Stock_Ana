@@ -20,6 +20,7 @@ interface HistoryModalProps {
   reports: any[];
   onSelect: (report: any) => void;
   onDelete?: (reportIds: string | string[]) => void;
+  loadingReportId?: string | null;
 }
 
 interface TickerGroup {
@@ -29,7 +30,7 @@ interface TickerGroup {
   latestTimestamp: number;
 }
 
-export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryModalProps) {
+export function HistoryModal({ onClose, reports, onSelect, onDelete, loadingReportId }: HistoryModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [expandedTickers, setExpandedTickers] = useState<Record<string, boolean>>({});
@@ -381,10 +382,12 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
 
                         {/* View Latest Report directly */}
                         <button 
+                          disabled={Boolean(loadingReportId)}
+                          aria-busy={loadingReportId === group.latestReport.id}
                           onClick={() => onSelect(group.latestReport)}
                           className="px-3.5 py-1.5 bg-stone-900 text-white font-semibold rounded-lg text-xs hover:bg-black transition-colors cursor-pointer shadow-sm flex items-center gap-1"
                         >
-                          <span>View</span>
+                          <span>{loadingReportId === group.latestReport.id ? 'Loading…' : 'View'}</span>
                           {count > 1 && <span className="text-[10px] opacity-75 font-mono">(Latest)</span>}
                         </button>
                       </div>
@@ -500,10 +503,12 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete }: HistoryMo
                                     )}
 
                                     <button 
+                                      disabled={Boolean(loadingReportId)}
+                                      aria-busy={loadingReportId === report.id}
                                       onClick={() => onSelect(report)}
                                       className="px-2.5 py-1 bg-stone-100 hover:bg-stone-900 hover:text-white text-stone-800 font-medium rounded-lg text-xs transition-colors cursor-pointer font-mono"
                                     >
-                                      Load
+                                      {loadingReportId === report.id ? 'Loading…' : 'Load'}
                                     </button>
                                   </div>
                                 </div>

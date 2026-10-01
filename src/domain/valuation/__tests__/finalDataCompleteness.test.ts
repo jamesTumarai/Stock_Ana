@@ -66,6 +66,8 @@ describe('Five Pillars final data completeness', () => {
       operating_income: 1_000 + index * 100, income_before_tax: 900 + index * 100, income_tax_expense: 180 + index * 20,
       total_debt: 2_000, total_equity: 4_000, cash_and_equivalents: 1_000, short_term_investments: 0,
       as_of_date: 'FY2026', financial_period: 'FY2026', financial_source: 'SEC Form 10-K',
+      operating_income_verified:true,income_before_tax_verified:true,income_tax_expense_verified:true,
+      total_debt_verified:true,total_equity_verified:true,cash_and_equivalents_verified:true,short_term_investments_verified:true,
     }));
     const result = discoverPeers({ ...operatingReport(), peer_comparison: { peers, industry_name: 'Industrial Machinery' } as any }, 'TARGET');
     assert.equal(result.metricSampleCounts.roic_pct, 3);
@@ -81,7 +83,7 @@ describe('Five Pillars final data completeness', () => {
       ticker, companyName: ticker, archetype: 'industrial_manufacturing', sector: 'Industrials', industry: 'Industrial Machinery',
       subIndustry: 'industrial_machinery', revenueModels: ['product_sales'], majorBusinessLines: ['machinery'], geography: 'US',
       lifecycle: 'mature', profitabilityState: 'profitable', capitalIntensity: 'capital_intensive', scaleTier: 'large',
-      metrics: { roic_pct: { value: roic, unit: '%', period: 'FY2026', source, reportedOrDerived: derived } },
+      metrics: { roic_pct: { value: roic, unit: '%', period: 'FY2026', source, reportedOrDerived: derived,status:source==='SEC Form 10-K'?'VERIFIED':'FOUND_UNVERIFIED' } },
     });
     const result = discoverPeers(operatingReport(), 'TARGET', {
       candidates: [

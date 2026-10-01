@@ -1,6 +1,11 @@
 import type { MarketSnapshot } from '../domain/marketSnapshot';
 import type { ReportProvenanceManifest, ReportRuntimeValidationStatus } from '../domain/reportProvenance';
 import type { ReportData } from '../types';
+import { buildVerifiedStatementPeriods } from '../domain/verifiedFinancialStatements';
+import { reconcileCanonicalTtmFlow } from '../domain/canonicalTtmFlow';
+import { resolveCurrentBalanceSheetSnapshot } from '../domain/currentBalanceSheetSnapshot';
+import { verifiedCurrentShares } from '../domain/valuation/verifiedCurrentShares';
+import { sameShareClassTicker } from '../domain/tickerIdentity';
 
 type ReportWithMarketSnapshot = ReportData & {
   market_snapshot?: MarketSnapshot;
@@ -20,7 +25,8 @@ const sourcePeriodFromStatements = (report: ReportData): string | undefined => {
 /**
  * Build a report-level source manifest without upgrading any section's verification status.
  * SEC Verified is granted only to the exact DCF financial input set when both the deterministic
- * DCF engine and the runtime-validated SEC envelope independently agree that the set is eligible.
+ * DCF engine and the independent SEC input set agree. Optional source coverage
+ * cannot downgrade a complete canonical DCF set, nor certify a mismatching one.
  */
 export function buildReportProvenanceManifest(
   report: ReportData,
@@ -39,9 +45,22 @@ export function buildReportProvenanceManifest(
     && secFinancials.ticker === report.ticker;
   const claimsSecDcf = dcfInputs?.financialDataSource === 'sec_verified';
   const claimsReportDcf = dcfInputs?.financialDataSource === 'report_statements';
+  const canonical = report.canonical_financials;
+  const equal = (left: unknown, right: unknown) => finite(left) && finite(right)
+    && Math.abs(left - right) <= Math.max(1e-8, Math.abs(right) * 1e-8);
+  const revenue = canonical ? reconcileCanonicalTtmFlow(canonical, 'income_statement.revenue') : null;
+  const fcf = canonical ? reconcileCanonicalTtmFlow(canonical, 'cash_flow.free_cash_flow') : null;
+  const balance = canonical ? resolveCurrentBalanceSheetSnapshot(report) : null;
+  const shares = canonical ? verifiedCurrentShares(report) : null;
+  const canonicalEligible = Boolean(canonical && /sec[-_]?xbrl/i.test(canonical.generatedBy)
+    && canonical.currency === 'USD' && sameShareClassTicker(canonical.ticker || '', report.ticker || '')
+    && revenue?.status === 'verified' && fcf?.status === 'verified' && (revenue.canonicalValue ?? 0) > 0
+    && revenue.periodsUsed.join('|') === fcf.periodsUsed.join('|')
+    && equal(dcfInputs?.startingRevenueM, revenue.canonicalValue)
+    && equal(dcfInputs?.netCashM, balance?.netCash) && equal(dcfInputs?.sharesOutstandingM, shares));
 
   let dcfSource: ReportProvenanceManifest['dcf_financial_inputs'];
-  if (claimsSecDcf && secEligible) {
+  if (claimsSecDcf && (canonical ? canonicalEligible : secEligible)) {
     dcfSource = {
       source: 'sec_verified',
       source_verification: 'independently_verified',
@@ -83,6 +102,8 @@ export function buildReportProvenanceManifest(
 
   const latestSource = sec?.latest_statements_source;
   const secStatus = sec?.status ?? 'not_run';
+  const acceptedStatements = buildVerifiedStatementPeriods(report.financial_statements?.verified_dataset);
+  const hasStatements = acceptedStatements.some(period => Object.keys(period.observations).length > 0);
 
   return {
     version: 1,
@@ -98,15 +119,15 @@ export function buildReportProvenanceManifest(
       note: 'Narrative research and interpretation are AI-generated synthesis; citations may support claims, but the narrative itself is not SEC certified.',
     },
     financial_statements: {
-      source: report.financial_statements ? 'report_snapshot' : 'unavailable',
-      source_verification: report.financial_statements ? 'not_independently_verified' : 'unavailable',
+      source: hasStatements ? 'sec_verified' : 'unavailable',
+      source_verification: hasStatements ? 'independently_verified' : 'unavailable',
       runtime_validation_status: validationStatus,
-      used_in_output: Boolean(report.financial_statements),
+      used_in_output: hasStatements,
       source_period: sourcePeriodFromStatements(report),
       as_of: report.financial_statements?.source?.period_end || report.financial_statements?.as_of_date,
-      note: report.financial_statements
-        ? 'Displayed statement arrays are the report snapshot. Runtime consistency checks do not convert them into SEC-authoritative data.'
-        : 'Financial statement snapshot is unavailable.',
+      note: hasStatements
+        ? 'Only accepted, independently ingested period observations are source verified. Missing cells remain unavailable; source verification does not certify AI interpretation or complete coverage.'
+        : 'An independently ingested financial statement package is unavailable; legacy/model accounting values are suppressed.',
     },
     dcf_financial_inputs: dcfSource,
     market_price: hasMarketSnapshot

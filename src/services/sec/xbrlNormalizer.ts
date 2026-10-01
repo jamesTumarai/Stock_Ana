@@ -41,12 +41,27 @@ const endRank = (fact: SecCompanyFact) => dateMs(fact.end) || 0;
 
 const validFact = (fact: SecCompanyFact) =>
   isFiniteNumber(fact.val)
+  && !hasDimensionalContext(fact)
   && typeof fact.end === 'string'
   && typeof fact.fy === 'number'
   && isFiscalPeriod(fact.fp)
   && (!fact.form || VALID_FORMS.has(fact.form));
 
-const newest = (facts: SecCompanyFact[]) => [...facts].sort((a, b) => filedRank(b) - filedRank(a))[0];
+/** Entity-wide metrics must never ingest segment, geography or share-class contexts. */
+export function hasDimensionalContext(fact: SecCompanyFact): boolean {
+  return ['dimensions', 'segment', 'explicitMembers', 'typedMembers'].some(key => {
+    const value = fact[key];
+    return value != null && (typeof value !== 'object' || Object.keys(value as object).length > 0);
+  });
+}
+
+const newest = (facts: SecCompanyFact[]) => {
+  const ranked=[...facts].sort((a,b)=>filedRank(b)-filedRank(a)), first=ranked[0];
+  if (!first) return undefined;
+  // Conflicting equally authoritative consolidated contexts cannot be resolved
+  // by source array order. A later filed amendment may supersede an older fact.
+  return ranked.some(f=>f.end===first.end && f.start===first.start && f.filed===first.filed && f.val!==first.val) ? undefined : first;
+};
 
 /**
  * SEC companyfacts frequently repeats prior-year comparative facts inside the current filing while
@@ -80,7 +95,7 @@ const selectYtdFact = (facts: SecCompanyFact[], fiscalYear: number, fp: SecFisca
 
 const selectStandaloneFact = (facts: SecCompanyFact[], fiscalYear: number, fp: SecFiscalPeriod, ytd?: SecCompanyFact) => {
   const candidates = facts.filter(fact => validFact(fact) && fact.fy === fiscalYear && fact.fp === fp
-    && typeof fact.start === 'string' && durationDays(fact) >= 60 && durationDays(fact) <= 110
+    && typeof fact.start === 'string' && durationDays(fact) >= 60 && durationDays(fact) <= (fp === 'FY' ? 126 : 110)
     && (!ytd?.end || fact.end === ytd.end));
   return newest(latestPeriodFacts(candidates));
 };
@@ -140,8 +155,13 @@ const makeQ4Difference = (annual: SecCompanyFact, q3Ytd: SecCompanyFact): Normal
 
 const compatibleCumulativeFacts = (current?: SecCompanyFact, prior?: SecCompanyFact) => {
   if (!current || !prior || current.fy !== prior.fy || current.start !== prior.start) return false;
+  for (const key of ['sourceConcept', 'sourceUnit', 'accountingStandard', 'currency', 'valueSemantic']) {
+    if (current[key] !== prior[key]) return false;
+  }
   const days = Math.round((dateMs(current.end) - dateMs(prior.end)) / 86_400_000);
-  return Number.isFinite(days) && days >= 60 && days <= 110;
+  // Retail calendars may report 12/12/12/16 (or 17) week fiscal years.
+  // Only FY minus a compatible 9-month YTD may admit the longer Q4.
+  return Number.isFinite(days) && days >= 60 && days <= (current.fp === 'FY' && prior.fp === 'Q3' ? 126 : 110);
 };
 
 /**
@@ -153,7 +173,7 @@ const compatibleCumulativeFacts = (current?: SecCompanyFact, prior?: SecCompanyF
  *
  * Missing prerequisites stay missing. No interpolation or synthetic replacement is allowed.
  */
-export function normalizeDurationFactsToStandaloneQuarters(facts: SecCompanyFact[]): NormalizedSecQuarterFact[] {
+export function normalizeDurationFactsToStandaloneQuarters(facts: SecCompanyFact[], options: { additive?: boolean } = {}): NormalizedSecQuarterFact[] {
   const fiscalYears = Array.from(new Set(
     facts.filter(validFact).map(fact => fact.fy as number),
   )).sort((a, b) => a - b);
@@ -170,11 +190,11 @@ export function normalizeDurationFactsToStandaloneQuarters(facts: SecCompanyFact
 
     if (q1) normalized.push(makeDirectDuration(q1, 1));
     if (q2Standalone && (!q2 || filedRank(q2Standalone) >= filedRank(q2))) normalized.push(makeDirectDuration(q2Standalone, 2));
-    else if (compatibleCumulativeFacts(q2, q1)) normalized.push(makeDifference(q2!, q1!, 2));
+    else if (options.additive !== false && compatibleCumulativeFacts(q2, q1)) normalized.push(makeDifference(q2!, q1!, 2));
     if (q3Standalone && (!q3 || filedRank(q3Standalone) >= filedRank(q3))) normalized.push(makeDirectDuration(q3Standalone, 3));
-    else if (compatibleCumulativeFacts(q3, q2)) normalized.push(makeDifference(q3!, q2!, 3));
+    else if (options.additive !== false && compatibleCumulativeFacts(q3, q2)) normalized.push(makeDifference(q3!, q2!, 3));
     if (q4Standalone && (!fy || filedRank(q4Standalone) >= filedRank(fy))) normalized.push(makeDirectDuration(q4Standalone, 4));
-    else if (compatibleCumulativeFacts(fy, q3)) normalized.push(makeQ4Difference(fy!, q3!));
+    else if (options.additive !== false && compatibleCumulativeFacts(fy, q3)) normalized.push(makeQ4Difference(fy!, q3!));
   }
 
   return normalized.filter(item => Number.isFinite(item.value));
@@ -188,7 +208,7 @@ export function normalizeDurationFactsToStandaloneQuarters(facts: SecCompanyFact
 export function normalizeInstantFactsToFiscalQuarters(facts: SecCompanyFact[]): NormalizedSecQuarterFact[] {
   const groups = new Map<string, SecCompanyFact[]>();
   for (const fact of facts) {
-    if (!validFact(fact)) continue;
+    if (!validFact(fact) || fact.start) continue;
     const fp = fact.fp as SecFiscalPeriod;
     const key = `${fact.fy}:${fp}`;
     const group = groups.get(key) ?? [];

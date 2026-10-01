@@ -12,7 +12,7 @@ assert.match(dcfRouteSource, /app\.post\("\/api\/dcf-assumptions"/);
 assert.match(dcfRouteSource, /requireFirebaseAuth, dcfAssumptionRateLimit/);
 assert.match(dcfRouteSource, /validateDcfAssumptionModel\(parsed\)/);
 assert.match(dcfRouteSource, /fair_value_per_share MUST be null/);
-assert.match(appSource, /secVerification\?\.status === 'verified_eligible'/);
+assert.match(appSource, /resolveDcfAssumptionFinancialContext\(secVerification, requestedTicker\)/);
 assert.match(appSource, /!hasValidDcfAssumptionModel\(reportForValidation\)/);
 assert.match(appSource, /fetchDcfAssumptionProposal\(/);
 assert.match(appSource, /attachDcfAssumptionModel\(reportForValidation, proposal\)/);

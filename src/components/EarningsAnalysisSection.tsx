@@ -9,11 +9,16 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 import { EarningsAnalysisData } from '../types';
+import { resolveEarningsEligibility } from '../domain/earningsEligibility';
+import type { ResearchIntegritySummary } from '../domain/reportResearchIntegrity';
+import { resolveUpcomingEarningsEvent } from '../domain/reportResearchIntegrity';
 
 interface Props {
   data?: EarningsAnalysisData;
   isThai: boolean;
   ticker?: string;
+  canonicalResearch?: ResearchIntegritySummary;
+  reportAsOf?: string;
 }
 
 function formatMillionsToBillion(valInMillions?: number | null): string {
@@ -28,7 +33,9 @@ function formatMillionsToBillion(valInMillions?: number | null): string {
 export function EarningsAnalysisSection({ 
   data, 
   isThai, 
-  ticker
+  ticker,
+  canonicalResearch,
+  reportAsOf,
 }: Props) {
   const [metricTab, setMetricTab] = useState<'eps' | 'revenue'>('eps');
 
@@ -45,7 +52,19 @@ export function EarningsAnalysisSection({
   const streak = data.beat_streak;
   const currentSetup = data.current_quarter_setup;
   const revisions = data.estimate_revisions_trend;
-  const guidance = data.full_year_guidance;
+  const activeGuidance=canonicalResearch?.activeGuidance.filter(g=>g.metricKey==='revenue').sort((a,b)=>b.issuedDate.localeCompare(a.issuedDate))[0];
+  const guidance = canonicalResearch ? activeGuidance ? {
+    fiscal_year:activeGuidance.fiscalPeriod,
+    company_guidance_revenue_musd:[activeGuidance.guidanceLow,activeGuidance.guidanceHigh],
+    implied_growth_pct:undefined,
+  } : undefined : data.full_year_guidance;
+  const earningsEvent=resolveUpcomingEarningsEvent(canonicalResearch?.events??[],reportAsOf);
+  const dateConflict=canonicalResearch?.diagnostics.includes('CROSS_SECTION_EARNINGS_DATE_CONFLICT');
+  const nextEarningsDate=dateConflict?null:earningsEvent?.eventDate ?? data.next_earnings_date;
+  const dateConfirmed=Boolean(earningsEvent?.issuerConfirmed && !dateConflict);
+  const eventTime=nextEarningsDate?Date.parse(nextEarningsDate+'T00:00:00Z'):NaN;
+  const referenceTime=reportAsOf?Date.parse(reportAsOf.slice(0,10)+'T00:00:00Z'):NaN;
+  const daysUntil=Number.isFinite(eventTime)&&Number.isFinite(referenceTime)&&eventTime>=referenceTime?Math.ceil((eventTime-referenceTime)/86400000):null;
 
   // Format data for Recharts
   const chartData = pastHistory.map(item => ({
@@ -62,13 +81,7 @@ export function EarningsAnalysisSection({
   }));
 
   const totalQuarters = pastHistory.length;
-  const comparableQuarters = pastHistory.filter(q => Number.isFinite(q.eps_actual) && Number.isFinite(q.eps_estimate));
-  const beatsCount = comparableQuarters.filter(q => q.beat_or_miss?.toLowerCase().includes('beat') || q.eps_actual >= q.eps_estimate).length;
-  const beatRatePct = comparableQuarters.length > 0 ? Math.round((beatsCount / comparableQuarters.length) * 100) : null;
-  const surpriseValues = pastHistory.map(q => q.eps_surprise_pct).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  const reactionValues = pastHistory.map(q => q.stock_reaction_1d_pct).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  const avgSurprise = surpriseValues.length > 0 ? surpriseValues.reduce((sum, value) => sum + value, 0) / surpriseValues.length : null;
-  const avg1DayMove = reactionValues.length > 0 ? reactionValues.reduce((sum, value) => sum + value, 0) / reactionValues.length : null;
+  const {beatsCount,comparableCount,beatRatePct,avgSurprise,avg1DayMove,reasons} = resolveEarningsEligibility(pastHistory, metricTab);
 
   // Helper for calendar period explanation
   const getCalendarSubtext = (period: string, repDate?: string) => {
@@ -89,13 +102,13 @@ export function EarningsAnalysisSection({
                 {isThai ? 'วันประกาศงบไตรมาสถัดไป' : 'Next Earnings Report'}
               </h3>
             </div>
-            {data.next_earnings_date_confirmed !== undefined && (
+            {(
               <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border shadow-2xs ${
-                data.next_earnings_date_confirmed 
+                dateConfirmed
                   ? 'bg-emerald-50 text-[#0b5a4b] border-emerald-200/80' 
                   : 'bg-amber-50 text-amber-800 border-amber-200/80'
               }`}>
-                {data.next_earnings_date_confirmed 
+                {dateConfirmed
                   ? (isThai ? 'ยืนยันวันที่แล้ว' : 'Confirmed Date') 
                   : (isThai ? 'คาดการณ์ (ยังไม่ยืนยัน)' : 'Estimated Date')}
               </span>
@@ -106,14 +119,14 @@ export function EarningsAnalysisSection({
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl sm:text-5xl font-extrabold font-mono text-[#0b5a4b]">
-                  {typeof data.days_until_next_earnings === 'number' ? data.days_until_next_earnings : unavailable}
+                  {daysUntil??unavailable}
                 </span>
                 <span className="text-lg text-stone-600 font-medium font-sans">
                   {isThai ? 'วันข้างหน้า' : 'days left'}
                 </span>
               </div>
               <span className="text-xs text-stone-500 font-mono mt-1 block">
-                {isThai ? 'วันที่คาดการณ์: ' : 'Expected: '}<strong className="text-stone-800">{data.next_earnings_date || unavailable}</strong>
+                {dateConfirmed ? (isThai?'วันที่ยืนยัน: ':'Confirmed: ') : (isThai ? 'วันที่คาดการณ์ / ยังไม่ยืนยัน: ' : 'Estimated / Unconfirmed: ')}<strong className="text-stone-800">{nextEarningsDate || unavailable}</strong>
               </span>
             </div>
 
@@ -210,15 +223,15 @@ export function EarningsAnalysisSection({
         {/* Mini Summary Stats Bar */}
         {pastHistory.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-stone-50 rounded-2xl border border-stone-200 text-center font-mono">
-            <div className="flex flex-col items-center justify-center p-1">
+            <div className="flex flex-col items-center justify-center p-1" title={reasons.beatRate}>
               <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{isThai ? 'อัตราทำผลงานชนะเป้า (Beat Rate)' : 'Beat Rate'}</span>
-              <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{beatRatePct !== null ? `${beatsCount}/${comparableQuarters.length} (${beatRatePct}%)` : unavailable}</span>
+              <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{beatRatePct !== null ? `${beatsCount}/${comparableCount} (${beatRatePct}%)` : unavailable}</span>
             </div>
             <div className="flex flex-col items-center justify-center p-1 sm:border-x border-stone-200">
-              <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{isThai ? 'EPS Surprise เฉลี่ย' : 'Avg. EPS Surprise'}</span>
+              <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{metricTab === 'eps' ? (isThai ? 'EPS Surprise เฉลี่ย' : 'Avg. EPS Surprise') : (isThai ? 'Revenue Surprise เฉลี่ย' : 'Avg. Revenue Surprise')}</span>
               <span className="text-sm sm:text-base font-extrabold text-[#0b5a4b] mt-0.5">{avgSurprise !== null ? (avgSurprise > 0 ? `+${avgSurprise.toFixed(1)}%` : `${avgSurprise.toFixed(1)}%`) : unavailable}</span>
             </div>
-            <div className="flex flex-col items-center justify-center p-1">
+            <div className="flex flex-col items-center justify-center p-1" title={reasons.reaction || (isThai ? 'ราคาปิดวันที่รายงาน → ราคาปิดวันซื้อขายถัดไป จาก Yahoo Finance; ไม่ใช่ผลตอบแทนระหว่างวัน และไม่ได้ยืนยันเวลาประกาศงบ' : 'Reported-date close → next-session close from Yahoo Finance; release timing is not independently confirmed')}>
               <span className="text-[10px] text-stone-500 uppercase font-sans font-bold block">{isThai ? 'ปฏิกิริยาราคา 1 วันเฉลี่ย' : 'Avg. 1-Day Post-Earnings Move'}</span>
               <span className={`text-sm sm:text-base font-extrabold mt-0.5 ${avg1DayMove !== null && avg1DayMove >= 0 ? 'text-[#0b5a4b]' : 'text-red-600'}`}>
                 {avg1DayMove !== null ? (avg1DayMove > 0 ? `+${avg1DayMove.toFixed(2)}%` : `${avg1DayMove.toFixed(2)}%`) : unavailable}
@@ -309,7 +322,11 @@ export function EarningsAnalysisSection({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
           {pastHistory.map((q, idx) => {
             const rx = q.stock_reaction_1d_pct;
-            const isBeat = q.beat_or_miss?.includes('beat') || (Number.isFinite(q.eps_actual) && Number.isFinite(q.eps_estimate) ? q.eps_actual >= q.eps_estimate : null);
+            const actual = metricTab === 'eps' ? q.eps_actual : q.revenue_actual_musd;
+            const estimate = metricTab === 'eps' ? q.eps_estimate : q.revenue_estimate_musd;
+            const isBeat = Number.isFinite(actual) && Number.isFinite(estimate) ? actual > estimate ? true : actual < estimate ? false : 'meet' : null;
+            const surprise = Number.isFinite(actual) && Number.isFinite(estimate) && estimate !== 0
+              ? (actual - estimate) / Math.abs(estimate) * 100 : null;
             const calSub = getCalendarSubtext(q.period, q.report_date);
             return (
               <div key={idx} className="bg-stone-50 p-3 rounded-2xl border border-stone-200 flex flex-col justify-between gap-1.5">
@@ -324,11 +341,11 @@ export function EarningsAnalysisSection({
                     <span className="text-[#0b5a4b] text-[10px] bg-emerald-100 px-1.5 py-0.5 rounded font-bold">BEAT</span>
                   ) : isBeat === false ? (
                     <span className="text-red-600 text-[10px] bg-red-100 px-1.5 py-0.5 rounded font-bold">MISS</span>
-                  ) : <span className="text-stone-400 text-[10px]">{unavailable}</span>}
+                  ) : <span className="text-stone-500 text-[10px]">{isBeat === 'meet' ? 'MEET' : unavailable}</span>}
                 </div>
                 <div className="text-xs text-stone-600 font-mono flex justify-between pt-1">
-                  <span>EPS Surprise:</span>
-                  <span className="font-bold text-stone-800">{q.eps_surprise_pct !== undefined ? `+${q.eps_surprise_pct}%` : '-'}</span>
+                  <span>{metricTab === 'eps' ? 'EPS Surprise:' : 'Revenue Surprise:'}</span>
+                  <span className="font-bold text-stone-800">{surprise !== null ? `${surprise > 0 ? '+' : ''}${surprise.toFixed(1)}%` : '-'}</span>
                 </div>
                 <div className="text-xs text-stone-600 font-mono flex justify-between border-t border-stone-200/60 pt-1">
                   <span>1-Day Move:</span>

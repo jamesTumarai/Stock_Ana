@@ -449,6 +449,7 @@ describe('Adaptive Five Fundamental Pillars — Cross-Sector Test Suite', () => 
         } as any,
         balance_sheet: {
           cash_and_equivalents: [50, 40],
+          short_term_investments: [0, 0],
           total_debt: [500, 600],
           total_equity: [300, 100],
         } as any,

@@ -1,4 +1,12 @@
 import { API_BASE_URL } from './agentClient.ts';
+import { resolveBusinessArchetype } from '../../src/domain/financialMetricContext';
+import { valuationMethodPolicy } from '../../src/domain/valuation/adaptiveValuationPolicy';
+
+/** The recovery request may extract FCFF assumptions only for an FCFF policy.
+ * Sector models retain their own contracts; DCF cannot fill an RI/SOTP gap. */
+export function shouldExtractDcfAssumptions(report: unknown): boolean {
+  return valuationMethodPolicy(resolveBusinessArchetype(report)).includes('FCFF_DCF');
+}
 
 export interface DcfScenarioAssumption {
   revenue_cagr_pct: number | null;

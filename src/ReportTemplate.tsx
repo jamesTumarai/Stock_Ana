@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { ResearchIntegrityPanel } from './components/ResearchIntegrityPanel';
+import { ReportVersionCompare } from './components/ReportVersionCompare';
+import { prepareHistoricalReportDisplay } from './domain/historicalReportDisplay';
 import { EnhancedMarkdown as Markdown } from './components/EnhancedMarkdown';
 import { motion } from 'motion/react';
 import { 
@@ -23,6 +26,7 @@ import { CatalystCalendar } from './components/CatalystCalendar';
 import { CorporateActionsCard } from './components/CorporateActionsCard';
 import { CompanyProfileCard } from './components/CompanyProfileCard';
 import { BusinessAnalysisCard } from './components/BusinessAnalysisCard';
+import { ValuationDispersion } from './components/ValuationDispersion';
 import { ValuationDashboard } from './components/ValuationDashboard';
 import { FivePillarsAnalysis } from './components/FivePillarsAnalysis';
 import { ForecastDashboard } from './components/ForecastDashboard';
@@ -64,6 +68,7 @@ interface Props {
   model?: string;
   actualModel?: string;
   currentUser?: any;
+  historicalSnapshot?: boolean;
 }
 
 const ConvictionGauge = ({ score, isThai, onOpenMethodology }: { score: number | string, isThai: boolean, onOpenMethodology?: () => void }) => {
@@ -398,6 +403,7 @@ export default function ReportTemplate({
   model = 'gemini-3.8-flash',
   actualModel,
   currentUser,
+  historicalSnapshot = false,
 }: Props) {
   const isThai = language === 'Thai';
   const [liveOverrides, setLiveOverrides] = useState<Record<string, any>>({});
@@ -406,7 +412,14 @@ export default function ReportTemplate({
   const [fxSnapshot, setFxSnapshot] = useState<FxSnapshot | null>(null);
   const [isLoadingFx, setIsLoadingFx] = useState(false);
 
-  const data = React.useMemo(() => harmonizeReportData(rawData, ticker, liveOverrides), [rawData, ticker, liveOverrides]);
+  const data = React.useMemo(() => historicalSnapshot ? prepareHistoricalReportDisplay(rawData)
+    : harmonizeReportData(rawData, ticker, liveOverrides), [rawData, ticker, liveOverrides, historicalSnapshot]);
+  const headerFairValue = data.intrinsic_value?.canonical_run
+    ? data.intrinsic_value.canonical_run.baseFairValue
+    : data.canonical_executive_snapshot?.canonicalValuation?.baseFairValue
+      ?? data.canonical_executive_snapshot?.valuation?.fairValue
+      ?? data.intrinsic_value?.summary?.base_case_fair_value
+      ?? data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share;
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
   const findings = data.findings || [];
   const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
@@ -424,7 +437,9 @@ export default function ReportTemplate({
   const sandboxReasonTh = sandboxEligibility.isEligible === false ? sandboxEligibility.reasonTh : '';
 
   const valuationModelSelector = React.useMemo(() => {
-    return data.intrinsic_value?.selected_model ?? detectValuationModel(data, ticker);
+    return data.intrinsic_value?.canonical_run
+      ? detectValuationModel(data, ticker)
+      : data.intrinsic_value?.selected_model ?? detectValuationModel(data, ticker);
   }, [data, ticker]);
   const isSpecializedSectorModel = ['ddm', 'fintech_pe', 'reit_affo', 'relative_only'].includes(valuationModelSelector.model_type);
 
@@ -483,7 +498,7 @@ export default function ReportTemplate({
         setActiveThesis(draft);
       }
 
-      if (currentSnapshot && storedExps.length > 0) {
+      if (!historicalSnapshot && currentSnapshot && storedExps.length > 0) {
         const { expectations: evaluatedExps } = await evaluateAndPersistExpectations(
           ticker,
           storedExps,
@@ -500,7 +515,7 @@ export default function ReportTemplate({
     return () => {
       isMounted = false;
     };
-  }, [ticker, currentUser, data, currentSnapshot, historicalSnapshots]);
+  }, [ticker, currentUser, data, currentSnapshot, historicalSnapshots, historicalSnapshot]);
 
   const evaluatedExpectations = React.useMemo(() => {
     if (!currentSnapshot || rawExpectations.length === 0) return rawExpectations;
@@ -528,7 +543,7 @@ export default function ReportTemplate({
 
   const handleRefreshLiveQuotes = async (isManual: boolean | React.MouseEvent = true) => {
     const manualFlag = typeof isManual === 'boolean' ? isManual : true;
-    if (isRefreshingLive) return;
+    if (isRefreshingLive || historicalSnapshot) return;
     setIsRefreshingLive(true);
     if (manualFlag) setRefreshSuccessMessage(null);
     try {
@@ -618,7 +633,7 @@ export default function ReportTemplate({
   const handleCopyTradePlan = () => {
     const tp = data.technical_analysis?.trade_plan;
     if (!tp) return;
-    const text = `${ticker.toUpperCase()} Trade Plan:
+    const text = `${ticker.toUpperCase()} Scenario Trade Setup:
 - Entry: ${tp.entry_zone || '-'}
 - Stop-Loss: ${tp.stop_loss || '-'}
 - Target 1: ${tp.target_1 || '-'}
@@ -742,13 +757,13 @@ export default function ReportTemplate({
               <button 
                 type="button" 
                 onClick={handleRefreshLiveQuotes}
-                disabled={isRefreshingLive}
+                disabled={isRefreshingLive || historicalSnapshot}
                 className={`transition-all rounded-full px-3 py-1.5 border shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none ${
                   isRefreshingLive 
                     ? 'bg-amber-50 border-amber-300 text-amber-800 animate-pulse' 
                     : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800'
                 }`}
-                title={isThai ? 'ดึง Market Snapshot ล่าสุดจาก Yahoo Finance (อาจล่าช้าตามผู้ให้บริการ)' : 'Refresh the latest Yahoo Finance market snapshot; provider data may be delayed'}
+                title={historicalSnapshot ? (isThai?'รายงานเก่าใช้ราคาของ snapshot ที่บันทึกไว้':'Historical reports retain the saved quote snapshot') : isThai ? 'ดึง Market Snapshot ล่าสุดจาก Yahoo Finance (อาจล่าช้าตามผู้ให้บริการ)' : 'Refresh the latest Yahoo Finance market snapshot; provider data may be delayed'}
               >
                 <Zap className={`w-3.5 h-3.5 ${isRefreshingLive ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
                 <span className="hidden sm:inline">
@@ -767,7 +782,7 @@ export default function ReportTemplate({
                 <Printer className="w-3.5 h-3.5 text-[#0b5a4b]" />
                 <span className="hidden sm:inline">{isThai ? 'บันทึก PDF' : 'Save PDF'}</span>
               </button>
-              <button onClick={onClose} className="text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 transition-all rounded-full p-1.5 sm:p-2 border border-stone-200 shadow-xs flex items-center justify-center cursor-pointer">
+              <button onClick={onClose} aria-label={isThai ? 'ปิดรายงาน' : 'Close report'} className="text-stone-600 hover:text-stone-900 bg-white hover:bg-stone-100 transition-all rounded-full p-1.5 sm:p-2 border border-stone-200 shadow-xs flex items-center justify-center cursor-pointer">
                 <X className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
               </button>
             </div>
@@ -843,7 +858,7 @@ export default function ReportTemplate({
             )}
 
             {/* DCF / Base Fair Value */}
-            {(data.canonical_executive_snapshot?.canonicalValuation?.baseFairValue ?? data.canonical_executive_snapshot?.valuation?.fairValue ?? data.intrinsic_value?.summary?.base_case_fair_value ?? data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share) && (
+            {typeof headerFairValue === 'number' && Number.isFinite(headerFairValue) && (
               <div className="flex flex-col" title={data.canonical_executive_snapshot?.valuation?.modelName ? `${data.canonical_executive_snapshot.valuation.modelName} · As of ${data.canonical_executive_snapshot.valuation.valuationAsOf || 'Report'}` : undefined}>
                 <span className="text-[10px] font-mono uppercase font-bold text-stone-400 tracking-wider">
                   {data.canonical_executive_snapshot?.canonicalValuation?.modelType === 'ddm'
@@ -855,7 +870,7 @@ export default function ReportTemplate({
                         : (isThai ? 'มูลค่าพื้นฐาน' : 'Fair Value')}
                 </span>
                 <span className="text-lg sm:text-xl font-bold font-mono text-[#0b5a4b]">
-                  {formatPrice(data.canonical_executive_snapshot?.canonicalValuation?.baseFairValue ?? data.canonical_executive_snapshot?.valuation?.fairValue ?? data.intrinsic_value?.summary?.base_case_fair_value ?? data.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share)}
+                  {formatPrice(headerFairValue)}
                 </span>
               </div>
             )}
@@ -874,6 +889,49 @@ export default function ReportTemplate({
           </div>
         </div>
 
+        <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4 sm:px-5 shadow-sm"
+          aria-label={isThai ? 'สถานะคุณภาพรายงาน' : 'Report health'}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-[#0b5a4b]" />
+              <h2 className="text-sm font-bold text-stone-900">{isThai ? 'สถานะคุณภาพรายงาน' : 'Report Health'}</h2>
+            </div>
+            <span className="text-xs font-medium text-stone-600">
+              {data.report_completion?.qualityStatus
+                ?? (isThai ? 'รายงานเก่า · ยังไม่ได้ตรวจด้วยเกณฑ์ปัจจุบัน' : 'Legacy · not checked by current quality gate')}
+            </span>
+          </div>
+          {data.report_completion && (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                {([
+                  [isThai ? 'การสร้าง' : 'Execution', data.report_completion.executionStatus],
+                  [isThai ? 'ข้อมูล' : 'Coverage', data.report_completion.coverageStatus],
+                  [isThai ? 'สอดคล้อง' : 'Consistency', data.report_completion.consistencyStatus],
+                  [isThai ? 'มูลค่า' : 'Valuation', data.report_completion.valuationStatus],
+                  [isThai ? 'บันทึก' : 'History', data.report_completion.persistenceStatus],
+                  [isThai ? 'ความสดข้อมูล' : 'Source freshness', data.report_completion.freshnessStatus ?? 'UNVERIFIED'],
+                ] as const).map(([label, status]) => (
+                  <div key={label} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                    <span className="block text-stone-500">{label}</span>
+                    <strong className="mt-0.5 block font-mono text-stone-800">{status ?? '—'}</strong>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-stone-600">{isThai?'ข้อมูลสำคัญ':'Core facts'}: {data.report_completion.coreFactsResolved ?? '—'} / {data.report_completion.coreFactsExpected ?? '—'} · {isThai?'ข้อมูลที่มีหลักฐานแต่ยัง resolve ไม่ได้':'Unresolved source candidates'}: {data.report_completion.unexpectedFalseNaCandidates ?? '—'} · {data.report_completion.sourceSnapshotDate ?? '—'}</p>
+              {data.report_completion.diagnosticCodes?.length > 0 && (
+                <p className="mt-2 text-xs leading-relaxed text-stone-600">
+                  {isThai ? 'ตรวจพบ' : 'Diagnostics'}: {data.report_completion.diagnosticCodes.slice(0, 6).join(' · ')}
+                </p>
+              )}
+            </>
+          )}
+        </section>
+
+        {data.research_integrity && data.analysis_type !== 'technical' && (
+          <ResearchIntegrityPanel data={data.research_integrity} isThai={isThai} />
+        )}
+        <ReportVersionCompare key={`${ticker}:${data.generated_at}`} current={data} records={historyReports} userId={currentUser?.uid} isThai={isThai} />
         {/* SECTION 1: EXECUTIVE SUMMARY */}
         <div id="section-summary" className="flex flex-col gap-4 scroll-mt-28">
           <AnalysisCard
@@ -1063,6 +1121,7 @@ export default function ReportTemplate({
               />
             )}
 
+            <ValuationDispersion report={data} isThai={isThai} />
             {data.valuation_dashboard && (
               <ValuationDashboard 
                 data={data.valuation_dashboard}
@@ -1227,7 +1286,9 @@ export default function ReportTemplate({
 
             {data.earnings_analysis && (
               <EarningsAnalysisSection 
-                data={data.earnings_analysis} 
+                data={data.earnings_analysis}
+                canonicalResearch={data.research_integrity}
+                reportAsOf={data.as_of_date || data.generated_at}
                 isThai={isThai}
                 ticker={ticker}
               />
@@ -1400,6 +1461,7 @@ export default function ReportTemplate({
             {data.catalysts_and_events && (
               <CatalystCalendar 
                 catalysts={data.catalysts_and_events} 
+                events={data.research_integrity?.events}
                 isThai={isThai} 
                 ticker={ticker} 
               />
@@ -1653,13 +1715,13 @@ export default function ReportTemplate({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               <AnalysisCard 
-                title={isThai ? "แผนการเทรด (Trade Plan)" : "Trade Plan"}
+                title={isThai ? "แผนจำลองการเทรด (Scenario Trade Setup)" : "Scenario Trade Setup"}
                 action={
                   <button
                     type="button"
                     onClick={handleCopyTradePlan}
                     className="text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 border border-stone-200 cursor-pointer shadow-xs active:scale-95"
-                    title={isThai ? 'คัดลอกแผนการเทรด' : 'Copy Trade Plan'}
+                    title={isThai ? 'คัดลอกแผนจำลองการเทรด' : 'Copy Scenario Trade Setup'}
                   >
                     {isTradePlanCopied ? (
                       <>
@@ -1869,7 +1931,7 @@ export default function ReportTemplate({
                  <div className="space-y-4 text-[15px] text-stone-700 leading-relaxed">
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "จังหวะน่าเข้าไหม:" : "Good Timing?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.technical_analysis.final_verdict_summary.is_good_timing || '')}</Markdown></div></div>
                    <div><strong className="text-stone-900 block mb-1">{isThai ? "ถ้ารอ ต้องรออะไร:" : "What to wait for?"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.technical_analysis.final_verdict_summary.what_to_wait_for || '')}</Markdown></div></div>
-                   <div><strong className="text-stone-900 block mb-1">{isThai ? "แผนการเข้าสั้นๆ:" : "Trade Plan:"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.technical_analysis.final_verdict_summary.trade_plan || '')}</Markdown></div></div>
+                   <div><strong className="text-stone-900 block mb-1">{isThai ? "เงื่อนไขแผนจำลอง:" : "Scenario Trade Setup:"}</strong> <div className="prose prose-base prose-stone max-w-none"><Markdown findings={data.findings}>{(data.technical_analysis.final_verdict_summary.trade_plan || '')}</Markdown></div></div>
                  </div>
               </AnalysisCard>
             )}
@@ -2056,11 +2118,15 @@ export default function ReportTemplate({
                         </span>
                       </div>
                       <div className="text-xs font-medium text-stone-800 mt-2.5">
-                        {provenance.financial_statements.source === 'report_snapshot' ? (isThai ? 'ตารางงบจากรายงาน' : 'Report Statement Snapshot') : (isThai ? 'ไม่มีข้อมูล' : 'Unavailable')}
+                        {provenance.financial_statements.source === 'sec_verified'
+                          ? (isThai ? 'รายการงบที่ตรวจสอบจาก SEC' : 'Accepted SEC Statement Observations')
+                          : provenance.financial_statements.source === 'report_snapshot' ? (isThai ? 'ตารางงบจากรายงาน' : 'Report Statement Snapshot') : (isThai ? 'ไม่มีข้อมูล' : 'Unavailable')}
                       </div>
                     </div>
                     <div className="text-[11px] text-stone-500 mt-1.5 leading-normal">
-                      {isThai ? 'ผ่านการตรวจความสอดคล้องตัวเลข (ยังไม่เทียบฐาน SEC)' : 'Runtime-checked, but not promoted to SEC Verified'}
+                      {provenance.financial_statements.source === 'sec_verified'
+                        ? (isThai ? 'ตรวจสอบเฉพาะรายการที่มีแหล่งอ้างอิง ช่องที่ขาดยังไม่มีข้อมูล และไม่ได้รับรองบทวิเคราะห์ AI' : 'Only accepted source observations are verified; missing cells remain unavailable and AI interpretation is not certified.')
+                        : (isThai ? 'ผ่านการตรวจความสอดคล้องตัวเลข (ยังไม่เทียบฐาน SEC)' : 'Runtime-checked, but not promoted to SEC Verified')}
                     </div>
                   </div>
 

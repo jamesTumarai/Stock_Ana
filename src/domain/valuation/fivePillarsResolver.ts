@@ -13,6 +13,8 @@ import { findKeyIndicatorInSource } from '../metricLineage';
 import { discoverPeers } from './peerDiscoveryEngine';
 import { resolveFundamentalMetrics } from './metricRegistry';
 import { getFivePillarMetricPolicy } from './fivePillarMetricPolicy';
+import { resolveCurrentBalanceSheetSnapshot } from '../currentBalanceSheetSnapshot';
+import { calculateVerifiedKeyIndicators } from '../verifiedKeyIndicators';
 import type { AdaptiveFivePillarsResult, AdaptivePillarMetric, AdaptivePillarSection } from './types';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -71,7 +73,6 @@ export function resolveAdaptiveFivePillars(
 
   // 2. Extract canonical income statement, balance sheet, cash flow
   const inc = fs?.income_statement;
-  const bs = fs?.balance_sheet;
   const cf = fs?.cash_flow;
 
   const rev = at(inc?.revenue);
@@ -79,18 +80,10 @@ export function resolveAdaptiveFivePillars(
   const opInc = at(inc?.operating_income);
   const grossProfit = at(inc?.gross_profit);
 
-  const cash = at(bs?.cash_and_equivalents);
-  const stInvestments = at(bs?.short_term_investments);
-  const totalDebt = at(bs?.total_debt) ?? (
-    at(bs?.short_term_debt) !== undefined && at(bs?.long_term_debt) !== undefined
-      ? (at(bs?.short_term_debt) as number) + (at(bs?.long_term_debt) as number)
-      : undefined
-  );
-  const totalEquity = at(bs?.total_equity);
-
-  const totalCash = cash !== undefined
-    ? cash + (stInvestments ?? 0)
-    : undefined;
+  const balanceSnapshot = resolveCurrentBalanceSheetSnapshot(report);
+  const totalDebt = balanceSnapshot.totalDebt ?? undefined;
+  const totalEquity = balanceSnapshot.facts.total_equity?.value;
+  const totalCash = balanceSnapshot.cashPlusShortTermInvestments ?? undefined;
 
   const netCashOrDebt = totalCash !== undefined && totalDebt !== undefined
     ? rounded((totalCash - totalDebt) / 1000)
@@ -215,7 +208,8 @@ export function resolveAdaptiveFivePillars(
     balanceSheetSummary = 'สถาบันการเงินใช้เงินฝากและวงเงินสินเชื่อเป็นสินค้าคงคลังในการดำเนินงาน (Operating Inventory) โครงสร้างเงินทุนจึงวัดด้วยความเพียงพอของเงินกองทุนและการจัดหาทุน';
   }
 
-  const debtToEquity = at(bs?.debt_to_equity) ?? getKi('debt_to_equity') ?? (totalDebt !== undefined && totalEquity !== undefined && totalEquity > 0 ? rounded(totalDebt / totalEquity) : undefined);
+  const verifiedIndicators = fs?.verified_dataset ? calculateVerifiedKeyIndicators(fs) : null;
+  const debtToEquity = (verifiedIndicators ?? fs?.indicator_details)?.debt_to_equity?.at(-1)?.value ?? undefined;
   const interestCoverageMetric = resolvedMetrics.interestCoverage;
   const interestCoverage = typeof interestCoverageMetric.value === 'number' ? interestCoverageMetric.value : undefined;
   const cashRunway = resolvedMetrics.cashRunwayMonths.value ?? getKi('cash_runway_months');
@@ -239,7 +233,7 @@ export function resolveAdaptiveFivePillars(
       solvencyScoreLabel = `ภาระหนี้สินค่อนข้างสูง (D/E ${debtToEquity}x) ควรติดตามกระแสเงินสดดำเนินงาน`;
     } else if (netCashOrDebt !== undefined) {
       solvencyScoreLabel = netCashOrDebt >= 0
-        ? `เงินสดสุทธิ (Net Cash) $${Math.abs(netCashOrDebt)}B สะท้อนฐานะการเงินที่มั่นคง`
+        ? `สถานะเงินสดสุทธิ (Net Cash) $${Math.abs(netCashOrDebt)}B สะท้อนฐานะการเงินที่มั่นคง`
         : `หนี้สินสุทธิ (Net Debt) $${Math.abs(netCashOrDebt)}B มีภาระหนี้สินสุทธิที่ต้องบริหารจัดการ`;
     }
   }

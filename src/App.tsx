@@ -1,10 +1,12 @@
+import { AnalysisStreamDecoder } from './utils/analysisStream';
 import { LandingView } from './LandingView';
+import { resolveReportCompletion } from './domain/reportCompletion';
 import { HistoryModal } from './components/HistoryModal';
 import { PortfolioModal } from './components/PortfolioModal';
 import { AlertsModal } from './components/AlertsModal';
 import { auth, db, firebaseDataAccessAllowed, googleProvider } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, where, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import React, { useState, useRef, useEffect } from 'react';
 import { CrossfadeVideo } from './components/CrossfadeVideo';
 import { Search, Loader2, X, ChevronDown, History, LogOut, Hexagon, BrainCircuit, Printer, Copy, Check, ArrowUpRight, Briefcase, Bell } from 'lucide-react';
@@ -15,13 +17,15 @@ import { AgentTimeline, TimelineEvent } from './components/AgentTimeline';
 import { MotionIntro } from './components/MotionIntro';
 import { UserAvatar } from './components/UserAvatar';
 import { CURRENT_GENERATED_BY_VERSION, CURRENT_REPORT_SCHEMA_VERSION, isLegacyHistoryReport, validateAndPrepareReport } from './utils/reportValidation';
+import { enrichEarningsReactions } from './services/earningsReactionClient';
 import { fetchSecVerificationEnvelope } from './services/secVerificationService';
 import { adaptSecCanonicalToFinancialStatements } from './services/sec/secLegacyAdapter';
 import { fetchLiveQuotes } from './services/marketDataService';
 import { fetchDcfAssumptionProposal } from './services/dcfAssumptionService';
 import { fetchPeerCompletion } from './services/peerCompletionService';
-import { attachDcfAssumptionModel, hasValidDcfAssumptionModel } from './utils/valuation/dcfAssumptionProposal';
-import { isSoftDeletedReportRecord, sanitizeUndefinedForPersistence } from './utils/firestorePersistence';
+import { attachDcfAssumptionModel, hasValidDcfAssumptionModel, resolveDcfAssumptionFinancialContext } from './utils/valuation/dcfAssumptionProposal';
+import { isSoftDeletedReportRecord } from './utils/firestorePersistence';
+import { loadReportSnapshot, reportHistoryRecord, saveReportSnapshot } from './services/reportPersistenceService';
 import { authenticatedFetch } from './services/authenticatedFetch';
 import {
   loadMonitoringPreferences,
@@ -174,6 +178,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentReport, setCurrentReport] = useState<ReportData | null>(null);
+  const [isViewingHistoricalReport, setIsViewingHistoricalReport] = useState(false);
   const [pastReports, setPastReports] = useState<ReportData[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -195,6 +200,8 @@ export default function App() {
   const [alertsInitialScope, setAlertsInitialScope] = useState<'all' | 'watchlist' | 'portfolio'>('all');
   const [alertsInitialTicker, setAlertsInitialTicker] = useState<string | undefined>(undefined);
   const [historyReports, setHistoryReports] = useState<any[]>([]);
+  const [loadingReportId, setLoadingReportId] = useState<string | null>(null);
+  const historyFetchGeneration = useRef(0);
   const [monitoringPreferences, setMonitoringPreferences] = useState(() => loadMonitoringPreferences(user?.uid));
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(() => loadReadAlertIds(user?.uid));
   const [portfolioRevision, setPortfolioRevision] = useState(0);
@@ -501,6 +508,7 @@ export default function App() {
       if (currentUser && firebaseDataAccessAllowed) {
         fetchHistory(currentUser.uid);
       } else {
+        historyFetchGeneration.current++;
         if (currentUser && !firebaseDataAccessAllowed) {
           console.warn('[firebase] Authenticated data access is blocked until this environment has its own Firebase configuration.');
         }
@@ -539,6 +547,7 @@ export default function App() {
 
   const fetchHistory = async (userId: string) => {
     if (!firebaseDataAccessAllowed) return;
+    const generation = ++historyFetchGeneration.current;
     try {
       console.log("Fetching history for user: ", userId);
       const q = query(
@@ -548,10 +557,11 @@ export default function App() {
       const querySnapshot = await getDocs(q);
       let reports = querySnapshot.docs
         .map(docSnap => {
-          const record = { id: docSnap.id, ...docSnap.data() } as any;
-          return { ...record, isLegacy: isLegacyHistoryReport(record) };
+          const record = reportHistoryRecord(docSnap.id, docSnap.data());
+          return { ...record, isLegacy: isLegacyHistoryReport(record) } as any;
         })
-        .filter(record => !isSoftDeletedReportRecord(record));
+        .filter(record => !isSoftDeletedReportRecord(record))
+        .filter(record => record.persistenceVersion !== 2 || record.persistenceState === 'ready');
       // Sort client-side to avoid requiring composite index
       reports.sort((a, b) => {
         const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt?.toMillis?.() || new Date(a.createdAt).getTime() || 0);
@@ -559,7 +569,22 @@ export default function App() {
         return timeB - timeA;
       });
       console.log("Fetched history count: ", reports.length);
+      if (auth.currentUser?.uid !== userId || generation !== historyFetchGeneration.current) return;
       setHistoryReports(reports);
+      // Alerts/portfolio research require the latest complete report per ticker.
+      // Older timeline entries remain compact; opening one hydrates it on demand.
+      const latest = new Map<string, any>();
+      for (const report of reports) if (!latest.has(report.ticker)) latest.set(report.ticker, report);
+      for (const record of latest.values()) {
+        if (!record.isSummaryOnly) continue;
+        try {
+          const data = await loadReportSnapshot(record.id, userId);
+          if (auth.currentUser?.uid !== userId || generation !== historyFetchGeneration.current) return;
+          setHistoryReports(previous => previous.map(item => item.id === record.id ? { ...item, data, isSummaryOnly: false } : item));
+        } catch (error) {
+          console.warn('[report-history] Latest report hydration failed.', { reportId: record.id });
+        }
+      }
     } catch (error: any) {
       console.error("Error fetching history: ", error);
       alert("Failed to fetch history: " + error.message);
@@ -586,25 +611,32 @@ export default function App() {
   };
 
   const saveReportToFirebase = async (reportData: ReportData) => {
-    if (!user || !firebaseDataAccessAllowed) return;
+    if (!user || !firebaseDataAccessAllowed) {
+      console.warn('[report-save] Not called: authentication or configured data access unavailable.');
+      setCurrentReport(previous => previous?.ticker === reportData.ticker && previous?.generated_at === reportData.generated_at
+        ? { ...previous, report_completion: previous.report_completion
+          ? { ...previous.report_completion, persistenceStatus: 'FAILED' } : undefined } : previous);
+      return false;
+    }
     try {
-      const persistedReport = sanitizeUndefinedForPersistence(reportData);
-      console.log("Saving report to Firebase...", { ticker, userId: user.uid });
-      await addDoc(collection(db, "reports"), {
-        userId: user.uid,
-        ticker: ticker.toUpperCase(),
-        language: selectedLanguage,
-        createdAt: serverTimestamp(),
-        schemaVersion: reportData.schema_version ?? CURRENT_REPORT_SCHEMA_VERSION,
-        generatedByVersion: reportData.generated_by_version ?? CURRENT_GENERATED_BY_VERSION,
-        validationStatus: reportData.validation?.status ?? 'warning',
-        data: persistedReport
-      });
+      // The stored snapshot only exists after successful commit. Its embedded
+      // status is therefore SUCCEEDED; the live card stays PENDING until then.
+      const persisted = reportData.report_completion
+        ? { ...reportData, report_completion: { ...reportData.report_completion, persistenceStatus: 'SUCCEEDED' as const } }
+        : reportData;
+      await saveReportSnapshot(persisted, user.uid, selectedLanguage);
+      setCurrentReport(previous => previous?.ticker === reportData.ticker && previous?.generated_at === reportData.generated_at
+        ? persisted : previous);
       console.log("Report saved successfully!");
       fetchHistory(user.uid);
+      return true;
     } catch (error) {
       console.error("Error saving report: ", error);
       alert("Failed to save report: " + error.message);
+      setCurrentReport(previous => previous?.ticker === reportData.ticker && previous?.generated_at === reportData.generated_at
+        ? { ...previous, report_completion: previous.report_completion
+          ? { ...previous.report_completion, persistenceStatus: 'FAILED' } : undefined } : previous);
+      return false;
     }
   };
 
@@ -756,27 +788,10 @@ export default function App() {
       }
 
       const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      const transport = new AnalysisStreamDecoder();
       let accumulatedText = '';
-
-      while (true) {
-        if (controller.signal.aborted) break;
-
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6);
-            if (dataStr === '[DONE]') continue;
-            try {
-              const evt = JSON.parse(dataStr);
+      let streamError: string | null = null;
+      const handleEvent = (evt: Record<string, any>) => {
               if (evt.type === 'text' && evt.text) {
                   accumulatedText += evt.text;
               } else if (evt.type === 'tool_call') {
@@ -798,7 +813,8 @@ export default function App() {
                   }
                   pushEvt('thinking', thinkingLabel, evt.text);
               } else if (evt.type === 'error') {
-                  setErr(evt.message);
+                  streamError = typeof evt.message === 'string' ? evt.message : 'Analysis provider failed.';
+                  setErr(streamError);
               } else if (evt.type === 'complete') {
                   if (evt.interaction) {
                       const interaction = evt.interaction;
@@ -815,38 +831,26 @@ export default function App() {
                   if (evt.duration > 0) setDur(Math.round(evt.duration));
                   if (evt.actualModel && setActModel) setActModel(evt.actualModel);
               }
-            } catch { /* skip malformed */ }
+      };
+      while (!controller.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) {
+          for (const event of transport.finish()) handleEvent(event);
+          break;
+        }
+        for (const event of transport.push(value)) handleEvent(event);
+        if (accumulatedText) {
+          const foundData = parseFinalText(accumulatedText);
+          if (foundData) {
+            const prepared = validateAndPrepareReport(
+              { ...foundData, canonical_financials: undefined, sec_verification: undefined, analysis_type: aType, ticker: ticker.trim() },
+              ticker.trim()
+            );
+            if (prepared.report) setRep(prepared.report);
           }
         }
-        
-        if (accumulatedText) {
-            const foundData = parseFinalText(accumulatedText);
-            if (foundData) {
-              const prepared = validateAndPrepareReport(
-                { ...foundData, analysis_type: aType, ticker: ticker.trim() },
-                ticker.trim()
-              );
-              if (prepared.report) setRep(prepared.report);
-            }
-        }
       }
-      
-      if (buffer) {
-          try {
-              const lines = buffer.split('\n\n');
-              for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                      const dataStr = line.slice(6);
-                      if (dataStr === '[DONE]') continue;
-                      const evt = JSON.parse(dataStr);
-                      if (evt.type === 'text' && evt.text) {
-                          accumulatedText += evt.text;
-                      }
-                  }
-              }
-          } catch(e) {}
-      }
-      
+
       if (accumulatedText) {
           const finalData = parseFinalText(accumulatedText);
           if (finalData) {
@@ -854,10 +858,14 @@ export default function App() {
               secVerificationPromise,
               marketSnapshotPromise,
             ]);
-            let reportForValidation = finalData as ReportData;
+            let reportForValidation = { ...finalData } as ReportData;
+            // A model cannot attest its own accounting package. Only the independent
+            // SEC response below may attach canonical observations to a new report.
+            delete reportForValidation.canonical_financials;
+            delete reportForValidation.sec_verification;
             if (
               aType !== 'technical'
-              && secVerification?.status === 'verified_eligible'
+              && resolveDcfAssumptionFinancialContext(secVerification, requestedTicker)
               && !hasValidDcfAssumptionModel(reportForValidation)
             ) {
               const proposal = await fetchDcfAssumptionProposal(
@@ -910,6 +918,8 @@ export default function App() {
             const { canonical_financials: verifiedSecCanonical, ...secVerificationMetadata } = secVerification || {};
             const verifiedSecStatements = verifiedSecCanonical
               ? adaptSecCanonicalToFinancialStatements(verifiedSecCanonical) : null;
+            await enrichEarningsReactions(requestedTicker, reportForValidation.earnings_analysis, controller.signal);
+            if (controller.signal.aborted) return;
             const prepared = validateAndPrepareReport(
               {
                 ...reportForValidation,
@@ -927,9 +937,17 @@ export default function App() {
               },
             );
             if (prepared.report) {
+              if ((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV) console.info('[report-finalize]', JSON.stringify({
+                ticker: requestedTicker, validationStatus: prepared.validation.status,
+                ...prepared.report.report_completion, canPersist: prepared.canPersist,
+                issues: prepared.validation.issues.map(i => ({ code: i.code, severity: i.severity, section: i.section, path: i.path })),
+              }));
               setRep(prepared.report);
               if (prepared.canPersist) {
-                await saveReportToFirebase(prepared.report);
+                // Cloud quota/offline retries must not hide a finished report or
+                // keep analysis controls disabled. PENDING only becomes SUCCEEDED
+                // after the complete persistence contract has been acknowledged.
+                void saveReportToFirebase(prepared.report);
               } else {
                 console.warn('Report was rendered but not saved because critical validation failed.', prepared.validation.issues);
               }
@@ -944,9 +962,9 @@ export default function App() {
               : 'Incomplete report output received. Please retry.');
           }
       } else if (!controller.signal.aborted) {
-          setErr(selectedLanguage === 'Thai'
+          setErr(streamError || (selectedLanguage === 'Thai'
             ? 'การเชื่อมต่อสิ้นสุดลงก่อนได้รับข้อมูลรายงาน (อาจเกิดจากโมเดลประมวลผลนานเกินกำหนด) กรุณากดลองวิเคราะห์ใหม่อีกครั้ง'
-            : 'Analysis connection closed before receiving report data. Please retry.');
+            : 'Analysis connection closed before receiving report data. Please retry.'));
       }
       
       const finishTime = Date.now();
@@ -968,6 +986,7 @@ export default function App() {
   };
 
   const resetAnalysis = () => {
+    setIsViewingHistoricalReport(false);
     if (running && abortRef.current) {
       abortRef.current.abort();
     }
@@ -990,6 +1009,7 @@ export default function App() {
     }
     
     // Reset old data when running a new analysis
+    setIsViewingHistoricalReport(false);
     setPastReports([]);
     setCurrentReport(null);
     setActualModel(undefined);
@@ -1048,6 +1068,7 @@ export default function App() {
                  model={selectedModel}
                  actualModel={idx === allReports.length - 1 ? actualModel : (report as any)?.metadata?.actualModel}
                  currentUser={user}
+                 historicalSnapshot={isViewingHistoricalReport}
                />
              </ErrorBoundary>
           ))}
@@ -1066,28 +1087,43 @@ export default function App() {
             onClose={() => setIsHistoryModalOpen(false)} 
             reports={historyReports}
             onDelete={deleteReports}
-            onSelect={(report) => {
-              setTicker(report.ticker);
-              setSelectedLanguage(report.language || 'English');
-              const historyData = { ...report.data, ticker: report.ticker } as ReportData;
-              if (isLegacyHistoryReport(report) && !historyData.validation) {
-                historyData.validation = {
-                  status: 'warning',
-                  schema_version: 0,
-                  checked_at: new Date().toISOString(),
-                  issues: [{
-                    code: 'LEGACY_REPORT_UNVERIFIED',
-                    severity: 'warning',
-                    section: 'history',
-                    message: 'Legacy report — generated before financial integrity validation. Re-analyze for verified data.',
-                    path: 'history',
-                  }],
-                };
-              }
-              setCurrentReport(historyData);
-              setPastReports([]);
-              setIsHistoryModalOpen(false);
-              setIsReportOpen(true);
+            loadingReportId={loadingReportId}
+            onSelect={async (report) => {
+              if (!user || loadingReportId) return;
+              setLoadingReportId(report.id);
+              try {
+                const loaded = report.persistenceVersion === 2
+                  ? await loadReportSnapshot(report.id, user.uid) : report.data;
+                if (auth.currentUser?.uid !== user.uid) return;
+                setTicker(report.ticker);
+                setSelectedLanguage(report.language || 'English');
+                const historyData = { ...loaded, ticker: report.ticker } as ReportData;
+                if (historyData.report_completion) historyData.report_completion = { ...historyData.report_completion, persistenceStatus: 'SUCCEEDED' };
+                if (isLegacyHistoryReport(report) && !historyData.validation) {
+                  historyData.validation = {
+                    status: 'warning',
+                    schema_version: 0,
+                    checked_at: new Date().toISOString(),
+                    issues: [{
+                      code: 'LEGACY_REPORT_UNVERIFIED',
+                      severity: 'warning',
+                      section: 'history',
+                      message: 'Legacy report — generated before financial integrity validation. Re-analyze for verified data.',
+                      path: 'history',
+                    }],
+                  };
+                }
+                historyData.report_completion = { ...(historyData.report_completion ?? resolveReportCompletion(historyData, historyData.validation ?? {
+                  status:'warning',issues:[],checked_at:historyData.generated_at || '',schema_version:historyData.schema_version ?? 0 })), persistenceStatus:'SUCCEEDED' };
+                setCurrentReport(historyData);
+                setIsViewingHistoricalReport(true);
+                setPastReports([]);
+                setIsHistoryModalOpen(false);
+                setIsReportOpen(true);
+                setHistoryReports(previous => previous.map(item => item.id === report.id ? { ...item, data: historyData, isSummaryOnly: false } : item));
+              } catch (error) {
+                alert('Failed to load report: ' + (error instanceof Error ? error.message : 'Saved report unavailable.'));
+              } finally { setLoadingReportId(null); }
             }} 
           />
         )}

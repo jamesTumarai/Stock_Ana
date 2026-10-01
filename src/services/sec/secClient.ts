@@ -1,3 +1,5 @@
+import { shareClassProviderSymbol } from '../../domain/tickerIdentity';
+
 export const SEC_DATA_BASE_URL = 'https://data.sec.gov';
 export const SEC_TICKER_INDEX_URL = 'https://www.sec.gov/files/company_tickers.json';
 
@@ -5,6 +7,7 @@ export interface SecTickerRecord {
   cik: string;
   ticker: string;
   title: string;
+  listedTicker?: string;
 }
 
 export interface SecSubmissionsResponse {
@@ -36,6 +39,7 @@ export interface SecCompanyConcept {
 }
 
 export interface SecCompanyFact {
+  valueSemantic?: 'CASH_FLOW_EFFECT' | 'BALANCE_CHANGE';
   start?: string;
   end?: string;
   val?: number;
@@ -131,6 +135,24 @@ export class SecEdgarClient {
   }
 
   async fetchJson<T>(url: string): Promise<T> {
+    const response = await this.fetchResponse(url, 'application/json');
+    try {
+      return await response.json() as T;
+    } catch {
+      throw new SecDataError('SEC response was not valid JSON.', 'SEC_INVALID_JSON', response.status);
+    }
+  }
+
+  async fetchFilingText(url: string): Promise<string> {
+    const key = `filing:${url}`;
+    const cached = this.cache?.get<string>(key);
+    if (cached) return cached;
+    const text = await (await this.fetchResponse(url, 'text/html')).text();
+    this.cache?.set(key, text);
+    return text;
+  }
+
+  private async fetchResponse(url: string, accept: string): Promise<Response> {
     this.requireConfigured();
     if (!/^https:\/\/(?:data\.)?sec\.gov\//i.test(url) && !/^https:\/\/www\.sec\.gov\//i.test(url)) {
       throw new SecDataError(`Refusing non-SEC URL: ${url}`, 'SEC_URL_NOT_ALLOWED');
@@ -142,9 +164,10 @@ export class SecEdgarClient {
       response = await this.fetchImpl(url, {
         headers: {
           'User-Agent': this.userAgent,
-          'Accept': 'application/json',
+          'Accept': accept,
           'Accept-Encoding': 'gzip, deflate',
         },
+        signal: AbortSignal.timeout(20_000),
       });
     } catch (error) {
       throw new SecDataError(`SEC request failed: ${error instanceof Error ? error.message : String(error)}`, 'SEC_NETWORK_ERROR');
@@ -154,11 +177,7 @@ export class SecEdgarClient {
       throw new SecDataError(`SEC request returned HTTP ${response.status}.`, 'SEC_HTTP_ERROR', response.status);
     }
 
-    try {
-      return await response.json() as T;
-    } catch {
-      throw new SecDataError('SEC response was not valid JSON.', 'SEC_INVALID_JSON', response.status);
-    }
+    return response;
   }
 
   private async loadTickerIndex(): Promise<Map<string, SecTickerRecord>> {
@@ -182,7 +201,15 @@ export class SecEdgarClient {
   async resolveTicker(ticker: string): Promise<SecTickerRecord | null> {
     const normalized = normalizeTicker(ticker);
     if (!normalized) return null;
-    return (await this.loadTickerIndex()).get(normalized) ?? null;
+    const records=await this.loadTickerIndex();
+    const alias=shareClassProviderSymbol(normalized);
+    const matches=[...records.values()].filter(record=>shareClassProviderSymbol(record.ticker)===alias);
+    if(new Set(matches.map(record=>record.cik)).size>1)return null;
+    const exact=records.get(normalized);
+    if(exact)return exact;
+    // Resolve only an unambiguous listed class; a different class/CIK is never a fallback.
+    if(matches.length!==1)return null;
+    return {...matches[0],ticker:normalized,listedTicker:matches[0].ticker};
   }
 
   async fetchSubmissions(cik: string | number): Promise<SecSubmissionsResponse> {
@@ -229,6 +256,9 @@ export class SecEdgarClient {
     if (!identity) return null;
     const submissions = await this.fetchSubmissions(identity.cik);
     const companyFacts = await this.fetchCompanyFacts(identity.cik);
+    if (Number(submissions.cik) !== Number(identity.cik) || Number(companyFacts.cik) !== Number(identity.cik)) {
+      throw new SecDataError('SEC submissions/company facts identity does not match the resolved company.', 'SEC_COMPANY_IDENTITY_MISMATCH', 502);
+    }
     return {
       identity,
       submissions,

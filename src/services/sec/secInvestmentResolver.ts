@@ -17,9 +17,13 @@ const round = (value: number) => Math.round((value + Number.EPSILON) * 1e8) / 1e
 const conceptFacts = (bundle: SecCompanyBundleLike, concept: string): SecCompanyFact[] =>
   bundle.companyFacts.facts?.['us-gaap']?.[concept]?.units?.USD ?? [];
 
-const normalizedMap = (bundle: SecCompanyBundleLike, concept: string) => {
+const normalizedMap = (bundle: SecCompanyBundleLike, concept: string, dataset: CanonicalFinancialDataset) => {
   const map = new Map<string, NormalizedSecQuarterFact>();
-  for (const fact of normalizeInstantFactsToFiscalQuarters(conceptFacts(bundle, concept))) {
+  const identities = new Map(Object.values(dataset.values).flat().filter(v=>v.periodEnd&&v.fiscalYear&&v.fiscalQuarter)
+    .map(v=>[v.periodEnd,{fy:v.fiscalYear!,fp:v.fiscalQuarter===4?'FY':`Q${v.fiscalQuarter}`}]));
+  const cohorts = new Map((dataset.values['balance_sheet.total_assets']||[]).filter(v=>v.periodEnd&&v.accession).map(v=>[v.periodEnd,v.accession]));
+  const facts=conceptFacts(bundle,concept).filter(f=>!cohorts.has(f.end)||f.accn===cohorts.get(f.end)).map(f=>({...f,...identities.get(f.end)}));
+  for (const fact of normalizeInstantFactsToFiscalQuarters(facts)) {
     map.set(quarterKey(fact), fact);
   }
   return map;
@@ -95,8 +99,8 @@ export function attachVerifiedShortTermInvestmentsFromSec(
   bundle: SecCompanyBundleLike,
 ): CanonicalFinancialDataset {
   const next = structuredClone(dataset) as CanonicalFinancialDataset;
-  const combined = normalizedMap(bundle, COMBINED_CONCEPT);
-  const cash = normalizedMap(bundle, CASH_CONCEPT);
+  const combined = normalizedMap(bundle, COMBINED_CONCEPT, dataset);
+  const cash = normalizedMap(bundle, CASH_CONCEPT, dataset);
   if (combined.size === 0 || cash.size === 0) return next;
 
   const existing = next.values['balance_sheet.short_term_investments'];
@@ -128,6 +132,12 @@ export function attachVerifiedShortTermInvestmentsFromSec(
       unit: 'USD_M',
       period,
       periodEnd: totalFact.end,
+      periodType: 'instant',
+      fiscalYear: cashFact.fiscalYear,
+      fiscalQuarter: cashFact.fiscalQuarter as 1 | 2 | 3 | 4,
+      form: cashFact.form,
+      accession: cashFact.accessionNumbers[0],
+      concept: COMBINED_CONCEPT,
       type: 'derived',
       verification: 'verified',
       source: sourceFor(bundle, totalFact),

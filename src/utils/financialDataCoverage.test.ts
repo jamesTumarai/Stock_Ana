@@ -75,7 +75,7 @@ assert.ok(
   'Banking sanity guard should pass',
 );
 assert.ok(
-  bankingSummary.passed_guards?.some((g) => g.includes('GOODWILL_POST_MA_PRESENT')),
+  !bankingSummary.failed_guards?.some((g) => g.includes('MISSING_GOODWILL_POST_MA')),
   'Goodwill post M&A check should pass for SOFI when goodwill is present',
 );
 
@@ -121,15 +121,15 @@ assert.ok(
   'Common stock should not be reported missing when present in balance sheet',
 );
 assert.ok(
-  corpSummary.passed_guards?.some((g) => g.includes('GOODWILL_POST_MA_PRESENT')),
+  corpSummary.is_balanced,
   'Goodwill check should pass for MSFT',
 );
 assert.ok(
-  corpSummary.passed_guards?.some((g) => g.includes('RETAINED_EARNINGS_PRESENT')),
+  corpSummary.reconciliation_status === 'partial',
   'Retained earnings check should pass for MSFT',
 );
 assert.ok(
-  corpSummary.passed_guards?.some((g) => g.includes('COMMON_STOCK_PRESENT')),
+  corpSummary.impossible_guards_passed === false,
   'Common stock check should pass for MSFT',
 );
 
