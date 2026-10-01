@@ -132,3 +132,19 @@ assert.doesNotMatch(
 );
 
 console.log('Financial sector guard UI regression checks passed');
+
+// Intrinsic value is independent of market availability. A complete FCFF
+// contract still renders its cases while price-dependent measures remain empty.
+const noQuote=structuredClone(fintechData);
+noQuote.current_price=null;
+noQuote.selected_model=undefined;
+noQuote.dcf_model.inputs!.isValid=true;
+noQuote.dcf_model.inputs!.missingFields=[];
+noQuote.dcf_model.scenarios={
+  bear:{revenue_cagr_pct:2,terminal_margin_pct:10,fair_value_per_share:30,key_assumption_note:''},
+  base:{revenue_cagr_pct:5,terminal_margin_pct:16,fair_value_per_share:50,key_assumption_note:''},
+  bull:{revenue_cagr_pct:8,terminal_margin_pct:20,fair_value_per_share:70,key_assumption_note:''}};
+const withoutQuoteHtml=renderToStaticMarkup(<IntrinsicValueEngine data={noQuote} ticker="UNSEEN" isThai={false}/>);
+assert.match(withoutQuoteHtml,/\$50\.00/);
+assert.match(withoutQuoteHtml,/Market quote unavailable/);
+assert.doesNotMatch(withoutQuoteHtml,/NaN|Infinity|Fair value is unavailable/);

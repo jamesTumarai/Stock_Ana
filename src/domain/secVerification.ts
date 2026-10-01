@@ -73,6 +73,7 @@ export interface SecHistoricalAnnualFact {
 import type { CanonicalFinancialDataset } from './financialValue';
 
 export interface SecVerificationEnvelope {
+  resolution_audit?: import('../services/sec/canonicalResolutionAudit').CanonicalResolutionAudit;
   status: 'verified_eligible' | 'verified_partial' | 'unavailable';
   ticker: string;
   retrieved_at: string | null;

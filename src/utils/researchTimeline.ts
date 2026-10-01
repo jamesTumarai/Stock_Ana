@@ -177,6 +177,7 @@ export function extractReportPrice(report: any): number | null {
 
 export function extractReportFairValue(report: any): number | null {
   const r = report?.data || report;
+  if(r?.intrinsic_value?.canonical_run)return r.intrinsic_value.canonical_run.baseFairValue ?? null;
   const fv = r?.intrinsic_value?.summary?.base_case_fair_value
     ?? r?.intrinsic_value?.dcf_model?.scenarios?.base?.fair_value_per_share;
   if (typeof fv === 'number' && Number.isFinite(fv) && fv > 0) return fv;

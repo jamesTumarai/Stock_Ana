@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { FinancialStatementsTable } from '../FinancialStatementsTable';
 import { getBusinessAwareLocalFallback, getMetricInterpretationContext } from '../../domain/financialMetricContext';
 import { FinancialStatementsData } from '../../types';
+import { verifiedFixtureFromStatements } from '../../domain/__tests__/verifiedFixtureBuilder';
+import { adaptSecCanonicalToFinancialStatements } from '../../services/sec/secLegacyAdapter';
 
 describe('FinancialStatementsTable — Key Indicator Component Integration (Section 58)', () => {
 
@@ -68,10 +70,11 @@ describe('FinancialStatementsTable — Key Indicator Component Integration (Sect
     } as any
   };
 
-  it('Renders verified Gross Margin numbers from production-shaped KeyIndicatorsData', () => {
+  const accepted = (data: FinancialStatementsData) => ({ ...adaptSecCanonicalToFinancialStatements(verifiedFixtureFromStatements(data))!, statement_template: data.statement_template });
+  it('Renders the statement and indicator tabs from an independently verified package', () => {
     const html = renderToStaticMarkup(
       <FinancialStatementsTable
-        data={supportedData}
+        data={accepted(supportedData)}
         isThai={true}
         ticker="SOFI"
         companyName="SoFi Technologies"
@@ -87,7 +90,7 @@ describe('FinancialStatementsTable — Key Indicator Component Integration (Sect
     // When rendered with unsupportedData
     const html = renderToStaticMarkup(
       <FinancialStatementsTable
-        data={unsupportedData}
+        data={accepted(unsupportedData)}
         isThai={true}
         ticker="SOFI"
         companyName="SoFi Technologies"

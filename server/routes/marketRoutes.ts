@@ -1,4 +1,6 @@
 import type { Express } from 'express';
+import { fetchEarningsReactions } from '../services/earningsReactionService';
+import { shareClassProviderSymbol, sameShareClassTicker } from '../../src/domain/tickerIdentity';
 
 function sendJson(res: any, status: number, body: unknown) {
   if (typeof res.status === 'function' && typeof res.json === 'function') {
@@ -24,7 +26,7 @@ export async function handleLiveQuotes(req: any, res: any) {
       return sendJson(res, 400, { error: "No valid symbols provided" });
     }
 
-    const mappedSymbols = rawSymbols.map(s => (s === 'SQ' ? 'XYZ' : s));
+    const mappedSymbols = rawSymbols.map(s => (s === 'SQ' ? 'XYZ' : shareClassProviderSymbol(s)));
     const quotes: Record<string, any> = {};
 
     // 1. Try Authenticated Yahoo Finance Quote (multi-symbol)
@@ -59,6 +61,10 @@ export async function handleLiveQuotes(req: any, res: any) {
                 : null;
               quotes[sym] = {
                 symbol: sym,
+                provider: 'Yahoo Finance',
+                retrievedAt: new Date().toISOString(),
+                ...(typeof q.regularMarketTime === 'number' && Number.isFinite(q.regularMarketTime) && q.regularMarketTime > 0
+                  ? {asOf:new Date(q.regularMarketTime * 1000).toISOString()} : {}),
                 price: q.regularMarketPrice ?? null,
                 changePercent: q.regularMarketChangePercent ?? null,
                 change: q.regularMarketChange ?? null,
@@ -177,9 +183,14 @@ export async function handleLiveQuotes(req: any, res: any) {
             const result = cJson?.chart?.result?.[0];
             if (result) {
               const meta = result.meta;
-              if (meta && typeof meta.regularMarketPrice === 'number') {
+              if (meta && typeof meta.symbol==='string' && sameShareClassTicker(meta.symbol,sym)
+                && typeof meta.regularMarketPrice === 'number') {
                 quotes[sym] = {
                   symbol: sym,
+                  provider: 'Yahoo Finance chart',
+                  retrievedAt: new Date().toISOString(),
+                  ...(typeof meta.regularMarketTime === 'number' && Number.isFinite(meta.regularMarketTime) && meta.regularMarketTime > 0
+                    ? {asOf:new Date(meta.regularMarketTime * 1000).toISOString()} : {}),
                   price: meta.regularMarketPrice,
                   changePercent: meta.regularMarketChangePercent ?? null,
                   change: meta.regularMarketPrice - (meta.chartPreviousClose || meta.regularMarketPrice),
@@ -201,9 +212,11 @@ export async function handleLiveQuotes(req: any, res: any) {
       }));
     }
 
-    if (rawSymbols.includes('SQ') && quotes['XYZ']) {
-      quotes['SQ'] = { ...quotes['XYZ'], symbol: 'SQ' };
-    }
+    rawSymbols.forEach((requested,index)=>{
+      const providerSymbol=mappedSymbols[index];
+      if(providerSymbol!==requested&&quotes[providerSymbol])
+        quotes[requested]={...quotes[providerSymbol],symbol:requested,providerSymbol};
+    });
 
     return sendJson(res, 200, {
       quotes,
@@ -313,6 +326,17 @@ export async function handlePeerCompletion(req: any, res: any) {
 }
 
 export function registerMarketRoutes(app: Express) {
+  app.get('/api/earnings-reactions', async (req,res) => {
+    const ticker=typeof req.query.ticker==='string' ? req.query.ticker.toUpperCase().trim() : '';
+    const dates=typeof req.query.dates==='string' ? [...new Set(req.query.dates.split(','))] : [];
+    const milliseconds=dates.map(d=>Date.parse(d+'T00:00:00Z'));
+    if (!/^[A-Z0-9.-]{1,12}$/.test(ticker) || !dates.length || dates.length>4
+      || dates.some((d,i)=>!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(milliseconds[i]) || new Date(milliseconds[i]).toISOString().slice(0,10)!==d || milliseconds[i]>Date.now())
+      || Math.max(...milliseconds)-Math.min(...milliseconds)>400*86400000) {
+      res.status(400).json({error:'Invalid ticker or bounded historical dates'}); return;
+    }
+    res.json({ticker,reactions:await fetchEarningsReactions(ticker,dates)});
+  });
   app.get("/api/live-quotes", handleLiveQuotes);
   app.get("/api/peer-candidates", handlePeerCandidates);
   app.post("/api/peer-candidates", handlePeerCandidates);

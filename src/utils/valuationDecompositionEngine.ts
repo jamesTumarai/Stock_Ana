@@ -2,6 +2,7 @@ import { ReportData } from '../types';
 import { detectValuationModel } from './valuation/modelSelector';
 import { getCanonicalValuationSandboxInputs } from './valuationSandboxAdapter';
 import { calculateStrictDCFValue } from './valuation/dcfMathEngine';
+import { netCashPositionLabel } from '../domain/cashTerminology';
 
 export interface ValuationDrivers {
   key: string;
@@ -492,11 +493,11 @@ export function decomposeValuationDelta(
     },
     {
       key: 'capital_structure',
-      label: isThai ? 'โครงสร้างทุน & หนี้สินสุทธิ (Net Debt / Cash)' : 'Capital Structure & Net Debt',
+      label: isThai ? 'โครงสร้างทุน: สถานะเงินสดสุทธิ / หนี้สินสุทธิ' : 'Capital Structure: Net Cash / Net Debt',
       dollarImpact: dV_netCash,
       explanation: isThai
-        ? `เงินสดสุทธิ/หนี้สินสุทธิเปลี่ยนจาก $${prev.netCashM.toLocaleString()}M เป็น $${cur.netCashM.toLocaleString()}M`
-        : `Net cash/debt shifted from $${prev.netCashM.toLocaleString()}M to $${cur.netCashM.toLocaleString()}M`,
+        ? `โครงสร้างทุนเปลี่ยนจาก ${netCashPositionLabel(prev.netCashM, true)} $${Math.abs(prev.netCashM).toLocaleString()}M เป็น ${netCashPositionLabel(cur.netCashM, true)} $${Math.abs(cur.netCashM).toLocaleString()}M`
+        : `Capital structure shifted from ${netCashPositionLabel(prev.netCashM)} $${Math.abs(prev.netCashM).toLocaleString()}M to ${netCashPositionLabel(cur.netCashM)} $${Math.abs(cur.netCashM).toLocaleString()}M`,
     },
     {
       key: 'share_dilution',

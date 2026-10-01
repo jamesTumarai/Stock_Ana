@@ -35,17 +35,17 @@ export function MorningstarResearchSection({
             </h3>
           </div>
           <span className="text-xs text-stone-500 font-mono bg-stone-50 px-3 py-1 rounded-full border border-stone-200 self-start sm:self-auto">
-            {isThai ? 'สถานะ: ไม่อยู่ในกลุ่มจัดอันดับ' : 'Status: Uncovered'}
+            {isThai ? 'สถานะ: ยังยืนยันข้อมูลไม่ได้' : 'Status: Coverage unverified'}
           </span>
         </div>
         <div className="p-4 rounded-2xl bg-stone-50/80 border border-stone-200 text-stone-600 text-xs sm:text-sm leading-relaxed font-sans">
           {isThai ? (
             <p>
-              หุ้น <strong>{ticker}</strong> ปัจจุบันยังไม่มีนักวิเคราะห์อาวุโสของ Morningstar จัดทำบทวิเคราะห์อย่างเป็นทางการ (Morningstar เน้นวิเคราะห์เชิงลึกเฉพาะหุ้นขนาดใหญ่และขนาดกลางที่มีประวัติกระแสเงินสดชัดเจน) คุณสามารถอ้างอิงฉันทามติของสถาบันการเงิน Wall Street ทั่วไปในส่วนด้านบนได้ครับ
+              ยังไม่มีหลักฐานที่ยืนยันบทวิเคราะห์ Morningstar ของ <strong>{ticker}</strong> ในรายงานนี้ การไม่มีข้อมูลไม่ได้หมายความว่า Morningstar ไม่ได้ติดตามหุ้นนี้
             </p>
           ) : (
             <p>
-              <strong>{ticker}</strong> is currently not under active coverage by Morningstar Equity Analysts. Morningstar focuses coverage primarily on large-to-mid-cap companies with predictable cash flows. Please refer to the Wall Street Sell-Side consensus in the dashboard above.
+              Data unavailable: this report has not established Morningstar coverage for <strong>{ticker}</strong>. Missing research does not establish that the company is uncovered.
             </p>
           )}
         </div>
@@ -138,9 +138,10 @@ export function MorningstarResearchSection({
                 {isThai ? 'บทวิเคราะห์ปัจจัยพื้นฐาน Morningstar Research' : 'Morningstar Equity Research'}
               </h3>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-mono font-semibold border border-emerald-200">
-                {isThai 
-                  ? (data.status_note_th || data.status_note || unavailable)
-                  : (data.status_note || unavailable)}
+                {/* Model-authored status notes cannot certify independent retrieval. */}
+                {isThai
+                  ? 'ข้อมูลอ้างอิงภายนอก · ยังไม่ได้ตรวจสอบอย่างอิสระ'
+                  : 'External reference · Not independently verified'}
               </span>
             </div>
             <span className="text-xs text-stone-500 font-sans block mt-0.5">
@@ -713,8 +714,8 @@ export function MorningstarResearchSection({
           <Info className="w-3.5 h-3.5 text-stone-400" />
           <span>
             {isThai 
-              ? 'แหล่งข้อมูล: Morningstar Equity Research ผ่านการตรวจสอบและเทียบเคียงข้อมูล' 
-              : 'Source: Morningstar Equity Research with institutional verification'}
+              ? 'ข้อมูลที่ AI อ้างถึง Morningstar: ยังไม่ได้ยืนยันกับต้นฉบับอย่างอิสระ มูลค่าที่แสดงเป็นประมาณการภายนอก'
+              : 'AI-attributed Morningstar reference: independent source verification is not established. Values shown are external estimates.'}
           </span>
         </div>
         <span className="text-stone-500">

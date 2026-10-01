@@ -46,8 +46,15 @@ describe('Canonical period and cross-metric integrity', () => {
 
   it('uses same-quarter EPS and FCF, distinct quarter margin, and the same four-quarter FCF in yield and conversion', () => {
     const periods = ['Q2 2024', 'Q3 2024', 'Q4 2024', 'Q1 2025', 'Q2 2025'];
-    const make = (values: number[]) => values.map((value, index) => ({
-      period: periods[index], value, verification: 'verified',
+    const make = (values: number[], metric: string, statement: 'income_statement' | 'cash_flow') => values.map((value, index) => ({
+      period: periods[index], value, verification: 'verified', metric, statement,
+      unit: 'USD_M', periodType: 'standalone_quarter',
+    }));
+    const makeInstant = (values: number[]) => values.map((value, index) => ({
+      period: periods[index], value, verification: 'verified', statement: 'balance_sheet',
+      periodType: 'instant', periodEnd: ['2024-06-30', '2024-09-30', '2024-12-31', '2025-03-31', '2025-06-30'][index],
+      fiscalYear: index < 3 ? 2024 : 2025, fiscalQuarter: [2, 3, 4, 1, 2][index],
+      source: { provider: 'SEC EDGAR XBRL' },
     }));
     const report: Partial<ReportData> = {
       ticker: 'GENERIC_OPERATING',
@@ -65,11 +72,16 @@ describe('Canonical period and cross-metric integrity', () => {
       canonical_financials: {
         provenanceStatus: 'verified', generatedBy: 'sec-xbrl-test', periods,
         values: {
-          'income_statement.revenue': make([100, 110, 120, 130, 200]),
-          'income_statement.net_income': make([10, 10, 10, 10, 10]),
-          'income_statement.operating_income': make([20, 20, 20, 20, 20]),
-          'income_statement.eps_diluted': make([0.33, 0.30, 0.31, 0.34, 0.32]),
-          'cash_flow.free_cash_flow': make([20, 10, 20, 30, -10]),
+          'income_statement.revenue': make([100, 110, 120, 130, 200], 'revenue', 'income_statement'),
+          'income_statement.net_income': make([10, 10, 10, 10, 10], 'net_income', 'income_statement'),
+          'income_statement.operating_income': make([20, 20, 20, 20, 20], 'operating_income', 'income_statement'),
+          'income_statement.eps_diluted': make([0.33, 0.30, 0.31, 0.34, 0.32], 'eps_diluted', 'income_statement'),
+          'cash_flow.free_cash_flow': make([20, 10, 20, 30, -10], 'free_cash_flow', 'cash_flow'),
+          'balance_sheet.total_equity': makeInstant([300, 310, 320, 330, 350]),
+          'balance_sheet.total_debt': makeInstant([100, 100, 100, 100, 100]),
+          'balance_sheet.cash_and_equivalents': makeInstant([50, 50, 50, 50, 50]),
+          'balance_sheet.short_term_investments': makeInstant([0, 0, 0, 0, 0]),
+          'balance_sheet.total_assets': makeInstant([600, 610, 620, 630, 650]),
         },
       } as any,
     };

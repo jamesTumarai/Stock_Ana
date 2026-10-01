@@ -1,3 +1,4 @@
+import { observedPeerFixtures } from '../../__tests__/observedPeerFixture';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReportData } from '../../../types.js';
@@ -18,7 +19,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
     },
     peer_comparison: {
       industry_name: 'Auto Manufacturers',
-      peers: [],
+      peers: observedPeerFixtures([]),
     },
     financial_statements: {
       currency: 'USD',
@@ -251,6 +252,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
           total_equity: [4000],
           total_debt: [1500],
           cash_and_equivalents: [500],
+          short_term_investments: [0],
           total_assets: [8000],
         } as any,
       } as any,
@@ -276,6 +278,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
           total_equity: [2000],
           // total_debt is missing
           cash_and_equivalents: [200],
+          short_term_investments: [0],
           total_assets: [3000],
         } as any,
       } as any,
@@ -359,7 +362,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
         revenue_growth_yoy_pct: 12.0,
       },
     ];
-    const discovered = discoverPeers(newAutoReport, 'NEW_EV_AUTO', { candidates: trustedAutomotiveCandidates as any });
+    const discovered = discoverPeers(newAutoReport, 'NEW_EV_AUTO', { candidates: observedPeerFixtures(trustedAutomotiveCandidates as any) });
     assert.ok(discovered.peerCount > 0, 'Must discover peers for new automotive ticker');
     assert.ok(discovered.peers.every(p => p.ticker !== 'NEW_EV_AUTO'), 'Must not include self');
 
@@ -421,7 +424,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
         revenue_growth_yoy_pct: 18.0,
       },
     ];
-    const result = discoverPeers(targetReport, 'NICHE_CO', { candidates: candidates as any });
+    const result = discoverPeers(targetReport, 'NICHE_CO', { candidates: observedPeerFixtures(candidates as any) });
     assert.equal(result.peerCount, 3, 'Must populate with close comparables, not zero');
     assert.ok(result.benchmarkRows.length > 0, 'Benchmark rows must be populated');
   });
@@ -447,7 +450,7 @@ describe('Production Five Pillars Runtime & Archetype Integrity', () => {
         pe_trailing: 15.0,
       },
     ];
-    const result = discoverPeers(reportWithNegEbitda, 'OP_CO', { candidates: candidates as any });
+    const result = discoverPeers(reportWithNegEbitda, 'OP_CO', { candidates: observedPeerFixtures(candidates as any) });
     const evRow = result.benchmarkRows.find(r => r.metric_name === 'EV / EBITDA');
     assert.ok(evRow, 'EV/EBITDA row must exist');
     assert.equal(evRow.target_value, 'N/M', 'Negative target EBITDA must format as N/M');

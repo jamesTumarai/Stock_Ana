@@ -1,3 +1,4 @@
+import { observedPeerFixtures } from '../../__tests__/observedPeerFixture';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ReportData } from '../../../types.js';
@@ -58,7 +59,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
     const metricsBoth = resolveFundamentalMetrics(reportBoth);
     const pillarsBoth = resolveAdaptiveFivePillars(reportBoth, 'TEST_FALLBACK');
     assert.equal(pillarsBoth.fivePillarsData.balance_sheet.total_debt_b, 1.0); // (200 + 800) / 1000 = 1.0B
-    assert.equal(pillarsBoth.fivePillarsData.balance_sheet.debt_to_equity, 0.5); // 1000 / 2000 = 0.5x
+    assert.equal(pillarsBoth.fivePillarsData.balance_sheet.debt_to_equity, undefined); // Model arrays cannot establish verified parent equity.
 
     // Case B: Short present, long missing => fails closed (must NOT treat long-term debt as 0)
     const reportMissing: Partial<ReportData> = {
@@ -200,7 +201,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
     };
 
     const discovery = discoverPeers(targetReport, 'TARGET_AUTO', {
-      candidates: [peerA, peerB, peerTTM],
+      candidates: observedPeerFixtures([peerA, peerB, peerTTM]),
       disableFixtureFallback: true,
     });
 
@@ -249,7 +250,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
       },
     };
 
-    const discovery = discoverPeers(targetReport, 'TARGET_TECH', { candidates: [peer1, peer2], disableFixtureFallback: true });
+    const discovery = discoverPeers(targetReport, 'TARGET_TECH', { candidates: observedPeerFixtures([peer1, peer2]), disableFixtureFallback: true });
     const peRow = discovery.benchmarkRows.find(r => r.metric_key === 'pe_trailing');
     assert.ok(peRow);
     assert.equal(peRow.peer_sample_size, 2);
@@ -280,7 +281,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
           operating_income: [150, 150, 150, 150, 150],
           operating_margin_pct: [3.0, 3.0, 3.0, 3.0, 3.0],
         } as any,
-        balance_sheet: { total_equity: [10000, 10200, 10500, 10800, 11000], total_debt: [2000, 2000, 2000, 2000, 2000], cash_and_equivalents: [1000, 1000, 1000, 1000, 1000] } as any,
+        balance_sheet: { total_equity: [10000, 10200, 10500, 10800, 11000], total_debt: [2000, 2000, 2000, 2000, 2000], cash_and_equivalents: [1000, 1000, 1000, 1000, 1000], short_term_investments: [0, 0, 0, 0, 0] } as any,
         cash_flow: {} as any,
       } as any,
     };
@@ -308,7 +309,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
     };
 
     reportNoPeerRoic.peer_comparison = {
-      peers: [peer1, peer2],
+      peers: observedPeerFixtures([peer1, peer2]),
       industry_name: 'Machinery',
     } as any;
 
@@ -351,7 +352,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
       },
     };
 
-    const discoveryLoss = discoverPeers(targetReport, 'TARGET_TECH', { candidates: [lossMakingPeer], disableFixtureFallback: true });
+    const discoveryLoss = discoverPeers(targetReport, 'TARGET_TECH', { candidates: observedPeerFixtures([lossMakingPeer]), disableFixtureFallback: true });
     const peRowLoss = discoveryLoss.benchmarkRows.find(r => r.metric_key === 'pe_trailing');
     assert.ok(peRowLoss);
     // Because earnings are verified negative, direct peer P/E must be N/M (Not Meaningful), NOT N/A
@@ -371,7 +372,7 @@ describe('Five Pillars Final Data Integrity & Provenance', () => {
       },
     };
 
-    const discoveryUnknown = discoverPeers(targetReport, 'TARGET_TECH', { candidates: [unknownPeer], disableFixtureFallback: true });
+    const discoveryUnknown = discoverPeers(targetReport, 'TARGET_TECH', { candidates: observedPeerFixtures([unknownPeer]), disableFixtureFallback: true });
     const peRowUnknown = discoveryUnknown.benchmarkRows.find(r => r.metric_key === 'pe_trailing');
     assert.ok(peRowUnknown);
     // Unknown earnings => stays N/A

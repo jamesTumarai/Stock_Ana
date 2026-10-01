@@ -43,7 +43,8 @@ describe('Verified Data Completion Pipeline — PR #172 Regression Repair', () =
           period: p,
           fiscalYear: match ? Number(match[2]) : 2025,
           fiscalQuarter: (match ? Number(match[1]) : 1) as (1 | 2 | 3 | 4),
-          periodType: 'quarter',
+          periodType: statement === 'balance_sheet' ? 'instant' : 'standalone_quarter',
+          periodEnd: `${match ? match[2] : '2025'}-${String((match ? Number(match[1]) : 1) * 3).padStart(2, '0')}-${[31, 30, 30, 31][(match ? Number(match[1]) : 1) - 1]}`,
           type: 'reported',
           verification: verified ? 'verified' : 'unverified',
           concept: metric,
@@ -68,6 +69,7 @@ describe('Verified Data Completion Pipeline — PR #172 Regression Repair', () =
         'balance_sheet.total_equity': makeSeries('total_equity', 'balance_sheet', [2000, 2100, 2200, 2300, 2500]),
         'balance_sheet.total_debt': makeSeries('total_debt', 'balance_sheet', [500, 500, 500, 500, 500]),
         'balance_sheet.cash_and_equivalents': makeSeries('cash_and_equivalents', 'balance_sheet', [300, 350, 400, 450, 500]),
+        'balance_sheet.short_term_investments': makeSeries('short_term_investments', 'balance_sheet', [0, 0, 0, 0, 0]),
         'balance_sheet.total_assets': makeSeries('total_assets', 'balance_sheet', [3500, 3600, 3700, 3800, 4000]),
         'income_statement.interest_expense': makeSeries('interest_expense', 'income_statement', [-20, -20, -20, -20, -25]),
         // Unrelated metric unverified
@@ -128,7 +130,7 @@ describe('Verified Data Completion Pipeline — PR #172 Regression Repair', () =
       period: p,
       fiscalYear: yr,
       fiscalQuarter: q,
-      periodType: 'quarter',
+      periodType: 'standalone_quarter',
       type: 'reported',
       verification: 'verified',
     });
@@ -266,7 +268,15 @@ describe('Verified Data Completion Pipeline — PR #172 Regression Repair', () =
       },
     });
 
-    const { candidate, gaps } = await enrichPeerCandidate(rawCandidate, { secPackageFetcher: mockSecPackageFetcher });
+    const explicitSourceFetcher=async(ticker:string)=>{
+      const pkg=await mockSecPackageFetcher(ticker);
+      for(const [key,series] of Object.entries(pkg.canonicalFinancials.values) as Array<[string,any[]]>)for(const fact of series){
+        fact.metric=key.split('.')[1];fact.statement=key.split('.')[0];fact.unit='USD_M';fact.periodType='standalone_quarter';
+        fact.source={provider:'SEC EDGAR independently retrieved test document',documentUrl:'https://www.sec.gov/Archives/edgar/data/1/fixture/source.htm'};
+      }
+      return pkg;
+    };
+    const { candidate, gaps } = await enrichPeerCandidate(rawCandidate, { secPackageFetcher: explicitSourceFetcher });
 
     // Candidate should now have verified revenue growth and operating margin
     assert.equal(candidate.metrics.revenue_growth_yoy_pct?.value, 25);
@@ -301,6 +311,7 @@ describe('Verified Data Completion Pipeline — PR #172 Regression Repair', () =
       revenue_growth_yoy_pct: null, // No fundamentals
       operating_margin_pct: null,
       financial_source: 'Market Data / Yahoo Finance',
+      financial_period: 'TTM Q2 2026',
     };
 
     const extracted = extractCandidateMetrics(marketPeer, marketPeer.ticker, marketPeer.company_name);
@@ -315,6 +326,7 @@ describe('Verified Data Completion Pipeline — PR #172 Regression Repair', () =
   it('7. Pre-profit peer with negative earnings produces N/M and is not rejected as 0 verified metrics', () => {
     const preProfitPeer: PeerCompanyItem = {
       ticker: 'PRE_PROFIT',
+      financial_period:'TTM Q2 2026',
       company_name: 'Electric Motors Inc',
       pe_trailing: 'N/M',
       pe_trailing_verified: true,

@@ -81,7 +81,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
       sector: 'Consumer Cyclical'
     },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [100, 90, 80, 70],
         yoy_revenue_growth_pct: [-10, -15, -18, -22],
@@ -134,7 +134,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
     ticker: 'AAPL',
     company_profile: { stock_price: 240, sector: 'Technology' },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [90000, 92000, 95000, 98000],
         yoy_revenue_growth_pct: [5, 6, 8, 10],
@@ -187,7 +187,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
     ticker: 'NVDA',
     company_profile: { stock_price: 180, sector: 'Technology' },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [20000, 25000, 30000, 35000],
         yoy_revenue_growth_pct: [70, 75, 80, 85],
@@ -195,7 +195,8 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
         net_margin_pct: [50, 52, 53, 54]
       },
       balance_sheet: {
-        total_debt: [10000], cash_and_equivalents: [25000], debt_to_equity: [0.2], current_ratio: [3.5]
+        total_debt: [null, null, null, 10000], cash_and_equivalents: [null, null, null, 25000],
+        short_term_investments: [null, null, null, 0], debt_to_equity: [null, null, null, 0.2], current_ratio: [null, null, null, 3.5]
       },
       cash_flow: { free_cash_flow: [12000], fcf_margin_pct: [45] }
     },
@@ -265,6 +266,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
     ticker: 'DERIVE',
     company_profile: { stock_price: 100, sector: 'Technology' },
     financial_statements: {
+      periods: ['Q1 2026', 'Q2 2026'],
       income_statement: {
         revenue: [100, 110],
         yoy_revenue_growth_pct: [8, 10],
@@ -305,7 +307,7 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
     },
     company_profile: { stock_price: 350 },
     financial_statements: {
-      periods: ['Q1', 'Q2', 'Q3', 'Q4'],
+      periods: ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'],
       income_statement: {
         revenue: [25000, 26000, 27000, 29000],
         yoy_revenue_growth_pct: [12, 14, 18, 22],
@@ -388,7 +390,10 @@ console.log('🚀 Running Conviction Scorer Test Suite...');
 
   const result = calculateDeterministicConvictionScore(fintechStock, 'SOFI');
   assert.ok(result, 'Banking/fintech profile with Financial Sector Guard must produce conviction score');
-  assert.ok(result.conviction_score >= 60, `Expected conviction >= 60, got ${result.conviction_score}`);
+  assert.equal(result.conviction_score, null, 'AI claims of strong capital are not verified bank KPIs');
+  assert.equal(result.conviction_breakdown.financial_health.status, 'INSUFFICIENT_DATA');
+  assert.equal(result.conviction_breakdown.financial_health.score, null);
+  assert.ok(result.conviction_breakdown.growth.score !== null, 'Missing bank KPIs must not erase the growth pillar');
   assert.equal(result.conviction_breakdown.financial_health.maxScore, 30);
   assert.equal(result.conviction_breakdown.valuation.maxScore, 20);
   assert.match(result.conviction_breakdown.valuation.reasonEn, /Financial Sector Guard/i);

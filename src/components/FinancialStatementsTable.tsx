@@ -1,4 +1,10 @@
-import { periodChanges } from '../utils/reportIntegrity';
+import { selectFinancialMetric, metricPeriodChanges, formatMetricChange } from '../domain/selectedFinancialMetric';
+import { STATEMENT_SEMANTIC_LABELS, commonParentIncomeAlias } from '../domain/statementSemanticLabels';
+import { metricDeltaTone } from '../domain/metricAssessmentPolicy';
+import { formatWorkingCapitalCashEffect } from '../domain/workingCapitalSemantics';
+import {verifiedMetricSeries} from '../domain/financialSynthesisGuard';
+import { analystCacheKey, deterministicMetricInsight, MetricRequestSequence, type AnalystFallbackReason } from '../domain/financialAnalystContract';
+import { calculateVerifiedKeyIndicators } from '../domain/verifiedKeyIndicators';
 import { aggregateQuarterlyToAnnual } from '../utils/statementAggregation';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -28,6 +34,7 @@ import {
 } from '../domain/metricLineage';
 import { getDataGapExplanation } from '../domain/dataCompleteness/userFacingExplanation';
 import { authenticatedFetch } from '../services/authenticatedFetch';
+import { fetchMetricAi, metricAiFailureLabel } from '../services/metricAiClient';
 
 interface Props {
   data?: FinancialStatementsData;
@@ -38,7 +45,14 @@ interface Props {
   companyName?: string;
 }
 
-export function FinancialStatementsTable({
+export function FinancialStatementsTable(props: Props) {
+  if (!props.data?.verified_dataset || !props.data.periods.length) return <div className="bg-white rounded-2xl p-6 border border-stone-200 text-stone-500 text-center">
+    {props.isThai ? 'ยังไม่มีงบการเงินที่ตรวจสอบแหล่งที่มาและงวดได้ จึงไม่แสดงตัวเลขทดแทน' : 'Verified financial statements unavailable; no substitute numbers displayed.'}
+  </div>;
+  return <VerifiedFinancialStatementsTable {...props} />;
+}
+
+function VerifiedFinancialStatementsTable({
   data,
   isThai,
   currencyRate,
@@ -51,12 +65,15 @@ export function FinancialStatementsTable({
   const [isChartCollapsed, setIsChartCollapsed] = useState<boolean>(false);
   const [liveAiInsights, setLiveAiInsights] = useState<Record<string, FinancialAiInsight>>({});
   const [isAiAnalyzing, setIsAiAnalyzing] = useState<boolean>(false);
+  const [analystFailures, setAnalystFailures] = useState<Record<string, AnalystFallbackReason>>({});
+  const requestSequence = useRef(new MetricRequestSequence());
+  const activeMetricRequest = useRef<{requestId: string; cacheKey: string} | null>(null);
   const [activeCalcDetail, setActiveCalcDetail] = useState<MetricCalculationDetail | null>(null);
   const [activeCalcPeriod, setActiveCalcPeriod] = useState<string>('');
 
   // Dropdown States
   const [periodDropdownOpen, setPeriodDropdownOpen] = useState<boolean>(false);
-  const [periodType, setPeriodType] = useState<'quarterly' | 'annual' | 'cumulative'>('quarterly');
+  const [periodType, setPeriodType] = useState<'quarterly' | 'annual' | 'cumulative'>(data?.fiscal_period_type === 'annual' ? 'annual' : 'quarterly');
   const [quarterFilter, setQuarterFilter] = useState<'all' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('all');
 
   const [compareDropdownOpen, setCompareDropdownOpen] = useState<boolean>(false);
@@ -78,6 +95,10 @@ export function FinancialStatementsTable({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const annualData = React.useMemo(() => {
+    return data?.fiscal_period_type === 'annual' ? data : data ? aggregateQuarterlyToAnnual(data) : null;
+  }, [data]);
+
   if (!data || !data.periods || data.periods.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 border border-stone-200 text-stone-500 text-center italic">
@@ -86,46 +107,33 @@ export function FinancialStatementsTable({
     );
   }
 
-  const annualData = React.useMemo(() => {
-    return aggregateQuarterlyToAnnual(data);
-  }, [data]);
-
+  const isReportedAnnualOnly = data.fiscal_period_type === 'annual' && data.period_snapshots?.every(p => p.periodType === 'annual');
   const isAnnualActive = periodType === 'annual' && Boolean(annualData);
   const effectiveData = isAnnualActive ? (annualData as FinancialStatementsData) : data;
   const rawPeriods = effectiveData.periods;
   const statementTemplate = effectiveData.statement_template || 'standard';
   const validation = effectiveData.validation_summary;
-  const currSym = currencyMode === 'THB' ? '฿' : '$';
+  const isForeignCurrency = Boolean(effectiveData.currency && effectiveData.currency !== 'USD');
+  const currSym = isForeignCurrency ? `${effectiveData.currency} ` : currencyMode === 'THB' ? '฿' : '$';
   const hasFxRate = typeof currencyRate === 'number' && Number.isFinite(currencyRate) && currencyRate > 0;
-  const multiplier = currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
+  const multiplier = !isForeignCurrency && currencyMode === 'THB' && hasFxRate ? currencyRate : 1;
 
   // Filter periods based on user selection
   const periodIndices = rawPeriods.map((_, i) => i).filter((i) => {
     if (isAnnualActive) return true;
     const p = rawPeriods[i];
-    if (quarterFilter === 'all') return true;
+    if (quarterFilter === 'all') return i >= rawPeriods.length - 4;
     return p.includes(quarterFilter);
   });
 
   const periods = periodIndices.map(i => rawPeriods[i]);
 
-  // Auto-detect full raw currency scale (e.g. 100,000,000+ -> convert to millions)
-  const isFullRawCurrencyScale = (() => {
-    const revs = (effectiveData.income_statement?.revenue || []).filter((v): v is number => typeof v === 'number' && v > 0);
-    if (revs.length === 0) return false;
-    return Math.max(...revs) >= 100_000_000;
-  })();
-
-  const normalizeToMillions = (val: number | null | undefined): number | null | undefined => {
-    if (val === null || val === undefined) return val;
-    if (isFullRawCurrencyScale) return val / 1_000_000;
-    return val;
-  };
+  const normalizeToMillions = (val: number | null | undefined) => val;
 
   const formatNum = (rawVal: number | null | undefined, isCurrency = true, decimals = 2): string => {
     if (rawVal === null || rawVal === undefined) return '-';
     if (!isCurrency) return rawVal.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    if (currencyMode === 'THB' && !hasFxRate) return isThai ? 'FX ไม่พร้อม' : 'FX N/A';
+    if (!isForeignCurrency && currencyMode === 'THB' && !hasFxRate) return isThai ? 'FX ไม่พร้อม' : 'FX N/A';
 
     const val = (normalizeToMillions(rawVal) ?? 0);
     const converted = val * multiplier;
@@ -140,8 +148,15 @@ export function FinancialStatementsTable({
     values: (number | null | undefined)[],
     metricKey?: string
   ): (number | null)[] => {
-    return periodChanges(values, rawPeriods, compareMode,
-      metricKey === 'revenue' ? effectiveData.income_statement?.yoy_revenue_growth_pct : undefined);
+    if (values.length === rawPeriods.length) return metricPeriodChanges(metricKey || selectedRowKey, values, rawPeriods, compareMode);
+    const aliases: Record<string,string> = {eps:'eps_diluted',opex:'operating_expenses',cash:'cash_and_equivalents',current_assets:'total_current_assets',current_liabilities:'total_current_liabilities',ocf:'operating_cash_flow',icf:'investing_cash_flow',fcf_financing:'financing_cash_flow',net_income_cont:'net_income'};
+    const key = aliases[metricKey || ''] || metricKey || '';
+    const detailSeries = effectiveData.indicator_details?.[key]?.map(d => d.value);
+    const series = detailSeries || [effectiveData.income_statement, effectiveData.balance_sheet, effectiveData.cash_flow]
+      .map(section => (section as unknown as Record<string, (number | null)[]>)[key]).find(Array.isArray);
+    return series?.length === rawPeriods.length
+      ? periodIndices.map(i => metricPeriodChanges(metricKey || selectedRowKey, series, rawPeriods, compareMode)[i])
+      : metricPeriodChanges(metricKey || selectedRowKey, values, periods, compareMode);
   };
 
   const openCalculationDetail = (key: string, pIdx?: number) => {
@@ -158,226 +173,30 @@ export function FinancialStatementsTable({
   const balance = effectiveData.balance_sheet;
   const cashflow = effectiveData.cash_flow;
 
-  // Find key indicators from effectiveData.key_indicators if present (period-aware)
-  const findExistingKeyIndicator = (nameOrKey: string): (number | null)[] | undefined => {
-    const found = findKeyIndicatorInSource(effectiveData.key_indicators, nameOrKey);
-    if (!found) return undefined;
-    return alignMetricValuesByPeriod(rawPeriods, found.periods, found.values);
-  };
-
-  // Dynamic Key Indicators derived deterministically from company's actual statements
-  const grossMarginVals = rawPeriods.map((p, i) => {
-    return resolveGrossMarginLineage(p, i, effectiveData).value;
-  });
-
-  const opMarginVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const op = income?.operating_income?.[i];
-    if (rev && op !== undefined && op !== null && rev > 0) return Number(((op / rev) * 100).toFixed(2));
-    if (income?.operating_margin_pct?.[i] !== undefined && income?.operating_margin_pct?.[i] !== null) return income.operating_margin_pct[i];
-    const existing = findExistingKeyIndicator('operating_margin')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const ebitMarginVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const op = income?.operating_income?.[i];
-    const existing = findExistingKeyIndicator('ebit_margin')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    if (rev && op !== undefined && op !== null && rev > 0) return Number(((op / rev) * 100).toFixed(2));
-    return null;
-  });
-
-  const netMarginVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const ni = income?.net_income?.[i];
-    if (rev && ni !== undefined && ni !== null && rev > 0) return Number(((ni / rev) * 100).toFixed(2));
-    if (income?.net_margin_pct?.[i] !== undefined && income?.net_margin_pct?.[i] !== null) return income.net_margin_pct[i];
-    const existing = findExistingKeyIndicator('net_margin')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const ebitdaMarginVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const op = income?.operating_income?.[i];
-    const dep = cashflow?.depreciation?.[i];
-    if (rev && op !== undefined && op !== null && dep !== undefined && dep !== null && rev > 0) return Number((((op + dep) / rev) * 100).toFixed(2));
-    const existing = findExistingKeyIndicator('ebitda_margin')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const taxRateVals = rawPeriods.map((_, i) => {
-    if (income?.tax_rate?.[i] !== undefined && income?.tax_rate?.[i] !== null) {
-      return income.tax_rate[i];
-    }
-    const preTax = income?.income_before_tax?.[i];
-    const taxExpense = income?.income_tax_expense?.[i];
-    if (preTax !== undefined && preTax !== null && preTax > 0 && taxExpense !== undefined && taxExpense !== null) {
-      return Number(((taxExpense / preTax) * 100).toFixed(2));
-    }
-    const existing = findExistingKeyIndicator('tax_rate')?.[i] ?? findExistingKeyIndicator('effective_tax_rate')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const currentRatioVals = rawPeriods.map((_, i) => {
-    const ca = balance?.total_current_assets?.[i];
-    const cl = balance?.total_current_liabilities?.[i];
-    if (ca !== undefined && ca !== null && cl !== undefined && cl !== null && cl > 0) return Number((ca / cl).toFixed(2));
-    if (balance?.current_ratio?.[i] !== undefined && balance?.current_ratio?.[i] !== null) return balance.current_ratio[i];
-    const existing = findExistingKeyIndicator('current_ratio')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const quickRatioVals = rawPeriods.map((_, i) => {
-    const ca = balance?.total_current_assets?.[i];
-    const cl = balance?.total_current_liabilities?.[i];
-    const inv = balance?.inventory?.[i] ?? 0;
-    if (ca !== undefined && ca !== null && cl !== undefined && cl !== null && cl > 0) return Number(((ca - inv) / cl).toFixed(2));
-    if (balance?.quick_ratio?.[i] !== undefined && balance?.quick_ratio?.[i] !== null) return balance.quick_ratio[i];
-    const existing = findExistingKeyIndicator('quick_ratio')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const debtToEquityVals = rawPeriods.map((_, i) => {
-    const debt = balance?.total_debt?.[i];
-    const eq = balance?.total_equity?.[i];
-    if (debt !== undefined && debt !== null && eq !== undefined && eq !== null && eq !== 0) return Number((debt / eq).toFixed(2));
-    if (balance?.debt_to_equity?.[i] !== undefined && balance?.debt_to_equity?.[i] !== null) return balance.debt_to_equity[i];
-    const existing = findExistingKeyIndicator('debt_to_equity')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const equityRatioVals = rawPeriods.map((_, i) => {
-    const eq = balance?.total_equity?.[i];
-    const ta = balance?.total_assets?.[i];
-    if (eq !== undefined && eq !== null && ta && ta > 0) return Number(((eq / ta) * 100).toFixed(2));
-    const existing = findExistingKeyIndicator('equity_ratio')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const debtToAssetVals = rawPeriods.map((_, i) => {
-    const debt = balance?.total_debt?.[i];
-    const ta = balance?.total_assets?.[i];
-    if (debt !== undefined && debt !== null && ta && ta > 0) return Number(((debt / ta) * 100).toFixed(2));
-    const existing = findExistingKeyIndicator('debt_to_asset')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  // Factor for annualizing quarter flows vs maintaining 1x for full annual/LTM periods
-  const annualFactor = isAnnualActive ? 1 : 4;
-
-  const roeVals = rawPeriods.map((_, i) => {
-    const ni = income?.net_income?.[i];
-    const eq = balance?.total_equity?.[i];
-    if (ni !== undefined && ni !== null && eq !== undefined && eq !== null && eq !== 0) return Number(((ni * annualFactor / eq) * 100).toFixed(2));
-    const existing = findExistingKeyIndicator('roe')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const roaVals = rawPeriods.map((_, i) => {
-    const ni = income?.net_income?.[i];
-    const ta = balance?.total_assets?.[i];
-    if (ni !== undefined && ni !== null && ta && ta > 0) return Number(((ni * annualFactor / ta) * 100).toFixed(2));
-    const existing = findExistingKeyIndicator('roa')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const roicVals = rawPeriods.map((_, i) => {
-    const op = income?.operating_income?.[i];
-    const taxRate = taxRateVals[i];
-    const debt = balance?.total_debt?.[i];
-    const eq = balance?.total_equity?.[i];
-    const cash = balance?.cash_and_equivalents?.[i];
-    if (op !== undefined && op !== null && debt !== undefined && debt !== null && eq !== undefined && eq !== null && cash !== undefined && cash !== null && taxRate !== null && taxRate !== undefined) {
-      const investedCap = debt + eq - cash;
-      if (investedCap <= 0) return null;
-      const nopat = (op * annualFactor) * (1 - taxRate / 100);
-      return Number(((nopat / investedCap) * 100).toFixed(2));
-    }
-    const existing = findExistingKeyIndicator('roic')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const fcfMarginVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
-    if (rev && fcf !== null && fcf !== undefined && rev > 0) return Number(((fcf / rev) * 100).toFixed(2));
-    if (cashflow?.fcf_margin_pct?.[i] !== undefined && cashflow?.fcf_margin_pct?.[i] !== null) return cashflow.fcf_margin_pct[i];
-    const existing = findExistingKeyIndicator('fcf_margin')?.[i] ?? findExistingKeyIndicator('fcf_to_sales')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const fcfToNetIncomeVals = rawPeriods.map((_, i) => {
-    const ni = income?.net_income?.[i];
-    const fcf = cashflow?.free_cash_flow?.[i] ?? (cashflow?.operating_cash_flow?.[i] !== undefined && cashflow?.capex?.[i] !== undefined ? cashflow.operating_cash_flow[i]! - Math.abs(cashflow.capex[i]!) : null);
-    if (ni && fcf !== null && fcf !== undefined && ni !== 0) return Number(((fcf / ni) * 100).toFixed(2));
-    if (cashflow?.fcf_vs_net_income_ratio?.[i] !== undefined && cashflow?.fcf_vs_net_income_ratio?.[i] !== null) return Number((cashflow.fcf_vs_net_income_ratio[i] * 100).toFixed(2));
-    const existing = findExistingKeyIndicator('fcf_to_net_income')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  // Working capital and operational turnover metrics
-  const assetTurnoverVals = rawPeriods.map((_, i) => {
-    const rev = income?.revenue?.[i];
-    const ta = balance?.total_assets?.[i];
-    if (rev && ta && ta > 0) return Number(((rev * annualFactor) / ta).toFixed(2));
-    const existing = findExistingKeyIndicator('asset_turnover')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const invTurnoverVals = rawPeriods.map((_, i) => {
-    const cogs = income?.cogs?.[i];
-    const inv = balance?.inventory?.[i];
-    if (cogs && inv && inv > 0) return Number(((cogs * annualFactor) / inv).toFixed(2));
-    const existing = findExistingKeyIndicator('inventory_turnover')?.[i];
-    if (existing !== undefined && existing !== null) return existing;
-    return null;
-  });
-
-  const dsoVals = rawPeriods.map((_, i) => {
-    const ar = balance?.accounts_receivable?.[i] ?? balance?.receivables?.[i];
-    const rev = income?.revenue?.[i];
-    if (ar && rev && rev > 0) return Number(((ar / rev) * 90).toFixed(1));
-    return null;
-  });
-
-  const dioVals = rawPeriods.map((_, i) => {
-    const inv = balance?.inventory?.[i];
-    const cogs = income?.cogs?.[i];
-    if (inv && cogs && cogs > 0) return Number(((inv / cogs) * 90).toFixed(1));
-    return null;
-  });
-
-  const dpoVals = rawPeriods.map((_, i) => {
-    const ap = balance?.accounts_payable?.[i] ?? balance?.payables?.[i];
-    const cogs = income?.cogs?.[i];
-    if (ap && cogs && cogs > 0) return Number(((ap / cogs) * 90).toFixed(1));
-    return null;
-  });
-
-  const cccVals = rawPeriods.map((_, i) => {
-    const dso = dsoVals[i];
-    const dio = dioVals[i];
-    const dpo = dpoVals[i];
-    if (dso !== null && dio !== null && dpo !== null) return Number((dso + dio - dpo).toFixed(1));
-    if (dso !== null && dpo !== null) return Number((dso - dpo).toFixed(1));
-    return null;
-  });
+  const indicatorDetails = calculateVerifiedKeyIndicators(effectiveData);
+  const indicatorValues = (key: string) => indicatorDetails[key]?.map(detail => detail.value) || [];
+  const grossMarginVals = indicatorDetails['gross_margin'].map(d => d.value);
+  const opMarginVals = indicatorDetails['operating_margin'].map(d => d.value);
+  const ebitMarginVals = indicatorDetails['ebit_margin'].map(d => d.value);
+  const netMarginVals = indicatorDetails['net_margin'].map(d => d.value);
+  const ebitdaMarginVals = indicatorDetails['ebitda_margin'].map(d => d.value);
+  const taxRateVals = indicatorDetails['tax_rate'].map(d => d.value);
+  const currentRatioVals = indicatorDetails['current_ratio'].map(d => d.value);
+  const quickRatioVals = indicatorDetails['quick_ratio'].map(d => d.value);
+  const debtToEquityVals = indicatorDetails['debt_to_equity'].map(d => d.value);
+  const equityRatioVals = indicatorDetails['equity_ratio'].map(d => d.value);
+  const debtToAssetVals = indicatorDetails['debt_to_asset'].map(d => d.value);
+  const roeVals = indicatorDetails['roe'].map(d => d.value);
+  const roaVals = indicatorDetails['roa'].map(d => d.value);
+  const roicVals = indicatorDetails['roic'].map(d => d.value);
+  const fcfMarginVals = indicatorDetails['fcf_to_sales'].map(d => d.value);
+  const fcfToNetIncomeVals = indicatorDetails['fcf_to_net_income'].map(d => d.value);
+  const assetTurnoverVals = indicatorDetails['asset_turnover'].map(d => d.value);
+  const invTurnoverVals = indicatorDetails['inventory_turnover'].map(d => d.value);
+  const dsoVals = indicatorDetails['dso'].map(d => d.value);
+  const dioVals = indicatorDetails['dio'].map(d => d.value);
+  const dpoVals = indicatorDetails['dpo'].map(d => d.value);
+  const cccVals = indicatorDetails['ccc'].map(d => d.value);
 
   const keyIndicators: KeyIndicatorsData = {
     periods: rawPeriods,
@@ -388,9 +207,9 @@ export function FinancialStatementsTable({
         metrics: [
           { key: 'gross_margin', name: 'Gross Margin', name_th: 'อัตรากำไรขั้นต้น', category: 'profitability', unit: '%', values: grossMarginVals },
           { key: 'operating_margin', name: 'Operating Margin', name_th: 'อัตรากำไรจากการดำเนินงาน', category: 'profitability', unit: '%', values: opMarginVals },
-          { key: 'ebit_margin', name: 'EBIT Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', category: 'profitability', unit: '%', values: ebitMarginVals },
+          { key: 'ebit_margin', name: 'EBIT Margin — unavailable without verified EBIT', name_th: 'อัตรากำไรก่อนดอกเบี้ยและภาษี', category: 'profitability', unit: '%', values: ebitMarginVals },
           { key: 'net_margin', name: 'Net Margin', name_th: 'อัตรากำไรสุทธิ', category: 'profitability', unit: '%', values: netMarginVals },
-          { key: 'ebitda_margin', name: 'EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', category: 'profitability', unit: '%', values: ebitdaMarginVals },
+          { key: 'ebitda_margin', name: 'Derived EBITDA Margin', name_th: 'อัตรากำไรก่อนดอกเบี้ย ภาษี ค่าเสื่อม & ตัดจำหน่าย', category: 'profitability', unit: '%', values: ebitdaMarginVals },
           { key: 'tax_rate', name: 'Effective Tax Rate', name_th: 'อัตราภาษีเงินได้ที่แท้จริง', category: 'profitability', unit: '%', values: taxRateVals }
         ]
       },
@@ -402,23 +221,23 @@ export function FinancialStatementsTable({
           { key: 'quick_ratio', name: 'Quick Ratio', name_th: 'อัตราส่วนสภาพคล่องหมุนเวียนเร็ว (Quick Assets / Current Liabilities)', category: 'solvency', unit: 'x', values: quickRatioVals },
           { key: 'debt_to_equity', name: 'Debt to Equity Ratio', name_th: 'อัตราส่วนหนี้สินต่อส่วนของผู้ถือหุ้น (D/E)', category: 'solvency', unit: 'x', values: debtToEquityVals },
           { key: 'equity_ratio', name: 'Equity Ratio', name_th: 'อัตราส่วนส่วนของผู้ถือหุ้นต่อสินทรัพย์รวม', category: 'solvency', unit: '%', values: equityRatioVals },
-          { key: 'debt_to_asset', name: 'Debt to Asset Ratio', name_th: 'อัตราส่วนหนี้สินรวมต่อสินทรัพย์รวม', category: 'solvency', unit: '%', values: debtToAssetVals }
+          { key: 'debt_to_asset', name: 'Canonical Debt to Assets', name_th: 'อัตราส่วนหนี้สินรวมต่อสินทรัพย์รวม', category: 'solvency', unit: '%', values: debtToAssetVals }
         ]
       },
       {
         category_key: 'operating_capacity',
         category_title: isThai ? '3. ประสิทธิภาพการดำเนินงาน (Operating Capacity & Returns)' : 'Operating Capacity & Returns',
         metrics: [
-          { key: 'roe', name: 'ROE (Return on Equity - Annualized)', name_th: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (Annualized)', category: 'operating_capacity', unit: '%', values: roeVals },
-          { key: 'roa', name: 'ROA (Return on Assets - Annualized)', name_th: 'ผลตอบแทนต่อสินทรัพย์รวม (Annualized)', category: 'operating_capacity', unit: '%', values: roaVals },
-          { key: 'roic', name: 'ROIC (Return on Invested Capital - Annualized)', name_th: 'ผลตอบแทนจากเงินลงทุนรวม (Annualized)', category: 'operating_capacity', unit: '%', values: roicVals },
+          { key: 'roe', name: 'ROE (TTM / Average Equity)', name_th: 'ผลตอบแทนต่อส่วนของผู้ถือหุ้น (TTM)', category: 'operating_capacity', unit: '%', values: roeVals },
+          { key: 'roa', name: 'ROA (TTM / Average Assets)', name_th: 'ผลตอบแทนต่อสินทรัพย์รวม (TTM)', category: 'operating_capacity', unit: '%', values: roaVals },
+          { key: 'roic', name: 'ROIC (TTM)', name_th: 'ผลตอบแทนจากเงินลงทุนรวม (TTM)', category: 'operating_capacity', unit: '%', values: roicVals },
           { key: 'fcf_to_sales', name: 'FCF to Sales Margin', name_th: 'อัตราส่วนกระแสเงินสดอิสระต่อรายได้', category: 'operating_capacity', unit: '%', values: fcfMarginVals },
           { key: 'fcf_to_net_income', name: 'FCF to Net Income Ratio', name_th: 'สัดส่วนกระแสเงินสดอิสระต่อกำไรสุทธิ (Cash Conversion)', category: 'operating_capacity', unit: '%', values: fcfToNetIncomeVals },
           { key: 'asset_turnover', name: 'Asset Turnover', name_th: 'อัตราหมุนเวียนสินทรัพย์รวม (Asset Turnover)', category: 'operating_capacity', unit: 'x', values: assetTurnoverVals },
           { key: 'inventory_turnover', name: 'Inventory Turnover', name_th: 'อัตราหมุนเวียนสินค้าคงเหลือ', category: 'operating_capacity', unit: 'x', values: invTurnoverVals },
           { key: 'dso', name: 'Days Sales Outstanding (DSO)', name_th: 'ระยะเวลาเก็บหนี้เฉลี่ย (วัน)', category: 'operating_capacity', unit: 'D', values: dsoVals },
           { key: 'dio', name: 'Days Inventory Outstanding (DIO)', name_th: 'ระยะเวลาขายสินค้าเฉลี่ย (วัน)', category: 'operating_capacity', unit: 'D', values: dioVals },
-          { key: 'dpo', name: 'Days Payables Outstanding (DPO)', name_th: 'ระยะเวลาชำระหนี้เฉลี่ย (วัน)', category: 'operating_capacity', unit: 'D', values: dpoVals },
+          { key: 'dpo', name: 'DPO (COGS proxy — approximate)', name_th: 'ระยะเวลาชำระหนี้เฉลี่ย (วัน)', category: 'operating_capacity', unit: 'D', values: dpoVals },
           { key: 'ccc', name: 'Cash Conversion Cycle (CCC)', name_th: 'วงจรเงินสดหมุนเวียน (วัน)', category: 'operating_capacity', unit: 'D', values: cccVals }
         ]
       },
@@ -426,20 +245,10 @@ export function FinancialStatementsTable({
         category_key: 'banking_metrics',
         category_title: isThai ? '4. ดัชนีชี้วัดเฉพาะธุรกิจธนาคาร & FinTech (Banking & FinTech Key Metrics)' : '4. Banking & FinTech Metrics',
         metrics: [
-          { key: 'nim', name: 'Net Interest Margin (NIM)', name_th: 'อัตราส่วนต่างดอกเบี้ยสุทธิ (NIM %)', category: 'banking_metrics', unit: '%', values: rawPeriods.map((_, i) => income?.net_interest_margin_pct?.[i] ?? null) },
-          { key: 'deposit_growth', name: 'Total Deposits', name_th: 'ฐานเงินฝากรวมของลูกค้า ($M)', category: 'banking_metrics', unit: '$', values: rawPeriods.map((_, i) => balance?.deposits?.[i] ?? null) },
-          { key: 'loan_deposit_ratio', name: 'Loan-to-Deposit Ratio (LDR)', name_th: 'อัตราส่วนสินเชื่อต่อเงินฝาก (LDR %)', category: 'banking_metrics', unit: '%', values: rawPeriods.map((_, i) => {
-            const loans = balance?.loans_held_for_investment?.[i];
-            const dep = balance?.deposits?.[i];
-            if (loans && dep && dep > 0) return Number(((loans / dep) * 100).toFixed(1));
-            return null;
-          }) },
-          { key: 'efficiency_ratio', name: 'Efficiency Ratio (Cost/Income)', name_th: 'อัตราส่วนต้นทุนต่อรายได้ (Efficiency Ratio %)', category: 'banking_metrics', unit: '%', values: rawPeriods.map((_, i) => {
-            const opex = income?.operating_expenses?.[i];
-            const rev = income?.revenue?.[i];
-            if (opex && rev && rev > 0) return Number(((opex / rev) * 100).toFixed(1));
-            return null;
-          }) }
+          { key: 'nim', name: 'Net Interest Margin (NIM)', name_th: 'อัตราส่วนต่างดอกเบี้ยสุทธิ (NIM %)', category: 'banking_metrics', unit: '%', values: indicatorValues('nim') },
+          { key: 'deposit_growth', name: 'Total Deposits', name_th: 'ฐานเงินฝากรวมของลูกค้า ($M)', category: 'banking_metrics', unit: '$', values: indicatorValues('deposit_growth') },
+          { key: 'loan_deposit_ratio', name: 'Loan-to-Deposit Ratio (LDR)', name_th: 'อัตราส่วนสินเชื่อต่อเงินฝาก (LDR %)', category: 'banking_metrics', unit: '%', values: indicatorValues('loan_deposit_ratio') },
+          { key: 'efficiency_ratio', name: 'Efficiency Ratio (Cost/Income)', name_th: 'อัตราส่วนต้นทุนต่อรายได้ (Efficiency Ratio %)', category: 'banking_metrics', unit: '%', values: indicatorValues('efficiency_ratio') }
         ]
       }] : [])
     ]
@@ -470,11 +279,7 @@ export function FinancialStatementsTable({
     loans_held_for_sale: balance?.loans_held_for_sale || [],
     goodwill: balance?.goodwill || [],
     deposits: balance?.deposits || [],
-    total_liabilities: balance?.total_liabilities || (balance?.total_assets || []).map((ta, i) => {
-      const eq = balance?.total_equity?.[i];
-      if (ta !== null && ta !== undefined && eq !== null && eq !== undefined) return ta - eq;
-      return null;
-    }),
+    total_liabilities: balance?.total_liabilities || [],
     current_liabilities: balance?.total_current_liabilities || [],
     payables: balance?.accounts_payable || balance?.payables || [],
     accounts_payable: balance?.accounts_payable || balance?.payables || [],
@@ -486,50 +291,68 @@ export function FinancialStatementsTable({
       if (tl !== null && tl !== undefined && cl !== null && cl !== undefined) return tl - cl;
       return null;
     }),
-    long_term_debt: (balance?.total_debt || []).map((td, i) => {
-      const std = balance?.short_term_debt?.[i];
-      if (td !== null && td !== undefined && std !== null && std !== undefined) return Math.max(0, td - std);
-      return null;
-    }),
+    long_term_debt: balance?.long_term_debt || [],
+    current_debt_and_finance_leases: balance?.current_debt_and_finance_leases || [],
+    noncurrent_debt_and_finance_leases: balance?.noncurrent_debt_and_finance_leases || [],
+    finance_lease_liabilities_current: balance?.finance_lease_liabilities_current || [],
+    finance_lease_liabilities_non_current: balance?.finance_lease_liabilities_non_current || [],
+    long_term_debt_and_finance_leases: balance?.long_term_debt_and_finance_leases || [],
     total_equity: balance?.total_equity || [],
-    capital_stock: balance?.capital_stock || balance?.common_stock || [],
-    common_stock: balance?.common_stock || balance?.capital_stock || [],
+    stockholders_equity: balance?.stockholders_equity || [],
+    noncontrolling_interest: balance?.noncontrolling_interest || [],
+    redeemable_noncontrolling_interest: balance?.redeemable_noncontrolling_interest || [],
+    capital_stock: balance?.capital_stock || [],
+    common_stock: balance?.common_stock || [],
     retained_earnings: balance?.retained_earnings || [],
     aoci: balance?.aoci || []
   };
 
   // Cash Flow Data items (Derived safely from company's real cash flow)
+  const cashBasis = effectiveData.verified_dataset?.cashFlowCashBalances?.at(-1)?.basis;
+  const cashBasisName = cashBasis === 'CASH_AND_RESTRICTED_CASH_INCLUDING_DISPOSAL_GROUP' ? 'Cash, Cash Equivalents & Restricted Cash Including Disposal Groups' : cashBasis === 'CASH_AND_RESTRICTED_CASH' ? 'Cash, Cash Equivalents & Restricted Cash' : 'Cash on Reported Cash-Flow Basis';
   const cfItems = {
+    equity_issuance_proceeds: cashflow?.equity_issuance_proceeds||[],
+    dividends_to_noncontrolling_interests: cashflow?.dividends_to_noncontrolling_interests||[],
     ocf: cashflow?.operating_cash_flow || [],
     net_income_cont: income?.net_income || [],
     depreciation: cashflow?.depreciation || [],
+    depreciation_amortization_and_impairment: cashflow?.depreciation_amortization_and_impairment || [],
+    depreciation_amortization_and_accretion: cashflow?.depreciation_amortization_and_accretion || [],
+    debt_issuance: cashflow?.debt_issuance || [],
+    debt_repayments: cashflow?.debt_repayments || [],
+    finance_lease_payments: cashflow?.finance_lease_payments || [],
+    distributions_to_noncontrolling_interests: cashflow?.distributions_to_noncontrolling_interests || [],
+    distributions_to_noncontrolling_and_redeemable_interests: cashflow?.distributions_to_noncontrolling_and_redeemable_interests || [],
     stock_based_compensation: cashflow?.stock_based_compensation || [],
     non_cash_items: cashflow?.non_cash_items || [],
     change_working_capital: cashflow?.change_working_capital || [],
-    change_receivables: cashflow?.change_receivables || [],
-    change_inventory: cashflow?.change_inventory || [],
-    change_payables: cashflow?.change_payables || [],
+    change_receivables: verifiedMetricSeries(effectiveData,'change_receivables',rawPeriods),
+    change_inventory: verifiedMetricSeries(effectiveData,'change_inventory',rawPeriods),
+    change_payables: verifiedMetricSeries(effectiveData,'change_payables',rawPeriods),
     change_other_ca: cashflow?.change_other_ca || [],
     change_other_cl: cashflow?.change_other_cl || [],
-    icf: cashflow?.investing_cash_flow || (cashflow?.capex || []).map(c => c !== null && c !== undefined ? -Math.abs(c) : null),
+    icf: cashflow?.investing_cash_flow || [],
     capex: (cashflow?.capex || []).map(c => c !== null && c !== undefined ? -Math.abs(c) : null),
     investment_purchase: cashflow?.investment_purchase || [],
     other_investing: cashflow?.other_investing || [],
     fcf_financing: cashflow?.financing_cash_flow || [],
     debt_issuance_payments: cashflow?.debt_issuance_payments || [],
-    stock_issuance_repurchase: cashflow?.stock_issuance_repurchase || [],
+    issuance_of_common_stock: cashflow?.issuance_of_common_stock || [],
+    repurchase_of_common_stock: cashflow?.repurchase_of_common_stock || [],
+    option_exercise_proceeds: cashflow?.option_exercise_proceeds || [],
+    equity_compensation_and_option_proceeds: cashflow?.equity_compensation_and_option_proceeds || [],
     dividends_paid: cashflow?.dividends_paid || [],
     other_financing: cashflow?.other_financing || [],
     change_in_deposits: cashflow?.change_in_deposits || [],
     change_in_loans_held_for_sale: cashflow?.change_in_loans_held_for_sale || [],
     provision_addback: cashflow?.provision_addback || [],
-    ending_cash: balance?.cash_and_equivalents || [],
+    ending_cash: cashflow?.ending_cash || [],
     net_change_cash: cashflow?.net_change_cash || [],
     beginning_cash: cashflow?.beginning_cash || [],
     free_cash_flow: cashflow?.free_cash_flow || (cashflow?.operating_cash_flow || []).map((ocf, i) => {
       const c = cashflow?.capex?.[i];
       if (ocf !== null && ocf !== undefined && c !== null && c !== undefined) return ocf - Math.abs(c);
-      return ocf;
+      return null;
     })
   };
 
@@ -576,16 +399,20 @@ export function FinancialStatementsTable({
         net_interest_income: { en: 'Net Interest Income (NII)', th: 'รายได้ดอกเบี้ยสุทธิ (NII)', raw: income.net_interest_income || [], isCurrency: true },
         non_interest_income: { en: 'Non-Interest Income (Fee & Services)', th: 'รายได้ที่มิใช่ดอกเบี้ย (ค่าธรรมเนียม)', raw: income.non_interest_income || [], isCurrency: true },
         provision_for_credit_losses: { en: 'Provision for Credit Losses', th: 'ผลขาดทุนด้านเครดิตที่คาดว่าจะเกิดขึ้น', raw: (income.provision_for_credit_losses || []).map(p => p !== null && p !== undefined ? -Math.abs(p) : null), isCurrency: true },
-        operating_income: { en: statementTemplate === 'banking' ? 'Operating Income (Pre-Tax Earnings)' : 'Operating Profit (EBIT)', th: 'กำไรจากการดำเนินงาน', raw: income.operating_income || income.gross_profit?.map((gp, i) => gp && income.operating_expenses?.[i] ? gp - income.operating_expenses[i] : null) || [], isCurrency: true },
-        gross_profit: { en: 'Gross Profit', th: 'กำไรขั้นต้น', raw: income.gross_profit || income.revenue?.map((r, i) => r && income.cogs?.[i] ? r - income.cogs[i] : null) || [], isCurrency: true },
-        net_income: { en: 'Net Income to Common Stockholders', th: 'กำไรสุทธิสำหรับผู้ถือหุ้นสามัญ', raw: income.net_income || [], isCurrency: true },
-        eps: { en: 'Diluted EPS', th: 'กำไรต่อหุ้นปรับลด', raw: income.eps_diluted || [], isCurrency: false, unit: '$' },
-        cogs: { en: 'Cost of Revenue', th: 'ต้นทุนขายและบริการ', raw: income.cogs || income.revenue?.map((r, i) => r && income.gross_profit?.[i] ? r - income.gross_profit[i] : null) || [], isCurrency: true },
-        opex: { en: statementTemplate === 'banking' ? 'Non-Interest Expense (Operating Expense)' : 'Operating Expense (OPEX)', th: statementTemplate === 'banking' ? 'ค่าใช้จ่ายในการดำเนินงาน (เทคโนโลยี/บริหาร)' : 'ค่าใช้จ่ายในการดำเนินงาน (OPEX)', raw: income.operating_expenses || income.gross_profit?.map((gp, i) => gp && income.operating_income?.[i] ? gp - income.operating_income[i] : null) || [], isCurrency: true },
-        other_income: { en: 'Other Non-Operating Income (Expenses)', th: 'รายได้ (ค่าใช้จ่าย) อื่นที่ไม่เกี่ยวกับการดำเนินงาน', raw: income.other_income || [], isCurrency: true }
+        operating_income: { en: 'Operating Income', th: 'กำไรจากการดำเนินงาน', raw: income.operating_income || [], isCurrency: true },
+        interest_income: {en:'Interest Income (Reported Scope)',th:'รายได้ดอกเบี้ยตามขอบเขตที่รายงาน',raw:income.interest_income||[],isCurrency:true},
+        interest_expense: {en:'Interest Expense',th:'ค่าใช้จ่ายดอกเบี้ย',raw:income.interest_expense||[],isCurrency:true},
+        gross_profit: { en: 'Gross Profit', th: 'กำไรขั้นต้น', raw: income.gross_profit || [], isCurrency: true },
+        net_income: { en: 'Total Net Income', th: 'กำไรสุทธิรวม', raw: income.net_income || [], isCurrency: true },
+        net_income_parent: { en: 'Net Income Attributable to Parent', th: 'กำไรสุทธิที่เป็นของบริษัทใหญ่', raw: income.net_income_parent || [], isCurrency: true },
+        net_income_common: { en: 'Net Income Available to Common Stockholders', th: 'กำไรสุทธิของผู้ถือหุ้นสามัญ', raw: income.net_income_common || [], isCurrency: true },
+        eps: { en: 'Diluted EPS', th: 'กำไรต่อหุ้นปรับลด', raw: income.eps_diluted || [], isCurrency: false, unit: ` ${effectiveData.currency||'USD'}/share` },
+        cogs: { en: 'Cost of Revenue', th: 'ต้นทุนขายและบริการ', raw: income.cogs || [], isCurrency: true },
+        opex: { en: statementTemplate === 'banking' ? 'Non-Interest Expense (Operating Expense)' : 'Operating Expense (OPEX)', th: statementTemplate === 'banking' ? 'ค่าใช้จ่ายในการดำเนินงาน (เทคโนโลยี/บริหาร)' : 'ค่าใช้จ่ายในการดำเนินงาน (OPEX)', raw: income.operating_expenses || [], isCurrency: true },
+        other_income: { en: 'Other Income (Expense), Net', th: 'รายได้ (ค่าใช้จ่าย) อื่นสุทธิ', raw: income.other_income || [], isCurrency: true }
       };
 
-      const selected = rowMap[selectedRowKey] || rowMap.revenue;
+      const selected = rowMap[selectedRowKey] || {en:selectedRowKey.replace(/_/g,' '),th:selectedRowKey.replace(/_/g,' '),raw:[],isCurrency:true};
       const filteredRaw = periodIndices.map(i => selected.raw[i] !== undefined ? selected.raw[i] : null);
       return {
         title: selected.en,
@@ -615,27 +442,32 @@ export function FinancialStatementsTable({
         non_current_assets: { en: 'Total Non-Current Assets', th: 'สินทรัพย์ไม่หมุนเวียนรวม' },
         net_ppe: { en: 'Net PPE', th: 'ที่ดิน อาคาร และอุปกรณ์สุทธิ' },
         available_for_sale_securities: { en: 'Available for Sale Securities', th: 'หลักทรัพย์เผื่อขาย / เงินลงทุนระยะยาว' },
-        goodwill: { en: 'Goodwill and Other Intangible Assets', th: 'ค่าความนิยมและสินทรัพย์ไม่มีตัวตน' },
+        goodwill: { en: 'Goodwill', th: 'ค่าความนิยม' },
         total_liabilities: { en: 'Total Liabilities', th: 'หนี้สินรวม' },
         deposits: { en: '⚠️ Total Deposits (Interest & Non-Interest Bearing)', th: 'เงินฝากรวมของลูกค้า (ภาระผูกพันหลักของธนาคาร)' },
         current_liabilities: { en: 'Total Current Liabilities', th: 'หนี้สินหมุนเวียนรวม' },
         payables: { en: 'Payables', th: 'เจ้าหนี้การค้าและค่าใช้จ่ายค้างจ่าย' },
         accounts_payable: { en: 'Accounts Payable', th: 'เจ้าหนี้การค้า' },
         tax_payable: { en: 'Total Tax Payable', th: 'ภาษีเงินได้ค้างจ่าย' },
-        short_term_debt: { en: 'Short-Term Debt & Capital Lease', th: 'หนี้สินระยะสั้นและหนี้สัญญาเช่า' },
+        current_debt_and_finance_leases: {en:'Current Debt & Finance Leases',th:'หนี้สินระยะสั้นรวมสัญญาเช่าการเงิน'},
+        noncurrent_debt_and_finance_leases: {en:'Noncurrent Debt & Finance Leases',th:'หนี้สินระยะยาวรวมสัญญาเช่าการเงิน'},
+        finance_lease_liabilities_current: {en:'Current Finance Lease Liability',th:'หนี้สินสัญญาเช่าการเงินระยะสั้น'},
+        finance_lease_liabilities_non_current: {en:'Noncurrent Finance Lease Liability',th:'หนี้สินสัญญาเช่าการเงินระยะยาว'},
+        short_term_debt: { en: 'Current Debt', th: 'หนี้สินทางการเงินระยะสั้น' },
         current_deferred_liabilities: { en: 'Current Deferred Liabilities', th: 'หนี้สินรอการรับรู้ระยะสั้น / รายได้รับล่วงหน้า' },
         non_current_liabilities: { en: 'Total Non-Current Liabilities', th: 'หนี้สินไม่หมุนเวียนรวม' },
-        long_term_debt: { en: 'Long Term Debt and Capital Lease Obligation', th: 'หนี้สินระยะยาวและหนี้สัญญาเช่าระยะยาว' },
-        total_equity: { en: 'Total Stockholders\' Equity', th: 'ส่วนของผู้ถือหุ้นรวม' },
+        long_term_debt: { en: 'Long-Term Debt', th: 'หนี้สินทางการเงินระยะยาว' },
+        long_term_debt_and_finance_leases: { en: 'Long-Term Debt and Finance Leases', th: 'หนี้สินระยะยาวรวมสัญญาเช่าการเงิน' },
+        total_equity: { en: 'Equity Including Noncontrolling Interests', th: 'ส่วนของผู้ถือหุ้นรวมส่วนได้เสียที่ไม่มีอำนาจควบคุม' },
         capital_stock: { en: 'Capital Stock', th: 'ทุนเรือนหุ้น' },
         common_stock: { en: 'Common Stock', th: 'หุ้นสามัญ' },
         retained_earnings: { en: 'Retained Earnings', th: 'กำไรสะสม' },
-        aoci: { en: 'Gains/Losses Not Affecting Retained Earnings', th: 'กำไร(ขาดทุน)เบ็ดเสร็จอื่นสะสม' }
+        aoci: { en: 'Accumulated Other Comprehensive Income (AOCI)', th: 'กำไร/ขาดทุนเบ็ดเสร็จอื่นสะสม (AOCI)' }
       };
 
-      const raw = bsItems[selectedRowKey as keyof typeof bsItems] || bsItems.total_assets;
+      const raw = bsItems[selectedRowKey as keyof typeof bsItems] || [];
       const filteredRaw = periodIndices.map(i => raw[i] !== undefined ? raw[i] : null);
-      const titleObj = bsTitles[selectedRowKey] || { en: 'Total Assets', th: 'สินทรัพย์รวม' };
+      const titleObj = bsTitles[selectedRowKey] || {en:selectedRowKey.replace(/_/g,' '),th:selectedRowKey.replace(/_/g,' ')};
       return {
         title: titleObj.en,
         title_th: titleObj.th,
@@ -651,8 +483,17 @@ export function FinancialStatementsTable({
     if (statementTab === 'cashflow') {
       const cfTitles: Record<string, { en: string; th: string }> = {
         ocf: { en: 'Operating Cash Flow', th: 'กระแสเงินสดจากการดำเนินงาน (OCF)' },
-        net_income_cont: { en: 'Net Income from Continuing Operations', th: 'กำไรสุทธิจากการดำเนินงานต่อเนื่อง' },
+        net_income_cont: { en: 'Total Net Income', th: 'กำไรสุทธิรวม' },
         provision_addback: { en: 'Provision for Credit Losses (Add-back)', th: 'บวกกลับสำรองหนี้สูญและผลขาดทุนด้านเครดิต' },
+        depreciation_amortization_and_impairment: {en:'Depreciation, Amortization & Impairment',th:'ค่าเสื่อมราคา ค่าตัดจำหน่าย และด้อยค่า'},
+        depreciation_amortization_and_accretion: {en:'Depreciation, Amortization & Accretion',th:'ค่าเสื่อมราคา ค่าตัดจำหน่าย และ accretion'},
+        equity_issuance_proceeds:{en:'Equity Issuance Proceeds (Broad Reported Basis)',th:'เงินสดออกหุ้นตามนิยามกว้างของแหล่งข้อมูล'},
+        dividends_to_noncontrolling_interests:{en:'Dividends to Noncontrolling Interests',th:'เงินปันผลจ่าย NCI'},
+        debt_issuance: {en:'Debt Issuance Proceeds',th:'เงินสดจากการออกหนี้'},
+        debt_repayments: {en:'Debt Repayments',th:'เงินสดจ่ายคืนหนี้'},
+        finance_lease_payments: {en:'Finance Lease Principal Payments',th:'เงินสดจ่ายคืนหนี้สัญญาเช่าการเงิน'},
+        distributions_to_noncontrolling_and_redeemable_interests: {en:'Distributions to NCI & Redeemable Interests',th:'เงินสดจ่าย NCI รวมส่วนที่ไถ่ถอนได้'},
+        distributions_to_noncontrolling_interests: {en:'Distributions to Noncontrolling Interests',th:'เงินสดจ่ายส่วนได้เสียที่ไม่มีอำนาจควบคุม'},
         depreciation: { en: 'Depreciation & Depletion & Amortization', th: 'ค่าเสื่อมราคาและค่าตัดจำหน่าย' },
         stock_based_compensation: { en: 'Stock-Based Compensation (SBC)', th: 'ค่าตอบแทนในรูปหุ้น (Stock-Based Compensation)' },
         non_cash_items: { en: 'Other Non-Cash Items', th: 'รายการที่ไม่ใช่เงินสดอื่นๆ' },
@@ -663,25 +504,28 @@ export function FinancialStatementsTable({
         change_payables: { en: 'Change in Payables and Accrued Expense', th: 'การเปลี่ยนแปลงในเจ้าหนี้การค้าและค่าใช้จ่ายค้างจ่าย' },
         change_other_ca: { en: 'Change in Other Current Assets', th: 'การเปลี่ยนแปลงในสินทรัพย์หมุนเวียนอื่น' },
         change_other_cl: { en: 'Change in Other Current Liabilities', th: 'การเปลี่ยนแปลงในหนี้สินหมุนเวียนอื่น' },
-        icf: { en: 'Net Cash Flow from Continuing Investing Activities', th: 'กระแสเงินสดสุทธิจากกิจกรรมลงทุน (ICF)' },
-        capex: { en: 'Net PPE Purchase and Sale (CapEx)', th: 'รายจ่ายฝ่ายทุน ซื้อ/ขายสินทรัพย์ถาวร (CapEx)' },
+        icf: { en: 'Net Cash from Investing Activities', th: 'กระแสเงินสดสุทธิจากกิจกรรมลงทุน (ICF)' },
+        capex: { en: 'Capital Expenditures (CapEx)', th: 'รายจ่ายฝ่ายทุน (CapEx)' },
         investment_purchase: { en: 'Net Investment Purchase and Sale', th: 'เงินสดสุทธิซื้อ/ขายเงินลงทุน' },
         other_investing: { en: 'Net Other Investing Changes', th: 'การเปลี่ยนแปลงอื่นๆ ในกิจกรรมลงทุน' },
         fcf_financing: { en: 'Financing Cash Flow', th: 'กระแสเงินสดจากกิจกรรมจัดหาเงิน' },
         change_in_deposits: { en: '⚠️ Change in Customer Deposits', th: 'การเปลี่ยนแปลงสุทธิในเงินฝากลูกค้า (เงินฝากไหลเข้า/ออก)' },
         debt_issuance_payments: { en: 'Net Issuance Payments Of Debt', th: 'เงินสดสุทธิจากการกู้ยืม/ชำระคืนหนี้' },
-        stock_issuance_repurchase: { en: 'Net Common Stock Issuance & Buybacks', th: 'เงินสดสุทธิจากการออกหุ้น / ซื้อหุ้นคืน' },
+        issuance_of_common_stock: { en: 'Common Stock Issuance Proceeds', th: 'เงินสดจากการออกหุ้นสามัญ' },
+        repurchase_of_common_stock: { en: 'Common Stock Repurchases', th: 'เงินสดจ่ายซื้อหุ้นสามัญคืน' },
+        equity_compensation_and_option_proceeds: {en:'Stock Option Exercises & Other Stock Issuance Proceeds',th:'เงินรับจากการใช้สิทธิหุ้นและการออกหุ้นอื่น'},
+        option_exercise_proceeds: { en: 'Stock Option Exercise Proceeds', th: 'เงินสดจากการใช้สิทธิซื้อหุ้น' },
         dividends_paid: { en: 'Cash Dividends Paid', th: 'เงินปันผลจ่าย' },
         other_financing: { en: 'Net Other Financing Charges', th: 'ค่าใช้จ่ายและรายการอื่นจากกิจกรรมจัดหาเงิน' },
-        ending_cash: { en: 'Ending Cash Balance', th: 'เงินสดคงเหลือปลายงวด' },
+        ending_cash: { en: 'Ending ' + cashBasisName, th: 'เงินสดคงเหลือปลายงวด' },
         net_change_cash: { en: 'Net Change in Cash', th: 'การเปลี่ยนแปลงสุทธิในเงินสด' },
-        beginning_cash: { en: 'Beginning Cash Balance', th: 'เงินสดคงเหลือต้นงวด' },
+        beginning_cash: { en: 'Beginning ' + cashBasisName, th: 'เงินสดคงเหลือต้นงวด' },
         free_cash_flow: { en: 'Free Cash Flow', th: 'กระแสเงินสดอิสระ (FCF = OCF - CapEx)' }
       };
 
-      const raw = cfItems[selectedRowKey as keyof typeof cfItems] || cfItems.ocf;
+      const raw = cfItems[selectedRowKey as keyof typeof cfItems] || [];
       const filteredRaw = periodIndices.map(i => raw[i] !== undefined ? raw[i] : null);
-      const titleObj = cfTitles[selectedRowKey] || { en: 'Operating Cash Flow', th: 'กระแสเงินสดจากการดำเนินงาน' };
+      const titleObj = cfTitles[selectedRowKey] || {en:selectedRowKey.replace(/_/g,' '),th:selectedRowKey.replace(/_/g,' ')};
       return {
         title: titleObj.en,
         title_th: titleObj.th,
@@ -707,6 +551,13 @@ export function FinancialStatementsTable({
   };
 
   const chartConfig = getActiveChartConfig();
+  const chartLabel = STATEMENT_SEMANTIC_LABELS[selectedRowKey];
+  if (chartLabel) { chartConfig.title = chartLabel.en; chartConfig.title_th = chartLabel.th; }
+  const hideParentIncomeAlias = commonParentIncomeAlias(effectiveData, periods);
+  const selectedMetric = React.useMemo(() => selectFinancialMetric(effectiveData, selectedRowKey, periods, compareMode), [effectiveData, selectedRowKey, periods.join('|'), compareMode]);
+  chartConfig.values = selectedMetric.values;
+  chartConfig.yoy_pcts = selectedMetric.changes;
+  const selectedCacheKey = analystCacheKey(ticker, selectedMetric, isThai);
   const hasValidPoints = chartConfig.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
 
   const getMetricGapExplanation = (metricKey: string): string => {
@@ -728,110 +579,64 @@ export function FinancialStatementsTable({
     yoy_pct: chartConfig.yoy_pcts && chartConfig.yoy_pcts[idx] !== undefined ? chartConfig.yoy_pcts[idx] : null
   }));
 
-  // Seamless Background Live AI Financial Analyst Fetching via Gemini 3.8 Flash
+  // The selected metric owns context, cache identity and asynchronous results.
   useEffect(() => {
-    if (!ticker.trim()) return;
-    const activeCfg = getActiveChartConfig();
-    const hasPoints = activeCfg.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
-    if (!hasPoints) {
-      setIsAiAnalyzing(false);
-      return;
-    }
-    const isSourceReconciled = Boolean(validation?.is_reconciled);
-    const metricContext = getMetricInterpretationContext({
-      metricKey: selectedRowKey,
-      metricName: activeCfg.title,
-      metricNameTh: activeCfg.title_th || activeCfg.title,
-      reportData: data,
-      ticker,
-      periods: activeCfg.periods,
-      historyValues: activeCfg.values,
-      yoyPcts: activeCfg.yoy_pcts,
-      unit: activeCfg.unit || (activeCfg.isCurrency ? 'M' : ''),
-      isCurrency: activeCfg.isCurrency,
-      isThai,
-      isSourceReconciled,
-      provenanceStatus: isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified'
-    });
-
-    const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;
-    if (liveAiInsights[cacheKey]) return;
-
-    let isSubscribed = true;
-    const fetchLiveAi = async () => {
-      setIsAiAnalyzing(true);
+    const token = requestSequence.current.next();
+    const controller = new AbortController();
+    setIsAiAnalyzing(false);
+    if (!ticker.trim() || !selectedMetric.dataQuality.eligibleForAi || liveAiInsights[selectedCacheKey])
+      return () => { controller.abort(); requestSequence.current.invalidate(); };
+    const requestId = crypto.randomUUID();
+    activeMetricRequest.current = { requestId, cacheKey: selectedCacheKey };
+    const context = getMetricInterpretationContext({metricKey: selectedMetric.metricKey, metricName: chartConfig.title,
+      metricNameTh: chartConfig.title_th, reportData: effectiveData, ticker, periods: selectedMetric.periods,
+      historyValues: selectedMetric.values, yoyPcts: selectedMetric.changes, unit: selectedMetric.definition?.unit,
+      isCurrency: chartConfig.isCurrency, isThai, isSourceReconciled: selectedMetric.dataQuality.currentVerified});
+    const fetchInsight = async () => {
       try {
-        const res = await authenticatedFetch('/api/analyze-metric', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ticker: ticker,
-            companyName: companyName,
-            metricKey: selectedRowKey,
-            metricName: isThai ? (activeCfg.title_th || activeCfg.title) : activeCfg.title,
-            metricNameTh: activeCfg.title_th || activeCfg.title,
-            periods: activeCfg.periods,
-            historyValues: activeCfg.values,
-            yoyPcts: activeCfg.yoy_pcts,
-            unit: activeCfg.unit || (activeCfg.isCurrency ? 'M' : ''),
-            isCurrency: activeCfg.isCurrency,
-            metricContext,
-            reportData: data,
-            context: {
-              revenue: income?.revenue,
-              operatingIncome: income?.operating_income,
-              netIncome: income?.net_income,
-              ocf: cashflow?.operating_cash_flow,
-              capex: cashflow?.capex,
-              fcf: cashflow?.free_cash_flow
-            },
-            redFlags: data?.red_flags || [],
-            isThai,
-            model: 'gemini-3.8-flash'
-          })
-        });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.insight && isSubscribed) {
-            const localFallback = getBusinessAwareLocalFallback(
-              metricContext,
-              activeCfg.values[activeCfg.values.length - 1],
-              isThai
-            );
-            setLiveAiInsights(prev => ({
-              ...prev,
-              [cacheKey]: {
-                ...localFallback,
-                ...json.insight,
-                key: selectedRowKey,
-                name: activeCfg.title,
-                name_th: activeCfg.title_th || activeCfg.title,
-                what_is_it_th: (json.insight?.what_is_it_th && json.insight.what_is_it_th.trim() !== '')
-                  ? json.insight.what_is_it_th
-                  : localFallback.what_is_it_th,
-                what_is_it_en: (json.insight?.what_is_it_en && json.insight.what_is_it_en.trim() !== '')
-                  ? json.insight.what_is_it_en
-                  : localFallback.what_is_it_en,
-                benchmark_th: (json.insight?.benchmark_th && json.insight.benchmark_th.trim() !== '')
-                  ? json.insight.benchmark_th
-                  : localFallback.benchmark_th,
-                benchmark_en: (json.insight?.benchmark_en && json.insight.benchmark_en.trim() !== '')
-                  ? json.insight.benchmark_en
-                  : localFallback.benchmark_en
-              }
-            }));
-          }
-        }
-      } catch (err) {
-        console.warn('Live AI insight fetch error:', err);
+        const result = await fetchMetricAi(selectedMetric, context, { requestId, ticker, companyName, isThai, compareMode,
+          signal: controller.signal, fetcher: authenticatedFetch,
+          isCurrent: () => requestSequence.current.accepts(token) && activeMetricRequest.current?.requestId === requestId,
+          onRequest: () => setIsAiAnalyzing(true),
+          diagnostic: process.env.NODE_ENV !== 'production' ? metadata => console.info('[metric-ai-client]', metadata) : undefined });
+        if (!requestSequence.current.accepts(token) || controller.signal.aborted) return;
+        if (result.insight) setLiveAiInsights(prev => ({...prev, [selectedCacheKey]: result.insight!}));
+        else if (result.reason) setAnalystFailures(prev => ({...prev, [selectedCacheKey]: result.reason!}));
       } finally {
-        if (isSubscribed) setIsAiAnalyzing(false);
+        if (requestSequence.current.accepts(token)) setIsAiAnalyzing(false);
       }
     };
+    void fetchInsight();
+    return () => { controller.abort(); requestSequence.current.invalidate(); if (activeMetricRequest.current?.requestId === requestId) activeMetricRequest.current = null; };
+  }, [ticker, companyName, effectiveData, selectedCacheKey, compareMode]);
 
-    fetchLiveAi();
-    return () => { isSubscribed = false; };
-  }, [selectedRowKey, isThai, statementTab, quarterFilter, periodType]);
+  const cellProvenance = (key: string, i: number) => {
+    const snapshot = effectiveData.period_snapshots?.[i];
+    const aliases: Record<string,string>={cash:'cash_and_equivalents',current_assets:'total_current_assets',current_liabilities:'total_current_liabilities',ocf:'operating_cash_flow',icf:'investing_cash_flow',fcf_financing:'financing_cash_flow',net_income_cont:'net_income',opex:'operating_expenses',eps:'eps_diluted'};
+    const observation = Object.values(snapshot?.observations || {}).find(o => o.metric === (aliases[key]||key));
+    if(['change_receivables','change_inventory','change_payables'].includes(key)&&observation?.valueSemantic!=='CASH_FLOW_EFFECT')
+      return 'Unavailable — cash-flow sign semantics are not verified in this saved observation; refresh the authoritative source. No balance movement is substituted.';
+    const indicator = indicatorDetails[key]?.[i];
+    const canonicalKey=selectedMetric.definition?.key===key?selectedMetric.definition.canonicalKey:aliases[key]||key;
+    const audit=effectiveData.verified_dataset?.completionAudit?.find(a=>a.metric.split('.')[1]===canonicalKey&&a.period===snapshot?.label);
+    const cashBalance=['beginning_cash','ending_cash'].includes(key)&&effectiveData.verified_dataset?.cashFlowCashBalances?.find(b=>b.period===snapshot?.label);
+    if(cashBalance) {
+      const source=key==='beginning_cash'?cashBalance.beginningSource:cashBalance.endingSource;
+      return [snapshot?.label,'instant',source.periodEnd,cashBalance.startDate,cashBalance.endDate,
+        cashBalance.basis==='CASH_AND_RESTRICTED_CASH_INCLUDING_DISPOSAL_GROUP'
+          ? 'us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsIncludingDisposalGroupAndDiscontinuedOperations'
+          : 'us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents',
+        cashBalance.basis,source.documentType,source.filingDate,source.documentUrl,'USD → million USD; cash-flow reconciliation scope'].filter(Boolean).join(' · ');
+    }
+    return indicator ? [indicator.status, indicator.basis, indicator.formula, ...indicator.sourceUrls].join(' · ')
+      : observation ? [snapshot?.label, observation.periodStart, observation.periodEnd, observation.concept,
+        observation.source?.documentType, observation.source?.filingDate, observation.periodType,
+        observation.sourceUnit || observation.unit, observation.unit, observation.verification, observation.valueSemantic,
+        key === 'net_income_common' && hideParentIncomeAlias ? 'Source alias: Net Income Attributable to Parent' : undefined,
+        key === 'aoci' ? 'Certain gains/losses accumulated in equity outside net income; not retained earnings.' : undefined,
+        observation.source?.documentUrl, observation.derivation].filter(Boolean).join(' · ')
+      : audit?`${audit.reasonCode} · ${audit.sourcePathsAttempted.join(' · ')}`:'Unavailable — no compatible verified observation';
+  };
 
   const renderGenericRow = (
     key: string,
@@ -841,6 +646,8 @@ export function FinancialStatementsTable({
     indent = 0,
     title_th?: string
   ) => {
+    const semanticLabel = STATEMENT_SEMANTIC_LABELS[key];
+    if (semanticLabel) { title = semanticLabel.en; title_th = semanticLabel.th; }
     const isSelected = selectedRowKey === key;
     const values = periodIndices.map(i => rawValues[i] !== undefined ? rawValues[i] : null);
     const comparisonList = calculateComparison(values, key);
@@ -892,13 +699,13 @@ export function FinancialStatementsTable({
           const val = values[idx];
           const comp = comparisonList[idx];
           return (
-            <td key={idx} className="py-2.5 px-3 text-right">
+            <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance(key, periodIndices[idx])}>
               <div className="font-mono text-stone-900 font-bold">
-                {val !== null && val !== undefined ? formatNum(val) : '-'}
+                {val !== null && val !== undefined ? /^change_(receivables|inventory|payables)$/.test(key) ? formatWorkingCapitalCashEffect(val) : formatNum(val) : '-'}
               </div>
               {compareMode !== 'hide' && comp !== null && (
-                <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
+                <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone(key, comp)}`}>
+                  <span>{formatMetricChange(key, comp)}</span>
                   <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                 </div>
               )}
@@ -909,7 +716,7 @@ export function FinancialStatementsTable({
     );
   };
 
-  const deadlines = ['Jun 29, 2024', 'Sep 28, 2024', 'Dec 28, 2024', 'Mar 29, 2025', 'Jun 28, 2025', 'Sep 27, 2025', 'Dec 27, 2025', 'Mar 28, 2026', 'Jun 27, 2026'];
+  const deadlines = rawPeriods.map((_, i) => effectiveData.period_snapshots?.[i]?.endDate || 'Unavailable');
 
   return (
     <div className="flex flex-col gap-6 w-full print:block print:overflow-visible">
@@ -976,11 +783,11 @@ export function FinancialStatementsTable({
             {rawPeriods.length > 0 && (
               <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{isThai ? `งบการเงินล่าสุด: ${rawPeriods[rawPeriods.length - 1]}` : `Latest Quarter: ${rawPeriods[rawPeriods.length - 1]}`}</span>
+                <span>{isThai ? `งบการเงินล่าสุด: ${rawPeriods[rawPeriods.length - 1]}` : `Latest Period: ${rawPeriods[rawPeriods.length - 1]}`}</span>
               </span>
             )}
             <span className="text-xs text-stone-500 font-mono">
-              {isThai ? 'สกุลเงิน:' : 'Currency:'} <strong className="text-stone-800">{currencyMode}</strong>
+              {isThai ? 'สกุลเงิน:' : 'Currency:'} <strong className="text-stone-800">{isForeignCurrency ? effectiveData.currency : currencyMode}</strong>
             </span>
           </div>
         </div>
@@ -1005,6 +812,7 @@ export function FinancialStatementsTable({
               </span>
             )}
             {/* Sector Template Badge */}
+            {data.source?.filing_date && <span className="text-stone-600">{isThai ? 'วันที่ยื่นงบ:' : 'Filed:'} {data.source.filing_date}</span>}
             <span className="px-2.5 py-1 rounded-xl bg-stone-900 text-white font-medium flex items-center gap-1.5 shadow-2xs">
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
               <span>
@@ -1027,12 +835,14 @@ export function FinancialStatementsTable({
                 {validation.is_balanced ? (
                   <>
                     <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Assets = Liab + Equity (Balanced: Δ &lt; 1%)</span>
+                    <span>Balance equation: PASS — disclosed totals reconcile (not full line coverage)</span>
                   </>
                 ) : (
                   <>
                     <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                    <span>Assets ≠ Liab + Equity (Imbalance Δ &gt; 1%)</span>
+                    <span>{validation.failed_guards?.some(guard => guard.startsWith('BALANCE_SHEET_IMBALANCE'))
+                      ? 'Balance equation: FAIL — disclosed totals disagree'
+                      : 'Balance equation: incomplete — required scope not disclosed'}</span>
                   </>
                 )}
               </span>
@@ -1046,7 +856,7 @@ export function FinancialStatementsTable({
                     ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200'
                     : 'bg-rose-50 text-rose-800 border-rose-200'
                 }`}
-                title={validation.failed_guards?.join('; ') || 'Accounting guards verified'}
+                title={validation.failed_guards?.join('; ') || `Accounting guards: ${validation.reconciliation_status || 'unavailable'}`}
               >
                 {validation.impossible_guards_passed ? (
                   <>
@@ -1056,7 +866,7 @@ export function FinancialStatementsTable({
                 ) : (
                   <>
                     <AlertTriangle className="w-3 h-3 text-rose-600" />
-                    <span>{validation.failed_guards?.[0]?.split(':')[0] || 'Accounting Guard Alert'}</span>
+                    <span>{validation.failed_guards?.[0]?.split(':')[0] || (isThai ? 'ตรวจได้บางส่วน — ข้อมูลไม่ครบ' : 'Partial reconciliation — incomplete inputs')}</span>
                   </>
                 )}
               </span>
@@ -1065,7 +875,7 @@ export function FinancialStatementsTable({
 
           <div className="flex items-center gap-2 text-stone-500 text-[11px] font-mono">
             <Shield className="w-3.5 h-3.5 text-[#0b5a4b]" />
-            <span>{isThai ? 'ยังไม่ได้ตรวจสอบการกระทบยอดแหล่งข้อมูล (Source reconciliation not verified)' : 'Source reconciliation not verified'}</span>
+            <span>{validation?.source_reconciliation_status === 'verified' ? (isThai ? 'ตรวจแหล่งที่มารายช่องแล้ว' : 'Cell sources verified') : (isThai ? 'Coverage: PARTIAL — บางรายการไม่มีข้อมูลที่ตรวจสอบได้ ไม่ใช่ผลตรวจสมการงบดุล' : 'Source coverage or reconciliation partial')}</span>
           </div>
         </div>
 
@@ -1084,8 +894,8 @@ export function FinancialStatementsTable({
               </div>
               <p className="text-amber-900/90 mt-1 leading-relaxed">
                 {isThai
-                  ? 'อัตราส่วนทางการเงิน (เช่น ROE, Margin, D/E) อาจดูสมเหตุสมผลเนื่องจากตัวตั้งและตัวหารผิดพลาดไปในทิศทางเดียวกันและหักล้างกันเอง ข้อมูลดิบในบางไตรมาสยังไม่ผ่านเกณฑ์สมดุลบัญชี ระบบได้ทำเครื่องหมายเตือนไว้ที่ตัวเลขดิบที่เกี่ยวข้อง'
-                  : 'Derived financial ratios (e.g. ROE, Margins, D/E) may appear normal because both numerator and denominator erred in the same direction, offsetting each other. Raw statement inputs have been flagged for audit review.'}
+                  ? validation.reconciliation_status === 'failed' ? 'ตัวเลขบางงวดกระทบยอดไม่ผ่าน จึงระงับอัตราส่วนที่พึ่งพาข้อมูลนั้น กรุณาตรวจรายการที่แจ้งไว้ก่อนตีความ' : 'ช่องที่ยอมรับมีแหล่งอ้างอิง แต่ยังขาดบางองค์ประกอบสำหรับกระทบยอดทั้งหมด อัตราส่วนคำนวณเฉพาะเมื่อข้อมูลที่ต้องใช้เข้ากันได้ ข้อมูลไม่ครบไม่ได้แปลว่าตัวเลขผิด'
+                  : validation.reconciliation_status === 'failed' ? 'Accounting inputs failed reconciliation. Affected ratios are suppressed; review the disclosed failures before interpreting this history.' : 'Accepted cells are source-backed, but some reconciliation components are unavailable. Ratios require their own compatible inputs; missing data is not evidence of an accounting error.'}
               </p>
             </div>
           </div>
@@ -1123,7 +933,7 @@ export function FinancialStatementsTable({
                     }}
                     className="text-xs font-mono text-stone-700 bg-white hover:bg-stone-50 px-3 py-1.5 rounded-xl border border-stone-200 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all font-medium"
                   >
-                    <span>{periodType === 'annual' ? (isAnnualActive ? 'Annual / LTM' : 'Annual') : `Quarterly · ${quarterFilter === 'all' ? 'All' : quarterFilter}`}</span>
+                    <span>{periodType === 'annual' ? (isReportedAnnualOnly ? 'Reported Annual' : isAnnualActive ? 'Annual / LTM' : 'Annual') : `Quarterly · ${quarterFilter === 'all' ? 'All' : quarterFilter}`}</span>
                     <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
                   </button>
 
@@ -1132,6 +942,7 @@ export function FinancialStatementsTable({
                       <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider px-2 py-1">Period Selection</div>
                       <button
                         type="button"
+                        disabled={isReportedAnnualOnly}
                         onClick={() => { setPeriodType('quarterly'); setQuarterFilter('all'); setPeriodDropdownOpen(false); }}
                         className="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-stone-100 text-stone-700 cursor-pointer text-left"
                       >
@@ -1142,6 +953,7 @@ export function FinancialStatementsTable({
                         <button
                           key={q}
                           type="button"
+                          disabled={isReportedAnnualOnly}
                           onClick={() => { setPeriodType('quarterly'); setQuarterFilter(q); setPeriodDropdownOpen(false); }}
                           className="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-stone-100 text-stone-700 cursor-pointer text-left"
                         >
@@ -1250,7 +1062,7 @@ export function FinancialStatementsTable({
                         axisLine={false}
                         tickLine={false}
                         tick={{ fontSize: 11, fill: '#ea580c' }}
-                        tickFormatter={(val: number) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`}
+                        tickFormatter={(val: number) => formatMetricChange(selectedRowKey, val)}
                       />
                     )}
                     <RechartsTooltip
@@ -1266,7 +1078,7 @@ export function FinancialStatementsTable({
                                 const nameLabel = isVal ? chartConfig.title : (compareMode === 'qoq' ? 'QoQ Change' : 'YoY Change');
                                 const valStr = isVal
                                   ? (chartConfig.isCurrency ? `${formatNum(entry.value)}` : `${Number(entry.value).toFixed(2)}${chartConfig.unit}`)
-                                  : `${Number(entry.value) > 0 ? '+' : ''}${Number(entry.value).toFixed(2)}%`;
+                                  : formatMetricChange(selectedRowKey, Number(entry.value));
                                 const colorDot = isVal ? '#38bdf8' : '#fb923c';
                                 return (
                                   <div key={i} className="flex items-center justify-between gap-3 text-xs">
@@ -1356,11 +1168,11 @@ export function FinancialStatementsTable({
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#0b5a4b] animate-pulse" />
               <span className="font-semibold">
-                {isThai ? 'มุมมองสรุปรายปี / LTM (คำนวณสะสม 4 ไตรมาสอย่างเคร่งครัดตามหลักการบัญชี)' : 'Annual / LTM Mode (Deterministic 4-Quarter Sum for Flows & Ending Balance for Instant Assets/Liabilities)'}
+                {isReportedAnnualOnly ? (isThai ? `งบรายปี IFRS ตามที่รายงาน สกุลเงิน ${effectiveData.currency} ไม่มีการสร้างไตรมาสหรือแปลงเป็น USD` : `Reported annual IFRS · ${effectiveData.currency}; no synthetic quarters or USD conversion`) : (isThai ? 'มุมมองสรุปรายปี / LTM (คำนวณสะสม 4 ไตรมาสอย่างเคร่งครัดตามหลักการบัญชี)' : 'Annual / LTM Mode (Deterministic 4-Quarter Sum for Flows & Ending Balance for Instant Assets/Liabilities)')}
               </span>
             </div>
             <span className="text-[10px] text-stone-500 uppercase tracking-wider font-sans">
-              {isThai ? 'ข้อมูลตรวจสอบแล้ว' : 'SEC GAAP Normalized'}
+              {isThai ? 'ข้อมูล SEC ที่ยอมรับได้' : effectiveData.verified_dataset?.generatedBy?.includes('ifrs') ? 'SEC IFRS Observations' : 'SEC GAAP Observations'}
             </span>
           </div>
         )}
@@ -1412,6 +1224,9 @@ export function FinancialStatementsTable({
                               <div>
                                 <div className="font-bold text-stone-900 leading-snug flex items-center gap-1.5 flex-wrap">
                                   <span>{metric.name}</span>
+                                  {indicatorDetails[metric.key]?.at(-1)?.status === 'approximate' && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-800" title={indicatorDetails[metric.key].at(-1)?.basis}>{isThai ? 'ค่าประมาณ' : 'Approximate'}</span>
+                                  )}
                                   {Boolean(getMetricCalculationDetail(metric.key, 0, effectiveData)) && (
                                     <button
                                       type="button"
@@ -1449,14 +1264,14 @@ export function FinancialStatementsTable({
                               <td key={pIdx} className="py-2.5 px-3 text-right">
                                 <div
                                   className="font-mono text-stone-900 font-bold"
-                                  title={val === null || val === undefined ? getMetricGapExplanation(metric.key) : undefined}
+                                  title={val === null || val === undefined ? getMetricGapExplanation(metric.key) : cellProvenance(metric.key, periodIndices[pIdx])}
                                 >
                                   {val !== null && val !== undefined ? `${val}${metric.unit}` : '—'}
                                 </div>
                                 {compareMode !== 'hide' && comp !== null && (
                                   <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp > 0 ? 'text-emerald-600' : comp < 0 ? 'text-rose-600' : 'text-stone-400'
                                     }`}>
-                                    <span>{comp > 0 ? '+' : ''}{comp.toFixed(2)}%</span>
+                                    <span>{formatMetricChange(metric.key, comp)}</span>
                                     <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                                   </div>
                                 )}
@@ -1513,10 +1328,10 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => income.revenue[i]);
                         const comp = calculateComparison(vals, 'revenue')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('revenue', periodIndices[idx])}>
                             <div className="font-mono text-stone-900 font-bold">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('revenue', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1542,10 +1357,10 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => rawNii[i] !== undefined ? rawNii[i] : null);
                         const comp = calculateComparison(vals, 'net_interest_income')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('net_interest_income', periodIndices[idx])}>
                             <div className="font-mono text-stone-800 font-medium">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('net_interest_income', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1571,10 +1386,10 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => rawNonInt[i] !== undefined ? rawNonInt[i] : null);
                         const comp = calculateComparison(vals, 'non_interest_income')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('non_interest_income', periodIndices[idx])}>
                             <div className="font-mono text-stone-800 font-medium">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('non_interest_income', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1600,12 +1415,12 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => rawProv[i] !== undefined ? rawProv[i] : null);
                         const comp = calculateComparison(vals, 'provision_for_credit_losses')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('provision_for_credit_losses', periodIndices[idx])}>
                             <div className="font-mono text-rose-700 font-medium">
                               {vals[idx] !== null && vals[idx] !== undefined ? `(${formatNum(Math.abs(vals[idx]!))})` : '-'}
                             </div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp <= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('provision_for_credit_losses', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1633,10 +1448,10 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => income.operating_expenses ? income.operating_expenses[i] : null);
                         const comp = calculateComparison(vals, 'opex')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('opex', periodIndices[idx])}>
                             <div className="font-mono text-stone-800">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-stone-500' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('opex', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1664,10 +1479,10 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => income.operating_income ? income.operating_income[i] : null);
                         const comp = calculateComparison(vals, 'operating_income')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('operating_income', periodIndices[idx])}>
                             <div className="font-mono text-stone-900 font-bold">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('operating_income', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1697,10 +1512,10 @@ export function FinancialStatementsTable({
                         const vals = periodIndices.map(i => income.revenue[i]);
                         const comp = calculateComparison(vals, 'revenue')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('revenue', periodIndices[idx])}>
                             <div className="font-mono text-stone-900 font-bold">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('revenue', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1722,18 +1537,14 @@ export function FinancialStatementsTable({
                         </div>
                       </td>
                       {periods.map((_, idx) => {
-                        const rawCogs = income.cogs || income.revenue.map((r, i) => {
-                          const gp = income.gross_profit?.[i];
-                          if (r !== null && r !== undefined && gp !== null && gp !== undefined) return r - gp;
-                          return null;
-                        });
+                        const rawCogs = income.cogs || [];
                         const vals = periodIndices.map(i => rawCogs[i]);
                         const comp = calculateComparison(vals, 'cogs')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('cogs', periodIndices[idx])}>
                             <div className="font-mono text-stone-800">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-stone-500' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('cogs', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1758,18 +1569,14 @@ export function FinancialStatementsTable({
                         </div>
                       </td>
                       {periods.map((_, idx) => {
-                        const rawGp = income.gross_profit || income.revenue.map((r, i) => {
-                          const c = income.cogs?.[i];
-                          if (r !== null && r !== undefined && c !== null && c !== undefined) return r - c;
-                          return null;
-                        });
+                        const rawGp = income.gross_profit || [];
                         const vals = periodIndices.map(i => rawGp[i]);
                         const comp = calculateComparison(vals, 'gross_profit')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('gross_profit', periodIndices[idx])}>
                             <div className="font-mono text-stone-900 font-bold">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('gross_profit', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1789,23 +1596,19 @@ export function FinancialStatementsTable({
                           <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${selectedRowKey === 'opex' ? 'bg-[#0b5a4b]' : 'bg-stone-300'}`} />
                           <div>
                             <div className="font-bold text-stone-900 leading-snug">Operating Expense</div>
-                            <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">ค่าใช้จ่ายในการดำเนินงานรวม (SG&A + R&D)</div>
+                            <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">ค่าใช้จ่ายในการดำเนินงานตามรายงาน</div>
                           </div>
                         </div>
                       </td>
                       {periods.map((_, idx) => {
-                        const rawOpex = income.operating_expenses || (income.gross_profit || []).map((gp, i) => {
-                          const op = income.operating_income?.[i];
-                          if (gp !== null && gp !== undefined && op !== null && op !== undefined) return gp - op;
-                          return null;
-                        });
+                        const rawOpex = income.operating_expenses || [];
                         const vals = periodIndices.map(i => rawOpex[i]);
                         const comp = calculateComparison(vals, 'opex')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('opex', periodIndices[idx])}>
                             <div className="font-mono text-stone-800">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-stone-500' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('opex', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1824,24 +1627,20 @@ export function FinancialStatementsTable({
                         <div className="flex items-start gap-2">
                           <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${selectedRowKey === 'operating_income' ? 'bg-[#0b5a4b]' : 'bg-stone-300'}`} />
                           <div>
-                            <div className="font-bold text-stone-900 leading-snug">Operating Profit (EBIT)</div>
+                            <div className="font-bold text-stone-900 leading-snug">Operating Income</div>
                             <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">กำไรจากการดำเนินงาน</div>
                           </div>
                         </div>
                       </td>
                       {periods.map((_, idx) => {
-                        const rawOp = income.operating_income || (income.gross_profit || []).map((gp, i) => {
-                          const opex = income.operating_expenses?.[i];
-                          if (gp !== null && gp !== undefined && opex !== null && opex !== undefined) return gp - opex;
-                          return null;
-                        });
+                        const rawOp = income.operating_income || [];
                         const vals = periodIndices.map(i => rawOp[i]);
                         const comp = calculateComparison(vals, 'operating_income')[idx];
                         return (
-                          <td key={idx} className="py-2.5 px-3 text-right">
+                          <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('operating_income', periodIndices[idx])}>
                             <div className="font-mono text-stone-900 font-bold">{formatNum(vals[idx])}</div>
                             {compareMode !== 'hide' && comp !== null && (
-                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('operating_income', comp)}`}>
                                 <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                                 <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                               </div>
@@ -1853,15 +1652,19 @@ export function FinancialStatementsTable({
                   </>
                 )}
 
-                {/* 6. Other Non-Operating Income */}
+                {/* Preserve disclosed interest separately; never synthesize a
+                    non-operating total from the narrower other-income row. */}
+                {income.interest_income?.some(value=>value!=null)&&renderGenericRow('interest_income','Interest Income (Reported Scope)',income.interest_income,false,1,'รายได้ดอกเบี้ยตามขอบเขตที่รายงาน')}
+                {income.interest_expense?.some(value=>value!=null)&&renderGenericRow('interest_expense','Interest Expense',income.interest_expense,false,1,'ค่าใช้จ่ายดอกเบี้ย')}
+                {/* 6. Other Income (Expense), Net */}
                 <tr
                   onClick={() => setSelectedRowKey('other_income')}
                   className={`transition-colors cursor-pointer ${selectedRowKey === 'other_income' ? 'bg-stone-100/90 font-semibold text-stone-950 border-l-4 border-l-[#0b5a4b]' : 'hover:bg-stone-50/60 text-stone-600'}`}
                 >
                   <td className="py-2.5 px-4 pl-8 sticky left-0 bg-inherit z-10 shadow-xs">
                     <div>
-                      <div className="font-semibold text-stone-700 leading-snug">— Other Non-Operating Income (Expenses)</div>
-                      <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">รายได้ / ค่าใช้จ่ายอื่นที่ไม่เกี่ยวกับการดำเนินงาน</div>
+                      <div className="font-semibold text-stone-700 leading-snug">— Other Income (Expense), Net</div>
+                      <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">รายได้ (ค่าใช้จ่าย) อื่นสุทธิ</div>
                     </div>
                   </td>
                   {periods.map((_, idx) => {
@@ -1870,10 +1673,10 @@ export function FinancialStatementsTable({
                     const val = vals[idx];
                     const comp = calculateComparison(vals, 'other_income')[idx];
                     return (
-                      <td key={idx} className="py-2.5 px-3 text-right">
+                      <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('other_income', periodIndices[idx])}>
                         <div className="font-mono text-stone-700 font-medium">{val !== null && val !== undefined ? formatNum(val) : '-'}</div>
                         {compareMode !== 'hide' && comp !== null && (
-                          <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('other_income', comp)}`}>
                             <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                             <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                           </div>
@@ -1884,7 +1687,7 @@ export function FinancialStatementsTable({
                 </tr>
 
                 {/* 7. Net Income */}
-                <tr
+                {income.net_income?.some(value => typeof value === 'number') && <tr
                   onClick={() => setSelectedRowKey('net_income')}
                   className={`transition-colors cursor-pointer ${selectedRowKey === 'net_income' ? 'bg-stone-100/90 font-bold text-stone-950 border-l-4 border-l-[#0b5a4b]' : 'hover:bg-stone-50/60 font-bold text-stone-900'}`}
                 >
@@ -1892,8 +1695,8 @@ export function FinancialStatementsTable({
                     <div className="flex items-start gap-2">
                       <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${selectedRowKey === 'net_income' ? 'bg-[#0b5a4b]' : 'bg-stone-400'}`} />
                       <div>
-                        <div className="font-bold text-stone-900 leading-snug">Net Income to Common Stockholders</div>
-                        <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">กำไรสุทธิส่วนของผู้ถือหุ้นสามัญ</div>
+                        <div className="font-bold text-stone-900 leading-snug">Total Net Income</div>
+                        <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">กำไรสุทธิรวม</div>
                       </div>
                     </div>
                   </td>
@@ -1901,10 +1704,10 @@ export function FinancialStatementsTable({
                     const vals = periodIndices.map(i => income.net_income[i]);
                     const comp = calculateComparison(vals, 'net_income')[idx];
                     return (
-                      <td key={idx} className="py-2.5 px-3 text-right">
+                      <td key={idx} className="py-2.5 px-3 text-right" title={cellProvenance('net_income', periodIndices[idx])}>
                         <div className="font-mono font-bold text-stone-900">{formatNum(vals[idx])}</div>
                         {compareMode !== 'hide' && comp !== null && (
-                          <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${comp >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          <div className={`font-mono text-[10px] flex items-center justify-end gap-1 ${metricDeltaTone('net_income', comp)}`}>
                             <span>{comp >= 0 ? '+' : ''}{comp.toFixed(2)}%</span>
                             <span className="text-[8px] text-stone-400 font-sans uppercase font-medium">({compareMode})</span>
                           </div>
@@ -1912,8 +1715,13 @@ export function FinancialStatementsTable({
                       </td>
                     );
                   })}
-                </tr>
+                </tr>}
 
+                {renderGenericRow('net_income_common', 'Net Income to Common Stockholders', income.net_income_common || [], true, 0, 'กำไรสุทธิของผู้ถือหุ้นสามัญ')}
+                {!hideParentIncomeAlias && renderGenericRow('net_income_parent', 'Net Income Attributable to Parent', income.net_income_parent || [], false, 1, 'กำไรสุทธิที่เป็นของบริษัทใหญ่ ไม่แทนกำไรสุทธิรวม/กำไรหุ้นสามัญโดยอัตโนมัติ')}
+                {income.research_and_development?.some(value => typeof value === 'number') && renderGenericRow('research_and_development', 'Research & Development', income.research_and_development, false, 1, 'วิจัยและพัฒนา')}
+                {!income.research_and_development?.some(value => typeof value === 'number') && renderGenericRow('research_and_development_excluding_acquired', 'R&D (Excluding Acquired In-Process Costs)', income.research_and_development_excluding_acquired || [], false, 1, 'วิจัยและพัฒนา ไม่รวมต้นทุนโครงการที่ซื้อมา')}
+                {renderGenericRow('selling_general_administrative', 'Selling, General & Administrative', income.selling_general_administrative || [], false, 1, 'ค่าใช้จ่ายขายและบริหาร')}
                 {/* 8. Diluted EPS */}
                 <tr
                   onClick={() => setSelectedRowKey('eps')}
@@ -1924,7 +1732,7 @@ export function FinancialStatementsTable({
                       <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${selectedRowKey === 'eps' ? 'bg-[#0b5a4b]' : 'bg-stone-300'}`} />
                       <div>
                         <div className="font-bold text-stone-900 leading-snug">Diluted EPS</div>
-                        <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">กำไรต่อหุ้นปรับลด (ดอลลาร์/หุ้น)</div>
+                        <div className="text-[11px] font-normal text-stone-500 font-sans mt-0.5">กำไรต่อหุ้นปรับลด ({effectiveData.currency||'USD'}/หุ้น)</div>
                       </div>
                     </div>
                   </td>
@@ -1932,13 +1740,13 @@ export function FinancialStatementsTable({
                     const rawEps = income.eps_diluted || [];
                     const vals = periodIndices.map(i => rawEps[i] !== undefined ? rawEps[i] : null);
                     const epsVal = vals[idx];
-                    const yoy = calculateComparison(vals)[idx];
+                    const yoy = calculateComparison(vals, 'eps')[idx];
                     return (
                       <td key={idx} className="py-2.5 px-3 text-right">
-                        <div className="font-mono font-bold text-stone-900">{epsVal !== null && epsVal !== undefined ? `$${epsVal.toFixed(2)}` : '-'}</div>
+                        <div className="font-mono font-bold text-stone-900">{epsVal !== null && epsVal !== undefined ? `${isForeignCurrency?effectiveData.currency+' ':'$'}${epsVal.toFixed(2)}` : '-'}</div>
                         {compareMode !== 'hide' && yoy !== null && (
                           <div className={`font-mono text-[10px] ${yoy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {yoy >= 0 ? '+' : ''}{yoy.toFixed(2)}%
+                            {formatMetricChange('eps', yoy)}
                           </div>
                         )}
                       </td>
@@ -1981,7 +1789,7 @@ export function FinancialStatementsTable({
                     {renderGenericRow('loans_held_for_investment', 'Loans Held for Investment (Net of Allowance)', bsItems.loans_held_for_investment, false, 1, 'เงินให้สินเชื่อเพื่อการลงทุน (สุทธิจากค่าเผื่อหนี้สงสัยจะสูญ)')}
                     {renderGenericRow('loans_held_for_sale', 'Loans Held for Sale', bsItems.loans_held_for_sale, false, 1, 'เงินให้สินเชื่อเพื่อการค้า/ขาย')}
                     {renderGenericRow('net_ppe', 'Premises and Equipment (Net PPE)', bsItems.net_ppe, false, 1, 'ที่ดิน อาคาร และอุปกรณ์')}
-                    {renderGenericRow('goodwill', 'Goodwill & Intangibles (M&A Assets)', bsItems.goodwill, false, 1, 'ค่าความนิยมและสินทรัพย์ไม่มีตัวตนจากการซื้อกิจการ (Galileo, Technisys, Peach)')}
+                    {renderGenericRow('goodwill', 'Goodwill', bsItems.goodwill, false, 1, 'ค่าความนิยม')}
 
                     {/* 3. Total Liabilities */}
                     {renderGenericRow('total_liabilities', 'Total Liabilities', bsItems.total_liabilities, true, 0, 'หนี้สินรวม')}
@@ -1994,10 +1802,14 @@ export function FinancialStatementsTable({
                     {renderGenericRow('long_term_debt', 'Long-Term Notes & Debt Obligations', bsItems.long_term_debt, false, 1, 'หนี้สินระยะยาวและหุ้นกู้')}
 
                     {/* 6. Total Stockholders' Equity */}
-                    {renderGenericRow('total_equity', 'Total Stockholders\' Equity', bsItems.total_equity, true, 0, 'ส่วนของผู้ถือหุ้นรวม')}
-                    {renderGenericRow('capital_stock', 'Common Stock & Additional Paid-in Capital', bsItems.capital_stock, false, 1, 'ทุนเรือนหุ้นและส่วนเกินมูลค่าหุ้น')}
+                    {renderGenericRow('total_equity', 'Total Equity including NCI', bsItems.total_equity, true, 0, 'ส่วนของผู้ถือหุ้นรวมส่วนได้เสียที่ไม่มีอำนาจควบคุม')}
+                    {renderGenericRow('stockholders_equity', 'Parent Stockholders\' Equity', bsItems.stockholders_equity, false, 1, 'ส่วนของผู้ถือหุ้นบริษัทใหญ่')}
+                    {renderGenericRow('noncontrolling_interest', 'Noncontrolling Interest', bsItems.noncontrolling_interest, false, 1, 'ส่วนได้เสียที่ไม่มีอำนาจควบคุม')}
+                    {renderGenericRow('redeemable_noncontrolling_interest', 'Redeemable Noncontrolling Interest (Mezzanine)', bsItems.redeemable_noncontrolling_interest, false, 1, 'ส่วนได้เสียที่ไถ่ถอนได้ แสดงนอกส่วนของผู้ถือหุ้น')}
+                    {renderGenericRow('common_stock', 'Common Stock', bsItems.common_stock, false, 1, 'หุ้นสามัญ')}
+                    {renderGenericRow('additional_paid_in_capital', 'Additional Paid-in Capital', balance?.additional_paid_in_capital || [], false, 1, 'ส่วนเกินมูลค่าหุ้น')}
                     {renderGenericRow('retained_earnings', 'Retained Earnings (Accumulated Deficit)', bsItems.retained_earnings, false, 1, 'กำไร(ขาดทุน)สะสม')}
-                    {renderGenericRow('aoci', 'Accumulated Other Comprehensive Income (AOCI)', bsItems.aoci, false, 1, 'กำไร(ขาดทุน)เบ็ดเสร็จอื่นสะสม')}
+                    {renderGenericRow('aoci', 'Accumulated Other Comprehensive Income (AOCI)', bsItems.aoci, false, 1, 'กำไร/ขาดทุนเบ็ดเสร็จอื่นสะสม (AOCI)')}
                   </>
                 ) : (
                   <>
@@ -2017,7 +1829,7 @@ export function FinancialStatementsTable({
                     {renderGenericRow('non_current_assets', 'Total Non-Current Assets', bsItems.non_current_assets, true, 0, 'สินทรัพย์ไม่หมุนเวียนรวม')}
                     {renderGenericRow('net_ppe', 'Net PPE', bsItems.net_ppe, false, 1, 'ที่ดิน อาคาร และอุปกรณ์สุทธิ')}
                     {renderGenericRow('available_for_sale_securities', 'Available for Sale Securities', bsItems.available_for_sale_securities, false, 1, 'หลักทรัพย์เผื่อขาย / เงินลงทุนระยะยาว')}
-                    {renderGenericRow('goodwill', 'Goodwill and Other Intangible Assets', bsItems.goodwill, false, 1, 'ค่าความนิยมและสินทรัพย์ไม่มีตัวตน')}
+                    {renderGenericRow('goodwill', 'Goodwill', bsItems.goodwill, false, 1, 'ค่าความนิยม')}
 
                     {/* 4. Total Liabilities */}
                     {renderGenericRow('total_liabilities', 'Total Liabilities', bsItems.total_liabilities, true, 0, 'หนี้สินรวม')}
@@ -2027,33 +1839,42 @@ export function FinancialStatementsTable({
                     {renderGenericRow('payables', 'Payables', bsItems.payables, false, 1, 'เจ้าหนี้การค้าและค่าใช้จ่ายค้างจ่าย')}
                     {renderGenericRow('accounts_payable', 'Accounts Payable', bsItems.accounts_payable, false, 2, 'เจ้าหนี้การค้า')}
                     {renderGenericRow('tax_payable', 'Total Tax Payable', bsItems.tax_payable, false, 2, 'ภาษีเงินได้ค้างจ่าย')}
-                    {renderGenericRow('short_term_debt', 'Short-Term Debt & Capital Lease', bsItems.short_term_debt, false, 1, 'หนี้สินระยะสั้นและหนี้สัญญาเช่า')}
+                    {renderGenericRow('short_term_debt', 'Current Debt', bsItems.short_term_debt, false, 1, 'หนี้สินทางการเงินระยะสั้น ไม่รวมสัญญาเช่า')}
+                    {bsItems.current_debt_and_finance_leases.length > 0 && renderGenericRow('current_debt_and_finance_leases','Current Debt & Finance Leases',bsItems.current_debt_and_finance_leases,false,1,'หนี้สินระยะสั้นรวมสัญญาเช่าการเงิน')}
+                    {bsItems.finance_lease_liabilities_current.length > 0 && renderGenericRow('finance_lease_liabilities_current','Current Finance Lease Liability',bsItems.finance_lease_liabilities_current,false,1,'หนี้สินสัญญาเช่าการเงินระยะสั้น')}
                     {renderGenericRow('current_deferred_liabilities', 'Current Deferred Liabilities', bsItems.current_deferred_liabilities, false, 1, 'หนี้สินรอการรับรู้ระยะสั้น / รายได้รับล่วงหน้า')}
 
                     {/* 6. Non-Current Liabilities Group */}
                     {renderGenericRow('non_current_liabilities', 'Total Non-Current Liabilities', bsItems.non_current_liabilities, true, 0, 'หนี้สินไม่หมุนเวียนรวม')}
-                    {renderGenericRow('long_term_debt', 'Long Term Debt and Capital Lease Obligation', bsItems.long_term_debt, false, 1, 'หนี้สินระยะยาวและหนี้สัญญาเช่าระยะยาว')}
+                    {renderGenericRow('long_term_debt', 'Long-Term Debt', bsItems.long_term_debt, false, 1, 'หนี้สินทางการเงินระยะยาว')}
+                    {bsItems.long_term_debt_and_finance_leases.length > 0 && renderGenericRow('long_term_debt_and_finance_leases', 'Long-Term Debt and Finance Leases', bsItems.long_term_debt_and_finance_leases, false, 1, 'หนี้สินระยะยาวรวมสัญญาเช่าการเงิน')}
+                    {bsItems.noncurrent_debt_and_finance_leases.length > 0 && renderGenericRow('noncurrent_debt_and_finance_leases','Noncurrent Debt & Finance Leases',bsItems.noncurrent_debt_and_finance_leases,false,1,'หนี้สินระยะยาวรวมสัญญาเช่าการเงิน')}
+                    {bsItems.finance_lease_liabilities_non_current.length > 0 && renderGenericRow('finance_lease_liabilities_non_current','Noncurrent Finance Lease Liability',bsItems.finance_lease_liabilities_non_current,false,1,'หนี้สินสัญญาเช่าการเงินระยะยาว')}
 
                     {/* 7. Total Equity & Stockholders' Equity Group */}
-                    {renderGenericRow('total_equity', 'Total Equity / Stockholders\' Equity', bsItems.total_equity, true, 0, 'ส่วนของผู้ถือหุ้นรวม')}
+                    {renderGenericRow('total_equity', 'Total Equity including NCI', bsItems.total_equity, true, 0, 'ส่วนของผู้ถือหุ้นรวมส่วนได้เสียที่ไม่มีอำนาจควบคุม')}
+                    {renderGenericRow('stockholders_equity', 'Parent Stockholders\' Equity', bsItems.stockholders_equity, false, 1, 'ส่วนของผู้ถือหุ้นบริษัทใหญ่')}
+                    {renderGenericRow('noncontrolling_interest', 'Noncontrolling Interest', bsItems.noncontrolling_interest, false, 1, 'ส่วนได้เสียที่ไม่มีอำนาจควบคุม')}
+                    {renderGenericRow('redeemable_noncontrolling_interest', 'Redeemable Noncontrolling Interest (Mezzanine)', bsItems.redeemable_noncontrolling_interest, false, 1, 'ส่วนได้เสียที่ไถ่ถอนได้ แสดงนอกส่วนของผู้ถือหุ้น')}
                     {renderGenericRow('capital_stock', 'Capital Stock', bsItems.capital_stock, false, 1, 'ทุนเรือนหุ้น')}
                     {renderGenericRow('common_stock', 'Common Stock', bsItems.common_stock, false, 2, 'หุ้นสามัญ')}
+                    {renderGenericRow('additional_paid_in_capital', 'Additional Paid-in Capital', balance?.additional_paid_in_capital || [], false, 1, 'ส่วนเกินมูลค่าหุ้น')}
                     {renderGenericRow('retained_earnings', 'Retained Earnings', bsItems.retained_earnings, false, 1, 'กำไรสะสม')}
-                    {renderGenericRow('aoci', 'Gains/Losses Not Affecting Retained Earnings', bsItems.aoci, false, 1, 'กำไร(ขาดทุน)เบ็ดเสร็จอื่นสะสม')}
+                    {renderGenericRow('aoci', 'Accumulated Other Comprehensive Income (AOCI)', bsItems.aoci, false, 1, 'กำไร/ขาดทุนเบ็ดเสร็จอื่นสะสม (AOCI)')}
                   </>
                 )}
 
                 {/* Metadata Footer */}
                 <tr className="bg-stone-50/80 text-[11px] text-stone-500 font-mono">
-                  <td className="py-2.5 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs font-bold text-stone-600">Deadline</td>
-                  {periodIndices.map(i => deadlines[i % deadlines.length]).map((d, idx) => (
+                  <td className="py-2.5 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs font-bold text-stone-600">Period End</td>
+                  {periodIndices.map(i => deadlines[i]).map((d, idx) => (
                     <td key={idx} className="py-2.5 px-3 text-right">{d}</td>
                   ))}
                 </tr>
                 <tr className="bg-stone-50/80 text-[11px] text-stone-500 font-mono">
                   <td className="py-2 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs font-bold text-stone-600">Accounting Standard</td>
                   {periods.map((_, idx) => (
-                    <td key={idx} className="py-2 px-3 text-right">US_GAAP</td>
+                    <td key={idx} className="py-2 px-3 text-right">{effectiveData.verified_dataset?.generatedBy?.includes('ifrs') ? 'IFRS' : 'US_GAAP'}</td>
                   ))}
                 </tr>
               </tbody>
@@ -2085,9 +1906,11 @@ export function FinancialStatementsTable({
                   <>
                     {/* 1. Operating Cash Flow Group */}
                     {renderGenericRow('ocf', 'Operating Cash Flow', cfItems.ocf, true, 0, 'กระแสเงินสดจากการดำเนินงาน (OCF)')}
-                    {renderGenericRow('net_income_cont', 'Net Income from Continuing Operations', cfItems.net_income_cont, false, 1, 'กำไรสุทธิจากการดำเนินงาน')}
+                    {renderGenericRow('net_income_cont', 'Total Net Income', cfItems.net_income_cont, false, 1, 'กำไรสุทธิจากการดำเนินงาน')}
                     {renderGenericRow('provision_addback', 'Provision for Credit Losses (Non-Cash Add-back)', cfItems.provision_addback, false, 1, 'บวกกลับสำรองหนี้สูญ (รายการที่ไม่ใช่เงินสด)')}
                     {renderGenericRow('depreciation', 'Depreciation & Amortization', cfItems.depreciation, false, 1, 'ค่าเสื่อมราคาและค่าตัดจำหน่าย')}
+                    {cfItems.depreciation_amortization_and_accretion.length > 0 && renderGenericRow('depreciation_amortization_and_accretion','Depreciation, Amortization & Accretion',cfItems.depreciation_amortization_and_accretion,false,1,'รวม accretion แยกจาก D&A ที่ใช้คำนวณ EBITDA')}
+                    {cfItems.depreciation_amortization_and_impairment.length > 0 && renderGenericRow('depreciation_amortization_and_impairment','Depreciation, Amortization & Impairment',cfItems.depreciation_amortization_and_impairment,false,1,'รวมด้อยค่า แยกจาก D&A ที่ใช้คำนวณ EBITDA')}
                     {renderGenericRow('stock_based_compensation', 'Stock-Based Compensation (Non-Cash Add-back)', cfItems.stock_based_compensation, false, 1, 'ค่าตอบแทนในรูปหุ้น (บวกกลับรายการที่ไม่ใช่เงินสด)')}
                     {renderGenericRow('non_cash_items', 'Other Operating Adjustments', cfItems.non_cash_items, false, 1, 'การปรับปรุงรายการดำเนินงานอื่นๆ')}
                     {renderGenericRow('change_in_loans_held_for_sale', '⚠️ Change in Loans Held for Sale (Originations vs Sales)', cfItems.change_in_loans_held_for_sale, true, 1, 'การเปลี่ยนแปลงในเงินให้สินเชื่อเพื่อการค้า/ขาย (ตัวแปรหลักฉุด/ดัน OCF สถาบันการเงิน)')}
@@ -2100,10 +1923,20 @@ export function FinancialStatementsTable({
 
                     {/* 3. Financing Cash Flow Group */}
                     {renderGenericRow('fcf_financing', 'Financing Cash Flow', cfItems.fcf_financing, true, 0, 'กระแสเงินสดจากกิจกรรมจัดหาเงิน')}
+                    {cfItems.debt_issuance.length > 0 && renderGenericRow('debt_issuance','Debt Issuance Proceeds',cfItems.debt_issuance,false,1,'เงินสดจากการออกหนี้')}
+                    {cfItems.debt_repayments.length > 0 && renderGenericRow('debt_repayments','Debt Repayments',cfItems.debt_repayments,false,1,'เงินสดจ่ายคืนหนี้')}
+                    {cfItems.finance_lease_payments.length > 0 && renderGenericRow('finance_lease_payments','Finance Lease Principal Payments',cfItems.finance_lease_payments,false,1,'เงินสดจ่ายคืนหนี้สัญญาเช่าการเงิน')}
+                    {cfItems.distributions_to_noncontrolling_interests.length > 0 && renderGenericRow('distributions_to_noncontrolling_interests','Distributions to Noncontrolling Interests',cfItems.distributions_to_noncontrolling_interests,false,1,'เงินสดจ่ายส่วนได้เสียที่ไม่มีอำนาจควบคุม')}
+                    {cfItems.distributions_to_noncontrolling_and_redeemable_interests.length > 0 && renderGenericRow('distributions_to_noncontrolling_and_redeemable_interests','Distributions to NCI & Redeemable Interests',cfItems.distributions_to_noncontrolling_and_redeemable_interests,false,1,'รายงานรวม NCI และส่วนที่ไถ่ถอนได้ แยกจาก NCI ปกติ')}
                     {renderGenericRow('change_in_deposits', '⚠️ Net Change in Customer Deposits (Inflow/Outflow)', cfItems.change_in_deposits, true, 1, 'การเปลี่ยนแปลงสุทธิในเงินฝากลูกค้า (กระแสเงินสดหลักของธนาคาร)')}
                     {renderGenericRow('debt_issuance_payments', 'Net Issuance/Repayments Of Borrowings', cfItems.debt_issuance_payments, false, 1, 'เงินสดสุทธิจากการกู้ยืม/ชำระคืนเงินกู้')}
-                    {renderGenericRow('stock_issuance_repurchase', 'Net Common Stock Issuance & Buybacks', cfItems.stock_issuance_repurchase, false, 1, 'เงินสดสุทธิจากการออกหุ้น / ซื้อหุ้นคืน')}
-                    {renderGenericRow('ending_cash', 'Ending Cash & Cash Equivalents', cfItems.ending_cash, true, 1, 'เงินสดคงเหลือปลายงวด')}
+                    {cfItems.equity_issuance_proceeds.length>0 && renderGenericRow('equity_issuance_proceeds','Equity Issuance Proceeds (Broad Reported Basis)',cfItems.equity_issuance_proceeds,false,1,'ไม่ถือว่าเป็นหุ้นสามัญอย่างเดียว')}
+                    {cfItems.dividends_to_noncontrolling_interests.length>0 && renderGenericRow('dividends_to_noncontrolling_interests','Dividends to Noncontrolling Interests',cfItems.dividends_to_noncontrolling_interests,false,1,'เงินปันผล NCI แยกจากการจ่ายอื่น')}
+                    {renderGenericRow('issuance_of_common_stock', 'Common Stock Issuance Proceeds', cfItems.issuance_of_common_stock, false, 1, 'เงินสดจากการออกหุ้นสามัญ')}
+                    {renderGenericRow('repurchase_of_common_stock', 'Common Stock Repurchases', cfItems.repurchase_of_common_stock, false, 1, 'เงินสดจ่ายซื้อหุ้นสามัญคืน')}
+                    {renderGenericRow('option_exercise_proceeds', 'Stock Option Exercise Proceeds', cfItems.option_exercise_proceeds, false, 1, 'เงินสดจากการใช้สิทธิซื้อหุ้น')}
+                    {cfItems.equity_compensation_and_option_proceeds.length > 0 && renderGenericRow('equity_compensation_and_option_proceeds','Stock Option Exercises & Other Stock Issuance Proceeds',cfItems.equity_compensation_and_option_proceeds,false,1,'รายงานรวม ไม่แยกเป็นเงินจากการใช้สิทธิเพียงอย่างเดียว')}
+                    {renderGenericRow('ending_cash', 'Ending ' + cashBasisName, cfItems.ending_cash, true, 1, 'เงินสดคงเหลือปลายงวด')}
 
                     {/* 4. Free Cash Flow */}
                     {renderGenericRow('free_cash_flow', 'Free Cash Flow (FCF = OCF - CapEx)', cfItems.free_cash_flow, true, 0, 'กระแสเงินสดอิสระ (FCF = OCF - CapEx)')}
@@ -2112,8 +1945,10 @@ export function FinancialStatementsTable({
                   <>
                     {/* 1. Operating Cash Flow Group */}
                     {renderGenericRow('ocf', 'Operating Cash Flow', cfItems.ocf, true, 0, 'กระแสเงินสดจากการดำเนินงาน (OCF)')}
-                    {renderGenericRow('net_income_cont', 'Net Income from Continuing Operations', cfItems.net_income_cont, false, 1, 'กำไรสุทธิจากการดำเนินงานต่อเนื่อง')}
+                    {renderGenericRow('net_income_cont', 'Total Net Income', cfItems.net_income_cont, false, 1, 'กำไรสุทธิรวม')}
                     {renderGenericRow('depreciation', 'Depreciation & Depletion & Amortization', cfItems.depreciation, false, 1, 'ค่าเสื่อมราคาและค่าตัดจำหน่าย')}
+                    {cfItems.depreciation_amortization_and_impairment.length > 0 && renderGenericRow('depreciation_amortization_and_impairment','Depreciation, Amortization & Impairment',cfItems.depreciation_amortization_and_impairment,false,1,'รวมด้อยค่า แยกจาก D&A ที่ใช้คำนวณ EBITDA')}
+                    {cfItems.depreciation_amortization_and_accretion.length > 0 && renderGenericRow('depreciation_amortization_and_accretion','Depreciation, Amortization & Accretion',cfItems.depreciation_amortization_and_accretion,false,1,'รวม accretion แยกจาก D&A ที่ใช้คำนวณ EBITDA')}
                     {renderGenericRow('stock_based_compensation', 'Stock-Based Compensation (Non-Cash Add-back)', cfItems.stock_based_compensation, false, 1, 'ค่าตอบแทนในรูปหุ้น (บวกกลับรายการที่ไม่ใช่เงินสด)')}
                     {renderGenericRow('non_cash_items', 'Other Non-Cash Items', cfItems.non_cash_items, false, 1, 'รายการที่ไม่ใช่เงินสดอื่นๆ')}
                     {renderGenericRow('change_working_capital', 'Change in Working Capital', cfItems.change_working_capital, true, 1, 'การเปลี่ยนแปลงในเงินทุนหมุนเวียน')}
@@ -2124,20 +1959,30 @@ export function FinancialStatementsTable({
                     {renderGenericRow('change_other_cl', 'Change in Other Current Liabilities', cfItems.change_other_cl, false, 2, 'การเปลี่ยนแปลงในหนี้สินหมุนเวียนอื่น')}
 
                     {/* 2. Investing Cash Flow Group */}
-                    {renderGenericRow('icf', 'Net Cash Flow from Continuing Investing Activities', cfItems.icf, true, 0, 'กระแสเงินสดสุทธิจากกิจกรรมลงทุน (ICF)')}
-                    {renderGenericRow('capex', 'Net PPE Purchase and Sale (CapEx)', cfItems.capex, false, 1, 'รายจ่ายฝ่ายทุน ซื้อ/ขายสินทรัพย์ถาวร (CapEx)')}
+                    {renderGenericRow('icf', 'Net Cash from Investing Activities', cfItems.icf, true, 0, 'กระแสเงินสดสุทธิจากกิจกรรมลงทุน (ICF)')}
+                    {renderGenericRow('capex', 'Capital Expenditures (CapEx)', cfItems.capex, false, 1, 'รายจ่ายฝ่ายทุน (CapEx)')}
                     {renderGenericRow('investment_purchase', 'Net Investment Purchase and Sale', cfItems.investment_purchase, false, 1, 'เงินสดสุทธิซื้อ/ขายเงินลงทุน')}
                     {renderGenericRow('other_investing', 'Net Other Investing Changes', cfItems.other_investing, false, 1, 'การเปลี่ยนแปลงอื่นๆ ในกิจกรรมลงทุน')}
 
                     {/* 3. Financing Cash Flow Group */}
                     {renderGenericRow('fcf_financing', 'Financing Cash Flow (Net Cash from Financing)', cfItems.fcf_financing, true, 0, 'กระแสเงินสดจากกิจกรรมจัดหาเงิน (Financing Cash Flow)')}
+                    {cfItems.debt_issuance.length > 0 && renderGenericRow('debt_issuance','Debt Issuance Proceeds',cfItems.debt_issuance,false,1,'เงินสดจากการออกหนี้')}
+                    {cfItems.debt_repayments.length > 0 && renderGenericRow('debt_repayments','Debt Repayments',cfItems.debt_repayments,false,1,'เงินสดจ่ายคืนหนี้')}
+                    {cfItems.finance_lease_payments.length > 0 && renderGenericRow('finance_lease_payments','Finance Lease Principal Payments',cfItems.finance_lease_payments,false,1,'เงินสดจ่ายคืนหนี้สัญญาเช่าการเงิน')}
+                    {cfItems.distributions_to_noncontrolling_interests.length > 0 && renderGenericRow('distributions_to_noncontrolling_interests','Distributions to Noncontrolling Interests',cfItems.distributions_to_noncontrolling_interests,false,1,'เงินสดจ่ายส่วนได้เสียที่ไม่มีอำนาจควบคุม')}
+                    {cfItems.distributions_to_noncontrolling_and_redeemable_interests.length > 0 && renderGenericRow('distributions_to_noncontrolling_and_redeemable_interests','Distributions to NCI & Redeemable Interests',cfItems.distributions_to_noncontrolling_and_redeemable_interests,false,1,'รายงานรวม NCI และส่วนที่ไถ่ถอนได้ แยกจาก NCI ปกติ')}
                     {renderGenericRow('debt_issuance_payments', 'Net Issuance Payments Of Debt', cfItems.debt_issuance_payments, false, 1, 'เงินสดสุทธิจากการกู้ยืม/ชำระคืนหนี้')}
-                    {renderGenericRow('stock_issuance_repurchase', 'Net Common Stock Issuance (Buybacks)', cfItems.stock_issuance_repurchase, false, 1, 'เงินสดสุทธิจากการออกหุ้น / ซื้อหุ้นคืน (Buybacks)')}
+                    {cfItems.equity_issuance_proceeds.length>0 && renderGenericRow('equity_issuance_proceeds','Equity Issuance Proceeds (Broad Reported Basis)',cfItems.equity_issuance_proceeds,false,1,'ไม่ถือว่าเป็นหุ้นสามัญอย่างเดียว')}
+                    {cfItems.dividends_to_noncontrolling_interests.length>0 && renderGenericRow('dividends_to_noncontrolling_interests','Dividends to Noncontrolling Interests',cfItems.dividends_to_noncontrolling_interests,false,1,'เงินปันผล NCI แยกจากการจ่ายอื่น')}
+                    {renderGenericRow('issuance_of_common_stock', 'Common Stock Issuance Proceeds', cfItems.issuance_of_common_stock, false, 1, 'เงินสดจากการออกหุ้นสามัญ')}
+                    {renderGenericRow('repurchase_of_common_stock', 'Common Stock Repurchases', cfItems.repurchase_of_common_stock, false, 1, 'เงินสดจ่ายซื้อหุ้นสามัญคืน')}
+                    {renderGenericRow('option_exercise_proceeds', 'Stock Option Exercise Proceeds', cfItems.option_exercise_proceeds, false, 1, 'เงินสดจากการใช้สิทธิซื้อหุ้น')}
+                    {cfItems.equity_compensation_and_option_proceeds.length > 0 && renderGenericRow('equity_compensation_and_option_proceeds','Stock Option Exercises & Other Stock Issuance Proceeds',cfItems.equity_compensation_and_option_proceeds,false,1,'รายงานรวม ไม่แยกเป็นเงินจากการใช้สิทธิเพียงอย่างเดียว')}
                     {renderGenericRow('dividends_paid', 'Cash Dividends Paid', cfItems.dividends_paid, false, 1, 'เงินปันผลจ่าย')}
                     {renderGenericRow('other_financing', 'Net Other Financing Charges', cfItems.other_financing, false, 1, 'ค่าใช้จ่ายและรายการอื่นจากกิจกรรมจัดหาเงิน')}
-                    {renderGenericRow('ending_cash', 'Ending Cash Balance', cfItems.ending_cash, true, 1, 'เงินสดคงเหลือปลายงวด')}
+                    {renderGenericRow('ending_cash', 'Ending ' + cashBasisName, cfItems.ending_cash, true, 1, 'เงินสดคงเหลือปลายงวด')}
                     {renderGenericRow('net_change_cash', 'Net Change in Cash', cfItems.net_change_cash, false, 2, 'การเปลี่ยนแปลงสุทธิในเงินสด')}
-                    {renderGenericRow('beginning_cash', 'Beginning Cash Balance', cfItems.beginning_cash, false, 2, 'เงินสดคงเหลือต้นงวด')}
+                    {renderGenericRow('beginning_cash', 'Beginning ' + cashBasisName, cfItems.beginning_cash, false, 2, 'เงินสดคงเหลือต้นงวด')}
 
                     {/* 4. Free Cash Flow */}
                     {renderGenericRow('free_cash_flow', 'Free Cash Flow (FCF = OCF - CapEx)', cfItems.free_cash_flow, true, 0, 'กระแสเงินสดอิสระ (FCF = OCF - CapEx)')}
@@ -2146,15 +1991,15 @@ export function FinancialStatementsTable({
 
                 {/* Metadata Footer */}
                 <tr className="bg-stone-50/80 text-[11px] text-stone-500 font-mono">
-                  <td className="py-2.5 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs font-bold text-stone-600">Deadline</td>
-                  {periodIndices.map(i => deadlines[i % deadlines.length]).map((d, idx) => (
+                  <td className="py-2.5 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs font-bold text-stone-600">Period End</td>
+                  {periodIndices.map(i => deadlines[i]).map((d, idx) => (
                     <td key={idx} className="py-2.5 px-3 text-right">{d}</td>
                   ))}
                 </tr>
                 <tr className="bg-stone-50/80 text-[11px] text-stone-500 font-mono">
                   <td className="py-2 px-4 sticky left-0 bg-stone-50 z-10 shadow-xs font-bold text-stone-600">Accounting Standard</td>
                   {periods.map((_, idx) => (
-                    <td key={idx} className="py-2 px-3 text-right">US_GAAP</td>
+                    <td key={idx} className="py-2 px-3 text-right">{effectiveData.verified_dataset?.generatedBy?.includes('ifrs') ? 'IFRS' : 'US_GAAP'}</td>
                   ))}
                 </tr>
               </tbody>
@@ -2165,7 +2010,7 @@ export function FinancialStatementsTable({
 
         {/* Dynamic AI Financial Analyst Live Deep-Dive Inspection Box */}
         {(() => {
-          const activeCfg = getActiveChartConfig();
+          const activeCfg = chartConfig;
           const hasPoints = activeCfg.values.some(v => v !== null && v !== undefined && !Number.isNaN(v));
           const latestVal = hasPoints ? activeCfg.values[activeCfg.values.length - 1] : null;
           const uStr = activeCfg.unit || (activeCfg.isCurrency ? 'M' : '');
@@ -2174,12 +2019,12 @@ export function FinancialStatementsTable({
             ? activeCfg.yoy_pcts[activeCfg.yoy_pcts.length - 1]
             : null;
 
-          const isSourceReconciled = Boolean(validation?.is_reconciled);
+          const isSourceReconciled = selectedMetric.dataQuality.currentVerified;
           const metricContext = getMetricInterpretationContext({
             metricKey: selectedRowKey,
             metricName: activeCfg.title,
             metricNameTh: activeCfg.title_th || activeCfg.title,
-            reportData: data,
+            reportData: effectiveData,
             ticker,
             periods: activeCfg.periods,
             historyValues: activeCfg.values,
@@ -2188,33 +2033,14 @@ export function FinancialStatementsTable({
             isCurrency: activeCfg.isCurrency,
             isThai,
             isSourceReconciled,
-            provenanceStatus: isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified'
+            provenanceStatus: `Selected metric ${selectedMetric.dataQuality.status}; overall statement ${validation?.reconciliation_status || 'partial'}`
           });
 
-          const cacheKey = `${ticker}_${metricContext.businessArchetype}_${selectedRowKey}_${(activeCfg.values || []).join(',')}_${(activeCfg.periods || []).join(',')}_${isThai ? 'th' : 'en'}`;
+          const cacheKey = selectedCacheKey;
           const liveInsight = hasPoints ? liveAiInsights[cacheKey] : undefined;
-          const localInsight = getBusinessAwareLocalFallback(
-            metricContext,
-            latestVal,
-            isThai
-          );
-          const aiInsight: FinancialAiInsight = liveInsight ? {
-            ...localInsight,
-            ...liveInsight,
-            what_is_it_th: (liveInsight.what_is_it_th && liveInsight.what_is_it_th.trim() !== '')
-              ? liveInsight.what_is_it_th
-              : localInsight.what_is_it_th,
-            what_is_it_en: (liveInsight.what_is_it_en && liveInsight.what_is_it_en.trim() !== '')
-              ? liveInsight.what_is_it_en
-              : localInsight.what_is_it_en,
-            benchmark_th: (liveInsight.benchmark_th && liveInsight.benchmark_th.trim() !== '')
-              ? liveInsight.benchmark_th
-              : localInsight.benchmark_th,
-            benchmark_en: (liveInsight.benchmark_en && liveInsight.benchmark_en.trim() !== '')
-              ? liveInsight.benchmark_en
-              : localInsight.benchmark_en,
-          } : localInsight;
-          const isFromGemini = !!liveInsight;
+          const localInsight = deterministicMetricInsight(selectedMetric, metricContext, analystFailures[cacheKey]);
+          const aiInsight = liveInsight || localInsight;
+          const isFromGemini = liveInsight?.engine === 'GEMINI';
 
           const displayTitle = isThai ? (activeCfg.title_th || activeCfg.title) : activeCfg.title;
           const displaySubTitle = isThai ? activeCfg.title : activeCfg.title_th;
@@ -2254,7 +2080,7 @@ export function FinancialStatementsTable({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/90 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                        <span>{isFromGemini ? 'Gemini AI · Live Financial Analyst' : 'AI Financial Analyst'}</span>
+                        <span>{isFromGemini ? 'Gemini AI · Live Financial Analyst' : 'Deterministic Financial Analyst'}</span>
                       </span>
 
                       {/* Applicability & Business Archetype Chip */}
@@ -2336,7 +2162,7 @@ export function FinancialStatementsTable({
                         <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${
                           latestYoY >= 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}>
-                          {latestYoY >= 0 ? '+' : ''}{latestYoY.toFixed(1)}% YoY
+                          {formatMetricChange(selectedRowKey, latestYoY)} {compareMode === 'qoq' ? 'QoQ' : 'YoY'}
                         </span>
                       )}
                     </div>
@@ -2350,13 +2176,13 @@ export function FinancialStatementsTable({
                 <div className="lg:col-span-7 flex flex-col gap-3.5">
                   <div className="bg-white rounded-2xl border border-stone-200/90 shadow-xs p-5 flex flex-col gap-3.5 h-full">
                     {/* Definition Header */}
-                    <div className="flex items-center justify-between gap-2 border-b border-stone-100 pb-2.5">
-                      <span className="text-xs font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 border-b border-stone-100 pb-2.5 min-w-0">
+                      <span className="text-xs font-bold text-stone-700 uppercase tracking-wider font-mono flex items-start gap-1.5 min-w-0">
                         <Lightbulb className="w-3.5 h-3.5 text-[#0b5a4b]" />
                         <span>{isThai ? 'มุมมองการวิเคราะห์เชิงลึก (Analyst Synthesis)' : 'Institutional Analyst Synthesis'}</span>
                       </span>
-                      <span className="text-[11px] text-stone-400 font-mono">
-                        {isFromGemini ? (aiInsight.model ? `${aiInsight.model} Synthesis` : 'Gemini AI Live Synthesis') : 'Harmonized Rule Engine'}
+                      <span title={aiInsight.fallbackReason || aiInsight.model} className="text-[11px] text-stone-500 font-mono break-words min-w-0 sm:max-w-[45%]">
+                        {isFromGemini ? `${aiInsight.model} Synthesis` : aiInsight.fallbackReason ? metricAiFailureLabel(aiInsight.fallbackReason as AnalystFallbackReason, isThai) : 'Deterministic Financial Analyst'}
                       </span>
                     </div>
 
@@ -2365,13 +2191,13 @@ export function FinancialStatementsTable({
                       <Info className="w-3.5 h-3.5 text-stone-400 mt-0.5 shrink-0" />
                       <div>
                         <strong className="text-stone-800 font-medium mr-1">{isThai ? 'ความหมาย:' : 'Definition:'}</strong>
-                        <span>{isThai ? (aiInsight.what_is_it_th || localInsight.what_is_it_th) : (aiInsight.what_is_it_en || localInsight.what_is_it_en)}</span>
+                        <span className="whitespace-pre-line">{isThai ? (aiInsight.what_is_it_th || localInsight.what_is_it_th) : (aiInsight.what_is_it_en || localInsight.what_is_it_en)}</span>
                       </div>
                     </div>
 
                     {/* Deep-Dive Live Analysis */}
                     <div className="text-xs sm:text-[13px] text-stone-800 font-sans leading-relaxed space-y-2">
-                      <p>
+                      <p className="whitespace-pre-line">
                         {renderFormattedText(isThai ? aiInsight.interpretation_th : aiInsight.interpretation_en)}
                       </p>
                     </div>
@@ -2396,6 +2222,7 @@ export function FinancialStatementsTable({
                       <span>{isThai ? 'ข้อดี & ผลกระทบเชิงบวก (Key Strengths)' : 'Key Strengths & Moat Impact'}</span>
                     </div>
                     <ul className="space-y-2.5 text-xs text-stone-700 font-sans">
+                      {(isThai ? aiInsight.pros_th : aiInsight.pros_en).length===0 && <li className="leading-relaxed text-stone-600">{isThai?'ยังสรุปข้อดีเฉพาะไม่ได้จากตัวชี้วัดที่ตรวจสอบได้เพียงอย่างเดียว':'No specific strength follows from this accepted metric alone.'}</li>}
                       {(isThai ? aiInsight.pros_th : aiInsight.pros_en).map((pro, pIdx) => (
                         <li key={pIdx} className="flex items-start gap-2.5">
                           <span className="w-4 h-4 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-200">
@@ -2413,7 +2240,7 @@ export function FinancialStatementsTable({
                       <AlertTriangle className="w-4 h-4 text-amber-600" />
                       <span>{isThai ? 'สิ่งที่ต้องติดตาม / ข้อควรระวัง (Watchouts)' : 'Watchouts & Risk Factors'}</span>
                     </div>
-                    <p className="text-xs text-amber-950/90 font-sans leading-relaxed">
+                    <p className="text-xs text-amber-950/90 font-sans leading-relaxed whitespace-pre-line">
                       {renderFormattedText(isThai ? aiInsight.watchouts_th : aiInsight.watchouts_en)}
                     </p>
                   </div>
@@ -2424,7 +2251,7 @@ export function FinancialStatementsTable({
               <div className="pt-2 border-t border-stone-200/70 flex items-center justify-center text-[11px] text-stone-400 font-sans">
                 <span className="flex items-center gap-1.5">
                   <Info className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                  <span>{isThai ? 'คลิกที่แถวใดก็ได้ในงบการเงิน เพื่อให้ Gemini AI อธิบายความหมายและวิเคราะห์สถานะสดทันที' : 'Click any row in the financial statement tables to inspect live Gemini AI synthesis.'}</span>
+                  <span>{isThai ? 'คลิกแถวเพื่อวิเคราะห์ตัวชี้วัดนั้นด้วยข้อมูลที่ตรวจสอบได้ โดยใช้ Gemini เมื่อพร้อม หรือแสดง Deterministic Analyst พร้อมเหตุผล' : 'Select a row for verified metric analysis. Gemini is used when available; otherwise the Deterministic Analyst shows its fallback reason.'}</span>
                 </span>
               </div>
             </div>

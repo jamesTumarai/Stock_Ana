@@ -1,0 +1,8 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "sections", "fieldPath": "json", "indexes": [] },
+    { "collectionGroup": "history", "fieldPath": "json", "indexes": [] },
+    { "collectionGroup": "artifacts", "fieldPath": "content", "indexes": [] }
+  ]
+}

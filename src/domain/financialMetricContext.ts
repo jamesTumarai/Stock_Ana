@@ -1,5 +1,8 @@
 import { ReportData } from '../types';
 import { FinancialAiInsight } from '../utils/financialAiInsights';
+import { resolveCurrentBalanceSheetSnapshot } from './currentBalanceSheetSnapshot';
+import {calculateVerifiedKeyIndicators} from './verifiedKeyIndicators';
+import { canonicalMetricMeaning } from './financialMetricMeaning';
 
 export type BusinessArchetype =
   | 'bank'
@@ -8,6 +11,7 @@ export type BusinessArchetype =
   | 'insurer'
   | 'asset_manager'
   | 'broker_exchange'
+  | 'conglomerate'
   | 'saas_software'
   | 'semiconductor'
   | 'hardware_device'
@@ -118,6 +122,8 @@ export interface MetricInterpretationContext {
   interpretationRole: MetricInterpretationRole;
   isSourceReconciled: boolean;
   provenanceStatus?: string;
+  unit?: string;
+  isCurrency?: boolean;
 }
 
 export interface MetricContextOptions {
@@ -188,6 +194,20 @@ export function resolveBusinessClassification(
   if (rawIndustry) strongSignals.push(`Industry: ${rawIndustry}`);
   if (template) strongSignals.push(`Statement Template: ${template}`);
 
+  // Sector describes the market; explicit fee-based services describe the
+  // company's economics. Advisory/brokerage/facilities firms are not REITs,
+  // even when they manage investments or serve REIT clients.
+  const propertyServices=/real estate (?:services|advisory|agents?|brokerage)|property management|facilit(?:y|ies) management/.test(industry)
+    && !/\breit\b|real estate investment trust/.test(industry);
+  if(propertyServices){
+    const primaryArchetype:BusinessArchetype='general_operating';
+    if(/asset management|investment management/.test(businessSummary))secondaryBusinessLines.push('investment_management');
+    if(template==='reit')conflictingSignals.push('CLASSIFICATION_CONFLICT: REIT template rejected for explicit fee-based property services');
+    return {primaryArchetype,secondaryBusinessLines,sector:rawSector||'Real Estate',industry:rawIndustry,
+      subIndustry:rawIndustry,confidence:'HIGH',evidence:{archetype:primaryArchetype,confidence:'HIGH',
+        strongSignals,supportingSignals,conflictingSignals,primaryArchetype,secondaryBusinessLines}};
+  }
+
   // 1. Check Automotive / Motor Vehicles (Primary: industrial_manufacturing, Sub-industry: Auto Manufacturers)
   const isAutomotive =
     industry.includes('auto manufacturers') ||
@@ -239,6 +259,25 @@ export function resolveBusinessClassification(
         primaryArchetype,
         secondaryBusinessLines,
       },
+    };
+  }
+
+  // A diversified holding company needs component-level economics. Do not
+  // classify one of its operating subsidiaries as the whole company merely
+  // because its description mentions insurance or manufacturing.
+  const diversifiedInsuranceHolding = businessSummary.includes('holding company')
+    && businessSummary.includes('insurance')
+    && ['railroad', 'utility', 'manufacturing', 'retail', 'energy'].filter(line =>
+      businessSummary.includes(line)).length >= 2;
+  if (industry.includes('conglomerate') || industry.includes('diversified holding compan')
+    || industry.includes('multi-sector holding') || industry.includes('multi sector holding')
+    || diversifiedInsuranceHolding) {
+    const primaryArchetype: BusinessArchetype = 'conglomerate';
+    return {
+      primaryArchetype, secondaryBusinessLines, sector: rawSector || 'Financial Services',
+      industry: rawIndustry || 'Conglomerate', subIndustry: rawIndustry, confidence: 'HIGH',
+      evidence: { archetype: primaryArchetype, confidence: 'HIGH', strongSignals,
+        supportingSignals, conflictingSignals, primaryArchetype, secondaryBusinessLines },
     };
   }
 
@@ -326,14 +365,10 @@ export function resolveBusinessClassification(
     };
   }
 
-  const selectedModel = (data?.intrinsic_value as any)?.model_selection?.selected_model || (data?.intrinsic_value as any)?.model_type;
-  if (selectedModel) strongSignals.push(`Valuation Model: ${selectedModel}`);
-
   // 5. FinTech / Digital Banking / Consumer Finance
   const isFintech =
-    (sector.includes('financial') || template === 'banking' || selectedModel === 'fintech_pe') &&
-    (selectedModel === 'fintech_pe' ||
-      industry.includes('financial technology') ||
+    (sector.includes('financial') || template === 'banking') &&
+    (industry.includes('financial technology') ||
       industry.includes('fintech') ||
       industry.includes('digital bank') ||
       industry.includes('consumer finance') ||
@@ -420,7 +455,7 @@ export function resolveBusinessClassification(
 
   // 8. General Financial Services Guard: Sector Financial Services must never fall through to general_operating
   if (sector.includes('financial')) {
-    const primaryArchetype: BusinessArchetype = selectedModel === 'ddm' ? 'bank' : selectedModel === 'fintech_pe' ? 'fintech' : 'lender';
+    const primaryArchetype: BusinessArchetype = 'lender';
     return {
       primaryArchetype,
       secondaryBusinessLines,
@@ -440,13 +475,12 @@ export function resolveBusinessClassification(
     };
   }
 
-  // 9. REIT / Real Estate
+  // 9. REIT: the real-estate sector alone cannot establish trust economics.
   if (
     template === 'reit' ||
-    sector.includes('real estate') ||
     industry.includes('reit') ||
     industry.includes('real estate investment trust') ||
-    businessSummary.includes('real estate investment trust')
+    /(?:is|operates as|structured as|organized as|qualifies as|elected to be taxed as)\s+(?:an?\s+)?(?:real estate investment trust|reit\b)/.test(businessSummary)
   ) {
     const primaryArchetype: BusinessArchetype = 'reit';
     return {
@@ -504,6 +538,7 @@ export function resolveBusinessClassification(
     sector.includes('energy') ||
     sector.includes('basic materials') ||
     industry.includes('oil') ||
+    industry.includes('petroleum') ||
     industry.includes('gas') ||
     industry.includes('mining') ||
     industry.includes('metal') ||
@@ -562,7 +597,8 @@ export function resolveBusinessClassification(
   // 12. Telecom
   if (
     sector.includes('telecommunication') ||
-    industry.includes('telecom')
+    industry.includes('telecom') ||
+    /radiotelephone|telephone communications|wireless communication|wireline|communication services[^a-z]*carriers/.test(industry)
   ) {
     const primaryArchetype: BusinessArchetype = 'telecom';
     return {
@@ -823,6 +859,7 @@ const ARCHETYPE_METADATA: Record<BusinessArchetype, { labelEn: string; labelTh: 
   insurer: { labelEn: 'Insurance Underwriter & Carrier', labelTh: 'ธุรกิจประกันภัยและรับประกันภัย', isFinancial: true },
   asset_manager: { labelEn: 'Asset & Wealth Management', labelTh: 'ธุรกิจบริหารสินทรัพย์และการจัดการความมั่งคั่ง', isFinancial: true },
   broker_exchange: { labelEn: 'Securities Brokerage & Financial Exchange', labelTh: 'ธุรกิจนายหน้าซื้อขายหลักทรัพย์และตลาดการเงิน', isFinancial: true },
+  conglomerate: { labelEn: 'Diversified Conglomerate', labelTh: 'กลุ่มบริษัทโฮลดิงหลายธุรกิจ', isFinancial: false },
   saas_software: { labelEn: 'SaaS & Enterprise Software', labelTh: 'ซอฟต์แวร์ระดับองค์กรและคลาวด์แพลตฟอร์ม', isFinancial: false },
   semiconductor: { labelEn: 'Semiconductors & Chip Design', labelTh: 'เซมิคอนดักเตอร์และอุปกรณ์ไมโครชิป', isFinancial: false },
   hardware_device: { labelEn: 'Hardware & Consumer Electronics', labelTh: 'อุปกรณ์ฮาร์ดแวร์และอิเล็กทรอนิกส์สำหรับผู้บริโภค', isFinancial: false },
@@ -859,7 +896,9 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     provenanceStatus
   } = options;
 
-  const data: Partial<ReportData> = reportData?.data ? reportData.data : (reportData || {});
+  const rawData = reportData?.data ? reportData.data : (reportData || {});
+  const data: Partial<ReportData> = rawData.income_statement && rawData.balance_sheet && Array.isArray(rawData.periods)
+    ? {financial_statements: rawData} : rawData;
   const archetype = resolveBusinessArchetype(data, ticker);
   const archetypeMeta = ARCHETYPE_METADATA[archetype];
   const sector = data.company_profile?.sector || 'General';
@@ -869,8 +908,10 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
   const isDepositoryOrLender = archetype === 'bank' || archetype === 'lender' || archetype === 'fintech';
 
   const validHistory = historyValues.filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
-  const latestValue = validHistory.length > 0 ? validHistory[validHistory.length - 1] : null;
-  const isUnavailable = latestValue === null;
+  // Missing in the current period is unavailable, not an invitation to reuse a prior period.
+  const currentValue = historyValues.at(-1);
+  const latestValue = typeof currentValue === 'number' && Number.isFinite(currentValue) ? currentValue : null;
+  const isUnavailable = latestValue === null || data.financial_statements?.validation_summary?.reconciliation_status === 'failed';
   const isNegative = latestValue !== null && latestValue < 0;
 
   // Period mismatch / YoY validation
@@ -889,6 +930,7 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
   // Statements data for related metrics
   const inc = data.financial_statements?.income_statement;
   const bs = data.financial_statements?.balance_sheet;
+  const currentBalance = resolveCurrentBalanceSheetSnapshot(data);
   const cf = data.financial_statements?.cash_flow;
 
   // Defaults
@@ -917,8 +959,10 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
   // Helper to extract last numeric value string
   const getLastValStr = (arr?: (number | null | undefined)[], isPct = false, isDollar = false): string | undefined => {
     if (!arr || arr.length === 0) return undefined;
-    const v = arr.filter((x): x is number => x !== null && x !== undefined && !isNaN(x)).pop();
-    if (v === undefined) return undefined;
+    const selectedIndex = data.financial_statements?.periods.indexOf(periods.at(-1) || data.financial_statements.periods.at(-1)!);
+    const v = selectedIndex !== undefined && selectedIndex >= 0 && arr.length === data.financial_statements?.periods.length
+      ? arr[selectedIndex] : arr.at(-1);
+    if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
     if (isPct) return `${v.toFixed(1)}%`;
     if (isDollar) {
       const sign = v < 0 ? '-' : '';
@@ -938,9 +982,9 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     // -----------------------------------------------------------------------
     case 'gross_margin':
     case 'gross_profit': {
-      formula = 'Gross Margin = (Revenue - Direct Cost of Sales) / Revenue';
-      formulaTh = 'อัตรากำไรขั้นต้น = (รายได้รวม - ต้นทุนขายโดยตรง) / รายได้รวม';
-      periodType = 'DERIVED_RATIO';
+      formula = metricKey === 'gross_profit' ? 'Gross Profit = Revenue - Cost of Revenue' : 'Gross Margin = (Revenue - Direct Cost of Sales) / Revenue × 100';
+      formulaTh = metricKey === 'gross_profit' ? 'กำไรขั้นต้น = รายได้รวม - ต้นทุนขาย' : 'อัตรากำไรขั้นต้น = (รายได้รวม - ต้นทุนขายโดยตรง) / รายได้รวม × 100';
+      periodType = metricKey === 'gross_profit' ? 'QUARTER' : 'DERIVED_RATIO';
 
       if (isDepositoryOrLender || archetype === 'insurer') {
         applicability = 'CONTEXT_ONLY';
@@ -953,7 +997,7 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
         );
         // Related metrics for banking/lending
         if (inc?.net_interest_margin_pct) relatedMetrics.push({ key: 'nim', name: 'Net Interest Margin (NIM)', nameTh: 'ส่วนต่างดอกเบี้ยสุทธิ', valueStr: getLastValStr(inc.net_interest_margin_pct, true) });
-        if (bs?.deposits) relatedMetrics.push({ key: 'deposits', name: 'Deposits', nameTh: 'ฐานเงินฝาก', valueStr: getLastValStr(bs.deposits, false, true) });
+        if (currentBalance.facts.deposits) relatedMetrics.push({ key: 'deposits', name: 'Deposits', nameTh: 'ฐานเงินฝาก', valueStr: getLastValStr([currentBalance.facts.deposits.value], false, true) });
         if (inc?.operating_expenses && inc?.revenue) relatedMetrics.push({ key: 'efficiency_ratio', name: 'Efficiency Ratio', nameTh: 'อัตราส่วนต้นทุนต่อรายได้', valueStr: getLastValStr(inc.operating_expenses) });
         if (inc?.net_income && bs?.total_equity) relatedMetrics.push({ key: 'roe', name: 'ROE', nameTh: 'ผลตอบแทนต่อส่วนผู้ถือหุ้น', valueStr: getLastValStr(inc.net_income) });
       } else if (archetype === 'early_stage') {
@@ -981,9 +1025,9 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     // -----------------------------------------------------------------------
     case 'ebitda_margin':
     case 'ebitda': {
-      formula = 'EBITDA Margin = (Operating Income + Depreciation & Amortization) / Revenue';
-      formulaTh = 'อัตรากำไร EBITDA = (กำไรจากการดำเนินงาน + ค่าเสื่อมและค่าตัดจำหน่าย) / รายได้รวม';
-      periodType = 'DERIVED_RATIO';
+      formula = metricKey === 'ebitda' ? 'Derived EBITDA = Operating Income + Depreciation & Amortization' : 'Derived EBITDA Margin = (Operating Income + Depreciation & Amortization) / Revenue × 100';
+      formulaTh = formula;
+      periodType = metricKey === 'ebitda' ? 'QUARTER' : 'DERIVED_RATIO';
       industryStandardStatus = 'GENERIC_DERIVED_RATIO';
 
       if (isDepositoryOrLender) {
@@ -1034,7 +1078,7 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
       formulaTh = metricKey === 'fcf_to_net_income'
         ? 'อัตราการแปลงกำไรเป็นเงินสด = กระแสเงินสดอิสระ / กำไรสุทธิ'
         : 'กระแสเงินสดอิสระ = กระแสเงินสดจากการดำเนินงาน - ค่าใช้จ่ายฝ่ายทุน (CapEx)';
-      periodType = metricKey === 'fcf' ? 'QUARTER' : 'DERIVED_RATIO';
+      periodType = ['fcf','free_cash_flow'].includes(metricKey) ? 'QUARTER' : 'DERIVED_RATIO';
 
       if (isFinancialSector) {
         applicability = 'NOT_MEANINGFUL_FOR_PRIMARY_INTERPRETATION';
@@ -1064,7 +1108,7 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
         interpretationCaveatsTh.push(
           'สำหรับธุรกิจระยะเริ่มต้น FCF ที่ติดลบสะท้อนการเร่งลงทุนขยายกิจการ ควรติดตามยอดเงินสดคงเหลือและระยะเวลาที่เงินสดจะเพียงพอ (Runway) ควบคู่กับอัตราการเผาเงินสด'
         );
-        if (bs?.cash_and_equivalents) relatedMetrics.push({ key: 'cash', name: 'Cash & Equivalents', nameTh: 'เงินสดและรายการเทียบเท่า', valueStr: getLastValStr(bs.cash_and_equivalents, false, true) });
+        if (currentBalance.cashAndEquivalents !== null) relatedMetrics.push({ key: 'cash', name: 'Cash & Equivalents', nameTh: 'เงินสดและรายการเทียบเท่า', valueStr: getLastValStr([currentBalance.cashAndEquivalents], false, true) });
       } else {
         applicability = 'PRIMARY';
         industryStandardStatus = 'STANDARD_ACCOUNTING_METRIC';
@@ -1328,6 +1372,23 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     valueState = 'CALCULATED';
   }
 
+  const acceptedIndicators = data.financial_statements?.verified_dataset ? calculateVerifiedKeyIndicators(data.financial_statements) : undefined;
+  const acceptedIndicator = acceptedIndicators?.[metricKey]?.[data.financial_statements!.periods.indexOf(periods.at(-1) || data.financial_statements!.periods.at(-1)!)];
+  for (const related of relatedMetrics) {
+    const details = acceptedIndicators?.[related.key];
+    if (details) {
+      const unit = details.at(-1)?.unit;
+      related.valueStr = getLastValStr(details.map(detail => detail.value), unit === '%', unit === 'USD_M');
+      if (related.valueStr && ['x','D'].includes(unit || '')) related.valueStr += unit;
+    }
+  }
+  if (acceptedIndicator) {
+    formula = acceptedIndicator.formula;
+    formulaTh = acceptedIndicator.formula;
+    periodType = /TTM/.test(acceptedIndicator.basis) ? 'TTM' : /Instant/.test(acceptedIndicator.basis) ? 'POINT_IN_TIME' : 'DERIVED_RATIO';
+    interpretationCaveats.push(`Canonical basis: ${acceptedIndicator.basis}; status: ${acceptedIndicator.status}.`);
+    interpretationCaveatsTh.push(`ฐานคำนวณ: ${acceptedIndicator.basis}; สถานะ: ${acceptedIndicator.status}.`);
+  }
   return {
     metricKey,
     metricName,
@@ -1361,7 +1422,8 @@ export function getMetricInterpretationContext(options: MetricContextOptions): M
     valueState,
     interpretationRole,
     isSourceReconciled,
-    provenanceStatus: provenanceStatus || (isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified')
+    provenanceStatus: provenanceStatus || (isSourceReconciled ? 'SEC_RECONCILED' : 'Source reconciliation not verified'),
+    unit, isCurrency,
   };
 }
 
@@ -1514,8 +1576,9 @@ export function getBusinessAwareLocalFallback(
   latestValue: number | string | null | undefined,
   isThai: boolean = true
 ): FinancialAiInsight {
-  const isUnavailable = latestValue === null || latestValue === undefined;
+  const isUnavailable = latestValue === null || latestValue === undefined || context.isUnavailable;
   const numVal = typeof latestValue === 'number' ? latestValue : null;
+  const meaning = canonicalMetricMeaning(context);
 
   if (isUnavailable || numVal === null) {
     return {
@@ -1526,8 +1589,8 @@ export function getBusinessAwareLocalFallback(
       status: 'neutral',
       status_label_th: 'ไม่มีข้อมูล',
       status_label_en: 'Data unavailable',
-      what_is_it_th: `${context.metricNameTh}: ${context.formulaTh || 'ไม่มีข้อมูลเพียงพอสำหรับอธิบายตัวชี้วัดนี้'}`,
-      what_is_it_en: `${context.metricName}: ${context.formula || 'Data unavailable for this metric.'}`,
+      what_is_it_th: meaning.th,
+      what_is_it_en: meaning.en,
       interpretation_th: 'ยังไม่มีข้อมูลที่เพียงพอสำหรับการวิเคราะห์ตัวชี้วัดนี้ (ไม่มีข้อมูล จึงไม่สร้างค่าหรือข้อสรุปทดแทนตามหลัก Financial Integrity)',
       interpretation_en: 'Insufficient data to analyze this metric. (Data unavailable; no substitute value or conclusion was generated under Financial Integrity.)',
       pros_th: ['ยังไม่มีข้อมูลที่เพียงพอสำหรับการประเมินข้อดี'],
@@ -1540,14 +1603,15 @@ export function getBusinessAwareLocalFallback(
   }
 
   // Format value string
-  const valStr = typeof numVal === 'number' ? `${numVal.toFixed(1)}%` : String(latestValue);
+  const valStr = context.unit === '$/share' || context.metricKey === 'eps' || context.metricKey === 'eps_diluted' ? `$${numVal.toFixed(2)}/share`
+    : context.isCurrency || ['USD','USD_M','$','M','$M'].includes(context.unit || '')
+    ? `${numVal < 0 ? '-' : ''}$${Math.abs(numVal) >= 1000 ? `${(Math.abs(numVal)/1000).toFixed(2)}B` : `${Math.abs(numVal).toFixed(2)}M`}`
+    : `${numVal.toFixed(context.unit === 'x' ? 2 : 1)}${context.unit || ''}`;
 
   // Business-specific local fallback text
-  let status: FinancialAiInsight['status'] = 'good';
-  let statusLabelTh = `สถานะปกติ (${valStr})`;
-  let statusLabelEn = `Normal Range (${valStr})`;
-  let whatIsItTh = context.formulaTh ? `สูตร: ${context.formulaTh}` : `ตัวชี้วัด ${context.metricNameTh}`;
-  let whatIsItEn = context.formula ? `Formula: ${context.formula}` : `Metric: ${context.metricName}`;
+  let status: FinancialAiInsight['status'] = 'neutral';
+  let statusLabelTh = `ต้องดูบริบท (${valStr})`;
+  let statusLabelEn = `Context required (${valStr})`;
   let interpretationTh = `ตัวชี้วัด ${context.metricNameTh} อยู่ที่ ${valStr} สำหรับโมเดลธุรกิจ ${context.archetypeLabelTh}`;
   let interpretationEn = `${context.metricName} stands at ${valStr} for ${context.archetypeLabelEn}.`;
   let prosTh: string[] = [];
@@ -1561,8 +1625,6 @@ export function getBusinessAwareLocalFallback(
     status = 'neutral';
     statusLabelTh = 'Financial Sector Guard มีผลบังคับใช้';
     statusLabelEn = 'Financial Sector Guard Active';
-    whatIsItTh = context.interpretationCaveatsTh[0] || whatIsItTh;
-    whatIsItEn = context.interpretationCaveats[0] || whatIsItEn;
     interpretationTh = `สำหรับธุรกิจ ${context.archetypeLabelTh} ตัวเลขกระแสเงินสดอิสระ (FCF) และอัตราส่วนการแปลงเงินสดทั่วไปถูกบิดเบือนจากการปล่อยสินเชื่อและเงินรับฝาก จึงไม่สะท้อนปัญหาการดำเนินงาน`;
     interpretationEn = `For ${context.archetypeLabelEn}, generic FCF and cash conversion are distorted by lending/deposit flows and do not indicate operational failure.`;
     prosTh = ['ประเมินมูลค่าตามส่วนของผู้ถือหุ้นและเงินกองทุนแทน FCF'];
@@ -1575,8 +1637,6 @@ export function getBusinessAwareLocalFallback(
     status = 'neutral';
     statusLabelTh = `ข้อมูลบริบท (${valStr})`;
     statusLabelEn = `Context Metric (${valStr})`;
-    whatIsItTh = context.interpretationCaveatsTh[0] || whatIsItTh;
-    whatIsItEn = context.interpretationCaveats[0] || whatIsItEn;
     interpretationTh = `ตัวชี้วัด ${context.metricNameTh} อยู่ที่ ${valStr} ซึ่งคำนวณไว้เพื่อให้เห็นภาพรวม แต่ไม่ใช่ตัวชี้วัดหลักของธุรกิจ ${context.archetypeLabelTh}`;
     interpretationEn = `${context.metricName} is ${valStr}. Calculated for exploratory context, but not a primary KPI for ${context.archetypeLabelEn}.`;
     prosTh = [isThai ? 'ไม่สามารถสรุปข้อดีที่ชัดเจนได้จากตัวชี้วัดนี้เพียงลำพัง' : 'No clear strength can be concluded from this metric alone.'];
@@ -1587,6 +1647,14 @@ export function getBusinessAwareLocalFallback(
     watchoutsEn = context.interpretationCaveats[0] || watchoutsEn;
   }
 
+  if (!context.isSourceReconciled) {
+    status = 'neutral';
+    statusLabelTh = `ข้อมูลตรวจสอบได้บางส่วน (${valStr})`;
+    statusLabelEn = `Partial reconciliation (${valStr})`;
+    watchoutsTh = 'ข้อมูลบางส่วนยังไม่เพียงพอสำหรับการกระทบยอดทั้งหมด ไม่ควรสรุปความแข็งแกร่งของกิจการจากตัวเลขนี้เพียงอย่างเดียว';
+    watchoutsEn = 'Some reconciliation inputs are unavailable. This value alone does not establish financial strength or a fully reconciled statement.';
+  }
+
   return {
     key: context.metricKey,
     name: context.metricName,
@@ -1595,8 +1663,8 @@ export function getBusinessAwareLocalFallback(
     status,
     status_label_th: statusLabelTh,
     status_label_en: statusLabelEn,
-    what_is_it_th: whatIsItTh,
-    what_is_it_en: whatIsItEn,
+    what_is_it_th: meaning.th,
+    what_is_it_en: meaning.en,
     interpretation_th: interpretationTh,
     interpretation_en: interpretationEn,
     pros_th: prosTh,

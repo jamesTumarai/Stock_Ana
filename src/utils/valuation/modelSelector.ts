@@ -14,7 +14,7 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
   const archetype = resolveBusinessArchetype(data, symbol);
   const cf = data?.financial_statements?.cash_flow;
 
-  // 1. Check FinTech & Digital Banking (e.g., SOFI, NU, HOOD, COIN, AFRM, UPST, PYPL, SQ, LC)
+  // 1. Check the disclosed FinTech / lending business model, never ticker membership.
   if (archetype === 'fintech' || archetype === 'lender') {
     return {
       model_type: 'fintech_pe',
@@ -61,7 +61,7 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
 
   // 4. Check Early Stage Growth / Heavy Cash Burn
   if (archetype === 'early_stage') {
-    const isSpace = symbol === 'RKLB' || (data?.company_profile?.industry || '').toLowerCase().includes('space');
+    const isSpace = (data?.company_profile?.industry || '').toLowerCase().includes('space');
     return {
       model_type: 'relative_only',
       model_name_th: isSpace 
@@ -103,10 +103,9 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
   }
 
   // 5. Check Super Growth / Long Runway Tech / Disruptive Platforms
-  const revGrowthLatest = data?.financial_statements?.income_statement?.yoy_revenue_growth_pct?.[0];
+  const revGrowthLatest = data?.financial_statements?.income_statement?.yoy_revenue_growth_pct?.at(-1);
   const isSuperGrowth = 
-    (typeof revGrowthLatest === 'number' && revGrowthLatest >= 25) ||
-    ['TSLA', 'NVDA', 'PLTR', 'SNOW', 'CRWD', 'ARM', 'NET', 'DDOG'].includes(symbol);
+    (typeof revGrowthLatest === 'number' && Number.isFinite(revGrowthLatest) && revGrowthLatest >= 25);
 
   if (isSuperGrowth) {
     return {
@@ -125,8 +124,7 @@ export function detectValuationModel(data?: Partial<ReportData>, ticker?: string
   // 6. Check Mature / Stable Cash Cow / Regulated Utilities & Telecoms
   const isMatureValue =
     archetype === 'utility' ||
-    archetype === 'telecom' ||
-    ['KO', 'PG', 'SO', 'NEE', 'DUK', 'EGCO', 'RATCH', 'TTW', 'T', 'VZ', 'ADVANC', 'TRUE'].includes(symbol);
+    archetype === 'telecom';
 
   if (isMatureValue) {
     return {

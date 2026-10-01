@@ -1,4 +1,6 @@
+import { calculateVerifiedKeyIndicators } from '../domain/verifiedKeyIndicators';
 import { FinancialStatementsData } from '../types';
+import { resolveValuationPriceMetrics } from '../domain/valuation/valuationPriceMetrics';
 
 export interface CalculationVariable {
   symbol: string;
@@ -38,6 +40,25 @@ export function getMetricCalculationDetail(
 ): MetricCalculationDetail | null {
   if (!data && !valuationContext) return null;
 
+  if (data) {
+    const derived = calculateVerifiedKeyIndicators(data)[key]?.[periodIndex];
+    if (derived) return {
+      key, nameEn: key.replace(/_/g, ' '), nameTh: key.replace(/_/g, ' '),
+      category: ['gross_margin','operating_margin','ebit_margin','net_margin','ebitda_margin','tax_rate','roe','roa','roic'].includes(key) ? 'profitability'
+        : ['current_ratio','quick_ratio','debt_to_equity','equity_ratio','debt_to_asset'].includes(key) ? 'solvency'
+        : key.startsWith('fcf_') ? 'cash_flow' : 'operating_capacity',
+      formulaDisplay: derived.formula,
+      variables: Object.entries(derived.variables).map(([symbol, value]) => ({
+        symbol, nameEn: symbol, nameTh: symbol, value,
+        unit: ['days','dso','dio','dpo'].includes(symbol) ? 'D' : symbol === 'taxRate' ? 'x' : 'USD_M',
+        isCurrency: !['days','dso','dio','dpo','taxRate'].includes(symbol),
+      })),
+      resultValue: derived.value, resultUnit: derived.unit,
+      explanationEn: [derived.basis, derived.status, derived.reason, derived.periodsUsed.join(', '), derived.sourceUrls.join(', ')].filter(Boolean).join(' · '),
+      explanationTh: [derived.basis, derived.status === 'approximate' ? 'ค่าประมาณ' : derived.status === 'unavailable' ? 'ข้อมูลไม่เพียงพอ' : 'คำนวณจากข้อมูลที่ตรวจสอบแล้ว', derived.reason, derived.periodsUsed.join(', ')].filter(Boolean).join(' · '),
+    };
+  }
+
   const income = data?.income_statement;
   const balance = data?.balance_sheet;
   const cashflow = data?.cash_flow;
@@ -51,7 +72,7 @@ export function getMetricCalculationDetail(
       const capex = capexRaw !== null && capexRaw !== undefined ? Math.abs(capexRaw) : null;
       const fcf = (ocf !== null && ocf !== undefined && capex !== null && capex !== undefined)
         ? ocf - capex
-        : (cashflow?.free_cash_flow?.[p] ?? null);
+        : null;
 
       return {
         key: 'free_cash_flow',
@@ -288,9 +309,7 @@ export function getMetricCalculationDetail(
     case 'margin_of_safety': {
       const price = valuationContext?.currentPrice;
       const fv = valuationContext?.fairValue;
-      const mos = (price && fv && price > 0)
-        ? Number((((fv - price) / price) * 100).toFixed(1))
-        : null;
+      const mos = resolveValuationPriceMetrics(fv,price).marginOfSafetyPct;
 
       return {
         key: 'margin_of_safety',

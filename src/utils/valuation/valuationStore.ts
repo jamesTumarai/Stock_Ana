@@ -84,6 +84,14 @@ export function buildUniversalValuationData(
 ): IntrinsicValueData | undefined {
   const sym = (ticker || data?.ticker || '').toUpperCase();
   const source = data?.intrinsic_value;
+  if (source?.canonical_run) {
+    const run = source.canonical_run;
+    return { ...source, summary: { ...source.summary,
+      fair_value_range_low: run.bearFairValue, base_case_fair_value: run.baseFairValue,
+      fair_value_range_high: run.bullFairValue, margin_of_safety_pct: run.marginOfSafetyPct,
+      verdict_text: run.status === 'AVAILABLE' ? run.primaryMethod : `Unavailable: ${run.missingInputs.join(', ')}`,
+    } };
+  }
   const modelSelector = source?.selected_model ?? detectValuationModel(data, sym);
   const { dcfModel, inputs } = buildRigorousDCFModel(data, sym);
 

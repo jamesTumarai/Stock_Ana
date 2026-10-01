@@ -1,3 +1,4 @@
+import { getFiscalQuarterOrdinal } from '../domain/valuation/canonicalQuarterWindow';
 export interface FinancialAiInsight {
   key: string;
   name: string;
@@ -17,6 +18,9 @@ export interface FinancialAiInsight {
   watchouts_th: string;
   watchouts_en: string;
   model?: string;
+  engine?: 'GEMINI' | 'DETERMINISTIC';
+  metricKey?: string;
+  fallbackReason?: import('../domain/financialAnalystContract').AnalystFallbackReason;
 }
 
 export function getFinancialAiInsight(
@@ -84,20 +88,22 @@ export function getFinancialAiInsight(
   }
 
   // 2. Compute historical trend dynamics
-  const validHistory = historyValues.filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
+  const validHistory = historyValues; // Keep gaps; they interrupt consecutive-period claims.
   const validYoYs = yoyPcts.filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
-  const latestYoY = validYoYs.length > 0 ? validYoYs[validYoYs.length - 1] : null;
-  const prevVal = validHistory.length >= 2 ? validHistory[validHistory.length - 2] : null;
+  const latestYoY = Number.isFinite(yoyPcts.at(-1)) ? yoyPcts.at(-1)! : null;
+  const prevVal = Number.isFinite(validHistory.at(-2)) ? validHistory.at(-2)! : null;
 
   // Calculate consecutive drops and gains
   let consecutiveDrops = 0;
   let consecutiveGains = 0;
   if (validHistory.length >= 2) {
     for (let i = validHistory.length - 1; i >= 1; i--) {
-      if (validHistory[i] < validHistory[i - 1]) {
+      if (!Number.isFinite(validHistory[i]) || !Number.isFinite(validHistory[i - 1])
+        || (periods.length && getFiscalQuarterOrdinal(periods[i]) - getFiscalQuarterOrdinal(periods[i - 1]) !== 1)) break;
+      if (validHistory[i]! < validHistory[i - 1]!) {
         if (consecutiveGains === 0) consecutiveDrops++;
         else break;
-      } else if (validHistory[i] > validHistory[i - 1]) {
+      } else if (validHistory[i]! > validHistory[i - 1]!) {
         if (consecutiveDrops === 0) consecutiveGains++;
         else break;
       } else {
@@ -275,7 +281,7 @@ export function getFinancialAiInsight(
       return {
         key,
         name: 'Net Income',
-        name_th: 'กำไรสุทธิส่วนของผู้ถือหุ้น (Net Income)',
+        name_th: 'กำไรสุทธิรวม (Net Income)',
         category: 'income',
         status: 'warning',
         status_label_th: isTurnedNegative ? 'พลิกเป็นขาดทุนสุทธิ (Net Loss)' : 'ขาดทุนสุทธิ (Net Loss)',
@@ -297,15 +303,15 @@ export function getFinancialAiInsight(
       return {
         key,
         name: 'Net Income',
-        name_th: 'กำไรสุทธิส่วนของผู้ถือหุ้น (Net Income)',
+        name_th: 'กำไรสุทธิรวม (Net Income)',
         category: 'income',
         status: 'warning',
         status_label_th: `กำไรสุทธิหดตัวแรง (${yoyText || 'ลดลงมาก'})`,
         status_label_en: `Net Income Contraction (${yoyText || 'Declining'})`,
         what_is_it_th: 'กำไรสุทธิบรรทัดสุดท้ายที่เป็นของส่วนผู้ถือหุ้น หลังหักต้นทุน ค่าใช้จ่ายดำเนินงาน ดอกเบี้ย และภาษีทั้งหมด',
         what_is_it_en: 'Net profit attributable to common shareholders after all expenses, interest, and taxes.',
-        interpretation_th: `กำไรสุทธิส่วนของผู้ถือหุ้นอยู่ที่ **${valStr}** ปรับลดลงอย่างมีนัยสำคัญ ${yoyText}${consecutiveDrops >= 2 ? ` (ลดลงติดต่อกัน ${consecutiveDrops} ไตรมาส)` : ''} สะท้อนแรงกดดันจากการหดตัวของมาร์จิ้น ต้นทุนขายที่เพิ่มขึ้น หรือค่าใช้จ่ายด้านภาษี/ดอกเบี้ย`,
-        interpretation_en: `Net income for common stockholders stands at **${valStr}**, contracting by ${yoyText}${consecutiveDrops >= 2 ? ` (declining for ${consecutiveDrops} consecutive quarters)` : ''} due to margin compression or elevated expenses.`,
+        interpretation_th: `กำไรสุทธิรวมอยู่ที่ **${valStr}** ปรับลดลงอย่างมีนัยสำคัญ ${yoyText}${consecutiveDrops >= 2 ? ` (ลดลงติดต่อกัน ${consecutiveDrops} ไตรมาส)` : ''} สะท้อนแรงกดดันจากการหดตัวของมาร์จิ้น ต้นทุนขายที่เพิ่มขึ้น หรือค่าใช้จ่ายด้านภาษี/ดอกเบี้ย`,
+        interpretation_en: `Total net income stands at **${valStr}**, contracting by ${yoyText}${consecutiveDrops >= 2 ? ` (declining for ${consecutiveDrops} consecutive quarters)` : ''} due to margin compression or elevated expenses.`,
         pros_th: [
           `บริษัทยังคงรักษากำไรสุทธิเป็นบวกได้ (${valStr}) ไม่ตกอยู่ในภาวะขาดทุนสุทธิ`,
           'ยังคงมีความสามารถในการสะสมกำไรเข้าสู่ส่วนของผู้ถือหุ้น (Retained Earnings)'
@@ -325,7 +331,7 @@ export function getFinancialAiInsight(
       return {
         key,
         name: 'Net Income',
-        name_th: 'กำไรสุทธิส่วนของผู้ถือหุ้น (Net Income)',
+        name_th: 'กำไรสุทธิรวม (Net Income)',
         category: 'income',
         status: 'excellent',
         status_label_th: `กำไรสุทธิเติบโตก้าวกระโดด (${yoyText})`,
@@ -353,7 +359,7 @@ export function getFinancialAiInsight(
     return {
       key,
       name: 'Net Income',
-      name_th: 'กำไรสุทธิส่วนของผู้ถือหุ้น (Net Income)',
+      name_th: 'กำไรสุทธิรวม (Net Income)',
       category: 'income',
       status: isModerateDrop ? 'neutral' : 'good',
       status_label_th: yoyText ? `กำไรสุทธิ (${yoyText})` : 'กำไรสุทธิมีเสถียรภาพ',

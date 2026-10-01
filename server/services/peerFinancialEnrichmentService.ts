@@ -1,7 +1,9 @@
 import type { CandidateDefinition } from '../../src/domain/valuation/__fixtures__/peerUniverse.js';
 import type { PeerCompanyItem } from '../../src/types.js';
-import { calculateCanonicalRoic } from '../../src/domain/valuation/canonicalRoic.js';
+import { calculateVerifiedKeyIndicators } from '../../src/domain/verifiedKeyIndicators.js';
+import { adaptSecCanonicalToFinancialStatements } from '../../src/services/sec/secLegacyAdapter.js';
 import { validTrailingFourQuarterLabels } from '../../src/domain/valuation/canonicalQuarterWindow.js';
+import { reconcileCanonicalTtmFlow } from '../../src/domain/canonicalTtmFlow.js';
 import {
   fetchSecVerifiedIntegrationPackage,
   type SecVerifiedIntegrationPackage,
@@ -11,6 +13,8 @@ import {
   type SecEdgarClient,
 } from '../../src/services/sec/secClient.js';
 import type { CanonicalFinancialValue } from '../../src/domain/financialValue.js';
+import { fetchPeerMarketPrice, type PeerMarketPrice } from './peerMarketSnapshot';
+import { resolveIssuerNonGaapTtm } from '../../src/domain/issuerNonGaapTtm';
 
 export interface EnrichedPeerMetricObservation {
   value: number | null;
@@ -34,6 +38,7 @@ export interface PeerEnrichmentOptions {
   timeoutMs?: number;
   client?: SecEdgarClient;
   secPackageFetcher?: (ticker: string) => Promise<SecVerifiedIntegrationPackage>;
+  marketPriceFetcher?: (ticker: string) => Promise<PeerMarketPrice | null>;
 }
 
 export interface PeerDataGapItem {
@@ -44,9 +49,13 @@ export interface PeerDataGapItem {
   periodNeeded?: string;
 }
 
-const ENRICHMENT_CACHE_VERSION = 'v2-canonical';
+// Canonical earnings now retain their parent/common/total attribution. Cached
+// candidates from the previous transformation must not outlive this repair.
+const ENRICHMENT_CACHE_VERSION = 'v4-independent-market-period-true';
 const enrichmentCache = new Map<string, { timestamp: number; candidate: CandidateDefinition }>();
 const ENRICHMENT_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const fetcherIds=new WeakMap<object,number>();let nextFetcherId=1;
+const fetcherIdentity=(fn:object|undefined)=>{if(!fn)return 0;if(!fetcherIds.has(fn))fetcherIds.set(fn,nextFetcherId++);return fetcherIds.get(fn)!;};
 
 export function clearPeerEnrichmentCache() {
   enrichmentCache.clear();
@@ -84,7 +93,7 @@ export async function enrichPeerCandidate(
   const gaps: PeerDataGapItem[] = [];
 
   // Check cache
-  const cacheKey = `${ticker}:${ENRICHMENT_CACHE_VERSION}`;
+  const cacheKey = `${ticker}:${ENRICHMENT_CACHE_VERSION}:${fetcherIdentity(options.secPackageFetcher)}:${fetcherIdentity(options.marketPriceFetcher)}`;
   const cached = enrichmentCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < ENRICHMENT_CACHE_TTL_MS)) {
     return { candidate: cached.candidate, gaps };
@@ -131,7 +140,9 @@ export async function enrichPeerCandidate(
         period: v.period || 'Latest',
         source: v.source || 'Market Data',
         reportedOrDerived: v.reportedOrDerived || 'REPORTED',
-        status: (v as any).status || (v.value !== null ? 'VERIFIED' : 'NOT_REPORTED'),
+        // A discovered/model candidate is not evidence. Only observations
+        // retrieved below from SEC or a market provider may become VERIFIED.
+        status: v.value !== null ? 'FOUND_UNVERIFIED' : 'NOT_REPORTED',
         periodBasis: (v as any).periodBasis,
         basis: (v as any).basis,
         reason: (v as any).reason,
@@ -166,7 +177,7 @@ export async function enrichPeerCandidate(
         attemptedSources: ['SEC EDGAR XBRL Company Facts'],
       });
       const finalCand: CandidateDefinition = { ...baseCand, metrics: metrics as any };
-      enrichmentCache.set(`${ticker}:${ENRICHMENT_CACHE_VERSION}`, { timestamp: Date.now(), candidate: finalCand });
+      enrichmentCache.set(cacheKey, { timestamp: Date.now(), candidate: finalCand });
       return { candidate: finalCand, gaps };
     }
 
@@ -176,7 +187,7 @@ export async function enrichPeerCandidate(
 
     const getVal = (key: string, idx = latestIndex): CanonicalFinancialValue | undefined => {
       const item = values[key]?.[idx];
-      return item && (!item.period || item.period === periods[idx]) && item.verification !== 'unverified'
+      return item && item.period === periods[idx] && item.verification === 'verified' && item.source?.documentUrl
         ? item : undefined;
     };
 
@@ -349,101 +360,49 @@ export async function enrichPeerCandidate(
       };
     }
 
-    // SECTION 11: Derive Peer ROIC (Canonical TTM NOPAT / Average Invested Capital)
-    if (periods.length >= 4 && validTrailingFourQuarterLabels(periods.slice(-4))) {
-      const qIndices = [latestIndex - 3, latestIndex - 2, latestIndex - 1, latestIndex];
-      const opIncs = qIndices.map(i => getVal('income_statement.operating_income', i)?.value);
-      const allOpIncsValid = opIncs.every(finite);
-
-      if (allOpIncsValid) {
-        const ttmOperatingIncome = opIncs.reduce((acc, v) => acc + (v as number), 0);
-        const pretaxes = qIndices.map(i => getVal('income_statement.income_before_tax', i)?.value);
-        const taxes = qIndices.map(i => getVal('income_statement.income_tax_expense', i)?.value);
-        const ttmPretax = pretaxes.every(finite) ? pretaxes.reduce((a, b) => a + (b as number), 0) : undefined;
-        const ttmTax = taxes.every(finite) ? taxes.reduce((a, b) => a + (b as number), 0) : undefined;
-
-        // Invested capital ending
-        const endEq = equityFact?.value;
-        const endDbt = debtFact?.value;
-        const endCsh = cashFact?.value;
-        const endSti = shortInvFact?.value ?? 0;
-
-        if (finite(endEq) && finite(endDbt) && finite(endCsh)) {
-          const endingIC = endEq + endDbt - endCsh - endSti;
-
-          // Invested capital beginning (prefer 4 quarters ago, or 3 quarters ago)
-          let begIC: number | undefined;
-          const begIdx = latestIndex >= 4 ? latestIndex - 4 : latestIndex - 3;
-          const begEq = getVal('balance_sheet.total_equity', begIdx)?.value;
-          const begDbt = getVal('balance_sheet.total_debt', begIdx)?.value;
-          const begCsh = getVal('balance_sheet.cash_and_equivalents', begIdx)?.value;
-          const begSti = getVal('balance_sheet.short_term_investments', begIdx)?.value ?? 0;
-
-          if (finite(begEq) && finite(begDbt) && finite(begCsh)) {
-            begIC = begEq + begDbt - begCsh - begSti;
-          }
-
-          const roicRes = calculateCanonicalRoic({
-            operatingIncome: ttmOperatingIncome,
-            incomeBeforeTax: ttmPretax,
-            incomeTaxExpense: ttmTax,
-            beginningInvestedCapital: begIC,
-            endingInvestedCapital: endingIC,
-            periodBasis: 'TTM',
-            periodLabel: `TTM ending ${latestPeriod}`,
-            source: 'SEC EDGAR 10-Q/10-K',
-          });
-
-          if (roicRes.status === 'CALCULATED' && finite(roicRes.value)) {
-            metrics.roic_pct = {
-              value: roicRes.value,
-              unit: '%',
-              period: `TTM ending ${latestPeriod}`,
-              periodBasis: 'TTM',
-              basis: roicRes.basis,
-              source: 'SEC EDGAR 10-Q/10-K',
-              reportedOrDerived: 'DERIVED',
-              status: 'VERIFIED',
-            };
-          } else {
-            gaps.push({
-              ticker,
-              metric: 'roic_pct',
-              reason: roicRes.reason || 'Invested capital is non-positive',
-              attemptedSources: ['SEC EDGAR XBRL'],
-            });
-          }
-        } else {
-          gaps.push({
-            ticker,
-            metric: 'roic_pct',
-            reason: 'Incomplete balance sheet components for Invested Capital',
-            attemptedSources: ['SEC EDGAR XBRL'],
-          });
-        }
-      } else {
-        gaps.push({
-          ticker,
-          metric: 'roic_pct',
-          reason: 'Incomplete 4-quarter operating income history for TTM ROIC',
-          attemptedSources: ['SEC EDGAR XBRL'],
-        });
-      }
+    // Peer and target use exactly the same accepted facts, TTM window and IC policy.
+    const acceptedStatements = adaptSecCanonicalToFinancialStatements(pkg.canonicalFinancials);
+    const sharedRoic = acceptedStatements && calculateVerifiedKeyIndicators(acceptedStatements).roic.at(-1);
+    if (sharedRoic && finite(sharedRoic.value)) {
+      metrics.roic_pct = {
+        value: sharedRoic.value, unit: '%', period: `TTM ending ${latestPeriod}`,
+        periodBasis: 'TTM', basis: sharedRoic.basis,
+        source: 'SEC EDGAR 10-Q/10-K', reportedOrDerived: 'DERIVED', status: 'VERIFIED',
+        reason: sharedRoic.status === 'approximate' ? 'Approximate: ending IC and/or fallback tax rate; see basis.' : undefined,
+      };
     } else {
-      gaps.push({
-        ticker,
-        metric: 'roic_pct',
-        reason: 'Less than 4 quarters of verified SEC filings available',
-        attemptedSources: ['SEC EDGAR XBRL'],
-      });
+      gaps.push({ ticker, metric: 'roic_pct',
+        reason: sharedRoic?.reason || 'Compatible verified TTM flows and invested-capital inputs unavailable.',
+        attemptedSources: ['SEC EDGAR XBRL'] });
+    }
+
+    // Independent market price plus accepted current common shares. All
+    // multiples below use verified canonical flows, not AI peer estimates.
+    const quote=await (options.marketPriceFetcher ?? (process.env.NODE_ENV==='test' ? async()=>null : fetchPeerMarketPrice))(ticker);
+    const shares=pkg.shareSnapshot?.currentCommonSharesOutstanding?.sharesM;
+    if(quote?.ticker===ticker && finite(quote.price) && quote.price>0 && finite(shares) && shares>0 && quote.source && quote.asOf) {
+      const cap=quote.price*shares;
+      metrics.market_cap={value:cap,unit:'USD_M',period:quote.asOf,asOfDate:quote.asOf,source:`Yahoo market quote ${quote.source} + SEC current common shares`,reportedOrDerived:'DERIVED',status:'VERIFIED'};
+      const source=metrics.market_cap.source;
+      const common=reconcileCanonicalTtmFlow(pkg.canonicalFinancials,'income_statement.net_income_common');
+      if(common.canonicalValue!==null)metrics.pe_trailing={value:common.canonicalValue>0?rounded(cap/common.canonicalValue):null,
+        unit:'x',period:common.periodsUsed.join('–')+' TTM',periodBasis:'TTM',source,asOfDate:quote.asOf,reportedOrDerived:'DERIVED',status:'VERIFIED',
+        reason:common.canonicalValue<=0?'NON_POSITIVE_COMMON_EARNINGS':undefined};
+      const revenue=reconcileCanonicalTtmFlow(pkg.canonicalFinancials,'income_statement.revenue');
+      if(finite(debtFact?.value)&&finite(cashFact?.value)&&finite(shortInvFact?.value)&&finite(revenue.canonicalValue)&&revenue.canonicalValue>0) {
+        metrics.ev_sales={value:rounded((cap+debtFact.value-cashFact.value-shortInvFact.value)/revenue.canonicalValue),unit:'x',
+          period:revenue.periodsUsed.join('–')+' TTM',periodBasis:'TTM',source,asOfDate:quote.asOf,reportedOrDerived:'DERIVED',status:'VERIFIED'};
+      }
+      for(const metric of ['AFFO','FFO'] as const) {
+        const flow=resolveIssuerNonGaapTtm(pkg.canonicalFinancials,metric);
+        if(flow && flow.value>0)metrics[`p_${metric.toLowerCase()}_multiple`]={value:rounded(cap/flow.value),unit:'x',period:flow.period+' TTM',periodBasis:'TTM',source:`${source} + ${flow.source}`,asOfDate:quote.asOf,reportedOrDerived:'DERIVED',status:'VERIFIED'};
+      }
     }
 
     // SECTION 30: P/E N/M Semantics when TTM Earnings are verified negative
     if (periods.length >= 4 && validTrailingFourQuarterLabels(periods.slice(-4))) {
-      const qIndices = [latestIndex - 3, latestIndex - 2, latestIndex - 1, latestIndex];
-      const netIncs = qIndices.map(i => getVal('income_statement.net_income', i)?.value);
-      if (netIncs.every(finite)) {
-        const ttmNetIncome = netIncs.reduce((a, b) => a + (b as number), 0);
+      const ttmNetIncome = reconcileCanonicalTtmFlow(pkg.canonicalFinancials, 'income_statement.net_income_common').canonicalValue;
+      if (ttmNetIncome !== null) {
         if (ttmNetIncome < 0) {
           baseCand.profitabilityState = 'pre_profit';
           metrics.pe_trailing = {
@@ -486,7 +445,8 @@ export async function enrichPeerCandidate(
     metrics: metrics as any,
   };
 
-  enrichmentCache.set(`${ticker}:${ENRICHMENT_CACHE_VERSION}`, { timestamp: Date.now(), candidate: finalCand });
+  if(enrichmentCache.size>=256)enrichmentCache.delete(enrichmentCache.keys().next().value!);
+  enrichmentCache.set(cacheKey, { timestamp: Date.now(), candidate: finalCand });
   return { candidate: finalCand, gaps };
 }
 
@@ -526,7 +486,8 @@ export async function enrichPeerCandidates(
           attemptedSources: ['SEC EDGAR'],
         });
         if ('metrics' in raw && typeof raw.metrics === 'object') {
-          results.push(raw as CandidateDefinition);
+          results.push({...raw,metrics:Object.fromEntries(Object.entries(raw.metrics ?? {}).map(([key,value])=>
+            [key,{...value,status:value.value==null?'NOT_REPORTED':'FOUND_UNVERIFIED'}]))} as CandidateDefinition);
         } else {
           results.push({
             ticker,

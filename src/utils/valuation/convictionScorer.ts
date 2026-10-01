@@ -2,9 +2,11 @@ import { ReportData, ConvictionBreakdown, ConvictionPillarScore } from '../../ty
 import { resolveBusinessArchetype, type BusinessArchetype } from '../../domain/financialMetricContext';
 import { resolveFundamentalMetrics, type ResolvedFundamentalMetrics } from '../../domain/valuation/metricRegistry';
 import { resolveAdaptiveFivePillars } from '../../domain/valuation/fivePillarsResolver';
+import { resolveCurrentBalanceSheetSnapshot } from '../../domain/currentBalanceSheetSnapshot';
+import { resolveReportedEarnings } from '../../domain/reportedEarnings';
 
 export interface ConvictionScoreResult {
-  conviction_score: number;
+  conviction_score: number | null;
   conviction_breakdown: ConvictionBreakdown;
   input_dossier?: ConvictionInputDossier;
 }
@@ -37,10 +39,10 @@ export interface ConvictionInputDossier {
 
 function extractScore(val: any): number | null {
   if (val === null || val === undefined) return null;
-  if (typeof val === 'number') return val;
-  if (typeof val === 'object' && typeof val.score === 'number') return val.score;
+  if (typeof val === 'number') return Number.isFinite(val) && val >= 1 && val <= 10 ? val : null;
+  if (typeof val === 'object' && typeof val.score === 'number') return extractScore(val.score);
   const num = parseFloat(String(val));
-  return isNaN(num) ? null : num;
+  return Number.isFinite(num) && num >= 1 && num <= 10 ? num : null;
 }
 
 /**
@@ -48,6 +50,7 @@ function extractScore(val: any): number | null {
  * Eliminates discrete step-cliffs that cause score jumping.
  */
 function interpolate(val: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
+  if (inMax < inMin) return interpolate(val, inMax, inMin, outMax, outMin);
   if (val <= inMin) return outMin;
   if (val >= inMax) return outMax;
   return outMin + ((val - inMin) / (inMax - inMin)) * (outMax - outMin);
@@ -96,7 +99,6 @@ export function calculateDeterministicConvictionScore(
 
   const fs = data?.financial_statements;
   const inc = fs?.income_statement;
-  const bs = fs?.balance_sheet;
   const cf = fs?.cash_flow;
   const intrinsic = data?.intrinsic_value;
   const comp = data?.comprehensive_analysis;
@@ -119,12 +121,14 @@ export function calculateDeterministicConvictionScore(
 
   const latestGrowthInput = resolvedMetrics?.revenueGrowthYoY?.value ?? latest(inc?.yoy_revenue_growth_pct);
   const latestRevenueInput = latest(inc?.revenue);
-  const latestNetIncomeInput = latest(inc?.net_income);
+  const reportedEarnings = resolveReportedEarnings(fs);
+  const earningsSeries = reportedEarnings?.values;
+  const latestNetIncomeInput = latest(earningsSeries);
   const latestMarginInput = resolvedMetrics?.netMargin?.value ?? latest(inc?.net_margin_pct)
     ?? ratio(latestNetIncomeInput, latestRevenueInput, true);
 
-  const previousNetIncomeInput = inc?.net_income && inc.net_income.length >= 2
-    ? inc.net_income[inc.net_income.length - 2]
+  const previousNetIncomeInput = earningsSeries && earningsSeries.length >= 2
+    ? earningsSeries[earningsSeries.length - 2]
     : null;
 
   const latestFcfInput = resolvedMetrics?.fcfMargin?.value !== undefined && finite(latestRevenueInput)
@@ -133,23 +137,24 @@ export function calculateDeterministicConvictionScore(
   const latestFcfMarginInput = resolvedMetrics?.fcfMargin?.value ?? latest(cf?.fcf_margin_pct)
     ?? ratio(latestFcfInput, latestRevenueInput, true);
 
-  const latestDebtInput = latest(bs?.total_debt);
-  const latestEquityInput = latest(bs?.total_equity);
-  const latestDebtToEquityInput = latest(bs?.debt_to_equity)
+  const balanceSnapshot = resolveCurrentBalanceSheetSnapshot(data || {});
+  const latestDebtInput = balanceSnapshot.totalDebt;
+  const latestEquityInput = balanceSnapshot.facts.total_equity?.value ?? null;
+  const latestDebtToEquityInput = balanceSnapshot.facts.debt_to_equity?.value
     ?? ratio(latestDebtInput, latestEquityInput);
-  const latestCashInput = latest(bs?.cash_and_equivalents);
-  const latestCurrentAssetsInput = latest(bs?.total_current_assets);
-  const latestCurrentLiabilitiesInput = latest(bs?.total_current_liabilities)
-    ?? latest(bs?.current_liabilities);
-  const latestCurrentRatioInput = resolvedMetrics?.currentRatio?.value ?? latest(bs?.current_ratio)
+  const latestCashInput = balanceSnapshot.cashAndEquivalents;
+  const latestCurrentAssetsInput = balanceSnapshot.facts.total_current_assets?.value ?? null;
+  const latestCurrentLiabilitiesInput = balanceSnapshot.facts.total_current_liabilities?.value
+    ?? balanceSnapshot.facts.current_liabilities?.value ?? null;
+  const latestCurrentRatioInput = resolvedMetrics?.currentRatio?.value ?? balanceSnapshot.facts.current_ratio?.value
     ?? ratio(latestCurrentAssetsInput, latestCurrentLiabilitiesInput);
 
   // Valuation inputs
-  const suppliedMoS = (intrinsic as any)?.summary?.margin_of_safety_pct
+  const suppliedMoS = intrinsic?.canonical_run ? intrinsic.canonical_run.marginOfSafetyPct : (intrinsic as any)?.summary?.margin_of_safety_pct
     ?? (intrinsic as any)?.dcf_model?.margin_of_safety_pct
     ?? (intrinsic as any)?.ddm_model?.scenarios?.base?.margin_of_safety_pct
     ?? (intrinsic as any)?.margin_of_safety_pct;
-  const suppliedFairValue = (intrinsic as any)?.dcf_model?.scenarios?.base?.fair_value_per_share
+  const suppliedFairValue = intrinsic?.canonical_run ? intrinsic.canonical_run.baseFairValue : (intrinsic as any)?.dcf_model?.scenarios?.base?.fair_value_per_share
     ?? (intrinsic as any)?.ddm_model?.scenarios?.base?.fair_value_per_share
     ?? (intrinsic as any)?.reit_model?.scenarios?.base?.fair_value_per_share
     ?? (intrinsic as any)?.summary?.base_case_fair_value
@@ -188,34 +193,23 @@ export function calculateDeterministicConvictionScore(
     ? canonicalPeg.value!
     : (finite(rawPegVal) && rawPegVal > 0 && !isCanonicalPegBlocked ? rawPegVal : null);
 
-  const financialStrengthInput = extractScore(scoring?.financial_strength);
   const riskScoreInput = extractScore(scoring?.risk_level);
 
-  const hasSolvencyInput = latestDebtToEquityInput !== null
-    || (latestCashInput !== null && latestDebtInput !== null);
-  const hasValuationInput = suppliedMoS !== null && suppliedMoS !== undefined
-    || (typeof suppliedFairValue === 'number' && typeof suppliedCurrentPrice === 'number' && suppliedCurrentPrice > 0)
-    || (isFinancialSector && typeof suppliedCurrentPrice === 'number' && suppliedCurrentPrice > 0);
+  const hasSolvencyInput = finite(latestDebtToEquityInput)
+    || (finite(latestCashInput) && finite(latestDebtInput));
   const hasCashFlowInput = isFinancialSector
-    ? financialStrengthInput !== null || resolvedMetrics?.roe?.value !== undefined
+    ? finite(resolvedMetrics?.roe?.value)
     : isReit
-      ? financialStrengthInput !== null || resolvedMetrics?.interestCoverage?.value !== undefined
+      ? finite(resolvedMetrics?.interestCoverage?.value)
       : latestFcfInput !== null && (latestFcfInput <= 0 || latestFcfMarginInput !== null);
 
-  // Universal fail-closed data integrity check
-  if (
-    latestGrowthInput === null
-    || latestMarginInput === null
-    || latestNetIncomeInput === null
-    || previousNetIncomeInput === null
-    || !hasCashFlowInput
-    || (!isFinancialSector && !isReit && (!hasSolvencyInput || latestCurrentRatioInput === null))
-    || !hasValuationInput
-    || !comp?.business_strengths
-    || riskScoreInput === null
-  ) {
-    return undefined;
-  }
+  if (!data?.financial_statements && !data?.canonical_financials) return undefined;
+  const growthCapacity = (finite(latestGrowthInput) ? 15 : 0) + (finite(latestMarginInput) ? 10 : 0)
+    + (finite(latestNetIncomeInput) && finite(previousNetIncomeInput) ? 5 : 0);
+  let healthCapacity = 0;
+  // An empty accounting envelope plus optimistic AI prose is not evidence.
+  if (growthCapacity === 0 && !finite(latestFcfInput) && !hasSolvencyInput && !finite(latestCurrentRatioInput)
+    && !finite(resolvedMetrics?.roe?.value) && !finite(resolvedMetrics?.nim?.value)) return undefined;
 
   // =========================================================================
   // PILLAR 1: Revenue & Earnings Growth (Max 30 Points)
@@ -263,8 +257,8 @@ export function calculateDeterministicConvictionScore(
   // C. Growth Continuity & Direction (Max 5 pts)
   // Section 31 & 73: Single QoQ comparison must say "Net income increased QoQ",
   // never "consecutive profit growth" unless 3+ quarters proved a streak.
-  const netIncArr = inc?.net_income || [];
-  if (netIncArr.length >= 3) {
+  const netIncArr = earningsSeries || [];
+  if (finite(latestNetIncomeInput) && finite(previousNetIncomeInput) && netIncArr.length >= 3) {
     const last = netIncArr[netIncArr.length - 1];
     const prev = netIncArr[netIncArr.length - 2];
     const prev2 = netIncArr[netIncArr.length - 3];
@@ -283,7 +277,7 @@ export function calculateDeterministicConvictionScore(
     } else {
       growthPoints += 1.0;
     }
-  } else if (netIncArr.length >= 2) {
+  } else if (finite(latestNetIncomeInput) && finite(previousNetIncomeInput) && netIncArr.length >= 2) {
     const last = netIncArr[netIncArr.length - 1];
     const prev = netIncArr[netIncArr.length - 2];
     if (last !== null && prev !== null && last > 0 && last >= prev) {
@@ -300,6 +294,10 @@ export function calculateDeterministicConvictionScore(
   }
 
   const rawGrowthScore = Math.min(30, Math.max(0, growthPoints));
+  if (reportedEarnings && reportedEarnings.scope !== 'TOTAL') {
+    growthDetailsTh.push(`ขอบเขตกำไรที่รายงาน: ${reportedEarnings.labelTh} (ไม่แทนกำไรสุทธิรวม)`);
+    growthDetailsEn.push(`Reported earnings scope: ${reportedEarnings.label} (not total income)`);
+  }
   const roundedGrowthScore = Math.round(rawGrowthScore);
   const growthPillar: ConvictionPillarScore = {
     score: roundedGrowthScore,
@@ -321,16 +319,15 @@ export function calculateDeterministicConvictionScore(
     // Bank & Lender Policy (Section 33):
     // CET1 / Tier 1 capital, ROE / ROA, NIM, deposit quality.
     // Never penalize for missing corporate FCF or Current Ratio.
-    if (financialStrengthInput !== null) {
-      healthPoints = (financialStrengthInput / 10) * 30;
-      healthDetailsTh.push(`ความแข็งแกร่งของเงินกองทุนและสภาพคล่องธนาคาร (${financialStrengthInput}/10)`);
-      healthDetailsEn.push(`Banking solvency & liquidity position (${financialStrengthInput}/10)`);
-    } else {
+    {
       const roe = resolvedMetrics?.roe?.value;
-      const roePts = finite(roe) ? interpolate(roe, 5, 18, 5, 15) : 10;
+      const roePts = finite(roe) ? interpolate(roe, 5, 18, 5, 15) : 0;
       const nim = resolvedMetrics?.nim?.value;
-      const nimPts = finite(nim) ? interpolate(nim, 2.0, 4.0, 5, 15) : 10;
-      healthPoints = roePts + nimPts;
+      const nimPts = finite(nim) ? interpolate(nim, 2.0, 4.0, 3, 10) : 0;
+      const capital = resolvedMetrics?.cet1Ratio?.value ?? resolvedMetrics?.tier1CapitalRatio?.value;
+      const capitalPts = finite(capital) ? interpolate(capital,6,12,1,5) : 0;
+      healthCapacity = (finite(roe) ? 15 : 0) + (finite(nim) ? 10 : 0) + (finite(capital) ? 5 : 0);
+      healthPoints = roePts + nimPts + capitalPts;
       healthDetailsTh.push(`ผลตอบแทนต่อส่วนของผู้ถือหุ้น (ROE) และ Net Interest Margin (NIM)`);
       healthDetailsEn.push(`Bank profitability metrics (ROE & Net Interest Margin)`);
     }
@@ -339,13 +336,14 @@ export function calculateDeterministicConvictionScore(
     // Combined ratio, ROE, capital adequacy
     const combinedRatio = resolvedMetrics?.combinedRatio?.value;
     const roe = resolvedMetrics?.roe?.value;
-    let combPts = 10;
+    let combPts = 0;
     if (finite(combinedRatio)) {
       combPts = interpolate(combinedRatio, 102, 92, 4.0, 15.0);
       healthDetailsTh.push(`Combined Ratio ${combinedRatio.toFixed(1)}%`);
       healthDetailsEn.push(`Combined Ratio ${combinedRatio.toFixed(1)}%`);
     }
-    const roePts = finite(roe) ? interpolate(roe, 5, 18, 5.0, 15.0) : 10;
+    const roePts = finite(roe) ? interpolate(roe, 5, 18, 5.0, 15.0) : 0;
+    healthCapacity = (finite(combinedRatio) ? 15 : 0) + (finite(roe) ? 15 : 0);
     healthPoints = combPts + roePts;
     if (finite(roe)) {
       healthDetailsTh.push(`ROE ${roe.toFixed(1)}%`);
@@ -356,32 +354,34 @@ export function calculateDeterministicConvictionScore(
     // Occupancy, leverage, interest coverage
     const occ = resolvedMetrics?.occupancyRate?.value;
     const intCov = resolvedMetrics?.interestCoverage?.value;
-    let occPts = 15;
+    let occPts = 0;
     if (finite(occ)) {
       occPts = interpolate(occ, 90, 98, 8.0, 15.0);
       healthDetailsTh.push(`อัตราการเช่า (Occupancy) ${occ.toFixed(1)}%`);
       healthDetailsEn.push(`Portfolio Occupancy ${occ.toFixed(1)}%`);
     }
-    let intPts = 15;
+    let intPts = 0;
     if (finite(intCov)) {
       intPts = interpolate(intCov, 1.5, 4.5, 6.0, 15.0);
       healthDetailsTh.push(`Interest Coverage ${intCov.toFixed(1)}x`);
       healthDetailsEn.push(`Interest Coverage ${intCov.toFixed(1)}x`);
     }
     healthPoints = occPts + intPts;
+    healthCapacity = (finite(occ) ? 15 : 0) + (finite(intCov) ? 15 : 0);
   } else {
     // Standard Operating Company Policy (Section 32, 37):
     // Free Cash Flow Generation (Max 12 pts)
     const latestFcf = latestFcfInput;
     const latestFcfMargin = latestFcfMarginInput;
 
-    if (latestFcf !== null && latestFcf !== undefined) {
+    if (finite(latestFcf) && (latestFcf <= 0 || finite(latestFcfMargin))) {
+      healthCapacity += 12;
       if (latestFcf <= 0) {
         healthPoints += 2.0;
         healthDetailsTh.push(`กระแสเงินสด FCF ติดลบ`);
         healthDetailsEn.push(`Negative free cash flow`);
       } else {
-        const marginVal = latestFcfMargin ?? 10;
+        const marginVal = latestFcfMargin!;
         healthPoints += interpolate(marginVal, 0, 25, 6.0, 12.0);
         healthDetailsTh.push(`กระแสเงินสด FCF แข็งแกร่ง${latestFcfMargin ? ` (${latestFcfMargin.toFixed(1)}% margin)` : ''}`);
         healthDetailsEn.push(`Strong FCF generation${latestFcfMargin ? ` (${latestFcfMargin.toFixed(1)}% margin)` : ''}`);
@@ -392,21 +392,33 @@ export function calculateDeterministicConvictionScore(
     const latestDe = latestDebtToEquityInput;
     const latestCash = latestCashInput;
     const latestDebt = latestDebtInput;
-    const hasNetCash = latestCash !== null && latestDebt !== null && latestCash >= latestDebt;
+    const hasNetCash = finite(latestCash) && finite(latestDebt) && latestCash >= latestDebt;
 
     if (hasNetCash) {
+      healthCapacity += 10;
       healthPoints += 10.0;
-      healthDetailsTh.push(`มีสถานะ Net Cash เงินสดมากกว่าหนี้`);
-      healthDetailsEn.push(`Net Cash balance sheet position`);
-    } else if (latestDe !== null) {
+      healthDetailsTh.push(balanceSnapshot.netCash !== null && balanceSnapshot.netCash >= 0
+        ? 'มีสถานะเงินสดสุทธิ (Net Cash)'
+        : 'เงินสดและรายการเทียบเท่าเงินสดครอบคลุมหนี้สินทางการเงิน');
+      healthDetailsEn.push(balanceSnapshot.netCash !== null && balanceSnapshot.netCash >= 0
+        ? 'Net Cash balance sheet position'
+        : 'Cash & Cash Equivalents cover financial debt');
+    } else if (finite(latestDe)) {
+      healthCapacity += 10;
       healthPoints += interpolate(latestDe, 0, 2.5, 10.0, 3.0);
       healthDetailsTh.push(`ภาระหนี้ D/E ${latestDe.toFixed(2)} เท่า`);
       healthDetailsEn.push(`D/E ratio ${latestDe.toFixed(2)}x`);
+    } else if (finite(latestCash) && finite(latestDebt) && latestDebt > 0) {
+      healthCapacity += 10;
+      healthPoints += interpolate(latestCash / latestDebt,0,1,3,10);
+      healthDetailsTh.push(`เงินสดครอบคลุมหนี้ ${(latestCash / latestDebt * 100).toFixed(1)}%`);
+      healthDetailsEn.push(`Cash covers ${(latestCash / latestDebt * 100).toFixed(1)}% of financial debt; equity denominator unavailable`);
     }
 
     // Liquidity / Current Ratio (Max 8 pts)
     const latestCr = latestCurrentRatioInput;
-    if (latestCr !== null && latestCr !== undefined) {
+    if (finite(latestCr)) {
+      healthCapacity += 8;
       healthPoints += interpolate(latestCr, 0.8, 2.0, 2.0, 8.0);
       healthDetailsTh.push(`Current Ratio ${latestCr.toFixed(2)} เท่า`);
       healthDetailsEn.push(`Current Ratio ${latestCr.toFixed(2)}x`);
@@ -458,7 +470,6 @@ export function calculateDeterministicConvictionScore(
       valDetailsEn.push(`Margin of Safety +${mosPct.toFixed(1)}%`);
     }
   } else if (isFinancialSector) {
-    valPoints += (8.5 / 14) * maxDcfPoints;
     valDetailsTh.push('แบบจำลอง FCFF ถูกระงับตาม Financial Sector Guard (ประเมินตาม Multiples & Solvency)');
     valDetailsEn.push('Generic FCFF disabled under Financial Sector Guard (Multiples & Solvency evaluated)');
   }
@@ -503,16 +514,12 @@ export function calculateDeterministicConvictionScore(
     const nim = resolvedMetrics?.nim?.value;
     if (finite(nim)) {
       economicMoatScore += interpolate(nim, 2.0, 3.5, 1.5, 3.5);
-    } else {
-      economicMoatScore += 2.5;
     }
   } else if (finite(grossMargin)) {
     if (grossMargin >= 60) economicMoatScore += 3.5;
     else if (grossMargin >= 40) economicMoatScore += 2.5;
     else if (grossMargin >= 20) economicMoatScore += 1.5;
     else economicMoatScore += 0.5;
-  } else {
-    economicMoatScore += 2.0;
   }
 
   // 2. High return on capital / value creation spread (up to 3.5 pts)
@@ -522,8 +529,6 @@ export function calculateDeterministicConvictionScore(
     economicMoatScore += interpolate(roic, 6, 18, 1.0, 3.5);
   } else if (finite(roe)) {
     economicMoatScore += interpolate(roe, 8, 20, 1.0, 3.5);
-  } else {
-    economicMoatScore += 2.0;
   }
 
   // 3. Morningstar Moat Rating or Operating Margin durability (up to 3.0 pts)
@@ -538,7 +543,7 @@ export function calculateDeterministicConvictionScore(
       economicMoatScore += 3.0;
     } else if (finite(opMargin) && opMargin > 10) {
       economicMoatScore += 2.0;
-    } else {
+    } else if (finite(opMargin)) {
       economicMoatScore += 1.0;
     }
   }
@@ -550,7 +555,7 @@ export function calculateDeterministicConvictionScore(
   // B. Risk Profile & Governance (Max 10 pts)
   // 1. Positive Net Income (+3.0 pts)
   let objectiveRiskPoints = 0;
-  const lastNi = inc?.net_income?.[inc.net_income.length - 1];
+  const lastNi = earningsSeries?.at(-1);
   if (lastNi !== null && lastNi !== undefined && lastNi > 0) objectiveRiskPoints += 3.0;
 
   // 2. Positive FCF or OCF (+3.0 pts)
@@ -562,12 +567,12 @@ export function calculateDeterministicConvictionScore(
   const lastCash = latestCashInput;
   const lastDebt = latestDebtInput;
   const lastDe = latestDebtToEquityInput;
-  if ((finite(lastCash) && finite(lastDebt) && lastCash >= lastDebt) || (finite(lastDe) && lastDe < 1.0) || isFinancialSector) {
+  if ((finite(lastCash) && finite(lastDebt) && lastCash >= lastDebt) || (finite(lastDe) && lastDe < 1.0)) {
     objectiveRiskPoints += 2.0;
   }
 
   // 4. AI subjective risk level (dampened to max 2.0 pts to eliminate stochastic swings)
-  const subjectiveAiRisk = interpolate(riskScoreInput, 1, 10, 2.0, 0.5);
+  const subjectiveAiRisk = finite(riskScoreInput) ? interpolate(riskScoreInput, 1, 10, 2.0, 0.5) : 0;
 
   const totalRiskPoints = Math.min(10.0, objectiveRiskPoints + subjectiveAiRisk);
   moatPoints += totalRiskPoints;
@@ -587,7 +592,47 @@ export function calculateDeterministicConvictionScore(
   // =========================================================================
   // FINAL CONVICTION SCORE (Total 100 Points)
   // =========================================================================
-  const totalScore = Math.min(100, Math.max(0, Math.round(rawGrowthScore + rawHealthScore + rawValScore + rawMoatScore)));
+  const moatCapacity = (finite(isBankOrLender ? resolvedMetrics?.nim?.value : grossMargin) ? 3.5 : 0)
+    + (finite(roic) || finite(roe) ? 3.5 : 0)
+    + (['Wide','Narrow'].includes(morningstarMoat) || finite(resolvedMetrics?.operatingMargin?.value ?? latestMarginInput) ? 3 : 0)
+    + (finite(lastNi) ? 3 : 0) + (finite(lastFcf) ? 3 : 0)
+    + (hasSolvencyInput ? 2 : 0) + (finite(riskScoreInput) ? 2 : 0);
+  const valuationCapacity = (finite(mosPct) ? maxDcfPoints : 0) + (isPegActive ? 6 : 0);
+  const capacities = [growthCapacity, healthCapacity, valuationCapacity, moatCapacity];
+  const pillars = [growthPillar, healthPillar, valPillar, moatPillar];
+  const rawScores = [rawGrowthScore, rawHealthScore, rawValScore, rawMoatScore];
+  const missing = [
+    [[latestGrowthInput,'revenueGrowthYoY'],[latestMarginInput,'netMargin'],[finite(latestNetIncomeInput)&&finite(previousNetIncomeInput)?1:null,'compatibleEarningsHistory']],
+    isBankOrLender ? [[resolvedMetrics?.roe?.value,'ROE'],[resolvedMetrics?.nim?.value,'NIM'],[resolvedMetrics?.cet1Ratio?.value??resolvedMetrics?.tier1CapitalRatio?.value,'CET1/Tier1']]
+      : isInsurer ? [[resolvedMetrics?.combinedRatio?.value,'combinedRatio'],[resolvedMetrics?.roe?.value,'ROE']]
+      : isReit ? [[resolvedMetrics?.occupancyRate?.value,'occupancy'],[resolvedMetrics?.interestCoverage?.value,'interestCoverage']]
+      : [[hasCashFlowInput?1:null,'FCF/margin'],[hasSolvencyInput?1:null,'solvency'],[latestCurrentRatioInput,'currentRatio']],
+    [[mosPct,'methodCompatibleFairValue'],[isPegActive?1:null,'meaningfulPEG']],
+    [[isBankOrLender?resolvedMetrics?.nim?.value:grossMargin,'economicMargin'],[roic??roe,'returnOnCapital'],[lastNi,'netIncome'],[lastFcf,'cashGeneration'],[hasSolvencyInput?1:null,'balanceSafety'],[riskScoreInput,'attributedRiskAssessment']],
+  ];
+  // No unknown input earns points or becomes a zero score. Display each observed
+  // pillar normalized to its published weight, with its measured coverage.
+  for (let i = 0; i < pillars.length; i++) {
+    const pillar = pillars[i], capacity = capacities[i];
+    pillar.availableInputWeight = capacity;
+    pillar.missingInputs = missing[i].filter(([value])=>!finite(value)).map(([,key])=>String(key));
+    pillar.coveragePct = Math.round(capacity / pillar.maxScore * 100);
+    pillar.status = capacity === 0 ? 'INSUFFICIENT_DATA' : capacity >= pillar.maxScore ? 'AVAILABLE' : 'PARTIAL';
+    pillar.score = capacity > 0 ? Math.round(Math.min(capacity,rawScores[i]) / capacity * pillar.maxScore) : null;
+    pillar.pct = pillar.score == null ? null : Math.round(pillar.score / pillar.maxScore * 100);
+    if (capacity < pillar.maxScore) {
+      pillar.reasonEn += `; input coverage ${pillar.coveragePct}%; missing inputs do not earn points`;
+      pillar.reasonTh += `; ข้อมูลรองรับ ${pillar.coveragePct}% ไม่ให้คะแนนกับข้อมูลที่ขาด`;
+    }
+  }
+  const coverage = capacities.reduce((a,b) => a+b,0);
+  // Overall minimum: >=60% original input weight, >=3 independently supported
+  // pillars, Growth and Financial Health each >=50% covered. Never extrapolate
+  // a single good ratio into a whole-company conviction score.
+  const enough = coverage >= 60 && capacities.filter(c => c > 0).length >= 3
+    && growthCapacity >= 15 && healthCapacity >= 15;
+  const totalScore = enough ? Math.min(100, Math.max(0, Math.round(
+    rawScores.reduce((a,b) => a+b,0) / coverage * 100))) : null;
 
   return {
     conviction_score: totalScore,
@@ -596,7 +641,11 @@ export function calculateDeterministicConvictionScore(
       financial_health: healthPillar,
       valuation: valPillar,
       moat_and_risk: moatPillar,
-      total_score: totalScore
+      total_score: totalScore,
+      coverage_pct: Math.round(coverage),
+      verified_input_coverage_pct: data?.canonical_financials?.ticker?.toUpperCase()===sym&&(data.canonical_financials.sourceCoverage?.verifiedValues??0)>0
+        ?Math.round(Math.max(0, coverage - (finite(riskScoreInput) ? 2 : 0) - (['Wide','Narrow'].includes(morningstarMoat)?3:0))):0,
+      status: totalScore === null ? 'INSUFFICIENT_DATA' : coverage === 100 ? 'AVAILABLE' : 'PARTIAL'
     }
   };
 }

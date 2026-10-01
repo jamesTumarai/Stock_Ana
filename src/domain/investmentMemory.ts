@@ -1,4 +1,7 @@
 import { ReportData } from '../types';
+import { resolveCurrentBalanceSheetSnapshot } from './currentBalanceSheetSnapshot';
+import { resolveReportTtmFlow } from './canonicalTtmFlow';
+import { reconcileCashTerminology } from './cashTerminology';
 import {
   unwrapHistoryRecord,
   extractReportPrice,
@@ -319,7 +322,8 @@ export function extractMemorySnapshot(
     terminalGrowth,
     baseRevenueCagr: revCagr,
     terminalMargin,
-    normalizedBaseFcf: typeof dcfInputs?.startingRevenueM === 'number' ? dcfInputs.startingRevenueM : null,
+    normalizedBaseFcf: resolveReportTtmFlow(data, 'income_statement.revenue').canonicalValue
+      ?? (typeof dcfInputs?.startingRevenueM === 'number' ? dcfInputs.startingRevenueM : null),
     netCashOrDebt: typeof dcfInputs?.netCashM === 'number' ? dcfInputs.netCashM : null,
     dilutedShares: typeof dcfInputs?.sharesOutstandingM === 'number' ? dcfInputs.sharesOutstandingM : null,
     additionalInputs: {
@@ -383,6 +387,7 @@ export function extractMemorySnapshot(
 
   const inc = data.financial_statements?.income_statement;
   const bs = data.financial_statements?.balance_sheet;
+  const currentBalance = resolveCurrentBalanceSheetSnapshot(data);
   const cf = data.financial_statements?.cash_flow;
   const reportPeriods = data.financial_statements?.periods || [];
 
@@ -437,29 +442,15 @@ export function extractMemorySnapshot(
       freeCashFlow = cf.free_cash_flow[cf.free_cash_flow.length - 1];
     }
 
-    totalDebt = typeof latestSec.total_debt === 'number'
-      ? latestSec.total_debt
-      : (typeof verifiedDcfInputs?.total_debt_m === 'number' ? verifiedDcfInputs.total_debt_m : null);
+    totalDebt = currentBalance.totalDebt;
 
     // Cash & Short-Term Investments from verified DCF inputs or balance sheet
-    cashAndEquivalents = typeof verifiedDcfInputs?.cash_and_equivalents_m === 'number'
-      ? verifiedDcfInputs.cash_and_equivalents_m
-      : (bs?.cash_and_equivalents && bs.cash_and_equivalents.length > 0 && typeof bs.cash_and_equivalents[bs.cash_and_equivalents.length - 1] === 'number'
-          ? bs.cash_and_equivalents[bs.cash_and_equivalents.length - 1]
-          : null);
+    cashAndEquivalents = currentBalance.cashAndEquivalents;
 
-    shortTermInvestments = typeof verifiedDcfInputs?.short_term_investments_m === 'number'
-      ? verifiedDcfInputs.short_term_investments_m
-      : (bs?.short_term_investments && bs.short_term_investments.length > 0 && typeof bs.short_term_investments[bs.short_term_investments.length - 1] === 'number'
-          ? bs.short_term_investments[bs.short_term_investments.length - 1]
-          : null);
+    shortTermInvestments = currentBalance.shortTermInvestments;
 
     // Net cash strictly with SEC provenance
-    if (typeof verifiedDcfInputs?.net_cash_m === 'number') {
-      netCash = verifiedDcfInputs.net_cash_m;
-    } else if (typeof cashAndEquivalents === 'number' && typeof shortTermInvestments === 'number' && typeof totalDebt === 'number') {
-      netCash = (cashAndEquivalents + shortTermInvestments) - totalDebt;
-    }
+    netCash = currentBalance.netCash;
 
     // Gross margin
     const latestGm = inc?.gross_margin_pct && inc.gross_margin_pct.length > 0
@@ -615,25 +606,10 @@ export function extractMemorySnapshot(
     }
 
     const currentBs = stmts?.balance_sheet;
-    totalDebt = latestIdx >= 0 && typeof currentBs?.total_debt?.[latestIdx] === 'number'
-      ? currentBs.total_debt[latestIdx]
-      : null;
-
-    const cash = latestIdx >= 0 && typeof currentBs?.cash_and_equivalents?.[latestIdx] === 'number'
-      ? currentBs.cash_and_equivalents[latestIdx]
-      : null;
-
-    const hasExplicitSti = latestIdx >= 0 && typeof currentBs?.short_term_investments?.[latestIdx] === 'number';
-    const sti = hasExplicitSti ? currentBs!.short_term_investments![latestIdx] : null;
-
-    if (typeof cash === 'number' && typeof totalDebt === 'number' && hasExplicitSti && typeof sti === 'number') {
-      netCash = (cash + sti) - totalDebt;
-    } else {
-      netCash = null;
-    }
-
-    cashAndEquivalents = cash;
-    shortTermInvestments = sti;
+    totalDebt = currentBalance.totalDebt;
+    cashAndEquivalents = currentBalance.cashAndEquivalents;
+    shortTermInvestments = currentBalance.shortTermInvestments;
+    netCash = currentBalance.netCash;
 
     currentSharesOutstandingM = typeof data.company_profile?.shares_outstanding === 'number'
       ? data.company_profile.shares_outstanding
@@ -737,12 +713,14 @@ export function extractMemorySnapshot(
 
   // Thesis confirmation state: if explicitly recorded in report or user-confirmed
   const confirmationStatus = (data as any).thesis_confirmation_status || 'ai_draft';
+  const labelDraftProse = (text: string) => confirmationStatus === 'ai_draft'
+    ? reconcileCashTerminology(text, currentBalance) : text;
 
   const thesis: ResearchMemoryThesis = {
-    summary: verdictSummary,
-    keyDrivers,
-    keyRisks,
-    catalysts,
+    summary: verdictSummary ? labelDraftProse(verdictSummary) : verdictSummary,
+    keyDrivers: keyDrivers.map(labelDraftProse),
+    keyRisks: keyRisks.map(labelDraftProse),
+    catalysts: catalysts.map(labelDraftProse),
     confirmationStatus,
     provenance: confirmationStatus === 'user_confirmed' ? 'USER_INPUT' : 'AI_DRAFT'
   };

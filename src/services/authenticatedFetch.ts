@@ -1,4 +1,5 @@
 import { auth } from '../lib/firebase';
+import { resolveAuthenticationToken } from './authenticationToken';
 
 export class AuthenticationRequiredError extends Error {
   code = 'AUTH_REQUIRED';
@@ -15,8 +16,9 @@ export async function authenticatedFetch(
 ): Promise<Response> {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new AuthenticationRequiredError();
+  const requestSignal = init.signal === undefined && input instanceof Request ? input.signal : init.signal;
 
-  const idToken = await currentUser.getIdToken();
+  const idToken = await resolveAuthenticationToken(currentUser, { signal: requestSignal });
   const inheritedHeaders = input instanceof Request ? input.headers : undefined;
   const headers = new Headers(init.headers ?? inheritedHeaders);
   headers.set('Authorization', `Bearer ${idToken}`);
@@ -24,12 +26,13 @@ export async function authenticatedFetch(
   const response = await fetch(input, { ...init, headers });
   if (response.status === 401) {
     try {
-      const refreshedToken = await currentUser.getIdToken(true);
+      const refreshedToken = await resolveAuthenticationToken(currentUser, { signal: requestSignal, forceRefresh: true });
       if (refreshedToken && refreshedToken !== idToken) {
         headers.set('Authorization', `Bearer ${refreshedToken}`);
         return await fetch(input, { ...init, headers });
       }
-    } catch {
+    } catch (error) {
+      if (requestSignal?.aborted) throw error;
       // Ignore refresh error and return original 401 response
     }
   }

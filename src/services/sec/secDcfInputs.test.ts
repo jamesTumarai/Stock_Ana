@@ -18,6 +18,9 @@ const series = (
   unit: 'USD_M',
   period: periods[index],
   periodEnd: options.periodEnds?.[index],
+  periodType: statement === 'balance_sheet' ? 'instant' : 'standalone_quarter',
+  fiscalYear: 2026,
+  fiscalQuarter: (index + 1) as 1 | 2 | 3 | 4,
   type: metric === 'free_cash_flow' ? 'derived' : 'reported',
   verification: options.verification ?? 'verified',
   source: {
@@ -98,6 +101,20 @@ const coverage = (): SecDcfCoverageAssessment => ({
   assert.equal(result.shareAsOf, '2027-01-20');
   assert.equal(result.sourcePeriod, 'Q1 2026–Q4 2026');
   assert.deepEqual(result.issues, []);
+}
+
+{
+  const withComponents = dataset();
+  delete withComponents.values['balance_sheet.total_debt'];
+  withComponents.values['balance_sheet.short_term_debt'] = series('short_term_debt', 'balance_sheet', [10, 9, 8, 7], {
+    periodEnds: ['2026-03-31', '2026-06-30', '2026-09-30', '2026-12-31'],
+  });
+  withComponents.values['balance_sheet.long_term_debt'] = series('long_term_debt', 'balance_sheet', [40, 40, 40, 40], {
+    periodEnds: ['2026-03-31', '2026-06-30', '2026-09-30', '2026-12-31'],
+  });
+  const resolved = buildSecDcfFinancialInputs(withComponents, shareSnapshot(), coverage());
+  assert.equal(resolved.totalDebtM, 47);
+  assert.equal(resolved.netCashM, -18);
 }
 
 {

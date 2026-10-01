@@ -5,6 +5,7 @@ import {
   Info, BarChart3, AlertCircle, ArrowUpRight 
 } from 'lucide-react';
 import { ValuationRatioItem, ValuationPercentileChart } from '../types';
+import { sanitizeMultipleSemantics } from '../domain/valuation/valuationDependencies';
 
 interface Props {
   ratios?: ValuationRatioItem[];
@@ -19,6 +20,8 @@ export function ValuationPanel({
   isThai,
   ticker = 'STOCK' 
 }: Props) {
+  // Legacy history remains immutable; apply display-only semantic guarding.
+  ratios = ratios.map(sanitizeMultipleSemantics);
   if (!ratios || ratios.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 border border-stone-200 text-stone-500 text-center italic">
@@ -28,6 +31,10 @@ export function ValuationPanel({
   }
 
   const getVerdictBadge = (ratio: ValuationRatioItem) => {
+    if (ratio.status === 'VALUE_AVAILABLE_BUT_NOT_MEANINGFUL_FOR_MULTIPLE_COMPARISON'
+      || (typeof ratio.value === 'number' && ratio.value <= 0 && /P\/E|PEG|EV\/EBITDA|P\/FCF|P\/B/i.test(ratio.name))) {
+      return {label:isThai?'ไม่เหมาะกับการเปรียบเทียบ':'Not meaningful',bg:'bg-stone-100 text-stone-600 border-stone-200',dot:'bg-stone-400'};
+    }
     let rawVerdict = (ratio.verdict || '').toLowerCase();
     const name = (ratio.name || '').toLowerCase();
     const val = ratio.value;
@@ -206,7 +213,7 @@ export function ValuationPanel({
               <div className="flex flex-col gap-2 my-1">
                 <div className="flex items-baseline justify-between">
                   <span className="text-3xl font-extrabold font-mono text-stone-900 tracking-tight">
-                    {hasValue ? `${ratio.value}${ratio.unit || 'x'}` : '--'}
+                    {ratio.status === 'VALUE_AVAILABLE_BUT_NOT_MEANINGFUL_FOR_MULTIPLE_COMPARISON' ? 'N/M' : hasValue ? `${ratio.value}${ratio.unit || 'x'}` : '--'}
                   </span>
                   {ratio.peer_avg !== null && ratio.peer_avg !== undefined && (
                     <div className="text-right text-xs text-stone-500">

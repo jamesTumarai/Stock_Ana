@@ -15,7 +15,7 @@ export interface CandidateDefinition {
   capitalIntensity: 'asset_light' | 'moderate' | 'capital_intensive' | 'financial_intermediary';
   regulatoryType?: 'banking' | 'insurance' | 'reit' | 'utility' | 'unregulated' | 'standard';
   scaleTier: 'mega' | 'large' | 'mid' | 'small';
-  metrics: Record<string, { value: number | null; unit: string; period: string; source: string; reportedOrDerived: 'REPORTED' | 'DERIVED' }>;
+  metrics: Record<string, { value: number | null; unit: string; period: string; source: string; reportedOrDerived: 'REPORTED' | 'DERIVED'; status?:import('../types').FactVerificationStatus }>;
 }
 
 /**
@@ -904,3 +904,9 @@ export const FIXTURE_CANDIDATE_UNIVERSE: CandidateDefinition[] = [
 ];
 
 export const PUBLIC_CANDIDATE_UNIVERSE = FIXTURE_CANDIDATE_UNIVERSE;
+
+// Explicit verification test doubles. This frozen universe is enabled only in
+// NODE_ENV=test; production retrieval must establish its own provenance.
+for (const candidate of FIXTURE_CANDIDATE_UNIVERSE) {
+  for (const metric of Object.values(candidate.metrics)) Object.assign(metric,{status:'VERIFIED'});
+}

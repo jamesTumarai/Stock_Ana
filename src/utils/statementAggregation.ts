@@ -1,3 +1,5 @@
+import { calculateVerifiedKeyIndicators } from '../domain/verifiedKeyIndicators';
+import { validateFinancialStatements } from './statementValidator';
 import type {
   FinancialStatementsData,
   IncomeStatementData,
@@ -201,7 +203,12 @@ export function aggregateQuarterlyToAnnual(data: FinancialStatementsData): Finan
   if (!data?.periods || data.periods.length < 4) return null;
   if (data.fiscal_period_type === 'annual') return null;
 
-  const windows = findAggregationWindows(data.periods);
+  const windows = findAggregationWindows(data.periods).filter(w => {
+    if (!data.period_snapshots) return true; // legacy helper is not a verification boundary
+    const quarters = w.quarterIndices.map(i => data.period_snapshots![i]);
+    return quarters.every((q, i) => q && q.periodType === 'standalone_quarter' && q.currency === quarters[0].currency
+      && q.startDate && (!i || Date.parse(q.startDate) - Date.parse(quarters[i - 1].endDate) === 86400000));
+  });
   if (windows.length === 0) return null;
 
   const annualPeriods = windows.map(w => w.label);
@@ -221,7 +228,7 @@ export function aggregateQuarterlyToAnnual(data: FinancialStatementsData): Finan
     income_before_tax: windows.map(w => sumFlowMetric(inc?.income_before_tax, w.quarterIndices)),
     income_tax_expense: windows.map(w => sumFlowMetric(inc?.income_tax_expense, w.quarterIndices)),
     net_income: windows.map(w => sumFlowMetric(inc?.net_income, w.quarterIndices)),
-    eps_diluted: windows.map(w => sumFlowMetric(inc?.eps_diluted, w.quarterIndices)),
+    eps_diluted: windows.map(() => null),
 
     // Banking lines
     net_interest_income: windows.map(w => sumFlowMetric(inc?.net_interest_income, w.quarterIndices)),
@@ -347,8 +354,6 @@ export function aggregateQuarterlyToAnnual(data: FinancialStatementsData): Finan
 
   // Recompute FCF if OCF and CapEx are present
   aggCf.free_cash_flow = windows.map((_, i) => {
-    const directFcf = aggCf.free_cash_flow?.[i];
-    if (finite(directFcf)) return directFcf;
     const ocf = aggCf.operating_cash_flow?.[i];
     const capex = aggCf.capex?.[i];
     if (finite(ocf) && finite(capex)) {
@@ -363,12 +368,61 @@ export function aggregateQuarterlyToAnnual(data: FinancialStatementsData): Finan
     return finite(rev) && rev > 0 && finite(fcf) ? rounded((fcf / rev) * 100) : null;
   });
 
-  return {
-    ...data,
-    fiscal_period_type: 'annual',
-    periods: annualPeriods,
-    income_statement: aggInc,
-    balance_sheet: aggBs,
-    cash_flow: aggCf,
+  // Preserve all expanded schema fields; instant values are never summed.
+  for (const [source, target, instant] of [[inc, aggInc, false], [bs, aggBs, true], [cf, aggCf, false]] as const) {
+    for (const [key, series] of Object.entries(source)) {
+      if (!Array.isArray(series) || key in target) continue;
+      (target as Record<string, unknown>)[key] = windows.map(w => instant
+        ? takeInstantMetric(series, w.endingQuarterIndex)
+        : /(?:_pct|_ratio|eps|per_share)$/.test(key) ? null : sumFlowMetric(series, w.quarterIndices));
+    }
+  }
+  const result: FinancialStatementsData = {
+    ...data, fiscal_period_type: 'annual', periods: annualPeriods,
+    income_statement: aggInc, balance_sheet: aggBs, cash_flow: aggCf,
+    key_indicators: undefined, indicator_details: undefined,
+    period_snapshots: data.period_snapshots ? windows.map(w => {
+      const start = data.period_snapshots![w.startingQuarterIndex], end = data.period_snapshots![w.endingQuarterIndex];
+      const observations: typeof end.observations = {};
+      const rejected: Record<string, string> = {};
+      for (const section of ['income_statement','balance_sheet','cash_flow'] as const) {
+        const aggregated = section === 'income_statement' ? aggInc : section === 'balance_sheet' ? aggBs : aggCf;
+        for (const [metric, series] of Object.entries(aggregated)) {
+          if (!Array.isArray(series)) continue;
+          const key = `${section}.${metric}`;
+          const parts = w.quarterIndices.map(i => data.period_snapshots![i].observations[key]);
+          if(section==='cash_flow'&&['change_receivables','change_inventory','change_payables'].includes(metric)
+            &&!parts.every(part=>part?.valueSemantic==='CASH_FLOW_EFFECT')) {
+            rejected[key]='Cash-flow effect semantics must be verified in all four annual components.';
+            continue;
+          }
+          const input = section === 'balance_sheet' ? end.observations[key] : parts.at(-1);
+          const value = series[windows.indexOf(w)];
+          if (input && finite(value) && (section === 'balance_sheet' || parts.every(Boolean))) {
+            observations[key] = { ...input, value, period: w.label,
+              periodType: section === 'balance_sheet' ? 'instant' : 'annual',
+              periodStart: section === 'balance_sheet' ? undefined : start.startDate,
+              type: section === 'balance_sheet' ? input.type : 'derived',
+              sourceComponents: section === 'balance_sheet' ? [input] : parts,
+              derivation: section === 'balance_sheet' ? 'Accepted ending balance; not a sum.' : 'Sum of four compatible verified standalone quarters.' };
+          } else rejected[key] = 'Compatible verified annual components unavailable or metric is non-additive.';
+        }
+      }
+      return { ...end, label: w.label, periodType: 'annual' as const, observations, rejected, startDate: start?.startDate,
+        durationDays: start?.startDate ? (Date.parse(end.endDate) - Date.parse(start.startDate)) / 86400000 + 1 : undefined };
+    }) : undefined,
   };
+  result.validation_summary = validateFinancialStatements(result, result.statement_template);
+  result.indicator_details = calculateVerifiedKeyIndicators(result);
+  if (result.verified_dataset) {
+    // Legacy array consumers must see the same definitions as indicator details.
+    const series = (key: string) => result.indicator_details![key].map(detail => detail.value);
+    aggInc.gross_margin_pct = series('gross_margin');
+    aggInc.operating_margin_pct = series('operating_margin');
+    aggInc.net_margin_pct = series('net_margin');
+    aggBs.current_ratio = series('current_ratio');
+    aggBs.debt_to_equity = series('debt_to_equity');
+    aggCf.fcf_margin_pct = series('fcf_to_sales');
+  }
+  return result;
 }

@@ -10,6 +10,7 @@ import {
 import { discoverPeers } from '../../../src/domain/valuation/peerDiscoveryEngine.js';
 import { resolveAdaptiveFivePillars } from '../../../src/domain/valuation/fivePillarsResolver.js';
 import type { ReportData } from '../../../src/types.js';
+import { upgradeCanonicalTestFixture } from '../../../src/domain/__tests__/verifiedFixtureBuilder';
 import type { SecVerifiedIntegrationPackage } from '../../../src/services/sec/secIntegration.js';
 
 describe('Verified Peer Data Completion Pipeline', () => {
@@ -47,8 +48,11 @@ describe('Verified Peer Data Completion Pipeline', () => {
     const pretaxes = fill(overrides.pretax, 120);
     const taxes = fill(overrides.tax, 25);
 
-    const makeVal = (v: number) => ({
+    const makeVal = (v: number, metric: string, statement: 'income_statement' | 'balance_sheet', index: number) => ({
       value: v,
+      metric, statement, period: periods[index], unit: 'USD_M',
+      periodType: statement === 'balance_sheet' ? 'instant' : 'standalone_quarter',
+      verification: 'verified',
       source: {
         documentType: '10-Q',
         sourceDocument: 'SEC Form 10-Q',
@@ -57,24 +61,26 @@ describe('Verified Peer Data Completion Pipeline', () => {
 
     return {
       ticker: 'MOCK',
-      canonicalFinancials: {
+      canonicalFinancials: upgradeCanonicalTestFixture({
+        currency: 'USD',
         ticker: 'MOCK',
         periods,
         values: {
-          'income_statement.revenue': revs.map(makeVal),
-          'income_statement.operating_income': opIncs.map(makeVal),
-          'income_statement.net_income': netIncs.map(makeVal),
-          'income_statement.gross_profit': grossProfits.map(makeVal),
-          'income_statement.income_before_tax': pretaxes.map(makeVal),
-          'income_statement.income_tax_expense': taxes.map(makeVal),
-          'balance_sheet.total_debt': debts.map(makeVal),
-          'balance_sheet.total_equity': equities.map(makeVal),
-          'balance_sheet.cash_and_equivalents': cashes.map(makeVal),
-          'balance_sheet.short_term_investments': stis.map(makeVal),
+          'income_statement.revenue': revs.map((v, i) => makeVal(v, 'revenue', 'income_statement', i)),
+          'income_statement.operating_income': opIncs.map((v, i) => makeVal(v, 'operating_income', 'income_statement', i)),
+          'income_statement.net_income': netIncs.map((v, i) => makeVal(v, 'net_income', 'income_statement', i)),
+          'income_statement.net_income_common': netIncs.map((v, i) => makeVal(v, 'net_income_common', 'income_statement', i)),
+          'income_statement.gross_profit': grossProfits.map((v, i) => makeVal(v, 'gross_profit', 'income_statement', i)),
+          'income_statement.income_before_tax': pretaxes.map((v, i) => makeVal(v, 'income_before_tax', 'income_statement', i)),
+          'income_statement.income_tax_expense': taxes.map((v, i) => makeVal(v, 'income_tax_expense', 'income_statement', i)),
+          'balance_sheet.total_debt': debts.map((v, i) => makeVal(v, 'total_debt', 'balance_sheet', i)),
+          'balance_sheet.total_equity': equities.map((v, i) => makeVal(v, 'total_equity', 'balance_sheet', i)),
+          'balance_sheet.cash_and_equivalents': cashes.map((v, i) => makeVal(v, 'cash_and_equivalents', 'balance_sheet', i)),
+          'balance_sheet.short_term_investments': stis.map((v, i) => makeVal(v, 'short_term_investments', 'balance_sheet', i)),
         } as any,
         provenanceStatus: 'verified',
         generatedBy: 'sec-xbrl-mock',
-      } as any,
+      } as any),
       financialStatements: null,
       shareSnapshot: null,
       dcfCoverage: { eligible: true, periods: [], currentSharesOutstandingM: 100, issues: [] },

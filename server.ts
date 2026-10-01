@@ -15,6 +15,7 @@ import {
 } from "./server/security/requestSecurity.ts";
 import { registerTtsRoutes } from "./server/routes/ttsRoutes.ts";
 import { registerMetricRoutes } from "./server/routes/metricRoutes.ts";
+import { instrumentMetricRequest } from "./server/middleware/metricAiDiagnostics.ts";
 import { registerDcfRoutes } from "./server/routes/dcfRoutes.ts";
 import { registerFileRoutes } from "./server/routes/fileRoutes.ts";
 import { registerMarketRoutes } from "./server/routes/marketRoutes.ts";
@@ -30,10 +31,15 @@ import {
   extractLastJsonObjectFromText,
   extractStructuredValuationAssumptions,
   hasUsableDcfAssumptions,
+  shouldExtractDcfAssumptions,
   mergeStructuredValuationAssumptions,
 } from "./server/lib/valuationAssumptionBridge.ts";
 import { LatencyTracker } from "./src/utils/latencyTracker.ts";
 import { PRICING_CATALOG_METADATA } from "./src/utils/costEstimator.ts";
+import { ADAPTIVE_VALUATION_INSTRUCTIONS, compactAdaptiveFinancialContext } from './server/lib/adaptiveValuationPrompt';
+import { fetchSecVerifiedIntegrationPackage } from './src/services/sec/secIntegration';
+import { shareClassProviderSymbol } from './src/domain/tickerIdentity';
+import {hasUsableAnalystReport,selectAnalystReport} from './server/lib/analystOutputPolicy';
 
 export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const app = express();
@@ -45,6 +51,9 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   const metricRateLimit = createUserRateLimiter({ scope: 'analyze-metric', limit: 60, windowMs: rateWindowMs });
   const ttsRateLimit = createUserRateLimiter({ scope: 'tts', limit: 30, windowMs: rateWindowMs });
 
+  // Saved reports use bounded Firebase sections/blobs; never raise this global
+  // API limit to accommodate a whole report snapshot.
+  app.use('/api/analyze-metric', instrumentMetricRequest);
   app.use(express.json({ limit: '1mb' }));
   app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (error?.type === 'entity.too.large') {
@@ -113,6 +122,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
 - Attach source URL and as-of date to each available section; cite the actual filing URL returned by retrieval, never construct guessed SEC accession numbers or label HTML as PDF.
 - YoY compares the same fiscal quarter one year earlier. QoQ compares adjacent fiscal quarters. Do not substitute QoQ when YoY history is unavailable.
 - Cash plus short-term investments minus interest-bearing debt defines net cash for this report. Use the same balance sheet date; do not substitute current assets for cash. Negative values mean net debt. Disclose any different treatment of long-term investments.
+- Cash terminology in Executive Summary, Key Takeaways, Five Pillars, Conviction, Thesis, and Timeline: keep Cash & Cash Equivalents separate from Cash + Short-Term Investments. Label Cash + Short-Term Investments - Canonical Debt explicitly as "Net Cash" / "สถานะเงินสดสุทธิ", never as "Cash & Cash Equivalents" / "เงินสดและรายการเทียบเท่าเงินสด". For negative signed Net Cash, a positive debt magnitude is "Net Debt" / "หนี้สินสุทธิ". Preserve the separate combined-cash figure and never interchange these four concepts.
 - If a filing separates marketable debt securities from marketable equity securities, put only cash/cash equivalents and marketable debt securities in cash_and_equivalents plus short_term_investments and in Net Cash. Do not silently include marketable equity securities, goodwill, or other current assets.
 - Regional and product revenue must be extracted independently and reconcile to total revenue within rounding tolerance. Do not rescale or invent regional values to force totals to match.
 - Use one dated source/population for analyst consensus across sections. If sources differ, label the provider, date and analyst count explicitly. Never attribute invented text to Morningstar or another analyst.
@@ -154,7 +164,7 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
    - 100% MATHEMATICAL ALIGNMENT (คำนวณตรงกัน): The balance sheet figures (Cash, Short-Term Investments, Total Debt, Diluted Shares Outstanding) from this latest quarter filing MUST directly align with:
      * The 4th (latest) quarter in "financial_statements"
      * Enterprise Value calculation (EV = Market Cap + Total Debt - Cash)
-     * DCF Intrinsic Value starting balance sheet (Net Cash = Cash - Debt)
+     * DCF Intrinsic Value starting balance sheet (Net Cash = Cash & Cash Equivalents + Short-Term Investments - Canonical Debt)
      * Diluted shares count used for Per Share metrics.
    - Do not cite an older filing as the primary finding when a newer quarterly or annual filing is available. Mixing stale filing inputs with current market data is prohibited.
 9. EARNINGS HISTORY VERIFICATION (ประวัติผลประกอบการต้องตรวจสอบแยกทีละไตรมาส):
@@ -172,17 +182,17 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
        * For Microsoft (MSFT): Intelligent Cloud, Productivity & Business Processes, More Personal Computing.
        * For Alphabet (GOOGL): Google Search, YouTube ads, Google Cloud, Google Subscriptions/Devices, Network.
        - All segment revenue figures must mathematically sum to the Total Reported Revenue, and ratio_pct must sum to 100%.
-12. MANDATORY WALL STREET 12-MONTH CONSENSUS ANCHORING FOR VALUATION SCENARIOS (สมมติฐานและการประเมินมูลค่าต้องอิง Consensus ตลาดข้ามทุก Sector ไม่สลับระหว่าง Base กับ Bull):
+12. INDEPENDENT EXTERNAL ANALYST TARGET CONTEXT (separate from Lumina fundamental thesis assumptions):
      - DEDICATED REAL-TIME CONSENSUS SEARCH: You MUST execute dedicated web searches (Yahoo Finance, TipRanks, FactSet, Bloomberg, MarketWatch) to retrieve the verified Wall Street 12-month Analyst Price Targets for ${ticker}:
        * Consensus Target Price (Mean or Median of all covering Wall Street analysts)
        * High Target Price (Street-High / Bullish outlier target)
        * Low Target Price (Street-Low / Bearish downside target)
      - STRICT SCENARIO MAPPING (CRITICAL FOR DETERMINISTIC ACCURACY ACROSS ALL STOCKS & SECTORS):
-       * Base Case ("scenarios.base" & "summary.base_case_fair_value"): Anchor it to a dated Wall Street mean/median consensus target or a mathematically consistent fundamental DCF baseline. Do not map a retrieved Street-High outlier into the Base Case.
-       * Bull Case ("scenarios.bull" & "summary.fair_value_range_high"): This is the designated home for the Street-High Target (Optimistic / Blue Sky / Best Execution scenario).
-       * Bear Case ("scenarios.bear" & "summary.fair_value_range_low"): This is the designated home for the Street-Low Target (Downside risk / Execution bottleneck scenario).
+       * Base Case: independent fundamental thesis assumptions, never anchored to an external analyst target.
+       * Bull Case: explicit optimistic fundamental assumptions; Street-High targets remain in forecast_dashboard.
+       * Bear Case: explicit downside fundamental assumptions; Street-Low targets remain in forecast_dashboard.
      - UNIVERSAL SECTOR COVERAGE: This rule applies unconditionally to all tickers and sectors — Tech, FinTech, Banking, Healthcare, Consumer, Energy, Utilities, Space, and CleanTech.
-     - DCF ASSUMPTIONS ALIGNMENT: Base revenue CAGR ("revenue_cagr_pct") and terminal margins ("terminal_margin_pct") must be realistically aligned with consensus guidance, avoiding arbitrary extremes.
+     - DCF ASSUMPTIONS ALIGNMENT: Base revenue CAGR ("revenue_cagr_pct") and terminal FCF margins ("terminal_margin_pct") must have an explicit economic rationale from verified operating history and issuer guidance. External analyst estimates are separately attributed context; price targets never constrain the output.
      - DCF OUTPUT CONTRACT (MANDATORY): For Fundamental and Combined analysis, "intrinsic_value.dcf_model" MUST always preserve the exact object shape shown in the JSON schema. "assumptions" MUST exist with "wacc_pct", "terminal_growth_pct", and "projection_years"; "scenarios" MUST exist with "bear", "base", and "bull", each containing "revenue_cagr_pct", "terminal_margin_pct", "fair_value_per_share", and "key_assumption_note".
      - DCF FACT/ASSUMPTION SEPARATION: WACC, terminal growth, projection years, revenue CAGR, and terminal FCF margin are valuation assumptions, not verified financial facts. You may propose them only when economically defensible from retrieved context and must explain them in "key_assumption_note". If you cannot form a defensible assumption, output null. NEVER insert ticker-specific defaults or plausible-looking fallback values. "fair_value_per_share" and the fair-value fields in "intrinsic_value.summary" may remain null because Lumina recomputes valuation deterministically after verified financial and market inputs are attached.`;
 
@@ -265,6 +275,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     "key_takeaways": ["...", "..."]
   },
   "technical_analysis": {
+    "input_snapshot": { "price": null, "timestamp": null, "timezone": null, "timeframe": null, "sourceUrl": null },
+    "section_basis": { "key_levels": null, "trade_plan": null, "trend_indicators": null, "momentum_indicators": null, "relative_strength": null },
     "signal_summary": {
        "status": "Buy | Wait | Avoid",
        "trend_weekly": "Up | Down | Sideways",
@@ -530,6 +542,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   "intrinsic_value": {
     "current_price": null,
     "as_of_date": null,
+    "ddm_model": {
+      "assumptions": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "current_dividend_per_share": null, "current_roe_pct": null},
+      "scenarios": {
+        "bear": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "fair_value_per_share": null},
+        "base": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "fair_value_per_share": null},
+        "bull": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "fair_value_per_share": null}
+      }
+    },
+    "sotp_model": {"components": [], "corporateAdjustments": null},
+    "cyclical_model": {"cycle_length_years": null},
+    "reit_model": {
+      "assumptions": {"current_affo_per_share": null, "peer_median_affo_multiple": null},
+      "scenarios": {"bear": {"affo_multiple": null}, "base": {"affo_multiple": null}, "bull": {"affo_multiple": null}}
+    },
     "dcf_model": {
       "assumptions": {
         "wacc_pct": null,
@@ -892,6 +918,8 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
     }
   },
   "technical_analysis": {
+    "input_snapshot": { "price": null, "timestamp": null, "timezone": null, "timeframe": null, "sourceUrl": null },
+    "section_basis": { "key_levels": null, "trade_plan": null, "trend_indicators": null, "momentum_indicators": null, "relative_strength": null },
     "signal_summary": {
        "status": "Buy | Wait | Avoid",
        "trend_weekly": "Up | Down | Sideways",
@@ -1155,6 +1183,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
   "intrinsic_value": {
     "current_price": null,
     "as_of_date": null,
+    "ddm_model": {
+      "assumptions": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "current_dividend_per_share": null, "current_roe_pct": null},
+      "scenarios": {
+        "bear": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "fair_value_per_share": null},
+        "base": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "fair_value_per_share": null},
+        "bull": {"cost_of_equity_pct": null, "terminal_growth_pct": null, "fair_value_per_share": null}
+      }
+    },
+    "sotp_model": {"components": [], "corporateAdjustments": null},
+    "cyclical_model": {"cycle_length_years": null},
+    "reit_model": {
+      "assumptions": {"current_affo_per_share": null, "peer_median_affo_multiple": null},
+      "scenarios": {"bear": {"affo_multiple": null}, "base": {"affo_multiple": null}, "bull": {"affo_multiple": null}}
+    },
     "dcf_model": {
       "assumptions": {
         "wacc_pct": null,
@@ -1542,68 +1584,12 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
       let liveMarketPromptSection = "";
       const stopMarketSnapshot = latencyTracker.startStage('market_snapshot');
       try {
-        const peerMap: Record<string, string[]> = {
-          // Fintech, Neobanks & Digital Payments
-          SOFI: ['HOOD', 'AFRM', 'XYZ', 'UPST', 'PYPL', 'NU'],
-          HOOD: ['SOFI', 'AFRM', 'XYZ', 'COIN'],
-          AFRM: ['SOFI', 'HOOD', 'XYZ', 'UPST'],
-          SQ: ['XYZ', 'SOFI', 'HOOD', 'AFRM', 'PYPL'],
-          XYZ: ['SOFI', 'HOOD', 'AFRM', 'PYPL', 'SHOP'],
-          PYPL: ['XYZ', 'SOFI', 'HOOD', 'AFRM'],
-          UPST: ['AFRM', 'SOFI', 'LC', 'XYZ'],
-          NU: ['SOFI', 'HOOD', 'PAGS', 'STNE'],
-          COIN: ['HOOD', 'MSTR', 'MARA', 'RIOT'],
-          MSTR: ['COIN', 'MARA', 'RIOT', 'CLSK'],
-
-          // Semiconductors & AI Hardware
-          NVDA: ['AMD', 'AVGO', 'TSM', 'INTC', 'ARM', 'QCOM', 'MRVL'],
-          AMD: ['NVDA', 'INTC', 'ARM', 'QCOM', 'TSM', 'AVGO', 'MRVL'],
-          AVGO: ['NVDA', 'AMD', 'QCOM', 'MRVL', 'TSM'],
-          TSM: ['NVDA', 'ASML', 'INTC', 'AMD', 'AVGO'],
-          INTC: ['AMD', 'NVDA', 'TSM', 'ARM', 'QCOM'],
-          ARM: ['NVDA', 'QCOM', 'AMD', 'INTC'],
-          QCOM: ['ARM', 'AVGO', 'NVDA', 'AMD', 'MRVL'],
-          MRVL: ['AVGO', 'NVDA', 'AMD', 'QCOM'],
-
-          // Big Tech & Mega Cap
-          AAPL: ['MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA'],
-          MSFT: ['AAPL', 'GOOGL', 'AMZN', 'ORCL', 'CRM'],
-          GOOGL: ['MSFT', 'META', 'AMZN', 'AAPL'],
-          GOOG: ['MSFT', 'META', 'AMZN', 'AAPL'],
-          AMZN: ['MSFT', 'GOOGL', 'BABA', 'WMT', 'SHOP'],
-          META: ['GOOGL', 'SNAP', 'PINS', 'MSFT', 'AAPL'],
-
-          // EV & Automotive
-          TSLA: ['RIVN', 'LCID', 'BYDDF', 'F', 'GM'],
-          RIVN: ['TSLA', 'LCID', 'F', 'GM'],
-          LCID: ['TSLA', 'RIVN', 'NIO', 'XPEV'],
-
-          // Enterprise Software & AI
-          PLTR: ['SNOW', 'AI', 'DDOG', 'MDB', 'CRWD', 'NET'],
-          SNOW: ['PLTR', 'MDB', 'DDOG', 'NOW'],
-          AI: ['PLTR', 'SNOW', 'PATH', 'BBAI'],
-          DDOG: ['NET', 'CRWD', 'MDB', 'PLTR'],
-          CRWD: ['PANW', 'FTNT', 'ZS', 'NET'],
-
-          // Space & Aerospace
-          RKLB: ['ASTS', 'LUNR', 'RDW', 'PL', 'LMT', 'BA'],
-          ASTS: ['RKLB', 'LUNR', 'RDW', 'IRDM', 'GSAT'],
-          LUNR: ['RKLB', 'ASTS', 'RDW', 'LMT'],
-          RDW: ['RKLB', 'ASTS', 'LUNR', 'PL'],
-          LMT: ['NOC', 'RTX', 'BA', 'GD', 'RKLB'],
-          BA: ['LMT', 'RTX', 'GD', 'AIR.PA'],
-
-          // Energy Storage, Clean Tech & Battery Hardware
-          EOSE: ['FLNC', 'STEM', 'GWH', 'TSLA', 'ENVX'],
-          FLNC: ['EOSE', 'STEM', 'GWH', 'TSLA', 'ENVX'],
-          STEM: ['EOSE', 'FLNC', 'GWH', 'TSLA'],
-          GWH: ['EOSE', 'FLNC', 'STEM', 'TSLA'],
-          ENVX: ['EOSE', 'FLNC', 'QS', 'SLDP']
-        };
+        // Quote the requested issuer only. Peer candidates are discovered from
+        // business economics and enriched independently; no ticker whitelist or
+        // unrelated mega-cap fallback may anchor the analyst's comparison.
         const sym = ticker.toUpperCase();
-        const querySym = sym === 'SQ' ? 'XYZ' : sym;
-        const peers = peerMap[sym] || ['MSFT', 'AAPL', 'GOOGL', 'AMZN'];
-        const allTickers = [querySym, ...peers];
+        const querySym = shareClassProviderSymbol(sym);
+        const allTickers = [querySym];
 
         // Try Authenticated Yahoo Finance Quote first for full marketCap and PE
         let quotesList: any[] = [];
@@ -1697,7 +1683,20 @@ CRITICAL REAL-TIME & AUTHENTICITY MANDATE:
         stopMarketSnapshot();
       }
 
-      let prompt = `Perform a comprehensive document analysis on ${ticker}. ${finalInstruction}${liveMarketPromptSection}
+      let historicalContext = '';
+      if (analysisType !== 'technical') {
+        // Bound the prompt enrichment separately; a slow filing does not block
+        // research. The independent post-generation SEC gate still owns facts.
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const source = await Promise.race([
+            fetchSecVerifiedIntegrationPackage(ticker).catch(() => null),
+            new Promise<null>(resolve => { timeout = setTimeout(() => resolve(null), 15000); }),
+          ]);
+          historicalContext = '\nINDEPENDENT HISTORICAL INPUT CONTEXT:\n' + JSON.stringify(compactAdaptiveFinancialContext(source?.canonicalFinancials));
+        } finally { if (timeout) clearTimeout(timeout); }
+      }
+      let prompt = `Perform a comprehensive document analysis on ${ticker}. ${finalInstruction}${liveMarketPromptSection}${ADAPTIVE_VALUATION_INSTRUCTIONS}${historicalContext}
 
 CRITICAL INSTRUCTIONS FOR QUANTITATIVE DATA (CHARTS):
 For stock_price_history and financial_performance_4q, you MUST use standard open web searches (e.g. Yahoo Finance, Google Finance, MarketWatch) WITHOUT the filetype:pdf restriction to get accurate historical prices, distributions, revenue, and net income.
@@ -1713,10 +1712,12 @@ CRITICAL: ALL technical indicator values (RSI, MACD, ADX, ATR, etc.) MUST be exa
           - For list sections ('fundamentals_check' and 'key_risks'): You MUST write ALL 8 numbered items (1. to 8.) on separate lines with double newlines ('\n\n') between each item. Each item MUST have at least 2-3 sentences with specific numbers. DO NOT truncate, do NOT stop at 2 or 5 items, and DO NOT use bullets ('- 1.') before numbers.
           - For trade_plan: format the R:R ratios cleanly as a 3-column Markdown table (Target | Formula | Result) using proper newlines.
 
+TECHNICAL INPUT INTEGRITY: If technical_analysis is present, retain the actual chart-input price, timestamp with timezone offset, exchange timezone, timeframe and sourceUrl in input_snapshot. In section_basis, record these same fields for key_levels, trade_plan, trend_indicators, momentum_indicators and relative_strength; relative_strength also needs its named benchmark and comparison timeframe. Do not invent missing metadata or silently mix a later quote with older indicators. Missing basis remains null. RSI above 30 is not classic RSI oversold; name stochastic separately if only stochastic is oversold. Describe entry, invalidation, potential targets and R:R as a conditional Scenario Trade Setup, never a direct trading instruction.
+
 CRITICAL: You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block in your final text response. The JSON must match the following schema EXACTLY. **HEAVILY PENALIZED:** Do NOT rename keys. Do NOT add extra root-level keys like "macro_risk_analysis". Make sure to populate the "findings" array with exactly the keys "documentType", "keyInsights", "date", and "sourceUrl". For stock_price_history, use exactly the keys "date" and "price". ${analysisType !== 'technical' ? 'The "deep_insights" array MUST use exactly the keys "category", "title", "description", and "impact_score". ' : ''}Also include the entire "${analysisType === 'technical' ? 'technical_analysis' : analysisType === 'fundamental' ? 'comprehensive_analysis' : 'both comprehensive_analysis and technical_analysis'}" object exactly as structured in the schema:
 ${dynamicSchema}
 Do not include multiple sub-agents, just do the analysis yourself based on the retrieved documents and searches.
-CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MUST write a short validation text explaining your calculations for the Technical Trade Plan. You MUST explicitly show the ATR value, the distance of each Support/Resistance level from the current price in terms of ATR, and the math for Risk/Reward Ratio 1 and 2. Only after you have written this validation text, output the final JSON.`;
+${analysisType === 'fundamental' ? 'SELF-CONSISTENCY CHECK: verify financial source scopes and assumption contracts before final JSON. Do not generate technical trade-plan fields for a fundamental report.' : 'SELF-CONSISTENCY CHECK: before final JSON, verify the Technical Trade Plan ATR distances and Risk/Reward calculations against its inputs.'}`;
       const actualModel = (model === 'gemini-3.8-flash' || model === 'gemini-3.7-flash' || model === 'perseus' || !model)
         ? 'gemini-3.8-flash'
         : model === 'gemini-3.6-flash'
@@ -1745,7 +1746,7 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
       const appendCanonicalValuationIfNeeded = async (researchText: string) => {
         if (analysisType === 'technical' || !researchText.trim()) return;
         const parsedReport = extractLastJsonObjectFromText(researchText);
-        if (!parsedReport || hasUsableDcfAssumptions(parsedReport)) return;
+        if (!parsedReport || !shouldExtractDcfAssumptions(parsedReport) || hasUsableDcfAssumptions(parsedReport)) return;
 
         res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Normalizing valuation assumptions into Lumina DCF contract...' })}\n\n`);
         const assumptions = await extractStructuredValuationAssumptions(researchText, actualModel);
@@ -1791,20 +1792,44 @@ CRITICAL: SELF-CONSISTENCY CHECK. Before generating the final JSON block, you MU
 
           const stream = streamInteraction(resAgent);
           let fullText = "";
+          let primaryStreamError:string|undefined;
+          let primaryCompletionStatus:unknown;
+          const primaryEvents:Record<string,number>={};
           for await (const event of stream) {
+              primaryEvents[event.type]=(primaryEvents[event.type]||0)+1;
               if (event.type === 'tool_call' || event.type === 'tool_result') {
                   res.write(`data: ${JSON.stringify(event)}\n\n`);
               } else if (event.type === 'text' && event.text) {
                   fullText += event.text;
               } else if (event.type === 'thinking') {
                   res.write(`data: ${JSON.stringify(event)}\n\n`);
+              } else if(event.type==='error') {
+                  primaryStreamError=event.message;
+              } else if(event.type==='complete') {
+                  primaryCompletionStatus=event.interaction?.status;
               }
+          }
+          // Metadata only: enough to distinguish provider failure from invalid
+          // JSON without exposing prompts, report text, or tool responses.
+          const primaryParsed = extractLastJsonObjectFromText(fullText);
+          console.info('[analyze] Primary stream result',JSON.stringify({ticker,events:primaryEvents,
+            textBytes:Buffer.byteLength(fullText,'utf8'),usableReport:hasUsableAnalystReport(fullText,ticker),
+            completionStatus:typeof primaryCompletionStatus==='string'?primaryCompletionStatus:null,
+            jsonShape:{fencedBlocks:[...fullText.matchAll(/```(?:json)?\s*[\s\S]*?```/gi)].length,
+              parses:Boolean(primaryParsed),hasVerdict:Boolean(primaryParsed?.verdict),
+              hasComprehensive:Boolean(primaryParsed?.comprehensive_analysis),hasTechnical:Boolean(primaryParsed?.technical_analysis)},
+            streamError:primaryStreamError||null}));
+          if(!hasUsableAnalystReport(fullText,ticker)) {
+            clearInterval(heartbeat);
+            res.write(`data: ${JSON.stringify({type:'error',message:primaryStreamError||'The primary analyst did not return a complete report. Please retry.'})}\n\n`);
+            res.write('data: [DONE]\n\n');res.end();return;
           }
 
           res.write(`data: ${JSON.stringify({ type: 'thinking', text: 'Primary Analysis complete. Running Lead Validator Agent to verify calculations and actively retrieve any missing data...' })}\n\n`);
 
           const validatePrompt = `You are the Lead Validator & Senior Data Auditor. You have received an analysis report for ${ticker}.
 TODAY'S EXACT DATE IS: ${todayISO} (Year ${currentYear}).
+${ADAPTIVE_VALUATION_INSTRUCTIONS}${historicalContext}
 Your job is to cross-check it, verify that all numbers are authentic real-time data as of today (${todayISO}) with zero hallucinations, actively search for and fill in any missing data gaps, fix any mathematical inconsistencies, and produce the final perfect JSON report.
 
 CRITICAL INSTRUCTION: You are encouraged to verify the calculations and logic step-by-step. Keep your internal thinking concise (under 150 words). DO NOT repeat or summarize the original report in your internal thoughts. Once numbers are checked and missing data retrieved, immediately output the final JSON report wrapped in \`\`\`json ... \`\`\` without delay.
@@ -1819,7 +1844,7 @@ CRITICAL CHECKS & DATA COMPLETION MANDATE:
   * AI Is Not The Source: AI may extract facts from filing or IR documents, but the extracted fact MUST retain the ORIGINAL DOCUMENT (e.g. "SoFi Q2 2025 Earnings Release", "SEC Form 10-Q") as source. NEVER cite "Gemini" as source authority.
   * Business-Aware Gap Prioritization:
     - For Banks / Lenders / FinTech (e.g. SOFI): Prioritize officially reported Net Interest Margin (NIM), Total Deposits, Loans Held for Investment, Provision for Credit Losses, and Tier 1 Capital Ratio. DO NOT force or fabricate Gross Margin or COGS.
-    - For REITs: Prioritize FFO, AFFO, NOI, and Rental Revenue. Do NOT search for COGS.
+    - For REITs: Prioritize FFO, AFFO, NOI, and Rental Revenue. Do NOT search for COGS. Real Estate sector alone is not REIT evidence: fee-based property advisory, brokerage and facilities services use operating/FCFF economics; do not replace their primary business with an investment-management subsidiary or REIT clients.
     - For Insurers: Prioritize Combined Ratio, Loss Reserves, and Net Premiums Earned. Do NOT search for Inventory.
     - For Software / SaaS: Prioritize ARR, RPO, and Subscription Revenue.
   * Strict Period & Unit Normalization: Match exact period identity (e.g. Q2 2026 must NEVER be filled with FY2025). Normalize USD values to USD millions and preserve original units.
@@ -1861,10 +1886,7 @@ ${analysisType !== 'fundamental' ? `- Technical Trade Plan: Ensure Risk/Reward r
 - Peer Fundamental Comparability: For each accepted peer, populate lifecycle, profitabilityState, scaleTier, financial_period, and financial_source. Populate operating_income, income_before_tax, income_tax_expense, total_debt, total_equity, cash_and_equivalents, and short_term_investments only when they come from the same compatible SEC/issuer fiscal period. Never copy a pre-calculated third-party ROIC into these source facts; Lumina derives comparable peer ROIC deterministically.
 - Valuation & Intrinsic Value: Ensure DCF Bear/Base/Bull scenarios have distinct reasonable spreads, margin of safety % is calculated correctly as (fair_value_base - current_price) / current_price * 100, and valuation ratios have valid verdict enums ('very_cheap' | 'cheap' | 'fair' | 'expensive' | 'very_expensive').
 - DCF input integrity: All financial-statement money values are USD millions. Attempt to retrieve four completed quarterly periods in chronological order, the latest diluted shares outstanding in company_profile.shares_outstanding, and cash, short-term investments, total debt, revenue, and free cash flow for matching periods. In intrinsic_value.dcf_model, terminal_margin_pct means terminal free-cash-flow margin, not operating margin. Never fill a missing input with a ticker-specific default, a market-cap-derived share count, or a price-derived revenue estimate. If a primary source cannot supply an input, leave it unavailable and do not produce a fair value.
-  * Small-Cap & Distressed Stock Guardrail: If ${ticker} is an unprofitable or micro/small-cap company with negative gross margins or cash burn (e.g. EOSE, RIVN, PLUG, QS):
-    - WACC MUST reflect size and distress premiums (16%–22%+), NEVER use a single-digit mega-cap WACC (7%–10%).
-    - Base Case terminal margin MUST NOT be unrealistically high (e.g. 12%–16%) when current gross margin is negative; it must reflect conservative turnaround execution (3%–6%) with dilution risk factored in.
-    - Check Wall Street consensus targets and Relative Valuation (EV/Sales): DCF Base Case must NOT disconnect wildly (e.g. > 2x consensus or > 2.5x Relative Valuation).
+- Economic-model guardrail: Select the primary method by independently established business economics. Distress, operating losses and dilution uncertainty must be explained in explicit assumptions; do not use ticker examples, fixed WACC/margin ranges or external target-price caps. Preserve truthful unavailable inputs and let Lumina compute valuation outputs.
 - Earnings Analysis: Verify beat streak counters match the historical quarter results, and earnings surprise % is mathematically sound.
 - Earnings Analysis History Check: Attempt to retrieve the last four completed quarters matching "financial_statements.periods" in chronological order. Independently verify every missing quarter from identified dated filings, earnings releases, and consensus sources. Never extrapolate or reconstruct a quarter from trends. If a quarter cannot be verified, leave its observations null/unavailable, flag the history as incomplete, and calculate streaks and averages only from verified quarters.
 - Insider Ownership: Use a numeric percentage only when an identified dated source supplies it; otherwise leave it null/unavailable.
@@ -1873,7 +1895,7 @@ ${analysisType !== 'fundamental' ? `- Technical Trade Plan: Ensure Risk/Reward r
 Primary Analyst Output:
 ${fullText}
 
-Check the facts, actively fill any missing metrics with search, and re-calculate the Risk/Reward ratios and DCF values yourself to be 100% sure they are correct.
+Check the facts and source scopes, and retrieve genuinely missing evidence. Keep model assumptions separate from historical inputs. Lumina computes accounting ratios and archetype-specific fair values deterministically; do not create a second financial truth path.
 You MUST output the final synthesis report as a raw JSON object wrapped in \`\`\`json ... \`\`\` markdown block.
 Use the exact schema requested originally:
 ${dynamicSchema}`;
@@ -1883,10 +1905,11 @@ ${dynamicSchema}`;
               clearInterval(heartbeat);
               const errTxt = await mergeResponse.text();
               console.error("Validator error:", errTxt);
-              if (fullText && fullText.includes('{')) {
+              if (hasUsableAnalystReport(fullText,ticker)) {
                   console.warn('[analyze] Validator start failed. Falling back to Primary Analyst output.');
-                  res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
-                  await appendCanonicalValuationIfNeeded(fullText);
+                  const chosen=selectAnalystReport(fullText,'',ticker)!;
+                  res.write(`data: ${JSON.stringify({ type: 'text', text: chosen })}\n\n`);
+                  await appendCanonicalValuationIfNeeded(chosen);
                   res.write(`data: [DONE]\n\n`);
                   res.end();
                   return;
@@ -1901,26 +1924,21 @@ ${dynamicSchema}`;
 
           try {
               for await (const event of mergeStream) {
-                  res.write(`data: ${JSON.stringify(event)}\n\n`);
                   if (event.type === 'text' && event.text) validatedText += event.text;
+                  else if(['thinking','tool_call','tool_result'].includes(event.type)) res.write(`data: ${JSON.stringify(event)}\n\n`);
               }
           } catch (err: any) {
               console.error("Validator stream error:", err);
-              res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
           } finally {
               clearInterval(heartbeat);
           }
 
           // Fallback: If validator did not produce JSON, stream Primary Analyst output so the client gets a complete report
-          if (!validatedText || !validatedText.includes('{')) {
-              if (fullText && fullText.includes('{')) {
-                  console.warn('[analyze] Validator output lacked JSON. Falling back to Primary Analyst output.');
-                  res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
-                  validatedText = fullText;
-              }
-          }
-
-          await appendCanonicalValuationIfNeeded(validatedText || fullText);
+          const chosen=selectAnalystReport(fullText,validatedText,ticker);
+          if(chosen) {
+            res.write(`data: ${JSON.stringify({type:'text',text:chosen})}\n\n`);
+            await appendCanonicalValuationIfNeeded(chosen);
+          } else res.write(`data: ${JSON.stringify({type:'error',message:'No completed primary or validator report was returned. Please retry.'})}\n\n`);
 
           res.write(`data: [DONE]\n\n`);
           res.end();
@@ -2111,7 +2129,7 @@ ${event.message}
   if (process.env.NODE_ENV !== "production" || !indexHtmlExists) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, ...(process.env.DISABLE_HMR === 'true' ? { hmr: false } : {}) },
       appType: "spa",
     });
     app.use(vite.middlewares);

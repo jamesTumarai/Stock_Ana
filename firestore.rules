@@ -44,10 +44,27 @@ service cloud.firestore {
       allow update: if request.auth != null
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId
-        && request.resource.data.deletedByUserId == request.auth.uid
+        && (('persistenceVersion' in resource.data && resource.data.persistenceVersion == 2
+          && resource.data.persistenceState == 'saving'
+          && request.resource.data.persistenceState == 'ready'
+          && exists(/databases/$(database)/documents/reports/$(reportId)/sections/_manifest)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['persistenceState', 'savedAt']))
+        || (request.resource.data.deletedByUserId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['deletedAt', 'deletedByUserId', 'deletedByVersion']);
+          .hasOnly(['deletedAt', 'deletedByUserId', 'deletedByVersion'])));
       allow delete: if false;
+
+      // Immutable parts inherit ownership from the compact parent. No public reads.
+      match /{partCollection}/{partId} {
+        allow read: if request.auth != null
+          && partCollection in ['sections', 'history', 'artifacts']
+          && get(/databases/$(database)/documents/reports/$(reportId)).data.userId == request.auth.uid;
+        allow create: if request.auth != null
+          && partCollection in ['sections', 'history', 'artifacts']
+          && get(/databases/$(database)/documents/reports/$(reportId)).data.userId == request.auth.uid
+          && get(/databases/$(database)/documents/reports/$(reportId)).data.persistenceState == 'saving';
+        allow update, delete: if false;
+      }
     }
   }
 }

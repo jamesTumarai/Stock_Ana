@@ -1,12 +1,15 @@
 import type { Express, Request, Response } from 'express';
 import { getGlobalSecCache, type SecCacheStats } from '../../src/services/sec/secCache.ts';
 import { resolveFirebaseAdminProjectId } from '../auth/firebaseProject.ts';
+import { resolveMetricAnalysisModel } from '../services/metricAnalysisModel.ts';
 
 export interface PublicHealthResponse {
   ok: boolean;
   status: 'healthy' | 'degraded';
   service: 'lumina';
   timestamp: string;
+  metricAiConfigured: boolean;
+  metricAiProvider: 'Gemini';
 }
 
 export interface DetailedHealthStatusResponse extends PublicHealthResponse {
@@ -78,6 +81,8 @@ export function buildHealthReport(runtime: 'express-server' | 'vercel-function' 
     ok: isHealthy,
     service: 'lumina',
     timestamp: new Date().toISOString(),
+    metricAiConfigured: resolveMetricAnalysisModel().configured,
+    metricAiProvider: 'Gemini',
     uptimeSecs: typeof process !== 'undefined' && process.uptime ? Math.round(process.uptime()) : 0,
     runtime,
     services: {
@@ -114,6 +119,8 @@ export function handleHealthCheck(req: Request | any, res: Response | any) {
     ok: report.ok,
     service: 'lumina',
     timestamp: report.timestamp,
+    metricAiConfigured: report.metricAiConfigured,
+    metricAiProvider: report.metricAiProvider,
   };
 
   if (isDetailedRequested) {

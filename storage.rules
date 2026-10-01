@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Private immutable report blobs; URLs/tokens are never persisted or published.
+    match /reports/{userId}/{reportId}/{artifactFile} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.size <= 64 * 1024 * 1024
+        && request.resource.contentType == 'application/json'
+        && artifactFile.matches('[A-Za-z0-9_-]+[.]json');
+      allow update, delete: if false;
+    }
+  }
+}

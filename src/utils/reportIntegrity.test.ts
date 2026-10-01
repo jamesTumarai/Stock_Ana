@@ -16,15 +16,11 @@ const source = {
 } as unknown as ReportData;
 const before = structuredClone(source);
 const result = normalizeReport(source);
-assert.equal(result.five_pillars!.balance_sheet.is_net_cash, false);
-assert.equal(result.five_pillars!.balance_sheet.net_cash_or_debt_b, 21.95);
-assert.equal(result.five_pillars!.balance_sheet.total_cash_and_investments_b, 62.4);
-assert.deepEqual(result.financial_statements!.income_statement,source.financial_statements!.income_statement);
+assert.equal(result.five_pillars!.balance_sheet.net_cash_or_debt_b, undefined);
+assert.equal(result.five_pillars!.balance_sheet.total_cash_and_investments_b, undefined);
+assert.deepEqual(result.financial_statements!.periods, []);
 const canonical = (result as ReportData & { canonical_financials?: any }).canonical_financials;
-assert.ok(canonical, 'Normalization should attach canonical financial provenance when statements exist');
-assert.equal(canonical.values['balance_sheet.cash_and_equivalents'][3].value, 39544);
-assert.equal(canonical.values['balance_sheet.cash_and_equivalents'][3].verification, 'unverified');
-assert.equal(canonical.sourceCoverage.verifiedValues, 0);
+assert.equal(canonical, undefined, 'Model statement arrays cannot create an independently ingested canonical package');
 assert.deepEqual(source,before);
 for (const ticker of ['AAPL','SOFI','NVDA','TSLA','UNKNOWN']) {
   const empty = normalizeReport({ticker} as ReportData);
@@ -39,7 +35,7 @@ assert.equal(normalizeReport(missing).five_pillars!.balance_sheet.net_cash_or_de
 const zero = structuredClone(source);
 zero.financial_statements!.balance_sheet!.cash_and_equivalents![3]=0;
 zero.financial_statements!.balance_sheet!.short_term_investments![3]=0;
-assert.equal(normalizeReport(zero).five_pillars!.balance_sheet.total_cash_and_investments_b,0);
+assert.equal(normalizeReport(zero).five_pillars!.balance_sheet.total_cash_and_investments_b,undefined, 'Unverified zero is not a disclosed zero');
 
 const marketSynced = normalizeReport({
   ticker: 'AAPL',
@@ -77,7 +73,8 @@ assert.equal(marketSynced.company_profile!.stock_price, 110);
 assert.equal(marketSynced.company_profile!.price_change, 2);
 assert.equal(marketSynced.company_profile!.price_change_pct, 1.85);
 assert.equal(marketSynced.intrinsic_value!.current_price, 110);
-assert.equal(marketSynced.technical_analysis!.key_levels.current_price, 110);
+assert.equal(marketSynced.technical_analysis!.key_levels.current_price, 102);
+assert.equal(marketSynced.technical_analysis!.snapshot_audit!.status, 'UNVERIFIED');
 assert.equal(marketSynced.forecast_dashboard!.price_target.current_price, 110);
 assert.equal(marketSynced.forecast_dashboard!.price_target.implied_upside_pct, 9.09);
 const snapshot = (marketSynced as ReportData & { market_snapshot?: { price: number; provider?: string; isRealtime: boolean } }).market_snapshot;

@@ -61,9 +61,11 @@ export async function fetchLiveQuotes(symbols: string[]): Promise<LiveQuotesResp
     const quotes = Object.fromEntries(
       Object.entries(raw.quotes || {}).map(([symbol, quote]) => [symbol, {
         ...quote,
-        provider,
-        asOf: raw.asOf,
-        retrievedAt,
+        provider: quote.provider || provider,
+        // Response retrieval time is not the exchange quote timestamp. Do not
+        // erase a delayed quote's actual date with the response's current date.
+        asOf: quote.asOf,
+        retrievedAt: quote.retrievedAt || retrievedAt,
       }]),
     );
 

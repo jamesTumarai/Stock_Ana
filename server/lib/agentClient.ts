@@ -112,7 +112,7 @@ export async function createInteraction(
       "Api-Revision": "2026-05-20",
     },
     body: JSON.stringify(payload),
-    signal: opts.signal,
+    signal: opts.signal ? AbortSignal.any([opts.signal,AbortSignal.timeout(1800_000)]) : AbortSignal.timeout(1800_000),
   });
 
   return response;
@@ -127,7 +127,8 @@ export async function createInteraction(
  * the Gemini Managed Agents SSE stream.
  */
 export async function* streamInteraction(
-  response: Response
+  response: Response,
+  options:{idleTimeoutMs?:number}={}
 ): AsyncGenerator<AgentEvent> {
   console.log(`[streamInteraction] Initializing stream reader on body present: ${!!response.body}`);
   const reader = response.body?.getReader();
@@ -140,11 +141,26 @@ export async function* streamInteraction(
   const decoder = new TextDecoder();
   let buffer = "";
   let chunkCount = 0;
+  const idleTimeoutMs=options.idleTimeoutMs??300_000;
+  const parseLine=(line:string):AgentEvent|null=>{
+    const trimmed=line.trim();
+    if(!trimmed.startsWith('data:'))return null;
+    const payload=trimmed.slice(5).trim();
+    if(payload==='[DONE]')return {type:'done'};
+    try{return parseAgentEvent(JSON.parse(payload));}
+    catch{return null;} // Skip malformed SSE frames, never expose raw payloads.
+  };
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let idleTimer:ReturnType<typeof setTimeout>|undefined;
+      const { done, value } = await Promise.race([
+        reader.read(),
+        new Promise<never>((_,reject)=>{idleTimer=setTimeout(()=>reject(new Error('AI stream stalled: no provider data received within the idle timeout. Retry the analysis.')),idleTimeoutMs);}),
+      ]).finally(()=>{if(idleTimer)clearTimeout(idleTimer);});
       if (done) {
+        const tail=parseLine(buffer+decoder.decode());
+        if(tail)yield tail;
         break;
       }
 
@@ -157,36 +173,15 @@ export async function* streamInteraction(
       buffer = lines.pop() ?? ""; // Keep incomplete line in buffer
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        if (!trimmed.startsWith("data: ")) {
-          continue;
-        }
-
-        const dataStr = trimmed.slice(6); // Strip "data: " prefix
-        if (dataStr === "[DONE]") {
-          yield { type: "done" };
-          return;
-        }
-
-        try {
-          const data = JSON.parse(dataStr);
-          const event = parseAgentEvent(data);
-          if (event) {
-            yield event;
-          }
-        } catch (jsonErr: any) {
-          console.error(`[streamInteraction] JSON Parse Error on payload:`, jsonErr.message);
-          // Malformed JSON line — skip
-          continue;
-        }
+        const event=parseLine(line);
+        if(event){yield event;if(event.type==='done')return;}
       }
     }
   } catch (err: any) {
     console.error(`[streamInteraction] Exception caught in read loop:`, err);
     yield { type: "error", message: `Stream read exception: ${err.message}` };
   } finally {
+    void reader.cancel().catch(()=>{});
     reader.releaseLock();
   }
 }

@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict';
-import { getMetricCalculationDetail } from '../metricCalculations';
+import { getMetricCalculationDetail as calculateDetail } from '../metricCalculations';
+import { verifiedFixtureFromStatements } from '../../domain/__tests__/verifiedFixtureBuilder';
+import { adaptSecCanonicalToFinancialStatements } from '../../services/sec/secLegacyAdapter';
+const getMetricCalculationDetail: typeof calculateDetail = (key, index, raw, context) => {
+  if (!raw) return calculateDetail(key, index, raw, context);
+  const input = structuredClone(raw);
+  // Explicit synthetic common-equity/receivables fixtures, never a runtime fallback.
+  input.balance_sheet.stockholders_equity = input.balance_sheet.total_equity;
+  input.balance_sheet.accounts_receivable = input.balance_sheet.receivables;
+  const accepted = adaptSecCanonicalToFinancialStatements(verifiedFixtureFromStatements(input))!;
+  return calculateDetail(key, index, accepted, context);
+};
 import { FinancialStatementsData } from '../../types';
 
 const mockData: FinancialStatementsData = {
@@ -178,7 +189,7 @@ const mockStdZeroLtd100: FinancialStatementsData = {
   },
 };
 const deStdZeroLtd100 = getMetricCalculationDetail('debt_to_equity', 3, mockStdZeroLtd100);
-assert.equal(deStdZeroLtd100?.resultValue, 0.03, 'STD verified 0 + LTD 100 must be valid (100 / 3600 = 0.03)');
+assert.equal(deStdZeroLtd100?.resultValue, null, 'Debt components require a canonical non-overlapping debt-family derivation; a raw sum is not authority');
 
 // 7e. verified total_debt => valid (0.36 for 1300 / 3600)
 assert.equal(deDetail.resultValue, 0.36, 'verified total_debt must be valid');

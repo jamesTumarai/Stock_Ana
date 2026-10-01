@@ -2,6 +2,7 @@ import type { ReportData, PeerBenchmarkRow, PeerCompanyItem } from '../../types.
 import { resolveBusinessArchetype, type BusinessArchetype } from '../financialMetricContext.js';
 import { resolveFundamentalMetrics, type ResolvedFundamentalMetrics } from './metricRegistry.js';
 import { calculateCanonicalRoic, calculateInvestedCapital } from './canonicalRoic.js';
+import { resolveCanonicalMultiples } from './valuationDependencies';
 import type {
   FactVerificationStatus,
   PeerBusinessFingerprint,
@@ -121,8 +122,8 @@ export function discoverPeerCandidates(
   if (globalRuntimeDiscoverer) {
     return globalRuntimeDiscoverer(target);
   }
-  const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
-  if (isProduction || options?.disableFixtureFallback) {
+  const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  if (!isTest || options?.disableFixtureFallback) {
     return [];
   }
   return filterCandidateUniverse(PUBLIC_CANDIDATE_UNIVERSE, target);
@@ -611,14 +612,13 @@ export function extractCandidateMetrics(
 
   const completeDerivedMetrics = () => {
     if (metricObservations.roic_pct?.value !== null && metricObservations.roic_pct?.status === 'VERIFIED') return;
-    const requiredKeys = ['operating_income', 'income_before_tax', 'income_tax_expense', 'total_debt', 'total_equity', 'cash_and_equivalents'];
+    const requiredKeys = ['operating_income', 'income_before_tax', 'income_tax_expense', 'total_debt', 'total_equity', 'cash_and_equivalents', 'short_term_investments'];
     const facts = requiredKeys.map(key => metricObservations[key]);
     if (facts.some(fact => !fact || fact.value === null || fact.status !== 'VERIFIED')) return;
     if (facts.some(fact => !isFilingGradeSource(fact.source))) return;
     const periods = new Set(facts.map(fact => fact.period));
     if (periods.size !== 1) return;
-    const [operating, pretax, tax, debt, equity, cash] = facts.map(fact => fact.value as number);
-    const shortInvestments = metricObservations.short_term_investments?.value ?? 0;
+    const [operating, pretax, tax, debt, equity, cash, shortInvestments] = facts.map(fact => fact.value as number);
 
     const investedCapital = calculateInvestedCapital(equity, debt, cash, shortInvestments);
     if (investedCapital === null || investedCapital <= 0) {
@@ -695,15 +695,16 @@ export function extractCandidateMetrics(
       let status: FactVerificationStatus = mData.status || 'NOT_REPORTED';
       if (mData.value !== null && Number.isFinite(mData.value)) {
         if (mKey === 'roic_pct') {
-          status = isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+          status = mData.status === 'VERIFIED' && mData.period && isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
         } else if (MARKET_METRICS.has(mKey)) {
           const isUnverified = !mData.source || GENERATED_FALLBACK_SOURCE_REGEX.test(mData.source) || /unverified/i.test(mData.source);
-          status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
+          status = !isUnverified && mData.status === 'VERIFIED' && isMarketGradeSource(mData.source) && mData.period
+            ? 'VERIFIED' : 'FOUND_UNVERIFIED';
         } else {
-          status = isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+          status = mData.status === 'VERIFIED' && mData.period && isFilingGradeSource(mData.source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
         }
       } else if (mKey === 'pe_trailing' && (mData.reason === 'NEGATIVE_EARNINGS' || mData.value === null && (raw as any).profitabilityState === 'pre_profit')) {
-        status = 'VERIFIED';
+        status = mData.status==='VERIFIED' && mData.period && (isFilingGradeSource(mData.source)||isMarketGradeSource(mData.source)) ? 'VERIFIED':'FOUND_UNVERIFIED';
       }
       metricObservations[mKey] = {
         ticker,
@@ -759,15 +760,16 @@ export function extractCandidateMetrics(
         const isVerifiedFlag = (p as any)[`${key}_verified`] === true;
         const isUnverified = GENERATED_FALLBACK_SOURCE_REGEX.test(p.financial_source || '')
           || (/unverified/i.test(p.financial_source || '') && !isVerifiedFlag && !p.pe_trailing_verified);
-        status = isUnverified ? 'FOUND_UNVERIFIED' : 'VERIFIED';
+        status = !isUnverified && isVerifiedFlag && isMarketGradeSource(source) && p.financial_period
+          ? 'VERIFIED' : 'FOUND_UNVERIFIED';
       } else {
         // Fundamental filing facts: strictly require genuine filing-grade provenance
-        status = isFilingGradeSource(source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
+        status = p[`${key}_verified`]===true && Boolean(p.financial_period) && isFilingGradeSource(source) ? 'VERIFIED' : 'FOUND_UNVERIFIED';
       }
     } else if (key === 'pe_trailing' && (val === 'N/M' || p.profitabilityState === 'pre_profit' || (typeof p.net_margin_pct === 'number' && p.net_margin_pct < 0))) {
-      status = 'VERIFIED';
+      status = p.pe_trailing_verified===true && Boolean(p.financial_period) && (isFilingGradeSource(source)||isMarketGradeSource(source)) ? 'VERIFIED':'FOUND_UNVERIFIED';
     } else if (key === 'ev_ebitda' && val === 'N/M') {
-      status = 'VERIFIED';
+      status = p.ev_ebitda_verified===true && Boolean(p.financial_period) && (isFilingGradeSource(source)||isMarketGradeSource(source)) ? 'VERIFIED':'FOUND_UNVERIFIED';
     }
     metricObservations[key] = {
       ticker,
@@ -868,8 +870,12 @@ export function discoverPeers(
   const targetFingerprint = buildPeerBusinessFingerprint(report, targetTicker);
 
   // Check cache for identical target & fingerprint
-  const peerListSig = (report.peer_comparison?.peers || []).map(p => p.ticker).sort().join(',');
-  const cacheKey = `${targetTicker}:${targetFingerprint.archetype}:${targetFingerprint.subIndustry || targetFingerprint.industry}:${report.as_of_date || 'latest'}:${peerListSig}`;
+  // Tickers alone do not identify an observation snapshot. A new filing or
+  // updated peer multiple must invalidate the cached valuation inputs.
+  const peerListSig = JSON.stringify({ peers: report.peer_comparison?.peers,
+    facts: report.canonical_financials?.values, market: report.market_snapshot,
+    source: report.sec_verification?.dcf_financial_inputs });
+  const cacheKey = `${targetTicker}:${targetFingerprint.archetype}:${targetFingerprint.subIndustry || targetFingerprint.industry}:${report.as_of_date || 'latest'}:${Boolean(options?.disableFixtureFallback)}:${peerListSig}`;
   const cached = peerDiscoveryCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS) && !options?.candidates) {
     return cached.result;
@@ -909,7 +915,8 @@ export function discoverPeers(
 
   // 2. Fixture fallback: strictly test-only or when explicitly allowed, NEVER in production
   const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
-  const allowFixture = options?.allowFixtureFallback ?? (!isProduction && !options?.disableFixtureFallback);
+  const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const allowFixture = isTest && (options?.allowFixtureFallback ?? !options?.disableFixtureFallback);
   if (rawCandidates.length === 0 && allowFixture && !options?.disableFixtureFallback && !isProduction) {
     rawCandidates.push(...FIXTURE_CANDIDATE_UNIVERSE);
   }
@@ -1059,14 +1066,17 @@ export function discoverPeers(
 
   const medians: Record<string, number | null> = {};
   const metricSampleCounts: Record<string, number> = {};
+  const metricEligibility: NonNullable<PeerDiscoveryResult['metricEligibility']> = {};
   for (const k of allMetricKeys) {
     const selectedValues: number[] = [];
+    const eligibleIds=new Set<string>(),excludedReasons=new Map<string,string>();
     for (const tier of ['DIRECT_PEER', 'CLOSE_COMPARABLE', 'BROADER_SECTOR_REFERENCE'] as const) {
       const tierValues = finalPeers
         .filter(peer => peer.relationType === tier)
         .map(peer => peer.metrics[k])
         .filter(metric => {
           if (!metric || metric.status !== 'VERIFIED' || typeof metric.value !== 'number' || !Number.isFinite(metric.value)) {
+            if(metric)excludedReasons.set(metric.ticker,metric.reason || 'VERIFIED_OBSERVATION_UNAVAILABLE');
             return false;
           }
           if (k === 'roic_pct') {
@@ -1076,9 +1086,11 @@ export function discoverPeers(
               const targetIsQuarterly = targetRoic.periodBasis === 'QUARTERLY' || targetRoic.basis?.includes('Quarterly');
               const peerIsQuarterly = metric.periodBasis === 'QUARTERLY' || (/Q[1-4]/i.test(metric.period || '') && !/TTM|annual|FY\d{4}/i.test(metric.period || ''));
               if (!targetIsQuarterly && peerIsQuarterly) {
+                excludedReasons.set(metric.ticker,'PERIOD_BASIS_MISMATCH');
                 return false; // Standalone quarter ROIC excluded from TTM target median
               }
               if (targetIsQuarterly && !peerIsQuarterly) {
+                excludedReasons.set(metric.ticker,'PERIOD_BASIS_MISMATCH');
                 return false;
               }
             }
@@ -1101,10 +1113,12 @@ export function discoverPeers(
               const peerIsQuarterly = peerPeriodBasis === 'QUARTERLY'
                 || ((/Q[1-4]/i.test(peerPeriod) || /quarter/i.test(peerBasis)) && !/TTM|annual|FY\d{4}/i.test(peerPeriod) && !/TTM|annual/i.test(peerBasis));
               if (targetIsQuarterly !== peerIsQuarterly) {
+                excludedReasons.set(metric.ticker,'PERIOD_BASIS_MISMATCH');
                 return false; // Exclude period basis mismatch (e.g. Target standalone quarter vs Peer TTM/annual)
               }
             }
           }
+          eligibleIds.add(metric.ticker);
           return true;
         })
         .map(metric => metric.value as number);
@@ -1115,6 +1129,11 @@ export function discoverPeers(
     const eligibleValues = selectedValues.filter(value => !isMultiple || value > 0);
     medians[k] = calculateDeterministicMedian(eligibleValues, isMultiple);
     metricSampleCounts[k] = eligibleValues.length;
+    const selectedPeers=finalPeers.filter(p=>eligibleIds.has(p.ticker) && (!isMultiple || (p.metrics[k]?.value ?? 0)>0)).map(p=>p.ticker);
+    metricEligibility[k]={candidatePeers:finalPeers.map(p=>p.ticker),eligiblePeers:selectedPeers,
+      excludedPeers:finalPeers.filter(p=>!selectedPeers.includes(p.ticker)).map(p=>({ticker:p.ticker,
+        reason:excludedReasons.get(p.ticker) || (isMultiple && typeof p.metrics[k]?.value==='number' && p.metrics[k].value!<=0?'NON_POSITIVE_DENOMINATOR_OR_MULTIPLE':'METRIC_MISSING_OR_COMPARABILITY_TIER_NOT_SELECTED')})),
+      sampleSize:eligibleValues.length,median:medians[k]};
   }
 
   // Map to PeerCompanyItem for PeerComparisonTable
@@ -1196,11 +1215,13 @@ export function discoverPeers(
     isLimitedSample,
     medians,
     metricSampleCounts,
+    metricEligibility,
     isBroadSectorUniverse: finalPeers.some(peer => peer.relationType === 'BROADER_SECTOR_REFERENCE'),
     benchmarkRows,
     peerCompanyItems,
   };
 
+  if (peerDiscoveryCache.size >= 128) peerDiscoveryCache.delete(peerDiscoveryCache.keys().next().value!);
   peerDiscoveryCache.set(cacheKey, { timestamp: Date.now(), result });
   return result;
 }
@@ -1380,7 +1401,7 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'Price / FFO',
       metric_name_th: 'ราคาต่อกระแสเงินสดจากดำเนินงาน (P/FFO)',
-      target_value: fmt(pffoMed, 'x'),
+      target_value: fmt(targetMetrics?.pffo.value, 'x'),
       sector_median: fmt(pffoMed, 'x'),
       direct_peer_value: fmt(verifiedPeerValue(directPeer, 'p_ffo_multiple'), 'x'),
       status: 'neutral',
@@ -1396,7 +1417,7 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'Occupancy Rate',
       metric_name_th: 'อัตราการเช่าพื้นที่',
-      target_value: fmt(occMed, '%'),
+      target_value: fmt(targetMetrics?.occupancyRate.value, '%'),
       sector_median: fmt(occMed, '%'),
       direct_peer_value: fmt(verifiedPeerValue(directPeer, 'occupancy_rate_pct'), '%'),
       status: 'better',
@@ -1413,7 +1434,7 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'EV / Sales Multiple',
       metric_name_th: 'มูลค่ากิจการต่อรายได้',
-      target_value: fmt(evsMed, 'x'),
+      target_value: fmt(resolveCanonicalMultiples(report).find(metric => metric.name === 'EV/Sales')?.value, 'x'),
       sector_median: fmt(evsMed, 'x'),
       direct_peer_value: fmt(verifiedPeerValue(directPeer, 'ev_sales'), 'x'),
       status: 'neutral',
@@ -1430,7 +1451,7 @@ function buildArchetypeBenchmarkRows(
     rows.push({
       metric_name: 'YoY Revenue Growth',
       metric_name_th: 'การเติบโตรายได้ YoY',
-      target_value: fmt(targetRevGrowth ?? revgMed, '%'),
+      target_value: fmt(targetRevGrowth, '%'),
       sector_median: fmt(revgMed, '%'),
       direct_peer_value: fmt(verifiedPeerValue(directPeer, 'revenue_growth_yoy_pct'), '%'),
       status: 'better',

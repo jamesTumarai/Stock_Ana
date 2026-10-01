@@ -55,7 +55,7 @@ export function ScoreMethodologyModal({
                 {isThai ? 'วิธีคิดคะแนนความเชื่อมั่น (Conviction Score)' : 'Conviction Scoring Methodology'}
               </h3>
               <p className="text-xs text-stone-500">
-                {isThai ? 'คำนวณเมื่อข้อมูลที่จำเป็นจากรายงานครบเท่านั้น' : 'Calculated only when the report contains every required input'}
+                {isThai ? 'ประเมินแยกแต่ละเสา คะแนนรวมต้องมีข้อมูลรองรับอย่างน้อย 60% และ 3 เสา' : 'Each pillar is independent; overall score requires at least 60% coverage and 3 pillars'}
               </p>
             </div>
           </div>
@@ -102,14 +102,14 @@ export function ScoreMethodologyModal({
               {weights.map((w, idx) => {
                 const pillarData = convictionBreakdown ? convictionBreakdown[w.key] : null;
                 const earnedScore = pillarData ? pillarData.score : null;
-                const fillPct = pillarData ? Math.min(100, Math.round((pillarData.score / w.weight) * 100)) : 0;
+                const fillPct = pillarData?.score != null ? Math.min(100, Math.round((pillarData.score / w.weight) * 100)) : 0;
                 const reasonText = pillarData ? (isThai ? pillarData.reasonTh : pillarData.reasonEn) : null;
 
                 return (
                   <div key={idx} className="bg-stone-50/80 p-3.5 rounded-xl border border-stone-100 flex flex-col gap-2">
                     <div className="flex justify-between items-center text-sm font-semibold text-stone-900">
                       <span>{isThai ? w.nameTh : w.nameEn}</span>
-                      <span className="font-mono text-[#0b5a4b] font-bold">
+                      <span className="font-mono text-[#0b5a4b] font-bold" title={pillarData?.status ? `${pillarData.status} · ${isThai?'ข้อมูลรองรับ':'Input coverage'} ${pillarData.coveragePct ?? 0}%` : undefined}>
                         {earnedScore !== null ? (
                           <>
                             {earnedScore} <span className="text-xs text-stone-400 font-normal">/ {w.weight} pts</span>

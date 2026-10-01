@@ -1,4 +1,63 @@
 import type { DCFModel, ReportData } from '../../types';
+import type { SecVerificationEnvelope } from '../../domain/secVerification';
+import { reconcileCanonicalTtmFlow } from '../../domain/canonicalTtmFlow';
+import { sameShareClassTicker } from '../../domain/tickerIdentity';
+
+export interface DcfAssumptionFinancialContext {
+  sourcePeriod: string;
+  startingRevenueM: number;
+  trailingFourFreeCashFlowM: number;
+  historicalFcfMarginPct: number;
+}
+
+/**
+ * This input must be the independently fetched SEC envelope, never model context.
+ * Optional statement coverage does not govern whether verified TTM flows can inform
+ * forward assumptions. Shares/debt and all final valuation dependencies are still
+ * validated separately by the deterministic engine.
+ */
+export function resolveDcfAssumptionFinancialContext(
+  envelope: SecVerificationEnvelope | null | undefined,
+  requestedTicker: string,
+): DcfAssumptionFinancialContext | null {
+  if (!envelope || envelope.status === 'unavailable' || !sameShareClassTicker(envelope.ticker, requestedTicker)) return null;
+  const dataset = envelope.canonical_financials;
+  if (dataset) {
+    if (!sameShareClassTicker(dataset.ticker || '', requestedTicker)
+      || !/sec[-_]?xbrl/i.test(dataset.generatedBy || '') || dataset.currency !== 'USD') return null;
+    const revenue = reconcileCanonicalTtmFlow(dataset, 'income_statement.revenue');
+    const fcf = reconcileCanonicalTtmFlow(dataset, 'cash_flow.free_cash_flow');
+    if (revenue.status !== 'verified' || fcf.status !== 'verified'
+      || revenue.canonicalValue === null || revenue.canonicalValue <= 0 || fcf.canonicalValue === null
+      || revenue.periodsUsed.join('|') !== fcf.periodsUsed.join('|')) return null;
+    for (const metric of ['income_statement.revenue', 'cash_flow.free_cash_flow']) {
+      const used = dataset.values[metric].filter(fact => revenue.periodsUsed.includes(fact.period));
+      if (used.some(fact => fact.currency && fact.currency !== 'USD')) return null;
+    }
+    const margin = fcf.canonicalValue / revenue.canonicalValue * 100;
+    if (!Number.isFinite(margin)) return null;
+    return {
+      sourcePeriod: revenue.periodsUsed[3],
+      startingRevenueM: revenue.canonicalValue,
+      trailingFourFreeCashFlowM: fcf.canonicalValue,
+      historicalFcfMarginPct: margin,
+    };
+  }
+  // Compatibility for older independently verified envelopes. A present but
+  // invalid canonical dataset must never be bypassed with legacy/provider values.
+  const legacy = envelope.dcf_financial_inputs;
+  if (envelope.status !== 'verified_eligible' || !legacy?.eligible
+    || legacy.generated_by !== 'sec-verified-financial-inputs-v1'
+    || !sameShareClassTicker(legacy.ticker, requestedTicker)
+    || !legacy.source_period || !Number.isFinite(legacy.starting_revenue_m) || legacy.starting_revenue_m! <= 0
+    || !Number.isFinite(legacy.trailing_four_free_cash_flow_m) || !Number.isFinite(legacy.historical_fcf_margin_pct)) return null;
+  return {
+    sourcePeriod: legacy.source_period,
+    startingRevenueM: legacy.starting_revenue_m!,
+    trailingFourFreeCashFlowM: legacy.trailing_four_free_cash_flow_m!,
+    historicalFcfMarginPct: legacy.historical_fcf_margin_pct!,
+  };
+}
 
 const isRecord = (value: unknown): value is Record<string, any> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
