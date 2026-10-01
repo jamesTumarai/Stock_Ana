@@ -1392,10 +1392,10 @@ export function reconcileCanonicalFlowAndMultipleNarrative(text: string, snapsho
       if (!finite(value)) return `${label} (${isThai?'ยังไม่มีข้อมูล canonical ที่ยืนยันได้':'verified canonical value unavailable'})`;
       const divisor=/^(?:billion|bn|b|พันล้าน)$/i.test(unit)?1000:1;
       if (Math.abs(Number(stated.replace(/[$,\s]/g,''))*divisor-value)<=Math.max(0.01,Math.abs(value)*0.0001)) return match;
-      return `${label}${join}${stated.includes('$')?'$':''}${(value/divisor).toLocaleString('en-US',{maximumFractionDigits:2})}${/^(?:B|M|bn)$/i.test(unit)?'':' '}${unit}${suffix}`;
+      return `${label}${join}${stated.match(/^\s*/)?.[0] ?? ''}${stated.includes('$')?'$':''}${(value/divisor).toLocaleString('en-US',{maximumFractionDigits:2})}${/^(?:B|M|bn)$/i.test(unit)?'':' '}${unit}${suffix}`;
     });
   };
-  money('(?:TTM\\s*revenue|revenue\\s*TTM|trailing\\s*12[ -]month\\s*revenue|รายได้(?:รวม)?\\s*TTM|รายได้รอบ\\s*12\\s*เดือน)',snapshot.growth?.revenueTtm);
+  money('(?:TTM\\s*revenue|revenue\\s*TTM|trailing\\s*12[ -]month\\s*revenue|รายได้(?:รวม)?\\s*(?:รอบ\\s*)?TTM|รายได้รอบ\\s*12\\s*เดือน)',snapshot.growth?.revenueTtm);
   money('(?:TTM\\s*(?:FCF|free cash flow)|(?:free cash flow|FCF)\\s*(?:\\(\\s*TTM\\s*\\)|TTM)|กระแสเงินสดอิสระ(?:สะสมย้อนหลัง\\s*12\\s*เดือน)?\\s*(?:\\(\\s*TTM(?:\\s*FCF)?\\s*\\)|TTM))',snapshot.cashFlow?.fcfTtm);
   money('(?:Net Cash|สถานะเงินสดสุทธิ|เงินสดสุทธิ)',snapshot.balanceSheet?.netCashOrDebt);
   money('(?:Cash\\s*\\+\\s*Short-Term Investments|Cash and Short-Term Investments|เงินสด(?:และตราสารหนี้|รวมเงินลงทุน|และเงินลงทุน)ระยะสั้น)',snapshot.balanceSheet?.totalCashAndInvestments);

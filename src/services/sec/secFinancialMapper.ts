@@ -81,8 +81,8 @@ export interface SecAnnualRevenueFact {
  */
 export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike): SecAnnualRevenueFact[] {
   const submissionMap = submissionDocumentMap(bundle.identity, bundle.submissions);
-  const revenueConcepts = ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'];
-  let bestHistory: SecAnnualRevenueFact[] = [];
+  const revenueConcepts = METRIC_SPECS.find(spec => spec.statement === 'income_statement' && spec.metric === 'revenue')!.concepts;
+  const histories: SecAnnualRevenueFact[][] = [];
 
   for (const definition of revenueConcepts) {
     // Company Facts repeats comparative annual values in later filings. `fy`
@@ -120,11 +120,13 @@ export function mapSecBundleToAnnualRevenueHistory(bundle: SecCompanyBundleLike)
       }
     }
     const history = [...byPeriodEnd.values()].sort((a, b) => a.period_end.localeCompare(b.period_end));
-    if (history.length > bestHistory.length) bestHistory = history;
-    // Do not mix definitions. The highest-priority concept wins once it covers a true 3Y endpoint.
-    if (history.some((end, index) => history.slice(0, index).some(start => end.fiscal_year - start.fiscal_year === 3))) return history;
+    histories.push(history);
   }
-  return bestHistory;
+  // Never choose a stale legacy concept or a narrower subtotal merely because
+  // it offers a longer CAGR window. Equal-current-period histories preserve
+  // the shared total-revenue definition priority; missing older endpoints stay
+  // missing instead of mixing economic definitions.
+  return histories.sort((a, b) => String(b.at(-1)?.period_end ?? '').localeCompare(String(a.at(-1)?.period_end ?? '')))[0] ?? [];
 }
 
 const normalizeConcept = (concept: SecCompanyConcept | undefined, spec: MetricSpec): NormalizedSecQuarterFact[] => {
@@ -139,6 +141,22 @@ const normalizeConcept = (concept: SecCompanyConcept | undefined, spec: MetricSp
 
 const mergeConceptAliases = (facts: SecCompanyFactsResponse, spec: MetricSpec, expectedEnds?: Map<string,string>) => {
   const merged = new Map<string, { fact: NormalizedSecQuarterFact; concept: string }>();
+  if (spec.statement === 'income_statement' && spec.metric === 'revenue') {
+    // These families are not interchangeable aliases: customer-contract sales
+    // can exclude insurance and investment revenue. Select the freshest whole
+    // definition, with total-revenue priority on equal dates. Do not fill holes
+    // with a narrower subtotal and silently mix definitions in TTM or growth.
+    const candidates = spec.concepts.map(concept => ({
+      concept,
+      series: normalizeConcept(getConcept(facts, concept), spec)
+        .filter(fact => !expectedEnds?.has(quarterKey(fact)) || expectedEnds.get(quarterKey(fact)) === fact.end),
+    })).filter(candidate => candidate.series.length);
+    const latestEnd = (series: NormalizedSecQuarterFact[]) => series.reduce((latest, fact) => fact.end > latest ? fact.end : latest, '');
+    candidates.sort((a, b) => latestEnd(b.series).localeCompare(latestEnd(a.series)));
+    const selected = candidates[0];
+    for (const fact of selected?.series ?? []) merged.set(quarterKey(fact), { fact, concept: selected!.concept });
+    return merged;
+  }
   // Priority order is intentional. Earlier standard concepts win when two concepts disclose
   // the same fiscal quarter; lower-priority aliases fill only missing periods.
   for (const conceptName of spec.concepts) {

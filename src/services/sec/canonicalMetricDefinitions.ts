@@ -55,7 +55,9 @@ export const METRIC_SPECS: MetricSpec[] = [
   { statement: 'cash_flow', metric: 'change_receivables', concepts: ['IncreaseDecreaseInAccountsReceivable'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'cash_flow', metric: 'change_inventory', concepts: ['IncreaseDecreaseInInventories'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'cash_flow', metric: 'change_payables', concepts: ['IncreaseDecreaseInAccountsPayable'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
-  { statement: 'income_statement', metric: 'revenue', concepts: ['RevenuesNetOfInterestExpense', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
+  // Total revenue can include insurance/investment income outside customer
+  // contracts. A contract-revenue subtotal must not outrank a reported total.
+  { statement: 'income_statement', metric: 'revenue', concepts: ['RevenuesNetOfInterestExpense', 'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'gross_profit', concepts: ['GrossProfit'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'operating_income', concepts: ['OperatingIncomeLoss'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
   { statement: 'income_statement', metric: 'interest_expense', concepts: ['InterestExpense', 'InterestExpenseNonoperating', 'InterestExpenseDebt', 'InterestExpenseDebtExcludingAmortization', 'InterestAndDebtExpense'], unit: 'USD', canonicalUnit: 'USD_M', factKind: 'duration' },
