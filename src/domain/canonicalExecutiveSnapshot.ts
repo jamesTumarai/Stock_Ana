@@ -611,9 +611,15 @@ export function resolveCanonicalValuationLabels(
 const currentBaseClaimPattern=(global=false)=>new RegExp(
   String.raw`((?:มูลค่า\s*(?:พื้นฐาน|ที่แท้จริง|ยุติธรรม|เหมาะสม)?\s*(?:DCF|DDM|AFFO|SOTP)?\s*(?:ใน\s*)?(?:กรณีฐาน|กรณีพื้นฐาน)(?:\s*\(\s*Base\s*Case\s*\))?|(?:DCF|DDM|AFFO|SOTP)\s*(?:กรณีฐาน|กรณีพื้นฐาน|Base\s*Case)|(?:base[- ]case\s+(?:DCF|DDM|AFFO|SOTP)(?:\s+(?:estimate|value|valuation))?))\s*(?:ที่|อยู่ที่|เท่ากับ|คือ|=|:|is|at|of)?\s*)(\$?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)`,global?'gi':'i');
 const currentMosClaimPattern=(global=false)=>new RegExp(
-  String.raw`((?:Margin\s*of\s*Safety|ส่วน(?:ต่าง|เผื่อ)ความปลอดภัย)(?:\s*\((?:Margin\s*of\s*Safety|MoS)\))?\s*(?:สูงถึง|เพียง\s*(?:ราว|ประมาณ)?|ราว|อยู่ที่|เท่ากับ|ประมาณ|คือ|=|:|is|of|at|about)?\s*)([+-]?[0-9]+(?:\.[0-9]+)?)\s*%`,global?'gi':'i');
+  String.raw`((?:Margin\s*of\s*Safety|ส่วน(?:ต่าง|เผื่อ)ความปลอดภัย)(?:\s*\((?:Margin\s*of\s*Safety|MoS)\))?(?:\s*(?:เชิงบวก|เชิงลบ|เป็นบวก|เป็นลบ|positive|negative))?\s*(?:สูงถึง|เพียง\s*(?:ราว|ประมาณ)?|ราว|อยู่ที่|เท่ากับ|ประมาณ|คือ|=|:|is|of|at|about)?\s*)([+-]?[0-9]+(?:\.[0-9]+)?)\s*%`,global?'gi':'i');
+// Explicit stock fair-value currency claims may omit "per share" in prose.
+// Large-unit totals cannot match this currency suffix; named aggregate claims
+// are also excluded below, so transaction values never become stock targets.
 const currentPerShareValuationPattern=(global=false)=>new RegExp(
-  String.raw`((?:fair\s*value|intrinsic\s*value|มูลค่า(?:พื้นฐาน|ที่แท้จริง|ยุติธรรม|เหมาะสม))[^\d;\n]{0,35}?)(\$?\d[\d,]*(?:\.\d+)?)(?:\s*(?:-|–|and|ถึง)\s*\$?\d[\d,]*(?:\.\d+)?)?\s*(ดอลลาร์(?:สหรัฐ)?\s*ต่อหุ้น|(?:USD|dollars?)\s*(?:per\s+share|/share)|per\s+share)`,global?'gi':'i');
+  String.raw`((?:fair\s*value|intrinsic\s*value|มูลค่า(?:พื้นฐาน|ที่แท้จริง|ยุติธรรม|เหมาะสม))(?:(?!ราคาปัจจุบัน|ราคาตลาด|current(?:\s*market)?\s*price|market\s*price|ไม่ได้|unavailable)[^\d;\n]){0,35}?)(\$?\d[\d,]*(?:\.\d+)?)(?:\s*(?:-|–|and|ถึง)\s*\$?\d[\d,]*(?:\.\d+)?)?\s*(ดอลลาร์(?:สหรัฐ)?(?:\s*ต่อหุ้น)?|(?:USD|dollars?)(?:\s*(?:per\s+share|/share))?|per\s+share)`,global?'gi':'i');
+const isAggregateValuationClaim=(label:string,unit:string)=>!/(?:ต่อหุ้น|per\s+share|\/share)/i.test(unit)
+  && /\b(?:enterprise|assets?|acquisition|deal|transaction|portfolio)\b|สินทรัพย์|กิจการ|ธุรกรรม|ซื้อกิจการ|พอร์ต/i.test(label);
+const hasAggregateCurrencySuffix=(text:string,end:number)=>/^\s*(?:ล้าน|พันล้าน|หมื่นล้าน|แสนล้าน|million\b|billion\b|trillion\b|bn\b|mn\b)/i.test(text.slice(end));
 const hasProtectedValuationAttribution=(text:string,offset:number)=>{
   const sentence=text.slice(Math.max(0,offset-240),offset).split(/[;!?\n]|\.(?=\s)/).at(-1)??'';
   return (/\b(?:historical|previous|prior|forecast|projected|peer)\b|อดีต|ปีก่อน|คู่แข่ง/i.test(sentence))
@@ -628,17 +634,17 @@ export function extractBaseValuationMentionedValue(summaryText: string): number 
   if (!summaryText || typeof summaryText !== 'string') return null;
 
   const perShare=summaryText.match(currentPerShareValuationPattern());
-  if(perShare && !/range|ช่วง|กรอบ/i.test(perShare[1]) && !hasProtectedValuationAttribution(summaryText,perShare.index!))
+  if(perShare && !isAggregateValuationClaim(perShare[1],perShare[3]) && !/range|ช่วง|กรอบ/i.test(perShare[1]) && !hasProtectedValuationAttribution(summaryText,perShare.index!))
     return Number(perShare[2].replace(/[$,]/g,''));
 
   const scoped = summaryText.match(currentBaseClaimPattern());
-  if (scoped && !hasProtectedValuationAttribution(summaryText,scoped.index!)) return Number(scoped[2].replace(/[$,]/g,''));
+  if (scoped && !hasAggregateCurrencySuffix(summaryText,scoped.index!+scoped[0].length) && !hasProtectedValuationAttribution(summaryText,scoped.index!)) return Number(scoped[2].replace(/[$,]/g,''));
 
   // 1. Explicit Base Case / DCF / Active Model patterns
   const explicitRegex = /(?:(?:canonical\s+)?(?:dcf|ddm|affo|relative\s+valuation)?\s*base\s*case(?:\s*(?:target|fair\s*value|price\s*target|valuation|value))?|base\s*fair\s*value|intrinsic\s*value\s*base(?:\s*case)?|base\s*case\s*valuation|เป้าหมาย\s*(?:Base\s*Case|พื้นฐาน)|มูลค่าพื้นฐาน(?:\s*(?:Base\s*Case|\(Base\s*Case\)|DCF\s*\(Base\s*Case\)|DCF|DDM|AFFO))?|การประเมินมูลค่าด้วย\s*DCF\s*พื้นฐาน|มูลค่าที่แท้จริง(?:\s*(?:Base\s*Case|\(Base\s*Case\)))?|มูลค่ายุติธรรม(?:\s*(?:Base\s*Case|\(Base\s*Case\)))?)\s*(?:=|:|คือ|อยู่ที่|is|at|of|\s)\s*(?:\$)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)/i;
 
   const match = summaryText.match(explicitRegex);
-  if (match && match[1] && !hasProtectedValuationAttribution(summaryText, match.index!)) {
+  if (match && match[1] && !hasAggregateCurrencySuffix(summaryText,match.index!+match[0].length) && !hasProtectedValuationAttribution(summaryText, match.index!)) {
     const val = parseFloat(match[1].replace(/,/g, ''));
     if (finite(val)) return val;
   }
@@ -648,7 +654,7 @@ export function extractBaseValuationMentionedValue(summaryText: string): number 
   // fair-value claim and must not enter the financial consistency gate.
   const monetary = /(?:DCF|Fair\s*Value|มูลค่าพื้นฐาน|มูลค่าที่แท้จริง)(?:\s*(?:พื้นฐาน|กรณีฐาน|base\s*case))?\s*(?:(?:=|:|คือ|ที่|อยู่ที่|is|at|of)\s*\$?|\$)([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)/gi;
   for (const claim of summaryText.matchAll(monetary)) {
-    if (!hasProtectedValuationAttribution(summaryText, claim.index!)) return Number(claim[1].replace(/,/g,''));
+    if (!hasAggregateCurrencySuffix(summaryText,claim.index!+claim[0].length) && !hasProtectedValuationAttribution(summaryText, claim.index!)) return Number(claim[1].replace(/,/g,''));
   }
 
   return null;
@@ -679,12 +685,12 @@ export function reconcileBaseValuationNarrative(
     snapshot.canonicalValuation?.modelNameTh
   );
 
-  // Explicit dollars-per-share claims cannot be unstructured model averages.
+  // Explicit stock fair-value claims cannot be unstructured model averages.
   // An explicitly named range uses this run's bear/bull values; an average or
   // unqualified value uses its selected base. Aggregate transactions do not fit.
   let res = text.replace(currentPerShareValuationPattern(true),(match,label,_amount,_unit,offset,source)=>{
     const prefix=source.slice(Math.max(0,offset-160),offset).split(/[;!?\n]|\.(?=\s)/).at(-1)??'';
-    if(hasProtectedValuationAttribution(source,offset)
+    if(isAggregateValuationClaim(label,_unit) || hasProtectedValuationAttribution(source,offset)
       || /\b(?:prior|previous|historical|forecast|projected|peer|bear|bull)\b|อดีต|ปีก่อน|คู่แข่ง/i.test(prefix+label)) return match;
     const range=/range|ช่วง|กรอบ/i.test(label);
     const bear=snapshot.canonicalValuation?.bearFairValue;
@@ -702,16 +708,17 @@ export function reconcileBaseValuationNarrative(
   // the currency before the number. Do not use an unscoped numeric fallback:
   // fiscal years, WACC and external analyst targets are different claims.
   res = res.replace(currentBaseClaimPattern(true), (match,prefix,amount,offset,source) => {
-    if (hasProtectedValuationAttribution(source,offset)) return match;
+    if (hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)) return match;
     return finite(canonicalFv) ? (modelFamily === 'dcf' ? `${prefix}$${canonicalFv.toFixed(2)}` : `${/[ก-๙]/.test(prefix)?canonicalLabelTh:canonicalLabelEn} = $${canonicalFv.toFixed(2)}`)
       : (/[ก-๙]/.test(prefix)?'ยังประเมินมูลค่าพื้นฐานไม่ได้':'Base valuation unavailable');
   });
 
   const canonicalMos = snapshot.canonicalValuation?.marginOfSafetyPct ?? snapshot.valuation.marginOfSafetyPct
     ?? resolveValuationPriceMetrics(canonicalFv,snapshot.market.currentPrice).marginOfSafetyPct;
-  res = res.replace(currentMosClaimPattern(true),(match,prefix,amount,offset)=>{
-    if(hasProtectedValuationAttribution(res,offset))return match;
-    return finite(canonicalMos)?`${prefix}${canonicalMos.toFixed(2)}%`
+  res = res.replace(currentMosClaimPattern(true),(match,prefix,amount,offset,source)=>{
+    if(hasProtectedValuationAttribution(source,offset))return match;
+    const neutralPrefix=prefix.replace(/(?:เชิงบวก|เชิงลบ|เป็นบวก|เป็นลบ|positive|negative)\s*/gi,'');
+    return finite(canonicalMos)?`${neutralPrefix}${canonicalMos.toFixed(2)}%`
       : (/[ก-๙]/.test(prefix)?'ส่วนเผื่อความปลอดภัยยังคำนวณไม่ได้':'Margin of Safety unavailable');
   });
 
@@ -724,11 +731,11 @@ export function reconcileBaseValuationNarrative(
       : 'Base valuation unavailable';
     res = res.replace(
       /(?:DCF|DDM|AFFO|SOTP|Relative\s+Valuation)?\s*(?:base\s*case|base\s*fair\s*value|fair\s*value|intrinsic\s*value)(?:\s*(?:target|valuation|value))?\s*(?:=|:|is|at|of)\s*\$?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?\s*(?:USD|dollars)?/gi,
-      (match,offset,source) => hasProtectedValuationAttribution(source,offset)?match:unavailableLabel
+      (match,offset,source) => hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)?match:unavailableLabel
     );
     res = res.replace(
       /(?:การประเมินมูลค่าด้วย\s*DCF\s*พื้นฐาน|มูลค่าพื้นฐาน(?:กรณีฐาน|กรณีพื้นฐาน)?|มูลค่าที่แท้จริง|มูลค่ายุติธรรม)\s*(?:ที่|อยู่ที่|เท่ากับ|คือ|=|:)\s*\$?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?\s*(?:ดอลลาร์|USD)?/gi,
-      (match,offset,source) => hasProtectedValuationAttribution(source,offset)?match:'ยังประเมินมูลค่าพื้นฐานไม่ได้'
+      (match,offset,source) => hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)?match:'ยังประเมินมูลค่าพื้นฐานไม่ได้'
     );
     return res;
   }
@@ -737,7 +744,7 @@ export function reconcileBaseValuationNarrative(
   const competingRegex = /((?:(?:holding|hold|buy|accumulate|wait|avoid)\s*(?:with\s*)?)?(?:base\s*case(?:\s*(?:target|fair\s*value|price\s*target|valuation))?|เป้าหมาย\s*(?:Base\s*Case|พื้นฐาน)|มูลค่าพื้นฐาน\s*Base\s*Case)\s*(?:=|:|คือ|อยู่ที่|is|at|of|\s)\s*)(?:\$)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)/gi;
 
   res = res.replace(competingRegex, (match, prefix, numStr, offset, source) => {
-    if (hasProtectedValuationAttribution(source,offset)) return match;
+    if (hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)) return match;
     const parsed = parseFloat(numStr.replace(/,/g, ''));
     if (finite(techT1) && Math.abs(parsed - techT1) <= 1.0) {
       return /เป้าหมาย|มูลค่า/i.test(prefix) || isThai
@@ -765,7 +772,7 @@ export function reconcileBaseValuationNarrative(
     const thRegex = /((?:คงคำแนะนำ\s*(?:HOLD|BUY|ACCUMULATE|WAIT|AVOID)|แนะนำ(?:ถือ|ซื้อ|รอ|หลีกเลี่ยง)?\s*(?:\([^)]*\))?|HOLD|BUY|ACCUMULATE|WAIT|AVOID)?\s*(?:โดยมี\s*)?(?:(?:ราคา\s*)?เป้าหมาย\s*(?:Base\s*Case|พื้นฐาน|มูลค่าพื้นฐาน)|(?:มูลค่า(?:พื้นฐาน|ที่แท้จริง|ยุติธรรม|เหมาะสม)|การประเมินมูลค่าด้วย\s*DCF\s*พื้นฐาน|ประเมินมูลค่าด้วย\s*(?:DCF|DDM|AFFO|SOTP))(?:[\s/()]*(?:DCF|DDM|AFFO|พื้นฐาน|base(?:\s*case)?|\(Base\s*Case\)))*)\s*(?:=|:|คือ|อยู่ที่|at|\s)\s*)(?:\$)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*(?:ดอลลาร์|\$|USD)?/gi;
 
     res = res.replace(thRegex, (match, prefix, numStr, offset, source) => {
-      if (hasProtectedValuationAttribution(source,offset)) return match;
+      if (hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)) return match;
       const prefixLead = /โดยมี/i.test(prefix) ? 'โดยมี ' : '';
       if (modelFamily !== 'dcf') {
         return `${prefixLead}${canonicalLabelTh} = ${fvFormatted} ดอลลาร์`;
@@ -783,7 +790,7 @@ export function reconcileBaseValuationNarrative(
     const enRegex = /((?:(?:holding|hold|buy|accumulate|wait|avoid)\s*(?:with\s*)?)?(?:canonical\s+)?(?:dcf|ddm|affo|relative\s+valuation)?\s*(?:base\s*case(?:\s*(?:target|fair\s*value|price\s*target|valuation|value))?|base\s*fair\s*value|intrinsic\s*value\s*base(?:\s*case)?|base\s*case\s*valuation|dcf\s*(?:valuation|fair\s*value|target|value)?)\s*(?:=|:|is|at|of|\s)\s*)(?:\$)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*(?:USD|\$|dollars)?/gi;
 
     res = res.replace(enRegex, (match, prefix, numStr, offset, source) => {
-      if (hasProtectedValuationAttribution(source,offset)) return match;
+      if (hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)) return match;
       if (/^\s*DCF\s*$/i.test(prefix) && !/\$|USD|dollars/i.test(match)) return match;
       if (/[ก-๙]/.test(prefix)) {
         const prefixLead = /โดยมี/i.test(prefix) ? 'โดยมี ' : '';
@@ -815,7 +822,7 @@ export function reconcileBaseValuationNarrative(
     // than "Base Case = ...". It must obey the same canonical run.
     res = res.replace(
       /(มูลค่าพื้นฐาน(?:กรณีฐาน|กรณีพื้นฐาน)?\s*(?:ที่|อยู่ที่|เท่ากับ|คือ|=|:)\s*)\$?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?\s*(?:ดอลลาร์)?/gi,
-      (_match, prefix, offset, source) => hasProtectedValuationAttribution(source,offset) ? _match : modelFamily === 'dcf'
+      (_match, prefix, offset, source) => hasAggregateCurrencySuffix(source,offset+_match.length) || hasProtectedValuationAttribution(source,offset) ? _match : modelFamily === 'dcf'
         ? `${prefix}${fvFormatted} ดอลลาร์`
         : `${canonicalLabelTh} = ${fvFormatted} ดอลลาร์`
     );
@@ -825,7 +832,7 @@ export function reconcileBaseValuationNarrative(
     res = res.replace(
       /((?:(?:base(?:\s*case)?\s*)?fair\s*value|DCF|มูลค่า(?:พื้นฐาน|ที่แท้จริง|ยุติธรรม|เหมาะสม))(?:[\s/()]*(?:DCF|พื้นฐาน|base(?:\s*case)?))*[\s:=]*(?:อยู่ที่|คือ|of|at|is|=|:)?)\s*(?:\$)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*(ดอลลาร์|\$|USD)?/gi,
       (match, prefix, num, unit, offset, source) => {
-        if (hasProtectedValuationAttribution(source,offset)) return match;
+        if (hasAggregateCurrencySuffix(source,offset+match.length) || hasProtectedValuationAttribution(source,offset)) return match;
         if (/^\s*DCF\s*$/i.test(prefix) && !unit && !/\$/.test(match)) return match;
         if (modelFamily !== 'dcf') {
           return isThai ? `${canonicalLabelTh} = ${fvFormatted} ดอลลาร์` : `${canonicalLabelEn} = $${fvFormatted}`;

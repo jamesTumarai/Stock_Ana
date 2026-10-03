@@ -190,3 +190,29 @@ test('explicit per-share ranges use canonical scenarios while external quotes an
   snapshot.canonicalValuation!.baseFairValue=null;snapshot.valuation.fairValue=null;
   assert.doesNotMatch(reconcileBaseValuationNarrative('Fair value range $10–$20 per share',snapshot,false),/120|200/);
 });
+
+test('currency-valued fair-value averages without per-share suffix and signed MoS prose use the selected run',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot({...report,company_profile:{sector:'Financial Services',industry:'Banks'},
+    market_snapshot:{...report.market_snapshot,price:332.38},
+    intrinsic_value:{canonical_run:{primaryMethod:'DIVIDEND_DISCOUNT',status:'AVAILABLE',baseFairValue:293.19,currentPrice:332.38,marginOfSafetyPct:-11.79,missingInputs:[]}}},'UNSEEN');
+  const claim='การประเมินมูลค่าด้วย Residual Income และ DDM สะท้อนมูลค่าพื้นฐานที่เหมาะสมเฉลี่ย 355.00 ดอลลาร์ โดยราคาตลาดปัจจุบันที่ 332.38 ดอลลาร์ ยังคงมี Margin of Safety เชิงบวกประมาณ 6.8%';
+  assert.equal(extractBaseValuationMentionedValue(claim),355);
+  const current:any={...report,verdict:{summary:claim,key_takeaways:[claim]},comprehensive_analysis:{financial_overview:claim},final_report:claim,canonical_executive_snapshot:snapshot};
+  assert.ok(validateSection1Integrity(current,'UNSEEN').issues.some(issue=>/base valuation|Margin of Safety/.test(issue)));
+  reconcileCurrentValuationProse(current,snapshot);
+  for(const prose of [current.verdict.summary,...current.verdict.key_takeaways,current.comprehensive_analysis.financial_overview,current.final_report]){
+    assert.match(prose,/293\.19 ดอลลาร์ต่อหุ้น/);assert.match(prose,/-11\.79%/);assert.doesNotMatch(prose,/355\.00|6\.8%|เฉลี่ย|เชิงบวก/);
+  }
+  assert.equal(validateSection1Integrity(current,'UNSEEN').issues.filter(issue=>/base valuation|Margin of Safety/.test(issue)).length,0);
+  const first=JSON.stringify(current);reconcileCurrentValuationProse(current,snapshot);assert.equal(JSON.stringify(current),first);
+  for(const prose of ['Morningstar '+claim,'Historical '+claim,'Fair value of assets 100 USD','มูลค่าพื้นฐานกิจการ 100 ดอลลาร์','มูลค่าพื้นฐาน 2,000 ล้านดอลลาร์']){
+    assert.equal(extractBaseValuationMentionedValue(prose),null);
+    assert.equal(reconcileBaseValuationNarrative(prose,snapshot),prose);
+  }
+  const unavailable=structuredClone(snapshot);unavailable.canonicalValuation!.baseFairValue=null;unavailable.valuation.fairValue=null;
+  assert.doesNotMatch(reconcileBaseValuationNarrative(claim,unavailable),/355\.00/);
+  for(const prose of ['ยังประเมินมูลค่าพื้นฐานไม่ได้ ราคาปัจจุบัน 332.38 ดอลลาร์','Fair value unavailable; current price 332.38 USD']){
+    assert.equal(extractBaseValuationMentionedValue(prose),null);
+    assert.equal(reconcileBaseValuationNarrative(prose,unavailable),prose);
+  }
+});
