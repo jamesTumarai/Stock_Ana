@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { CompanyLogo } from './CompanyLogo';
+import { historyQuickMetric } from '../utils/historyQuickMetric';
 
 interface HistoryModalProps {
   onClose: () => void;
@@ -152,18 +153,7 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete, loadingRepo
     setConfirmState(null);
   };
 
-  // Extract quick valuation/fair value badge if available
-  const extractQuickMetric = (report: any) => {
-    const dcf = report.data?.intrinsic_value?.summary?.dcf_fair_value;
-    const currentPrice = report.data?.intrinsic_value?.summary?.current_price || report.data?.currentPrice;
-    if (dcf && typeof dcf === 'number') {
-      return `DCF: $${dcf.toFixed(2)}`;
-    }
-    if (currentPrice && typeof currentPrice === 'number') {
-      return `$${currentPrice.toFixed(2)}`;
-    }
-    return null;
-  };
+  const extractQuickMetric = historyQuickMetric;
 
   return (
     <motion.div 

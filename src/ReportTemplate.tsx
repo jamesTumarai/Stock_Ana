@@ -423,7 +423,7 @@ export default function ReportTemplate({
   const isTechnicalOnly = data.analysis_type === 'technical' || (data.technical_analysis && !data.comprehensive_analysis);
   const findings = data.findings || [];
   const unavailable = isThai ? 'ไม่มีข้อมูล (Data unavailable)' : 'Data unavailable';
-  const reportDate = data.as_of_date || new Date().toISOString().split('T')[0];
+  const reportDate = data.as_of_date || data.generated_at?.split('T')[0] || new Date().toISOString().split('T')[0];
   const validation = data.validation;
   const criticalValidationIssues = validation?.issues?.filter(issue => issue.severity === 'critical') ?? [];
   const warningValidationIssues = validation?.issues?.filter(issue => issue.severity === 'warning') ?? [];
@@ -839,7 +839,7 @@ export default function ReportTemplate({
                 )}
               </div>
               <p className="text-sm sm:text-base font-medium text-stone-600 truncate mt-1.5">
-                {data.company_profile?.overview?.company_name || `${ticker} Corporation`}
+                {data.company_profile?.overview?.company_name || ticker}
               </p>
             </div>
           </div>
