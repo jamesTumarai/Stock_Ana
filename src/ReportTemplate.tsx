@@ -839,7 +839,7 @@ export default function ReportTemplate({
                 )}
               </div>
               <p className="text-sm sm:text-base font-medium text-stone-600 truncate mt-1.5">
-                {data.company_profile?.overview?.company_name || `${ticker} Corporation`}
+                {data.company_profile?.overview?.company_name || ticker}
               </p>
             </div>
           </div>

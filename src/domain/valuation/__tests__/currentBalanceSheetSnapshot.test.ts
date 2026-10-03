@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import type { ReportData } from '../../../types';
 import type { CanonicalFinancialDataset, CanonicalFinancialValue } from '../../financialValue';
 import { resolveCurrentBalanceSheetSnapshot } from '../../currentBalanceSheetSnapshot';
-import { buildCanonicalExecutiveSnapshot, reconcileExecutiveSummary, reconcileKeyTakeaways } from '../../canonicalExecutiveSnapshot';
+import { buildCanonicalExecutiveSnapshot, reconcileExecutiveSummary, reconcileKeyTakeaways, reconcileCurrentValuationProse } from '../../canonicalExecutiveSnapshot';
+import { resolveAdaptiveFivePillars } from '../fivePillarsResolver';
 import { extractMemorySnapshot, compareMemorySnapshots } from '../../investmentMemory';
 import { computeWhatChanged } from '../../whatChangedEngine';
 import { buildDecisionContext } from '../../decisionContextEngine';
@@ -53,6 +54,25 @@ const reportFor = (sector: string, industry?: string): Partial<ReportData> => {
 };
 
 describe('Current-period balance-sheet instant integrity', () => {
+  it('current D/E prose consumes the verified ratio used by Five Pillars, including zero and unavailable inputs', () => {
+    for (const [debt, equity, expected] of [[9300,53000,0.18],[0,53000,0],[9300,null,null],[9300,-10,null]] as const) {
+      const base = reportFor('Industrials', 'Engineering');
+      const canonical = base.canonical_financials!;
+      canonical.values['balance_sheet.total_debt'] = makeSeries('total_debt', [8800,debt]);
+      canonical.values['balance_sheet.short_term_debt'] = makeSeries('short_term_debt', [1300,debt === 0 ? 0 : 1400]);
+      canonical.values['balance_sheet.long_term_debt'] = makeSeries('long_term_debt', [7500,debt === 0 ? 0 : 7900]);
+      canonical.values['balance_sheet.stockholders_equity'] = makeSeries('stockholders_equity', [49000,equity]);
+      const prepared = { ...base, financial_statements: adaptSecCanonicalToFinancialStatements(upgradeCanonicalTestFixture(canonical))! };
+      const pillars = resolveAdaptiveFivePillars(prepared, 'EXAMPLE');
+      const snapshot = buildCanonicalExecutiveSnapshot(prepared, 'EXAMPLE');
+      assert.equal(snapshot.balanceSheet.debtToEquity, expected);
+      assert.equal(pillars.fivePillarsData.balance_sheet.debt_to_equity ?? null, expected);
+      const current = { comprehensive_analysis: { fundamentals_check: 'D/E 9x' } } as Partial<ReportData>;
+      reconcileCurrentValuationProse(current as ReportData, snapshot);
+      if (expected === null) assert.match(current.comprehensive_analysis!.fundamentals_check!, /verified canonical ratio unavailable/);
+      else assert.match(current.comprehensive_analysis!.fundamentals_check!, new RegExp(`D/E ${expected} x`));
+    }
+  });
   const archetypes = [
     ['Bank', 'Financial Services', 'Banks - Diversified'],
     ['Lender', 'Financial Services', 'Consumer Lending'],

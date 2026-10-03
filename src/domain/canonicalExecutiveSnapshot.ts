@@ -1031,7 +1031,9 @@ export function buildCanonicalExecutiveSnapshot(
   const totalDebt = currentBalanceSheetSnapshot.totalDebt;
   const netCashOrDebt = currentBalanceSheetSnapshot.netCash;
   const isNetCash = netCashOrDebt !== null ? netCashOrDebt >= 0 : false;
-  const debtToEquity = currentBalanceSheetSnapshot.facts.debt_to_equity?.value ?? null;
+  // D/E is a derived verified indicator, never an instant statement fact.
+  // Reuse the same canonical indicator consumed by Five Pillars.
+  const debtToEquity = adaptivePillars.fivePillarsData.balance_sheet?.debt_to_equity ?? null;
   const currentRatio = resolvedMetrics.currentRatio.value ?? currentBalanceSheetSnapshot.facts.current_ratio?.value ?? null;
   const balancePeriod = currentBalanceSheetSnapshot.period || latestPeriod;
   const balanceStatus = currentBalanceSheetSnapshot.verification === 'verified' ? 'SEC_VERIFIED' : 'FOUND_UNVERIFIED';
