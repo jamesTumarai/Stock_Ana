@@ -157,7 +157,9 @@ export function HistoryModal({ onClose, reports, onSelect, onDelete, loadingRepo
     const dcf = report.data?.intrinsic_value?.summary?.dcf_fair_value;
     const currentPrice = report.data?.intrinsic_value?.summary?.current_price || report.data?.currentPrice;
     if (dcf && typeof dcf === 'number') {
-      return `DCF: $${dcf.toFixed(2)}`;
+      // The legacy field also carries canonical RI/AFFO/SOTP values.
+      // A neutral label must not claim every saved valuation used DCF.
+      return `Fair Value: $${dcf.toFixed(2)}`;
     }
     if (currentPrice && typeof currentPrice === 'number') {
       return `$${currentPrice.toFixed(2)}`;
