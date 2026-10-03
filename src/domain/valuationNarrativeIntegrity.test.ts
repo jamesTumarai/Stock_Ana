@@ -91,3 +91,63 @@ test('current ratio prose uses the canonical TTM value while historical/forecast
   assert.equal(current.current_narrative_audit.length,2);
   const first=JSON.stringify(current);reconcileCurrentValuationProse(current,snapshot);assert.equal(JSON.stringify(current),first);
 });
+
+test('all current narrative consumers use the same TTM flow and distinguish missing net cash from cash',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot(report,'UNSEEN');
+  snapshot.growth.revenueTtm=384687;
+  snapshot.balanceSheet.netCashOrDebt=null;
+  const claim='รายได้รอบ TTM 383,929 ล้านดอลลาร์; สถานะเงินสดสุทธิ (Net Cash) สูงถึง 236,915 ล้านดอลลาร์';
+  const current:any={verdict:{summary:claim,key_takeaways:[claim]},
+    comprehensive_analysis:{financial_overview:claim,fundamentals_check:claim,beginner_summary:{top_3_strengths:['สถานะเงินสดสุทธิกว่า 2.36 แสนล้านดอลลาร์']},
+      previous_snapshot:{financial_overview:claim},sources:[claim]},five_pillars:{solvency:{analysis:claim}},final_report:claim};
+  const originalHistory=structuredClone(current.comprehensive_analysis.previous_snapshot);
+  reconcileCurrentValuationProse(current,snapshot);
+  for(const prose of [current.verdict.summary,...current.verdict.key_takeaways,current.comprehensive_analysis.financial_overview,
+    current.comprehensive_analysis.fundamentals_check,current.five_pillars.solvency.analysis,current.final_report]){
+    assert.match(prose,/384,687/);assert.doesNotMatch(prose,/383,929|236,915/);assert.match(prose,/ยังไม่มีข้อมูล canonical/);
+  }
+  assert.doesNotMatch(current.comprehensive_analysis.beginner_summary.top_3_strengths[0],/2\.36/);
+  assert.deepEqual(current.comprehensive_analysis.previous_snapshot,originalHistory);
+  assert.deepEqual(current.comprehensive_analysis.sources,[claim]);
+  const first=JSON.stringify(current);reconcileCurrentValuationProse(current,snapshot);assert.equal(JSON.stringify(current),first);
+});
+
+test('current flow reconciliation preserves attributed, historical and projected monetary observations',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot(report,'UNSEEN');
+  snapshot.growth.revenueTtm=2000;snapshot.balanceSheet.netCashOrDebt=1000;
+  const claims=['Historical Net Cash $9 billion','FY2025 TTM Revenue $8 billion','Expected TTM Revenue $8 billion',
+    'TTM Revenue is projected at $8 billion','Peer Net Cash $9 billion','Morningstar Net Cash $9 billion','อดีตมีสถานะเงินสดสุทธิ 9,000 ล้านดอลลาร์'];
+  const current:any={comprehensive_analysis:{financial_overview:claims.join('\n')}};
+  reconcileCurrentValuationProse(current,snapshot);
+  assert.equal(current.comprehensive_analysis.financial_overview,claims.join('\n'));
+});
+
+test('large Thai monetary units are display conversions of the canonical net-cash value',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot(report,'UNSEEN');snapshot.balanceSheet.netCashOrDebt=200000;
+  const current:any={comprehensive_analysis:{financial_overview:'สถานะเงินสดสุทธิ 2.36 แสนล้านดอลลาร์; Net Cash $236.915 billion'}};
+  reconcileCurrentValuationProse(current,snapshot);
+  assert.match(current.comprehensive_analysis.financial_overview,/สถานะเงินสดสุทธิ 2 แสนล้านดอลลาร์/);
+  assert.match(current.comprehensive_analysis.financial_overview,/Net Cash \$200 billion/);
+});
+
+test('current debt/liquidity ratios reject unsupported prose and preserve actual zero and historical ratios',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot(report,'UNSEEN');
+  snapshot.balanceSheet.debtToEquity=null;snapshot.balanceSheet.currentRatio=2;
+  const current:any={comprehensive_analysis:{fundamentals_check:'อัตราส่วนหนี้สินต่อทุน (D/E) เพียง 0.17 เท่า; Current Ratio 9x\nHistorical D/E 0.17x'}};
+  reconcileCurrentValuationProse(current,snapshot);
+  assert.match(current.comprehensive_analysis.fundamentals_check,/ยังไม่มีข้อมูล canonical/);
+  assert.doesNotMatch(current.comprehensive_analysis.fundamentals_check.split('\n')[0],/0\.17/);
+  assert.match(current.comprehensive_analysis.fundamentals_check,/Current Ratio 2 x/);
+  assert.match(current.comprehensive_analysis.fundamentals_check,/Historical D\/E 0\.17x/);
+  snapshot.balanceSheet.debtToEquity=0;
+  const zero:any={comprehensive_analysis:{fundamentals_check:'D/E 0.17x'}};
+  reconcileCurrentValuationProse(zero,snapshot);assert.equal(zero.comprehensive_analysis.fundamentals_check,'D/E 0 x');
+});
+
+test('financial current-ratio prose is not-applicable rather than a fabricated liquidity multiple',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot({...report,company_profile:{sector:'Financial Services',industry:'Banks'}},'UNSEEN');
+  const current:any={comprehensive_analysis:{fundamentals_check:'Current Ratio 9x'}};
+  reconcileCurrentValuationProse(current,snapshot);
+  assert.match(current.comprehensive_analysis.fundamentals_check,/not applicable/);
+  assert.doesNotMatch(current.comprehensive_analysis.fundamentals_check,/9x/);
+});

@@ -861,7 +861,12 @@ export function reconcileCurrentValuationProse(report: ReportData, snapshot: Can
           : /[ก-๙]/.test(match) ? 'ข้อมูลไม่พอสำหรับอัตราส่วนปัจจุบัน' : 'Current canonical ratio unavailable'}`;
       });
   const reconcile = (value: unknown): unknown => {
-    if (typeof value === 'string') return reconcileRatios(reconcileBaseValuationNarrative(value, snapshot, /[ก-๙]/.test(value)));
+    if (typeof value === 'string') {
+      const isThai = /[ก-๙]/.test(value);
+      return reconcileRatios(reconcileCanonicalFlowAndMultipleNarrative(
+        reconcileBaseValuationNarrative(value, snapshot, isThai), snapshot, isThai,
+      ));
+    }
     if (Array.isArray(value)) return value.map(reconcile);
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key,item]) =>
       [key, /history|historical|previous|snapshot|sources|findings/i.test(key) ? item : reconcile(item)]));
@@ -871,8 +876,8 @@ export function reconcileCurrentValuationProse(report: ReportData, snapshot: Can
     if (report[key]) (report as any)[key] = reconcile(report[key]);
   if (report.intrinsic_value?.summary?.verdict_text)
     report.intrinsic_value.summary.verdict_text = reconcileBaseValuationNarrative(report.intrinsic_value.summary.verdict_text, snapshot);
-  if (report.verdict?.summary) report.verdict.summary = reconcileRatios(report.verdict.summary);
-  if (report.verdict?.key_takeaways) report.verdict.key_takeaways = report.verdict.key_takeaways.map(reconcileRatios);
+  if (report.verdict?.summary) report.verdict.summary = reconcile(report.verdict.summary) as string;
+  if (report.verdict?.key_takeaways) report.verdict.key_takeaways = report.verdict.key_takeaways.map(item => reconcile(item) as string);
   if (audit.length) report.current_narrative_audit = audit.slice(0, 100);
 }
 
@@ -1387,10 +1392,15 @@ export function reconcileCanonicalFlowAndMultipleNarrative(text: string, snapsho
       isThai?'ยอดหนี้ทางการเงินยังไม่มีข้อมูล canonical ที่ยืนยันได้':'canonical financial debt is not yet verified');
   }
   const money = (pattern: string, value: number | null | undefined) => {
-    const regex=new RegExp(`(${pattern})([^\\d;\\n]{0,45}?)(\\$?\\s*[-+]?\\d[\\d,]*(?:\\.\\d+)?)\\s*(billion|million|MUSD|bn|B|M|พันล้าน|ล้าน)(?![a-z])((?:\\s*(?:ดอลลาร์(?:สหรัฐ)?|USD|dollars?))?)`, 'gi');
-    text=text.replace(regex,(match,label,join,stated,unit,suffix)=>{
+    const regex=new RegExp(`(${pattern})([^\\d;\\n]{0,45}?)(\\$?\\s*[-+]?\\d[\\d,]*(?:\\.\\d+)?)\\s*(billion|million|MUSD|bn|B|M|แสนล้าน|หมื่นล้าน|พันล้าน|ล้าน)(?![a-z])((?:\\s*(?:ดอลลาร์(?:สหรัฐ)?|USD|dollars?))?)`, 'gi');
+    text=text.replace(regex,(match,label,join,stated,unit,suffix,offset,source)=>{
+      const prefix = source.slice(Math.max(0, offset - 160), offset).split(/[;!?\n]|\.(?=\s)/).at(-1) ?? '';
+      // Current interpretation is not permission to rewrite attributed,
+      // historical or projected observations inside otherwise current prose.
+      if (hasExternalValuationAttribution(source, offset)
+        || /\b(?:forecast|projected|expected|target|peer|previous|prior|historical|FY\s*\d{4}|Q[1-4]\s*\d{4})\b|คาด|เป้าหมาย|คู่แข่ง|ปีก่อน|อดีต/i.test(prefix + join)) return match;
       if (!finite(value)) return `${label} (${isThai?'ยังไม่มีข้อมูล canonical ที่ยืนยันได้':'verified canonical value unavailable'})`;
-      const divisor=/^(?:billion|bn|b|พันล้าน)$/i.test(unit)?1000:1;
+      const divisor=unit==='แสนล้าน'?100000:unit==='หมื่นล้าน'?10000:/^(?:billion|bn|b|พันล้าน)$/i.test(unit)?1000:1;
       if (Math.abs(Number(stated.replace(/[$,\s]/g,''))*divisor-value)<=Math.max(0.01,Math.abs(value)*0.0001)) return match;
       return `${label}${join}${stated.match(/^\s*/)?.[0] ?? ''}${stated.includes('$')?'$':''}${(value/divisor).toLocaleString('en-US',{maximumFractionDigits:2})}${/^(?:B|M|bn)$/i.test(unit)?'':' '}${unit}${suffix}`;
     });
@@ -1402,8 +1412,21 @@ export function reconcileCanonicalFlowAndMultipleNarrative(text: string, snapsho
   money('(?:Total Debt|Canonical Debt|หนี้สินที่มีภาระดอกเบี้ย|หนี้สินทางการเงินรวม)',snapshot.balanceSheet?.totalDebt);
   // Match Forward as part of the token so a trailing P/E replacement cannot
   // overwrite a consensus forward P/E, including Thai connective wording.
-  const multiples=/(Forward\s*P\/E|Trailing\s*P\/E|P\/E|PEG(?:\s*Ratio)?)([^\d;\n]{0,35}?)([-+]?\d+(?:\.\d+)?)\s*(เท่า|x|times)/gi;
-  return text.replace(multiples,(_match,label,join,_amount,unit)=>{
+  const multiples=/(Debt[ -]to[ -]Equity(?:\s*Ratio)?|D\/E|อัตราส่วนหนี้สินต่อทุน|Current\s*Ratio|อัตราส่วนสภาพคล่อง|Forward\s*P\/E|Trailing\s*P\/E|P\/E|PEG(?:\s*Ratio)?)([^\d;\n]{0,35}?)([-+]?\d+(?:\.\d+)?)\s*(เท่า|x|times)/gi;
+  return text.replace(multiples,(_match,label,join,_amount,unit,offset,source)=>{
+    const prefix=source.slice(Math.max(0,offset-160),offset).split(/[;!?\n]|\.(?=\s)/).at(-1)??'';
+    if (hasExternalValuationAttribution(source,offset)
+      || /\b(?:forecast|projected|expected|target|peer|previous|prior|historical|FY\s*\d{4}|Q[1-4]\s*\d{4})\b|คาด|เป้าหมาย|คู่แข่ง|ปีก่อน|อดีต/i.test(prefix+join)) return _match;
+    const debtRatio=/Debt[ -]to[ -]Equity|D\/E|หนี้สินต่อทุน/i.test(label);
+    const liquidityRatio=/Current\s*Ratio|สภาพคล่อง/i.test(label);
+    if (debtRatio || liquidityRatio) {
+      const value=debtRatio?snapshot.balanceSheet?.debtToEquity:snapshot.balanceSheet?.currentRatio;
+      if (finite(value) && value>=0) return `${label}${join}${Number(value.toFixed(2))} ${unit}`;
+      const guarded=liquidityRatio && ['bank','lender','fintech','insurer'].includes(snapshot.identity?.archetype);
+      return `${label} (${guarded
+        ? isThai?'ไม่ใช้เกณฑ์สภาพคล่องบริษัททั่วไปกับธุรกิจการเงิน':'not applicable to financial-sector funding economics'
+        : isThai?'ยังไม่มีข้อมูล canonical ที่ยืนยันได้':'verified canonical ratio unavailable'})`;
+    }
     const fact=/PEG/i.test(label)?snapshot.marketMultiples?.peg:/Forward/i.test(label)?snapshot.marketMultiples?.peForward:snapshot.marketMultiples?.peTrailing;
     const value=fact?.value ?? (/Forward/i.test(label)?snapshot.market.peForward:/PEG/i.test(label)?null:snapshot.market.peTrailing);
     return finite(value) && value>0 ? `${label}${join}${Number(value.toFixed(2))} ${unit}`
