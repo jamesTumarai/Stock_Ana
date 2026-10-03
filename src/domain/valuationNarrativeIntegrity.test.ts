@@ -151,3 +151,42 @@ test('financial current-ratio prose is not-applicable rather than a fabricated l
   assert.match(current.comprehensive_analysis.fundamentals_check,/not applicable/);
   assert.doesNotMatch(current.comprehensive_analysis.fundamentals_check,/9x/);
 });
+
+test('unstructured model-average per-share ranges use the selected canonical base across current prose',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot({...report,company_profile:{sector:'Financial Services',industry:'Banks'},
+    intrinsic_value:{canonical_run:{primaryMethod:'RESIDUAL_INCOME',status:'AVAILABLE',baseFairValue:330.97,missingInputs:[]}}},'UNSEEN');
+  const claim='การประเมินมูลค่าตามแบบจำลอง Residual Income และ DDM ให้มูลค่าเหมาะสมเฉลี่ย 345.50 - 352.00 ดอลลาร์ต่อหุ้น';
+  assert.equal(extractBaseValuationMentionedValue(claim),345.5);
+  const current:any={verdict:{summary:claim,key_takeaways:[claim]},comprehensive_analysis:{financial_overview:claim},final_report:claim};
+  reconcileCurrentValuationProse(current,snapshot);
+  for(const text of [current.verdict.summary,...current.verdict.key_takeaways,current.comprehensive_analysis.financial_overview,current.final_report]){
+    assert.match(text,/330\.97/);assert.doesNotMatch(text,/345\.50|352\.00|เฉลี่ย/);
+  }
+  const first=JSON.stringify(current);reconcileCurrentValuationProse(current,snapshot);assert.equal(JSON.stringify(current),first);
+});
+
+test('method before English Base Case with Thai linker and approximate MoS consumes canonical truth',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot(report,'UNSEEN');
+  const claim='ส่งผลให้มูลค่าพื้นฐานตามแบบจำลอง DCF Base Case ที่ $425.00 มี Margin of Safety เพียงราว 14.7%';
+  assert.equal(extractBaseValuationMentionedValue(claim),425);
+  const fixed=reconcileBaseValuationNarrative(claim,snapshot);
+  assert.match(fixed,/148\.00/);assert.match(fixed,/48\.00%/);assert.doesNotMatch(fixed,/425\.00|14\.7%/);
+  const current:any={...report,verdict:{summary:claim,key_takeaways:[claim]},comprehensive_analysis:{financial_overview:claim},canonical_executive_snapshot:snapshot};
+  reconcileCurrentValuationProse(current,snapshot);
+  assert.equal(validateSection1Integrity(current,'UNSEEN').issues.filter(issue=>/base valuation|Margin of Safety|Base Case/.test(issue)).length,0);
+  const attributed='Morningstar '+claim;
+  assert.equal(reconcileBaseValuationNarrative(attributed,snapshot),attributed);
+});
+
+test('explicit per-share ranges use canonical scenarios while external quotes and aggregate transactions remain separate',()=>{
+  const snapshot=buildCanonicalExecutiveSnapshot(report,'UNSEEN');
+  snapshot.canonicalValuation!.bearFairValue=120;snapshot.canonicalValuation!.bullFairValue=200;
+  const fixed=reconcileBaseValuationNarrative('Fair value range $10–$20 per share',snapshot,false);
+  assert.match(fixed,/\$120\.00–\$200\.00/);
+  for(const source of ['Morningstar fair value $180 per share','Historical fair value $180 per share','ซื้อกิจการมูลค่า 2,000 ล้านดอลลาร์'])
+    assert.equal(reconcileBaseValuationNarrative(source,snapshot,false),source);
+  const mixed='Fair value $10 per share. Morningstar มูลค่า DCF กรณีฐานที่ $180.00';
+  assert.match(reconcileBaseValuationNarrative(mixed,snapshot,false),/Morningstar มูลค่า DCF กรณีฐานที่ \$180\.00/);
+  snapshot.canonicalValuation!.baseFairValue=null;snapshot.valuation.fairValue=null;
+  assert.doesNotMatch(reconcileBaseValuationNarrative('Fair value range $10–$20 per share',snapshot,false),/120|200/);
+});
